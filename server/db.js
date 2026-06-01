@@ -25,7 +25,9 @@ const LEGACY_STATUS_MAP = {
 export const SITE_STATES = new Set(['not_reviewed', 'reviewed', 'exclude']);
 
 export const SETTINGS_DEFAULTS = {
+  llm_provider: 'lmstudio',
   llm_base_url: 'http://127.0.0.1:1234',
+  llm_api_key: '',
   llm_model: 'gemma-4-e4b-it-mlx',
   llm_timeout: '300',
   site_review_interval_days: '14',

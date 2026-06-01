@@ -13,6 +13,7 @@ import { checkJobsAvailability, maybeRunStaleAvailabilityCheck } from './availab
 import {
   runExtraction, runExtractionForSelected,
   parseBoolSetting, makeExtractorFromSettings, makeScorerFromSettings,
+  resolveProviderBaseUrl, ANTHROPIC_MODELS, GOOGLE_MODELS,
 } from './extract.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -664,18 +665,42 @@ export function createApp({ dbPath, autoExtract = false } = {}) {
   app.post('/api/settings/test-llm', async (req, res) => {
     try {
       const settings = getDbSettings();
-      const baseUrl = (req.body?.base_url || settings.llm_base_url || 'http://127.0.0.1:1234').replace(/\/$/, '');
+      const provider = req.body?.provider || settings.llm_provider || 'lmstudio';
+      const apiKey = req.body?.api_key || settings.llm_api_key || '';
       const model = req.body?.model || settings.llm_model || '';
+      const rawBaseUrl = req.body?.base_url || settings.llm_base_url || 'http://127.0.0.1:1234';
+
+      // Providers with hardcoded model lists — no connectivity needed for quick mode
+      if (provider === 'anthropic') {
+        if (req.body?.quick) return res.json({ ok: true, models: ANTHROPIC_MODELS });
+        // Full test: skip OpenAI-specific capability tests; just verify connectivity
+        return res.json({
+          ok: true, models: ANTHROPIC_MODELS,
+          modelTests: [{ name: 'Provider', status: 'pass', message: 'Anthropic — uses native Messages API' }],
+        });
+      }
+      if (provider === 'google') {
+        if (req.body?.quick) return res.json({ ok: true, models: GOOGLE_MODELS });
+        return res.json({
+          ok: true, models: GOOGLE_MODELS,
+          modelTests: [{ name: 'Provider', status: 'pass', message: 'Google Gemini — uses native generateContent API' }],
+        });
+      }
+
+      // OpenAI-compatible providers (lmstudio, openai, openrouter, custom)
+      const baseUrl = resolveProviderBaseUrl(provider, rawBaseUrl);
+      const connHeaders = /** @type {Record<string,string>} */ ({});
+      if (apiKey) connHeaders['Authorization'] = `Bearer ${apiKey}`;
 
       // Step 1: connectivity + model list (5s timeout)
       let modelIds = [];
       const connController = new AbortController();
       const connTimer = setTimeout(() => connController.abort(), 5000);
       try {
-        const response = await fetch(`${baseUrl}/v1/models`, { signal: connController.signal });
+        const response = await fetch(`${baseUrl}/v1/models`, { headers: connHeaders, signal: connController.signal });
         if (!response.ok) return res.json({ ok: false, error: `HTTP ${response.status}` });
         const data = /** @type {any} */ (await response.json());
-        modelIds = (data.data || []).map(m => m.id || '');
+        modelIds = (data.data || []).map(m => m.id || '').filter(Boolean);
       } catch (e) {
         return res.json({ ok: false, error: e.name === 'AbortError' ? 'Connection timed out' : String(e.message) });
       } finally {
@@ -686,13 +711,14 @@ export function createApp({ dbPath, autoExtract = false } = {}) {
 
       // Step 2: run model capability tests — only if the configured model is actually loaded
       const resolvedModel = model || modelIds[0] || '';
+      const providerLabel = provider === 'lmstudio' ? 'LM Studio' : provider === 'openai' ? 'OpenAI' : provider === 'openrouter' ? 'OpenRouter' : 'server';
       if (resolvedModel && modelIds.length > 0 && !modelIds.includes(resolvedModel)) {
         return res.json({
           ok: true, models: modelIds,
-          modelTests: [{ name: 'Capability tests', status: 'fail', message: `Skipped — model "${resolvedModel}" is not loaded in LM Studio` }],
+          modelTests: [{ name: 'Capability tests', status: 'fail', message: `Skipped — model "${resolvedModel}" is not loaded in ${providerLabel}` }],
         });
       }
-      const modelTests = await runModelTests(baseUrl, resolvedModel);
+      const modelTests = await runModelTests(baseUrl, resolvedModel, apiKey);
       res.json({ ok: true, models: modelIds, modelTests });
     } catch (err) {
       res.json({ ok: false, error: String(err.message) });
@@ -729,13 +755,15 @@ Benefits: Equity · medical/dental/vision · 401k match · flexible PTO · $2k l
   return out.slice(0, targetChars);
 }
 
-async function chatCompletion(baseUrl, model, messages, extra = {}, timeoutMs = 15000) {
+async function chatCompletion(baseUrl, model, messages, extra = {}, timeoutMs = 15000, apiKey = '') {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const headers = /** @type {Record<string,string>} */ ({ 'Content-Type': 'application/json' });
+  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
   try {
     const res = await fetch(`${baseUrl}/v1/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ model, messages, temperature: 0, stream: false, ...extra }),
       signal: controller.signal,
     });
@@ -748,7 +776,7 @@ async function chatCompletion(baseUrl, model, messages, extra = {}, timeoutMs = 
 }
 
 /** @returns {Promise<{name:string, status:'pass'|'fail'|'warn', message:string}>} */
-async function testJsonSchema(baseUrl, model) {
+async function testJsonSchema(baseUrl, model, apiKey = '') {
   const name = 'JSON schema mode';
   const schema = {
     type: 'object',
@@ -762,7 +790,7 @@ async function testJsonSchema(baseUrl, model) {
   ], {
     max_tokens: 64,
     response_format: { type: 'json_schema', json_schema: { name: 'job', strict: true, schema } },
-  });
+  }, 15000, apiKey);
 
   if (errorText === 'timeout') return { name, status: 'fail', message: 'Timed out' };
   if (!res?.ok) return { name, status: 'warn', message: `Not supported (HTTP ${res?.status}) — extraction will fall back to json_object mode` };
@@ -777,12 +805,12 @@ async function testJsonSchema(baseUrl, model) {
 }
 
 /** @returns {Promise<{name:string, status:'pass'|'fail'|'warn', message:string}>} */
-async function testJsonObject(baseUrl, model) {
+async function testJsonObject(baseUrl, model, apiKey = '') {
   const name = 'JSON object mode';
   const { res, data, errorText } = await chatCompletion(baseUrl, model, [
     { role: 'system', content: 'You must reply with valid JSON only.' },
     { role: 'user', content: 'Return a JSON object with key "status" set to "ok".' },
-  ], { max_tokens: 32, response_format: { type: 'json_object' } });
+  ], { max_tokens: 32, response_format: { type: 'json_object' } }, 15000, apiKey);
 
   if (errorText === 'timeout') return { name, status: 'fail', message: 'Timed out' };
   if (!res?.ok) return { name, status: 'fail', message: `Not supported (HTTP ${res?.status}) — extraction will rely on prompt-only JSON and jsonrepair` };
@@ -796,7 +824,7 @@ async function testJsonObject(baseUrl, model) {
 }
 
 /** @returns {Promise<{name:string, status:'pass'|'fail'|'warn', message:string}>} */
-async function testContextLength(baseUrl, model) {
+async function testContextLength(baseUrl, model, apiKey = '') {
   const name = 'Context length (~2500 tokens)';
   if (!model) return { name, status: 'fail', message: 'No model selected' };
 
@@ -805,7 +833,7 @@ async function testContextLength(baseUrl, model) {
   const { res, data, errorText } = await chatCompletion(baseUrl, model, [
     { role: 'system', content: 'Extract job info. Reply ONLY with valid JSON: {"title":"...","company":"..."}' },
     { role: 'user', content: `Extract from this job posting:\n\n${syntheticJd}` },
-  ], { max_tokens: 64 }, 30000);
+  ], { max_tokens: 64 }, 30000, apiKey);
 
   if (errorText === 'timeout') return { name, status: 'fail', message: 'Timed out after 30s — model may be overloaded or context window too small' };
   if (!res?.ok) {
@@ -829,12 +857,12 @@ async function testContextLength(baseUrl, model) {
   return { name, status: 'pass', message: `Handled ~2500-token input in ${elapsed}s${speed}` };
 }
 
-async function runModelTests(baseUrl, model) {
+async function runModelTests(baseUrl, model, apiKey = '') {
   // Run sequentially — never two LLM requests in parallel
   const results = [];
-  results.push(await testJsonSchema(baseUrl, model));
-  results.push(await testJsonObject(baseUrl, model));
-  results.push(await testContextLength(baseUrl, model));
+  results.push(await testJsonSchema(baseUrl, model, apiKey));
+  results.push(await testJsonObject(baseUrl, model, apiKey));
+  results.push(await testContextLength(baseUrl, model, apiKey));
   return results;
 }
 
@@ -947,7 +975,9 @@ function buildUiData(dbPath) {
       config_dir: db.appConfigDir(),
       llm_debug_log_path: db.defaultLlmDebugLogPath(),
       server_url: 'http://127.0.0.1:8765',
+      llm_provider: settingsData.llm_provider || 'lmstudio',
       llm_base_url: settingsData.llm_base_url,
+      llm_api_key: settingsData.llm_api_key || '',
       llm_model: settingsData.llm_model,
       site_review_interval_days: parseInt(settingsData.site_review_interval_days || '14'),
       followup_default_days: parseInt(settingsData.followup_default_days || '7'),

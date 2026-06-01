@@ -15,6 +15,44 @@ import {
 export const DEFAULT_LLM_BASE_URL = 'http://127.0.0.1:1234';
 export const DEFAULT_LLM_MODEL = 'gemma-4-e4b-it-mlx';
 
+export const ANTHROPIC_MODELS = [
+  'claude-opus-4-8',
+  'claude-sonnet-4-6',
+  'claude-haiku-4-5-20251001',
+];
+
+export const GOOGLE_MODELS = [
+  'gemini-2.5-pro',
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-pro',
+  'gemini-1.5-flash',
+];
+
+export const OPENAI_DEFAULT_MODELS = [
+  'gpt-4o',
+  'gpt-4o-mini',
+  'o3',
+  'o3-mini',
+];
+
+export const OPENROUTER_DEFAULT_MODELS = [
+  'openai/gpt-4o',
+  'openai/gpt-4o-mini',
+  'anthropic/claude-sonnet-4-6',
+  'anthropic/claude-haiku-4-5',
+  'google/gemini-2.5-flash-preview-05-20',
+  'meta-llama/llama-3.3-70b-instruct',
+  'mistralai/mistral-large',
+];
+
+// Returns the effective API base URL for a given provider.
+export function resolveProviderBaseUrl(provider, baseUrl) {
+  if (provider === 'openai') return 'https://api.openai.com';
+  if (provider === 'openrouter') return 'https://openrouter.ai/api';
+  return (baseUrl || process.env.JOBHUNT_LLM_BASE_URL || DEFAULT_LLM_BASE_URL).replace(/\/$/, '');
+}
+
 const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on', 'enabled']);
 const FALSE_VALUES = new Set(['0', 'false', 'no', 'off', 'disabled']);
 
@@ -59,12 +97,14 @@ const MAX_DESCRIPTION_CHARS = 32000;
 const MAX_RESUME_CHARS = 12000;
 
 // ------------------------------------------------------------------
-// HTTP helper
+// HTTP helpers — per-provider
 // ------------------------------------------------------------------
 
-async function postChatCompletion({ baseUrl, model, messages, timeout, schemaFormat }) {
+async function postOpenAICompatibleCompletion({ baseUrl, apiKey, model, messages, timeout, schemaFormat }) {
   const base = { model, messages, temperature: 0, stream: false, max_tokens: 16384 };
   const formats = [schemaFormat, { type: 'json_object' }, null];
+  const headers = /** @type {Record<string,string>} */ ({ 'Content-Type': 'application/json' });
+  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
   let lastBadResponse = null;
   for (const responseFormat of formats) {
     const payload = /** @type {any} */ ({ ...base });
@@ -74,7 +114,7 @@ async function postChatCompletion({ baseUrl, model, messages, timeout, schemaFor
     try {
       const res = await fetch(`${baseUrl}/v1/chat/completions`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
@@ -103,6 +143,91 @@ async function postChatCompletion({ baseUrl, model, messages, timeout, schemaFor
     throw new Error(`LLM HTTP 400: ${text.slice(0, 500)}`);
   }
   throw new Error('chat completion produced no response');
+}
+
+async function postAnthropicCompletion({ apiKey, model, messages, timeout }) {
+  const systemMsg = messages.find(m => m.role === 'system');
+  const userMessages = messages.filter(m => m.role !== 'system');
+  const payload = /** @type {any} */ ({
+    model: model || 'claude-sonnet-4-6',
+    max_tokens: 16384,
+    messages: userMessages,
+  });
+  if (systemMsg) payload.system = systemMsg.content;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout * 1000);
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey || '',
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Anthropic HTTP ${res.status}: ${text.slice(0, 500)}`);
+    }
+    const data = /** @type {any} */ (await res.json());
+    const content = data.content?.[0]?.text ?? '';
+    const modelName = data.model || null;
+    return { content, modelName, responseFormatType: 'none' };
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error(`LLM request timed out after ${timeout}s`, { cause: e });
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function postGoogleCompletion({ apiKey, model, messages, timeout }) {
+  const systemMsg = messages.find(m => m.role === 'system');
+  const userMessages = messages.filter(m => m.role !== 'system');
+  const contents = userMessages.map(m => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
+  const payload = /** @type {any} */ ({
+    contents,
+    generationConfig: { responseMimeType: 'application/json' },
+  });
+  if (systemMsg) payload.systemInstruction = { parts: [{ text: systemMsg.content }] };
+  const resolvedModel = model || 'gemini-2.5-flash';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout * 1000);
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent?key=${encodeURIComponent(apiKey || '')}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      }
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Google HTTP ${res.status}: ${text.slice(0, 500)}`);
+    }
+    const data = /** @type {any} */ (await res.json());
+    const content = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const modelName = data.modelVersion || resolvedModel;
+    return { content, modelName, responseFormatType: 'none' };
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error(`LLM request timed out after ${timeout}s`, { cause: e });
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function postChatCompletion({ provider, baseUrl, apiKey, model, messages, timeout, schemaFormat }) {
+  if (provider === 'anthropic') return postAnthropicCompletion({ apiKey, model, messages, timeout });
+  if (provider === 'google') return postGoogleCompletion({ apiKey, model, messages, timeout });
+  return postOpenAICompatibleCompletion({ baseUrl, apiKey, model, messages, timeout, schemaFormat });
 }
 
 // ------------------------------------------------------------------
@@ -745,9 +870,11 @@ ${resume.slice(0, MAX_RESUME_CHARS)}`.trim();
 // ------------------------------------------------------------------
 
 export class LMStudioExtractor {
-  /** @param {{ baseUrl?: string, model?: string, timeout?: number, preferredLocations?: string|null, allowRemote?: boolean, allowHybrid?: boolean, allowOnsite?: boolean }} [opts] */
-  constructor({ baseUrl, model, timeout = 120, preferredLocations, allowRemote = true, allowHybrid = true, allowOnsite = true } = {}) {
-    this.baseUrl = (baseUrl || process.env.JOBHUNT_LLM_BASE_URL || DEFAULT_LLM_BASE_URL).replace(/\/$/, '');
+  /** @param {{ provider?: string, baseUrl?: string, apiKey?: string, model?: string, timeout?: number, preferredLocations?: string|null, allowRemote?: boolean, allowHybrid?: boolean, allowOnsite?: boolean }} [opts] */
+  constructor({ provider, baseUrl, apiKey, model, timeout = 120, preferredLocations, allowRemote = true, allowHybrid = true, allowOnsite = true } = {}) {
+    this.provider = provider || 'lmstudio';
+    this.baseUrl = resolveProviderBaseUrl(this.provider, baseUrl);
+    this.apiKey = apiKey || '';
     this.model = model || process.env.JOBHUNT_LLM_MODEL || DEFAULT_LLM_MODEL;
     this.timeout = timeout;
     this.preferredLocations = preferredLocations;
@@ -758,7 +885,9 @@ export class LMStudioExtractor {
 
   async extract(pending) {
     const { content, modelName, responseFormatType } = await postChatCompletion({
+      provider: this.provider,
       baseUrl: this.baseUrl,
+      apiKey: this.apiKey,
       model: this.model,
       timeout: this.timeout,
       messages: [
@@ -823,16 +952,20 @@ function extractedJobSchema() {
 // ------------------------------------------------------------------
 
 export class FitScorer {
-  /** @param {{ baseUrl?: string, model?: string, timeout?: number }} [opts] */
-  constructor({ baseUrl, model, timeout = 120 } = {}) {
-    this.baseUrl = (baseUrl || process.env.JOBHUNT_LLM_BASE_URL || DEFAULT_LLM_BASE_URL).replace(/\/$/, '');
+  /** @param {{ provider?: string, baseUrl?: string, apiKey?: string, model?: string, timeout?: number }} [opts] */
+  constructor({ provider, baseUrl, apiKey, model, timeout = 120 } = {}) {
+    this.provider = provider || 'lmstudio';
+    this.baseUrl = resolveProviderBaseUrl(this.provider, baseUrl);
+    this.apiKey = apiKey || '';
     this.model = model || process.env.JOBHUNT_LLM_MODEL || DEFAULT_LLM_MODEL;
     this.timeout = timeout;
   }
 
   async score(context, resume) {
     const { content, modelName, responseFormatType } = await postChatCompletion({
+      provider: this.provider,
       baseUrl: this.baseUrl,
+      apiKey: this.apiKey,
       model: this.model,
       timeout: this.timeout,
       messages: [
@@ -1039,7 +1172,9 @@ function pauseLlmQueueForErrors(dbPath) {
 
 export function makeExtractorFromSettings(settings) {
   return new LMStudioExtractor({
+    provider: settings.llm_provider || 'lmstudio',
     baseUrl: settings.llm_base_url,
+    apiKey: settings.llm_api_key || '',
     model: settings.llm_model,
     timeout: parseFloat(settings.llm_timeout || '60'),
     preferredLocations: settings.preferred_locations || null,
@@ -1051,7 +1186,9 @@ export function makeExtractorFromSettings(settings) {
 
 export function makeScorerFromSettings(settings) {
   return new FitScorer({
+    provider: settings.llm_provider || 'lmstudio',
     baseUrl: settings.llm_base_url,
+    apiKey: settings.llm_api_key || '',
     model: settings.llm_model,
     timeout: parseFloat(settings.llm_timeout || '60'),
   });

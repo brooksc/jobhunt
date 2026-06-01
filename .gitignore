@@ -1,0 +1,8 @@
+node_modules/
+.data/
+.backlog/
+*.db
+*.lock
+
+# Electron build output
+dist/

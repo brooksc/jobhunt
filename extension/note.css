@@ -1,0 +1,40 @@
+body {
+  color: #1f1f1f;
+  font: 14px system-ui, sans-serif;
+  margin: 0;
+}
+
+main {
+  box-sizing: border-box;
+  padding: 16px;
+  width: 360px;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+textarea {
+  box-sizing: border-box;
+  font: inherit;
+  resize: vertical;
+  width: 100%;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+button {
+  font: inherit;
+  padding: 6px 12px;
+}
+
+#status {
+  min-height: 18px;
+}

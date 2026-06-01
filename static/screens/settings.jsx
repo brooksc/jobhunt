@@ -1,0 +1,474 @@
+// Jobhunt — Settings page
+
+function SettingsPage() {
+  const s = window.JH_SETTINGS || {};
+  const parseBool = (value, fallback) => {
+    if (typeof value === "boolean") return value;
+    if (value == null) return fallback;
+    const normalized = String(value).toLowerCase();
+    return ["1", "true", "yes", "on", "enabled"].includes(normalized);
+  };
+
+  const defaults = React.useMemo(() => ({
+    llmBaseUrl: s.llm_base_url || "http://127.0.0.1:1234",
+    llmModel: s.llm_model || "",
+    siteInterval: String(s.site_review_interval_days || 14),
+    followupDays: String(s.followup_default_days || 7),
+    resumeText: s.resume_text || "",
+    preferredLocations: s.preferred_locations !== undefined ? s.preferred_locations : "WA, Washington, Seattle, Bellevue, Redmond, Kirkland, Bothell, Renton",
+    allowRemote: parseBool(s.location_allow_remote, true),
+    allowHybrid: parseBool(s.location_allow_hybrid, true),
+    allowOnsite: parseBool(s.location_allow_onsite, true),
+    llmDebugLevel: s.llm_debug_level || "errors",
+    availabilityAutoCheck: parseBool(s.availability_auto_check_enabled, true),
+    availabilityIntervalDays: String(s.availability_auto_check_interval_days || 1),
+    availabilityStaleDays: String(s.availability_stale_days || 21),
+  }), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [llmBaseUrl, setLlmBaseUrl] = React.useState(defaults.llmBaseUrl);
+  const [llmModel, setLlmModel] = React.useState(defaults.llmModel);
+  const [siteInterval, setSiteInterval] = React.useState(defaults.siteInterval);
+  const [followupDays, setFollowupDays] = React.useState(defaults.followupDays);
+  const [resumeText, setResumeText] = React.useState(defaults.resumeText);
+  const [preferredLocations, setPreferredLocations] = React.useState(defaults.preferredLocations);
+  const [allowRemote, setAllowRemote] = React.useState(defaults.allowRemote);
+  const [allowHybrid, setAllowHybrid] = React.useState(defaults.allowHybrid);
+  const [allowOnsite, setAllowOnsite] = React.useState(defaults.allowOnsite);
+  const [llmDebugLevel, setLlmDebugLevel] = React.useState(defaults.llmDebugLevel);
+  const [availabilityAutoCheck, setAvailabilityAutoCheck] = React.useState(defaults.availabilityAutoCheck);
+  const [availabilityIntervalDays, setAvailabilityIntervalDays] = React.useState(defaults.availabilityIntervalDays);
+  const [availabilityStaleDays, setAvailabilityStaleDays] = React.useState(defaults.availabilityStaleDays);
+  const [saving, setSaving] = React.useState(false);
+  const [saveMsg, setSaveMsg] = React.useState(null);
+  const [testResult, setTestResult] = React.useState(null);
+  const [testing, setTesting] = React.useState(false);
+  const [models, setModels] = React.useState([]);
+  const [fetchingModels, setFetchingModels] = React.useState(false);
+
+  // Track saved state separately so dirty resets after save without remounting
+  const [savedValues, setSavedValues] = React.useState(defaults);
+  const isDirtyFromSaved = (
+    llmBaseUrl !== savedValues.llmBaseUrl ||
+    llmModel !== savedValues.llmModel ||
+    siteInterval !== savedValues.siteInterval ||
+    followupDays !== savedValues.followupDays ||
+    resumeText !== savedValues.resumeText ||
+    preferredLocations !== savedValues.preferredLocations ||
+    allowRemote !== savedValues.allowRemote ||
+    allowHybrid !== savedValues.allowHybrid ||
+    allowOnsite !== savedValues.allowOnsite ||
+    llmDebugLevel !== savedValues.llmDebugLevel ||
+    availabilityAutoCheck !== savedValues.availabilityAutoCheck ||
+    availabilityIntervalDays !== savedValues.availabilityIntervalDays ||
+    availabilityStaleDays !== savedValues.availabilityStaleDays
+  );
+
+  async function saveSettings(next) {
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          llm_base_url: next.llmBaseUrl,
+          llm_model: next.llmModel,
+          site_review_interval_days: Number(next.siteInterval),
+          followup_default_days: Number(next.followupDays),
+          resume_text: next.resumeText,
+          preferred_locations: next.preferredLocations,
+          location_allow_remote: next.allowRemote,
+          location_allow_hybrid: next.allowHybrid,
+          location_allow_onsite: next.allowOnsite,
+          llm_debug_level: next.llmDebugLevel,
+          availability_auto_check_enabled: next.availabilityAutoCheck,
+          availability_auto_check_interval_days: Number(next.availabilityIntervalDays),
+          availability_stale_days: Number(next.availabilityStaleDays),
+        }),
+      });
+      if (res.ok) {
+        setSavedValues(next);
+        // Update the in-memory global so other components see the new settings
+        Object.assign(window.JH_SETTINGS || {}, {
+          llm_base_url: next.llmBaseUrl,
+          llm_model: next.llmModel,
+          site_review_interval_days: Number(next.siteInterval),
+          followup_default_days: Number(next.followupDays),
+          resume_text: next.resumeText,
+          preferred_locations: next.preferredLocations,
+          location_allow_remote: String(next.allowRemote),
+          location_allow_hybrid: String(next.allowHybrid),
+          location_allow_onsite: String(next.allowOnsite),
+          llm_debug_level: next.llmDebugLevel,
+          availability_auto_check_enabled: String(next.availabilityAutoCheck),
+          availability_auto_check_interval_days: Number(next.availabilityIntervalDays),
+          availability_stale_days: Number(next.availabilityStaleDays),
+        });
+        setSaveMsg({ kind: "success", text: "All changes saved" });
+      } else {
+        const err = await res.text();
+        setSaveMsg({ kind: "error", text: err || "Autosave failed" });
+      }
+    } catch (e) {
+      setSaveMsg({ kind: "error", text: e.message });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  React.useEffect(() => {
+    if (!isDirtyFromSaved) return;
+    setSaveMsg({ kind: "saving", text: "Saving changes…" });
+    const next = {
+      llmBaseUrl,
+      llmModel,
+      siteInterval,
+      followupDays,
+      resumeText,
+      preferredLocations,
+      allowRemote,
+      allowHybrid,
+      allowOnsite,
+      llmDebugLevel,
+      availabilityAutoCheck,
+      availabilityIntervalDays,
+      availabilityStaleDays,
+    };
+    const timer = setTimeout(() => {
+      saveSettings(next);
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [llmBaseUrl, llmModel, siteInterval, followupDays, resumeText, preferredLocations, allowRemote, allowHybrid, allowOnsite, llmDebugLevel, availabilityAutoCheck, availabilityIntervalDays, availabilityStaleDays]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function _callTestLlm(quick = false) {
+    const res = await fetch("/api/settings/test-llm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ base_url: llmBaseUrl, model: llmModel, quick }),
+    });
+    return res.json();
+  }
+
+  // Auto-load model list on mount
+  React.useEffect(() => {
+    _callTestLlm(true)
+      .then(data => { if (data.ok && data.models?.length > 0) setModels(data.models); })
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleTestLlm() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const data = await _callTestLlm();
+      setTestResult(data);
+      if (data.ok && data.models?.length > 0) setModels(data.models);
+    } catch (e) {
+      setTestResult({ ok: false, error: e.message });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function handleFetchModels() {
+    setFetchingModels(true);
+    try {
+      const data = await _callTestLlm(true);
+      if (data.ok && data.models?.length > 0) {
+        setModels(data.models);
+      } else {
+        window.JH_TOAST?.show(data.error || "No models returned — is LM Studio running?", "error");
+      }
+    } catch (e) {
+      window.JH_TOAST?.show(e.message, "error");
+    } finally {
+      setFetchingModels(false);
+    }
+  }
+
+  const lastCapture = (window.JH_JOBS || []).reduce((latest, j) => {
+    return !latest || j.capturedAt > latest ? j.capturedAt : latest;
+  }, null);
+
+  return (
+    <div style={{ overflow: "auto", flex: 1 }}>
+      <div className="jh-settings">
+        <div style={{ display: "flex", justifyContent: "flex-end", minHeight: 18, fontSize: 12, color: saveMsg?.kind === "error" ? "var(--st-rejected)" : saving || saveMsg?.kind === "saving" ? "var(--fg-mute)" : "var(--st-offer)" }}>
+          {saving ? "Saving changes…" : saveMsg?.text || "All changes saved"}
+        </div>
+        <Section title="Local service" desc="The local Jobhunt daemon that the Chrome extension talks to.">
+          <Row>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <span style={{ width: 8, height: 8, borderRadius: 50, background: "var(--st-offer)", boxShadow: "0 0 0 3px rgba(79,174,111,0.18)" }}></span>
+              <span style={{ color: "var(--fg-strong)" }}>Running</span>
+              <span style={{ color: "var(--fg-mute)", fontFamily: "var(--font-mono)", fontSize: 11.5 }}>{s.server_url || "http://127.0.0.1:8765"}</span>
+            </span>
+            <Btn size="sm" icon={<Icon.Refresh size={11} />} onClick={() => window.location.reload()}>Refresh</Btn>
+          </Row>
+          <DKV k="Version" v={s.version || "unknown"} />
+        </Section>
+
+        <Section title="Chrome extension" desc="The page-capture extension. Pair with the daemon to push new jobs.">
+          <Row>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <span style={{ width: 8, height: 8, borderRadius: 50, background: lastCapture ? "var(--st-offer)" : "var(--fg-faint)" }}></span>
+              <span style={{ color: "var(--fg-strong)" }}>{lastCapture ? "Active" : "No captures yet"}</span>
+              {lastCapture && <span style={{ color: "var(--fg-mute)" }}>Last capture: {lastCapture.slice(0, 10)}</span>}
+            </span>
+          </Row>
+        </Section>
+
+        <Section title="Availability checks" desc="Automatically checks older active jobs for expired postings or redirects.">
+          <div className="jh-row" style={{ gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <label className="jh-label" style={{ width: "auto", margin: 0 }}>
+              <input type="checkbox" checked={availabilityAutoCheck} onChange={e => setAvailabilityAutoCheck(e.target.checked)} />
+              {" "}Auto-check stale jobs
+            </label>
+            <span style={{ color: "var(--fg-faint)", fontSize: 11 }}>
+              Last auto-check: {s.availability_last_auto_check_at ? fmtDateTime(s.availability_last_auto_check_at) : "—"}
+            </span>
+          </div>
+          <div className="jh-row" style={{ gap: 16 }}>
+            <div style={{ flex: 1 }}>
+              <div className="jh-label">Run at most every</div>
+              <div className="jh-input" style={{ paddingRight: 4 }}>
+                <input type="number" min="1" value={availabilityIntervalDays} onChange={e => setAvailabilityIntervalDays(e.target.value)} style={{ width: 44, background: "transparent", border: "none", outline: "none", color: "inherit" }} />
+                <span style={{ color: "var(--fg-mute)" }}>days</span>
+              </div>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div className="jh-label">Consider stale after</div>
+              <div className="jh-input" style={{ paddingRight: 4 }}>
+                <input type="number" min="1" value={availabilityStaleDays} onChange={e => setAvailabilityStaleDays(e.target.value)} style={{ width: 44, background: "transparent", border: "none", outline: "none", color: "inherit" }} />
+                <span style={{ color: "var(--fg-mute)" }}>days since capture</span>
+              </div>
+            </div>
+          </div>
+        </Section>
+
+        <Section title="LM Studio" desc="Local model used for structured extraction from captured pages.">
+          <div>
+            <div className="jh-label">Base URL</div>
+            <div className="jh-input">
+              <input value={llmBaseUrl} onChange={e => setLlmBaseUrl(e.target.value)} style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "inherit" }} />
+            </div>
+          </div>
+          <div>
+            <div className="jh-label">Model</div>
+            <select
+              value={llmModel}
+              onChange={e => setLlmModel(e.target.value)}
+              style={{
+                width: "100%", height: 30, padding: "0 8px",
+                background: "var(--bg-elev)", border: "1px solid var(--border)",
+                borderRadius: "var(--r-2)", color: "var(--fg)",
+                fontFamily: "var(--font-mono)", fontSize: 12,
+              }}
+            >
+              {models.length === 0 && (
+                <option value={llmModel}>{llmModel || "— loading models… —"}</option>
+              )}
+              {models.length > 0 && !models.includes(llmModel) && llmModel && (
+                <option value={llmModel}>{llmModel} ⚠ not in server list</option>
+              )}
+              {models.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+            <div style={{ marginTop: 4 }}>
+              <Btn size="sm" kind="ghost" icon={<Icon.Refresh size={11} />} onClick={handleFetchModels} disabled={fetchingModels}>
+                {fetchingModels ? "Loading models…" : models.length > 0 ? `${models.length} model${models.length !== 1 ? "s" : ""} loaded` : "Load models from server"}
+              </Btn>
+            </div>
+          </div>
+          <Row style={{ marginTop: 4 }}>
+            <Btn size="sm" kind="accent" icon={<Icon.Check size={11} />} onClick={handleTestLlm} disabled={testing}>
+              {testing ? "Testing connection + context…" : "Test connection"}
+            </Btn>
+            {testResult && (
+              <span style={{ fontSize: 12, display: "inline-flex", flexDirection: "column", gap: 4 }}>
+                {(() => {
+                  const noModels = testResult.ok && (testResult.models?.length || 0) === 0;
+                  const connOk = testResult.ok && !noModels;
+                  const connColor = connOk ? "var(--st-offer)" : "var(--st-rejected)";
+                  const connText = !testResult.ok ? testResult.error
+                    : noModels ? "Connected but no models loaded — is a model running in LM Studio?"
+                    : `Connected · ${testResult.models.length} model(s)`;
+                  return (
+                    <span style={{ color: connColor, display: "inline-flex", gap: 6, alignItems: "center" }}>
+                      <span style={{ width: 6, height: 6, borderRadius: 50, flexShrink: 0, background: connColor }}></span>
+                      {connText}
+                    </span>
+                  );
+                })()}
+                {testResult.ok && testResult.models?.length > 0 && llmModel && !testResult.models.includes(llmModel) && (
+                  <span style={{ color: "var(--st-rejected)", display: "inline-flex", gap: 6, alignItems: "center", fontFamily: "var(--font-mono)", fontSize: 11 }}>
+                    <span style={{ flexShrink: 0, fontWeight: "bold" }}>✗</span>
+                    Selected model "{llmModel}" is not loaded in LM Studio
+                  </span>
+                )}
+                {testResult.ok && testResult.modelTests?.map((t, i) => {
+                  const color = t.status === "pass" ? "var(--st-offer)" : t.status === "warn" ? "var(--st-screening)" : "var(--st-rejected)";
+                  const symbol = t.status === "pass" ? "✓" : t.status === "warn" ? "⚠" : "✗";
+                  return (
+                    <span key={i} style={{ display: "inline-flex", gap: 6, alignItems: "flex-start", fontFamily: "var(--font-mono)", fontSize: 11 }}>
+                      <span style={{ color, flexShrink: 0, fontWeight: "bold" }}>{symbol}</span>
+                      <span><span style={{ color: "var(--fg-mute)" }}>{t.name}:</span> <span style={{ color }}>{t.message}</span></span>
+                    </span>
+                  );
+                })}
+              </span>
+            )}
+          </Row>
+          <div>
+            <div className="jh-label">Debug logging</div>
+            <select
+              value={llmDebugLevel}
+              onChange={e => setLlmDebugLevel(e.target.value)}
+              style={{
+                width: "100%", height: 30, padding: "0 8px",
+                background: "var(--bg-elev)", border: "1px solid var(--border)",
+                borderRadius: "var(--r-2)", color: "var(--fg)",
+                fontFamily: "var(--font-mono)", fontSize: 12,
+              }}
+            >
+              <option value="off">Off</option>
+              <option value="errors">Errors only</option>
+              <option value="full">Full</option>
+            </select>
+            <div style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 4 }}>
+              Writes LLM attempt history to the database. Failed attempts are also appended to the debug log under the app config directory.
+            </div>
+          </div>
+        </Section>
+
+        <Section title="Resume" desc="Paste your resume as plain text. Jobs are scored 0-100 for fit against it automatically after extraction.">
+          <div>
+            <div className="jh-label">Resume text</div>
+            <div className="jh-input" style={{ alignItems: "stretch", padding: 0, height: "auto" }}>
+              <textarea
+                value={resumeText}
+                onChange={e => setResumeText(e.target.value)}
+                placeholder="Paste your full resume here as plain text…"
+                rows={14}
+                style={{
+                  width: "100%",
+                  minHeight: 200,
+                  padding: "8px 10px",
+                  background: "transparent",
+                  border: "none",
+                  outline: "none",
+                  color: "inherit",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 12,
+                  resize: "vertical",
+                  lineHeight: 1.45,
+                }}
+              />
+            </div>
+            <div style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 4 }}>
+              {resumeText.trim()
+                ? "Saved jobs will be re-scored when re-extracted, or score them now from a job's detail view."
+                : "Add a resume to enable fit scoring."}
+            </div>
+          </div>
+        </Section>
+
+        <Section title="Location filter" desc="Comma-separated city/state/region names. Extraction filters job locations to these — only matching locations are stored and used to set remote/onsite status. Changing this requires re-running extraction on existing jobs.">
+          <div>
+            <div className="jh-label">Preferred locations</div>
+            <div className="jh-input">
+              <input
+                value={preferredLocations}
+                onChange={e => setPreferredLocations(e.target.value)}
+                placeholder="e.g. WA, Seattle, Bellevue"
+                style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "inherit" }}
+              />
+            </div>
+            <div style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 4 }}>
+              Add cities/states or abbreviations. Matching is case-insensitive and location-only.
+            </div>
+            <div className="jh-row" style={{ marginTop: 10, gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              <label className="jh-label" style={{ width: "auto", margin: 0 }}>
+                <input type="checkbox" checked={allowRemote} onChange={e => setAllowRemote(e.target.checked)} />
+                {" "}Remote
+              </label>
+              <label className="jh-label" style={{ width: "auto", margin: 0 }}>
+                <input type="checkbox" checked={allowHybrid} onChange={e => setAllowHybrid(e.target.checked)} />
+                {" "}Hybrid
+              </label>
+              <label className="jh-label" style={{ width: "auto", margin: 0 }}>
+                <input type="checkbox" checked={allowOnsite} onChange={e => setAllowOnsite(e.target.checked)} />
+                {" "}In-office
+              </label>
+            </div>
+            <div style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 4 }}>
+              At least one mode should be enabled.
+            </div>
+          </div>
+        </Section>
+
+        <Section title="Defaults" desc="Per-feature defaults applied to new records.">
+          <div className="jh-row" style={{ gap: 16 }}>
+            <div style={{ flex: 1 }}>
+              <div className="jh-label">Site review interval</div>
+              <div className="jh-input" style={{ paddingRight: 4 }}>
+                <input type="number" value={siteInterval} onChange={e => setSiteInterval(e.target.value)} style={{ width: 40, background: "transparent", border: "none", outline: "none", color: "inherit" }} />
+                <span style={{ color: "var(--fg-mute)" }}>days</span>
+                <span style={{ marginLeft: "auto", color: "var(--fg-faint)" }}>used for new sites</span>
+              </div>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div className="jh-label">Follow-up after applying</div>
+              <div className="jh-input" style={{ paddingRight: 4 }}>
+                <input type="number" value={followupDays} onChange={e => setFollowupDays(e.target.value)} style={{ width: 40, background: "transparent", border: "none", outline: "none", color: "inherit" }} />
+                <span style={{ color: "var(--fg-mute)" }}>days</span>
+              </div>
+            </div>
+          </div>
+        </Section>
+
+        <Section title="Data" desc="Local data tools. All operations write to the SQLite DB.">
+          <Row>
+            <Btn size="sm" icon={<Icon.External size={11} />} onClick={() => window.open("/exports/jobs.csv", "_blank")}>Export CSV</Btn>
+          </Row>
+          <DKV k="Config directory" v={s.config_dir || "~/.config/jobhunt"} />
+          <DKV k="Local DB path" v={s.db_path || "~/.config/jobhunt/jobhunt.db"} />
+          <DKV k="LLM debug log" v={s.llm_debug_log_path || "~/.config/jobhunt/jobhunt-llm-debug.log"} />
+          <DKV k="Records" v={`${(window.JH_JOBS || []).length} jobs · ${(window.JH_SITES || []).length} site reviews`} />
+        </Section>
+
+        <Section title="App info" desc="">
+          <DKV k="Version" v={s.version || "unknown"} />
+          <DKV k="Build" v="local development" />
+          <DKV k="License" v="Personal · local-first" />
+        </Section>
+      </div>
+    </div>
+  );
+}
+
+function Section({ title, desc, children }) {
+  return (
+    <div className="jh-set-section">
+      <div>
+        <h3>{title}</h3>
+        {desc && <p className="desc">{desc}</p>}
+      </div>
+      <div className="jh-set-body">{children}</div>
+    </div>
+  );
+}
+
+function Row({ children, style }) {
+  return <div style={{ display: "flex", alignItems: "center", gap: 8, ...style }}>{children}</div>;
+}
+
+function DKV({ k, v }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12 }}>
+      <span style={{ color: "var(--fg-mute)", width: 110 }}>{k}</span>
+      <span data-mono style={{ color: "var(--fg)" }}>{v}</span>
+    </div>
+  );
+}
+
+Object.assign(window, { SettingsPage });

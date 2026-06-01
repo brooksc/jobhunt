@@ -1,0 +1,71 @@
+{
+  "name": "jobhunt",
+  "version": "0.1.0",
+  "description": "Local-first job tracking tool",
+  "type": "module",
+  "main": "electron/main.js",
+  "engines": {
+    "node": ">=26.0.0"
+  },
+  "bin": {
+    "jobhunt": "./server/index.js"
+  },
+  "scripts": {
+    "start": "scripts/run-server-loop.sh",
+    "serve:once": "node server/index.js serve",
+    "dev": "node --watch server/index.js serve",
+    "electron": "electron .",
+    "electron:build": "electron-builder --dir",
+    "electron:dist": "electron-builder",
+    "test": "node --test tests/unit/availability.test.js tests/unit/cleaning.test.js tests/unit/extract.test.js tests/unit/extension_capture.test.js tests/integration/db.test.js tests/integration/api.test.js tests/electron/smoke.test.js",
+    "test:coverage": "node --test --experimental-test-coverage tests/unit/availability.test.js tests/unit/cleaning.test.js tests/unit/extract.test.js tests/unit/extension_capture.test.js tests/integration/db.test.js tests/integration/api.test.js tests/electron/smoke.test.js",
+    "test:ui": "node --test tests/ui/jobs-smoke.test.js",
+    "eval:llm": "node tests/llm-eval/eval-llm.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint server/"
+  },
+  "dependencies": {
+    "commander": "^12.0.0",
+    "express": "^4.19.0",
+    "jsonrepair": "^3.8.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.60.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.9.1",
+    "electron": "^42.2.0",
+    "electron-builder": "^26.8.1",
+    "eslint": "^10.4.0",
+    "typescript": "^6.0.3"
+  },
+  "build": {
+    "appId": "com.brooksc.jobhunt",
+    "productName": "Jobhunt",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "server/**/*",
+      "static/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "identity": null
+    },
+    "dmg": {
+      "sign": false
+    }
+  }
+}

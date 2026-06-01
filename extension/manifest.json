@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Jobhunt Capture",
+  "version": "0.2.0",
+  "description": "Capture job postings into the local jobhunt tracker.",
+  "permissions": ["activeTab", "scripting", "storage", "contextMenus"],
+  "host_permissions": ["http://127.0.0.1:8765/*"],
+  "background": {
+    "service_worker": "service_worker.js"
+  },
+  "action": {
+    "default_title": "Capture job"
+  }
+}

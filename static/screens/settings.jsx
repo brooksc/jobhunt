@@ -1,5 +1,26 @@
 // Jobhunt — Settings page
 
+const PROVIDER_LABELS = {
+  lmstudio: "LM Studio (local)",
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+  google: "Google Gemini",
+  openrouter: "OpenRouter",
+  custom: "Custom OpenAI-compatible",
+};
+
+const PROVIDER_HARDCODED_MODELS = {
+  anthropic: ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
+  google: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
+  openai: ["gpt-4o", "gpt-4o-mini", "o3", "o3-mini"],
+  openrouter: ["openai/gpt-4o", "openai/gpt-4o-mini", "anthropic/claude-sonnet-4-6", "google/gemini-2.5-flash-preview-05-20"],
+};
+
+// Providers that use the local/custom base URL input
+const SHOWS_BASE_URL = new Set(["lmstudio", "custom"]);
+// Providers that need an API key
+const NEEDS_API_KEY = new Set(["openai", "anthropic", "google", "openrouter", "custom"]);
+
 function SettingsPage() {
   const s = window.JH_SETTINGS || {};
   const parseBool = (value, fallback) => {
@@ -10,7 +31,9 @@ function SettingsPage() {
   };
 
   const defaults = React.useMemo(() => ({
+    llmProvider: s.llm_provider || "lmstudio",
     llmBaseUrl: s.llm_base_url || "http://127.0.0.1:1234",
+    llmApiKey: s.llm_api_key || "",
     llmModel: s.llm_model || "",
     siteInterval: String(s.site_review_interval_days || 14),
     followupDays: String(s.followup_default_days || 7),
@@ -25,7 +48,9 @@ function SettingsPage() {
     availabilityStaleDays: String(s.availability_stale_days || 21),
   }), []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [llmProvider, setLlmProvider] = React.useState(defaults.llmProvider);
   const [llmBaseUrl, setLlmBaseUrl] = React.useState(defaults.llmBaseUrl);
+  const [llmApiKey, setLlmApiKey] = React.useState(defaults.llmApiKey);
   const [llmModel, setLlmModel] = React.useState(defaults.llmModel);
   const [siteInterval, setSiteInterval] = React.useState(defaults.siteInterval);
   const [followupDays, setFollowupDays] = React.useState(defaults.followupDays);
@@ -48,7 +73,9 @@ function SettingsPage() {
   // Track saved state separately so dirty resets after save without remounting
   const [savedValues, setSavedValues] = React.useState(defaults);
   const isDirtyFromSaved = (
+    llmProvider !== savedValues.llmProvider ||
     llmBaseUrl !== savedValues.llmBaseUrl ||
+    llmApiKey !== savedValues.llmApiKey ||
     llmModel !== savedValues.llmModel ||
     siteInterval !== savedValues.siteInterval ||
     followupDays !== savedValues.followupDays ||
@@ -71,7 +98,9 @@ function SettingsPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          llm_provider: next.llmProvider,
           llm_base_url: next.llmBaseUrl,
+          llm_api_key: next.llmApiKey,
           llm_model: next.llmModel,
           site_review_interval_days: Number(next.siteInterval),
           followup_default_days: Number(next.followupDays),
@@ -90,7 +119,9 @@ function SettingsPage() {
         setSavedValues(next);
         // Update the in-memory global so other components see the new settings
         Object.assign(window.JH_SETTINGS || {}, {
+          llm_provider: next.llmProvider,
           llm_base_url: next.llmBaseUrl,
+          llm_api_key: next.llmApiKey,
           llm_model: next.llmModel,
           site_review_interval_days: Number(next.siteInterval),
           followup_default_days: Number(next.followupDays),
@@ -120,7 +151,9 @@ function SettingsPage() {
     if (!isDirtyFromSaved) return;
     setSaveMsg({ kind: "saving", text: "Saving changes…" });
     const next = {
+      llmProvider,
       llmBaseUrl,
+      llmApiKey,
       llmModel,
       siteInterval,
       followupDays,
@@ -138,23 +171,28 @@ function SettingsPage() {
       saveSettings(next);
     }, 700);
     return () => clearTimeout(timer);
-  }, [llmBaseUrl, llmModel, siteInterval, followupDays, resumeText, preferredLocations, allowRemote, allowHybrid, allowOnsite, llmDebugLevel, availabilityAutoCheck, availabilityIntervalDays, availabilityStaleDays]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [llmProvider, llmBaseUrl, llmApiKey, llmModel, siteInterval, followupDays, resumeText, preferredLocations, allowRemote, allowHybrid, allowOnsite, llmDebugLevel, availabilityAutoCheck, availabilityIntervalDays, availabilityStaleDays]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function _callTestLlm(quick = false) {
     const res = await fetch("/api/settings/test-llm", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ base_url: llmBaseUrl, model: llmModel, quick }),
+      body: JSON.stringify({ provider: llmProvider, base_url: llmBaseUrl, api_key: llmApiKey, model: llmModel, quick }),
     });
     return res.json();
   }
 
-  // Auto-load model list on mount
+  // Populate model list when provider changes (or on mount)
   React.useEffect(() => {
+    const hardcoded = PROVIDER_HARDCODED_MODELS[llmProvider];
+    if (hardcoded) {
+      setModels(hardcoded);
+      return;
+    }
     _callTestLlm(true)
       .then(data => { if (data.ok && data.models?.length > 0) setModels(data.models); })
       .catch(() => {});
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [llmProvider]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleTestLlm() {
     setTesting(true);
@@ -246,13 +284,52 @@ function SettingsPage() {
           </div>
         </Section>
 
-        <Section title="LM Studio" desc="Local model used for structured extraction from captured pages.">
+        <Section title="LLM provider" desc="Model used for structured extraction from captured job pages.">
           <div>
-            <div className="jh-label">Base URL</div>
-            <div className="jh-input">
-              <input value={llmBaseUrl} onChange={e => setLlmBaseUrl(e.target.value)} style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "inherit" }} />
-            </div>
+            <div className="jh-label">Provider</div>
+            <select
+              value={llmProvider}
+              onChange={e => { setLlmProvider(e.target.value); setTestResult(null); setModels([]); }}
+              style={{
+                width: "100%", height: 30, padding: "0 8px",
+                background: "var(--bg-elev)", border: "1px solid var(--border)",
+                borderRadius: "var(--r-2)", color: "var(--fg)", fontSize: 13,
+              }}
+            >
+              {Object.entries(PROVIDER_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
           </div>
+
+          {SHOWS_BASE_URL.has(llmProvider) && (
+            <div>
+              <div className="jh-label">Base URL</div>
+              <div className="jh-input">
+                <input value={llmBaseUrl} onChange={e => setLlmBaseUrl(e.target.value)} style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "inherit" }} />
+              </div>
+            </div>
+          )}
+
+          {!SHOWS_BASE_URL.has(llmProvider) && llmProvider !== "anthropic" && llmProvider !== "google" && (
+            <div style={{ fontSize: 11, color: "var(--fg-faint)" }}>
+              Endpoint: {llmProvider === "openai" ? "https://api.openai.com" : llmProvider === "openrouter" ? "https://openrouter.ai/api" : "(custom)"}
+            </div>
+          )}
+
+          {NEEDS_API_KEY.has(llmProvider) && (
+            <div>
+              <div className="jh-label">API key</div>
+              <div className="jh-input">
+                <input
+                  type="password"
+                  value={llmApiKey}
+                  onChange={e => setLlmApiKey(e.target.value)}
+                  placeholder={llmProvider === "openai" ? "sk-…" : llmProvider === "anthropic" ? "sk-ant-…" : "API key"}
+                  style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "inherit", fontFamily: "var(--font-mono)" }}
+                />
+              </div>
+            </div>
+          )}
+
           <div>
             <div className="jh-label">Model</div>
             <select
@@ -266,22 +343,25 @@ function SettingsPage() {
               }}
             >
               {models.length === 0 && (
-                <option value={llmModel}>{llmModel || "— loading models… —"}</option>
+                <option value={llmModel}>{llmModel || "— no models loaded —"}</option>
               )}
               {models.length > 0 && !models.includes(llmModel) && llmModel && (
-                <option value={llmModel}>{llmModel} ⚠ not in server list</option>
+                <option value={llmModel}>{llmModel} ⚠ not in list</option>
               )}
               {models.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
-            <div style={{ marginTop: 4 }}>
-              <Btn size="sm" kind="ghost" icon={<Icon.Refresh size={11} />} onClick={handleFetchModels} disabled={fetchingModels}>
-                {fetchingModels ? "Loading models…" : models.length > 0 ? `${models.length} model${models.length !== 1 ? "s" : ""} loaded` : "Load models from server"}
-              </Btn>
-            </div>
+            {!PROVIDER_HARDCODED_MODELS[llmProvider] && (
+              <div style={{ marginTop: 4 }}>
+                <Btn size="sm" kind="ghost" icon={<Icon.Refresh size={11} />} onClick={handleFetchModels} disabled={fetchingModels}>
+                  {fetchingModels ? "Loading models…" : models.length > 0 ? `${models.length} model${models.length !== 1 ? "s" : ""} loaded` : "Load models from server"}
+                </Btn>
+              </div>
+            )}
           </div>
+
           <Row style={{ marginTop: 4 }}>
             <Btn size="sm" kind="accent" icon={<Icon.Check size={11} />} onClick={handleTestLlm} disabled={testing}>
-              {testing ? "Testing connection + context…" : "Test connection"}
+              {testing ? "Testing…" : "Test connection"}
             </Btn>
             {testResult && (
               <span style={{ fontSize: 12, display: "inline-flex", flexDirection: "column", gap: 4 }}>
@@ -289,9 +369,10 @@ function SettingsPage() {
                   const noModels = testResult.ok && (testResult.models?.length || 0) === 0;
                   const connOk = testResult.ok && !noModels;
                   const connColor = connOk ? "var(--st-offer)" : "var(--st-rejected)";
+                  const providerName = PROVIDER_LABELS[llmProvider] || llmProvider;
                   const connText = !testResult.ok ? testResult.error
-                    : noModels ? "Connected but no models loaded — is a model running in LM Studio?"
-                    : `Connected · ${testResult.models.length} model(s)`;
+                    : noModels ? `Connected to ${providerName} but no models found`
+                    : `${providerName} · ${testResult.models.length} model(s)`;
                   return (
                     <span style={{ color: connColor, display: "inline-flex", gap: 6, alignItems: "center" }}>
                       <span style={{ width: 6, height: 6, borderRadius: 50, flexShrink: 0, background: connColor }}></span>
@@ -302,7 +383,7 @@ function SettingsPage() {
                 {testResult.ok && testResult.models?.length > 0 && llmModel && !testResult.models.includes(llmModel) && (
                   <span style={{ color: "var(--st-rejected)", display: "inline-flex", gap: 6, alignItems: "center", fontFamily: "var(--font-mono)", fontSize: 11 }}>
                     <span style={{ flexShrink: 0, fontWeight: "bold" }}>✗</span>
-                    Selected model "{llmModel}" is not loaded in LM Studio
+                    Selected model "{llmModel}" not in list
                   </span>
                 )}
                 {testResult.ok && testResult.modelTests?.map((t, i) => {

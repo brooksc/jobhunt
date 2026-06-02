@@ -591,6 +591,86 @@ export function normalizeEmploymentFromSource(extracted, description) {
   return { ...extracted, employment_type: 'unknown' };
 }
 
+const NICE_TO_HAVE_HEADINGS = [
+  'preferred qualifications',
+  'preferred experience',
+  'preferred skills',
+  'nice to have',
+  'nice-to-have',
+  'bonus points',
+  'desired qualifications',
+  'additional qualifications',
+];
+
+const STOP_SECTION_HEADINGS = [
+  'required qualifications',
+  'minimum qualifications',
+  'requirements',
+  'must have',
+  'responsibilities',
+  'what you will do',
+  "what you'll do",
+  'about the role',
+  'benefits',
+  'compensation',
+  'salary',
+  'apply',
+];
+
+function sectionHeadingPattern(headings) {
+  return new RegExp(`^(${headings.join('|')})\\s*:?\\s*(.*)$`, 'i');
+}
+
+const NICE_TO_HAVE_HEADING_RE = sectionHeadingPattern(NICE_TO_HAVE_HEADINGS);
+const STOP_SECTION_HEADING_RE = sectionHeadingPattern([...STOP_SECTION_HEADINGS, ...NICE_TO_HAVE_HEADINGS]);
+
+function cleanListItem(line) {
+  return line
+    .replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function sourceNiceToHaves(description) {
+  const lines = String(description || '').split('\n').map(line => line.trim());
+  const values = [];
+  let inNiceSection = false;
+
+  for (const line of lines) {
+    if (!line) continue;
+    const niceHeading = line.match(NICE_TO_HAVE_HEADING_RE);
+    if (niceHeading) {
+      inNiceSection = true;
+      const inlineValue = cleanListItem(niceHeading[2] || '');
+      if (inlineValue) values.push(inlineValue);
+      continue;
+    }
+    if (inNiceSection && STOP_SECTION_HEADING_RE.test(line) && !/^\s*(?:[-*•]|\d+[.)])\s*/.test(line)) {
+      inNiceSection = false;
+      continue;
+    }
+    if (!inNiceSection) continue;
+    const value = cleanListItem(line);
+    if (!value || value.length > 180) continue;
+    values.push(value.replace(/\.$/, ''));
+  }
+
+  const seen = new Set();
+  return values.filter(value => {
+    const key = value.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 8);
+}
+
+export function normalizeNiceToHavesFromSource(extracted, description) {
+  if (Array.isArray(extracted.nice_to_haves) && extracted.nice_to_haves.length > 0) return extracted;
+  const niceToHaves = sourceNiceToHaves(description);
+  if (!niceToHaves.length) return extracted;
+  return { ...extracted, nice_to_haves: niceToHaves };
+}
+
 function metadataValue(lines, label) {
   const prefix = `${label.toLowerCase()}:`;
   for (const line of lines) {
@@ -913,6 +993,7 @@ export class LMStudioExtractor {
     extracted = normalizeLocationFromSource(extracted, pending.source_text || pending.description);
     extracted = normalizeRemoteTypeFromSource(extracted, pending.source_text || pending.description, pending.canonical_url || pending.url);
     extracted = normalizeEmploymentFromSource(extracted, pending.source_text || pending.description);
+    extracted = normalizeNiceToHavesFromSource(extracted, pending.source_text || pending.description);
     extracted = applyLocationFilter(extracted, { preferredLocations: this.preferredLocations, allowRemote: this.allowRemote, allowHybrid: this.allowHybrid, allowOnsite: this.allowOnsite });
     return { extracted, modelName, responseFormatType };
   }

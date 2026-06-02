@@ -20,6 +20,15 @@ function DuplicatesPage({ mode = "list" }) {
     .map(g => ({ ...g, jobIds: g.jobIds.filter(id => reviewableJob(jobById[id])) }))
     .filter(g => g.jobIds.length >= 2);
 
+  function decideGroup(g, decision, keepJobId, message = "Decision recorded") {
+    return window.JH_API.decideDuplicate({ cleaned_hash: g.cleanedHash, job_ids: g.jobIds, decision, keep_job_id: keepJobId })
+      .then(() => {
+        window.JH_TOAST.show(message);
+        return window.JH_REFRESH_UI_DATA?.();
+      })
+      .catch((e) => window.JH_TOAST.show(e.message, "error"));
+  }
+
   const filtered = searchQuery
     ? reviewGroups.filter(g => g.jobIds.some(jid => {
         const j = jobById[jid];
@@ -89,15 +98,11 @@ function DuplicatesPage({ mode = "list" }) {
                 </span>
                 <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
                   <Btn size="sm" icon={<Icon.Split size={11} />} onClick={() => {
-                    window.JH_API.decideDuplicate({ cleaned_hash: g.cleanedHash, job_ids: g.jobIds, decision: "not_duplicate" })
-                      .then(() => { window.JH_TOAST.show("Marked as not duplicate"); })
-                      .catch((e) => window.JH_TOAST.show(e.message, "error"));
+                    decideGroup(g, "not_duplicate", null, "Marked as not duplicate");
                   }}>Not duplicate</Btn>
                   <Btn size="sm" kind="accent" onClick={() => setCompareGroup(g.id)} icon={<Icon.Eye size={11} />}>Compare</Btn>
                   <Btn size="sm" icon={<Icon.Merge size={11} />} onClick={() => {
-                    window.JH_API.decideDuplicate({ cleaned_hash: g.cleanedHash, job_ids: g.jobIds, decision: "merged", keep_job_id: keepId })
-                      .then(() => { window.JH_TOAST.show("Decision recorded"); })
-                      .catch(e => window.JH_TOAST.show(e.message, "error"));
+                    decideGroup(g, "merged", keepId);
                   }}>Merge</Btn>
                 </div>
               </div>
@@ -136,9 +141,7 @@ function DuplicatesPage({ mode = "list" }) {
                       <td>
                         <span className="row-actions" style={{ visibility: "visible" }}>
                           <Btn size="sm" kind="ghost" icon={<Icon.Pin size={11} />} onClick={() => {
-                            window.JH_API.decideDuplicate({ cleaned_hash: g.cleanedHash, job_ids: g.jobIds, decision: "merged", keep_job_id: j.id })
-                              .then(() => { window.JH_TOAST.show("Decision recorded"); })
-                              .catch(e => window.JH_TOAST.show(e.message, "error"));
+                            decideGroup(g, "merged", j.id);
                           }}>Keep</Btn>
                           <Btn size="sm" kind="ghost" icon={<Icon.External size={11} />} aria-label="Open source" onClick={() => window.open(j.sourceUrl, "_blank")} />
                         </span>
@@ -165,7 +168,11 @@ function DuplicateCompare({ group, left, right, onBack }) {
 
   function decide(decision, keepJobId) {
     window.JH_API.decideDuplicate({ cleaned_hash: group.cleanedHash, job_ids: group.jobIds, decision, keep_job_id: keepJobId })
-      .then(() => { window.JH_TOAST.show("Decision recorded"); })
+      .then(() => {
+        window.JH_TOAST.show("Decision recorded");
+        onBack();
+        return window.JH_REFRESH_UI_DATA?.();
+      })
       .catch(e => window.JH_TOAST.show(e.message, "error"));
   }
 

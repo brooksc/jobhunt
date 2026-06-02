@@ -359,6 +359,10 @@ describe('Jobs UI smoke', () => {
     assert.equal(await noCurrencyRow.getByText('$120k', { exact: false }).count(), 0);
     assert.equal(await noCurrencyRow.getByText('USD', { exact: false }).count(), 0);
 
+    await page.getByLabel('Change status for job #1').selectOption('applied');
+    await page.locator('.jh-chip[data-status="applied"]').first().waitFor();
+    assert.equal(await page.locator('.jh-panel').count(), 0);
+
     const rowCheckboxes = page.locator('.jh-table tbody input[type="checkbox"]');
     await rowCheckboxes.nth(0).check();
     await rowCheckboxes.nth(1).check();

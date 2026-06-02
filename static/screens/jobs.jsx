@@ -133,6 +133,44 @@ function statusLabel(status) {
   return String(status || "").split("_").map(s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s).join(" ");
 }
 
+function InlineStatusSelect({ job }) {
+  const [saving, setSaving] = React.useState(false);
+
+  function changeStatus(status) {
+    if (status === job.status || saving) return;
+    setSaving(true);
+    window.JH_API.setStatus(job.id, status)
+      .then(() => {
+        window.JH_TOAST?.show(`Status updated to ${status}`);
+        return window.JH_REFRESH_UI_DATA?.();
+      })
+      .catch((e) => window.JH_TOAST?.show(e.message, "error"))
+      .finally(() => setSaving(false));
+  }
+
+  return (
+    <div
+      className="jh-status-select"
+      data-saving={saving || undefined}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+    >
+      <StatusChip value={job.status} />
+      <select
+        aria-label={`Change status for job #${job.jobNumber}`}
+        value={job.status}
+        disabled={saving}
+        onChange={(e) => changeStatus(e.target.value)}
+      >
+        {window.JH_STATUSES.map((s) => (
+          <option key={s} value={s}>{statusLabel(s)}</option>
+        ))}
+      </select>
+      <Icon.ChevronDown size={10} className="jh-status-select__chevron" />
+    </div>
+  );
+}
+
 function JobsToolbar({ q, setQ, searchRef, filters, setFilters, sourceOptions, dynamicOptions, visibleColumns, setVisibleColumns, sort, setSort, selectedCount, onOpenSelectedSources, onChangeSelectedStatus, onCompareSelected, onSaveView, currentViewName }) {
   const [columnsOpen, setColumnsOpen] = React.useState(false);
   const [sortOpen, setSortOpen] = React.useState(false);
@@ -948,7 +986,7 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
                   />
                 </td>
                 <td className="col-mono">#{j.jobNumber}</td>
-                {col("status") && <td><StatusChip value={j.status} /></td>}
+                {col("status") && <td><InlineStatusSelect job={j} /></td>}
                 {col("rating") && <td><StarRating value={j.rating} readonly={true} size={12} /></td>}
                 {col("fit") && (
                   <td className="col-mono" style={{ textAlign: "right" }}>

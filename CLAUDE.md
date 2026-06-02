@@ -20,6 +20,18 @@ Default: `http://127.0.0.1:8765`. DB lives at `~/.config/jobhunt/jobhunt.db` (ov
 
 When changing server code during an interactive session, restart the app by killing the `node server/index.js serve` child process; `npm start` runs a supervisor loop that should automatically bring it back.
 
+**MCP config reminder:** The Claude desktop app (`~/Library/Application Support/Claude/claude_desktop_config.json`) has a `jobhunt` MCP server entry. If the MCP server command, arguments, or DB path ever change, update that file and remind the user to restart the Claude app. Current correct entry:
+```json
+"jobhunt": {
+  "command": "node",
+  "args": [
+    "/Users/brooksc/code/jobhunt/server/mcp.js",
+    "--db-path",
+    "/Users/brooksc/.config/jobhunt/jobhunt.db"
+  ]
+}
+```
+
 CLI subcommands: `init`, `extract`, `jobs list`, `jobs status`, `jobs note`, `duplicates list`, `export csv`.
 
 ## Architecture

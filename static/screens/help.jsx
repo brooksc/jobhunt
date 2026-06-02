@@ -97,6 +97,111 @@ const HELP_SECTIONS = [
   },
 ];
 
+function AiProviderCard({ badge, badgeKind = "local", name, children }) {
+  return (
+    <div className="jh-help-ai__card">
+      <div className="jh-help-ai__card-head">
+        <strong>{name}</strong>
+        <span className={`jh-help-ai__badge jh-help-ai__badge--${badgeKind}`}>{badge}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function AiSetupContent() {
+  return (
+    <div className="jh-help-ai">
+      <p className="jh-help-ai__intro">
+        AI extraction reads captured job descriptions and writes back structured fields — title, company, location, salary, skills, seniority, and a fit score against your resume. You need one provider configured in <strong>Settings → LLM provider</strong> before extraction will run.
+      </p>
+
+      <div className="jh-help-ai__grid">
+
+        {/* ── LM Studio ── */}
+        <AiProviderCard name="LM Studio" badge="Local · free" badgeKind="local">
+          <p>Runs entirely on your machine. No API key, no data leaves your computer. Best choice if you have a modern Mac with Apple Silicon — models run fast on the GPU via Metal.</p>
+          <ol>
+            <li>Download and install from <a href="https://lmstudio.ai" target="_blank" rel="noopener noreferrer">lmstudio.ai</a> (Mac, Windows, Linux).</li>
+            <li>Open LM Studio, go to <strong>Discover</strong>, and search for a model. Good starting points: <code>gemma-3-12b-it</code>, <code>qwen2.5-7b-instruct</code>, or <code>llama-3.2-3b-instruct</code> for lower RAM.</li>
+            <li>Download the model, then open the <strong>Developer</strong> tab and click <strong>Start Server</strong>. The server runs on <code>http://127.0.0.1:1234</code> by default.</li>
+            <li>In Jobhunt Settings: choose <strong>LM Studio</strong> as provider, leave the base URL as-is, select your loaded model, and click <strong>Test connection</strong>.</li>
+          </ol>
+          <p className="jh-help-ai__note">Requires ~8 GB RAM for a 7B model, ~16 GB for a 12B model. Quality improves significantly with larger models.</p>
+        </AiProviderCard>
+
+        {/* ── Ollama ── */}
+        <AiProviderCard name="Ollama" badge="Local · free" badgeKind="local">
+          <p>Command-line model runner with a large model library. No API key needed. Exposes an OpenAI-compatible endpoint at <code>localhost:11434</code>.</p>
+          <ol>
+            <li>Install from <a href="https://ollama.com" target="_blank" rel="noopener noreferrer">ollama.com</a> (Mac, Windows, Linux) or via Homebrew: <code>brew install ollama</code>.</li>
+            <li>Pull a model in Terminal: <code>ollama pull gemma3:12b</code> or <code>ollama pull llama3.2:3b</code> for lower RAM.</li>
+            <li>Start the server: <code>ollama serve</code> (runs automatically after install on Mac).</li>
+            <li>In Jobhunt Settings: choose <strong>Custom (OpenAI-compatible)</strong> as provider, set base URL to <code>http://localhost:11434/v1</code>, leave API key blank, and type your model name (e.g. <code>gemma3:12b</code>).</li>
+          </ol>
+          <p className="jh-help-ai__note">Run <code>ollama list</code> to see downloaded models. Use <code>ollama ps</code> to check if a model is loaded.</p>
+        </AiProviderCard>
+
+        {/* ── OpenAI ── */}
+        <AiProviderCard name="OpenAI" badge="Cloud · paid" badgeKind="cloud">
+          <p>High-quality models with no local setup. Charges per token — extraction of a typical job posting costs a fraction of a cent.</p>
+          <ol>
+            <li>Create an account at <a href="https://platform.openai.com" target="_blank" rel="noopener noreferrer">platform.openai.com</a> and add a payment method under Billing.</li>
+            <li>Go to <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">platform.openai.com/api-keys</a> and create a new secret key.</li>
+            <li>In Jobhunt Settings: choose <strong>OpenAI</strong> as provider, paste your key (starts with <code>sk-…</code>), and pick a model.</li>
+          </ol>
+          <p className="jh-help-ai__note"><strong>Recommended models:</strong> <code>gpt-4o-mini</code> for best value, <code>gpt-4o</code> for highest accuracy. <code>o3-mini</code> is strong for fit scoring but slower.</p>
+        </AiProviderCard>
+
+        {/* ── Anthropic ── */}
+        <AiProviderCard name="Anthropic" badge="Cloud · paid" badgeKind="cloud">
+          <p>Claude models are strong at structured extraction and following detailed instructions. Competitive pricing at higher quality tiers.</p>
+          <ol>
+            <li>Create an account at <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer">console.anthropic.com</a> and add a payment method.</li>
+            <li>Go to <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">console.anthropic.com/settings/keys</a> and create an API key.</li>
+            <li>In Jobhunt Settings: choose <strong>Anthropic</strong> as provider, paste your key (starts with <code>sk-ant-…</code>), and pick a model.</li>
+          </ol>
+          <p className="jh-help-ai__note"><strong>Recommended models:</strong> <code>claude-haiku-4-5</code> for fast/cheap extraction, <code>claude-sonnet-4-6</code> for best quality.</p>
+        </AiProviderCard>
+
+        {/* ── Google Gemini ── */}
+        <AiProviderCard name="Google Gemini" badge="Cloud · free tier" badgeKind="cloud">
+          <p>Gemini models are available via Google AI Studio with a generous free tier — enough to extract hundreds of job postings per day at no cost.</p>
+          <ol>
+            <li>Go to <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer">aistudio.google.com</a> and sign in with a Google account.</li>
+            <li>Click <strong>Get API key</strong> → <strong>Create API key</strong>. No billing setup required for the free tier.</li>
+            <li>In Jobhunt Settings: choose <strong>Google Gemini</strong> as provider, paste your key, and pick a model.</li>
+          </ol>
+          <p className="jh-help-ai__note"><strong>Recommended models:</strong> <code>gemini-2.5-flash</code> for speed and value, <code>gemini-2.5-pro</code> for maximum quality. Free tier rate limits may slow large batches.</p>
+        </AiProviderCard>
+
+        {/* ── OpenRouter ── */}
+        <AiProviderCard name="OpenRouter" badge="Cloud · pay-per-use" badgeKind="cloud">
+          <p>A proxy that gives you access to dozens of models — OpenAI, Anthropic, Google, Meta, Mistral — with a single API key. Useful for comparing models or accessing ones not directly available in your region.</p>
+          <ol>
+            <li>Create an account at <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer">openrouter.ai</a> and add credits under Billing.</li>
+            <li>Go to <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">openrouter.ai/keys</a> and create a key.</li>
+            <li>In Jobhunt Settings: choose <strong>OpenRouter</strong> as provider, paste your key, and pick from the model list or type any OpenRouter model ID.</li>
+          </ol>
+          <p className="jh-help-ai__note"><strong>Good starting models:</strong> <code>google/gemini-2.5-flash</code> (fast), <code>anthropic/claude-sonnet-4-6</code> (quality), <code>meta-llama/llama-3.3-70b-instruct</code> (open-weight quality).</p>
+        </AiProviderCard>
+
+      </div>
+
+      <div className="jh-help-ai__tips">
+        <h3>Tips</h3>
+        <ul>
+          <li>Always click <strong>Test connection</strong> in Settings before running a batch — it confirms the provider is reachable and shows available models.</li>
+          <li>Add your resume text in <strong>Settings → Resume</strong> to enable fit scoring. Fit scores appear as a 0–100 rating and a per-dimension breakdown in the job detail panel.</li>
+          <li>Use <strong>Missing fields only</strong> mode after switching models to fill gaps without re-extracting everything.</li>
+          <li>The <strong>LLM Queue</strong> page shows live progress, failed attempts with error details, and lets you pause, retry, or cancel individual requests.</li>
+          <li>Enable <strong>LLM debug logging</strong> in Settings if extraction fails silently — it writes full request/response bodies to the log file shown in Settings.</li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 function HelpPage() {
   return (
     <div className="jh-help">
@@ -125,6 +230,12 @@ function HelpPage() {
             )}
           </section>
         ))}
+
+        {/* AI setup — spans both columns */}
+        <section className="jh-help__section jh-help__section--wide">
+          <h2>Setting up AI extraction</h2>
+          <AiSetupContent />
+        </section>
       </div>
     </div>
   );

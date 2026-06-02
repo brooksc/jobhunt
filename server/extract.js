@@ -1168,6 +1168,8 @@ function isQueuePaused(dbPath) {
 function pauseLlmQueueForErrors(dbPath) {
   const db = connect(dbPath);
   setSetting(db, 'llm_queue_paused', 'true');
+  // Signal any listener (e.g. Electron main process) that an auto-pause occurred.
+  process.emit('jobhunt:queue-auto-paused');
 }
 
 export function makeExtractorFromSettings(settings) {

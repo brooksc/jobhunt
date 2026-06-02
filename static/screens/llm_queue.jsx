@@ -353,6 +353,21 @@ function LlmQueuePage() {
           </Btn>
         </div>
 
+        {paused && (
+          <div className="jh-queue-paused-banner">
+            <Icon.AlertTriangle size={14} style={{ flexShrink: 0 }} />
+            <span>
+              {failedCount >= 2
+                ? <><strong>Queue auto-paused.</strong> Two consecutive extraction failures stopped processing to prevent repeated errors. Review the failed requests below, fix any provider or model issues in Settings, then resume.</>
+                : <><strong>Queue paused.</strong> Processing is stopped — no new extractions will run until you resume.</>
+              }
+            </span>
+            <Btn size="sm" kind="accent" onClick={() => handlePause(false)} disabled={actionId !== null}>
+              Resume queue
+            </Btn>
+          </div>
+        )}
+
         <div className="jh-row" style={{ gap: 8, marginBottom: 12, flexWrap: "wrap", color: "var(--fg-faint)", fontSize: 12 }}>
           <span>Queued: <span style={{ color: "var(--st-screening)", fontWeight: 600 }}>{queuedCount}</span></span>
           <span>Running: <span style={{ color: "var(--st-offer)", fontWeight: 600 }}>{runningCount}</span></span>

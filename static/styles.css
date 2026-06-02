@@ -148,6 +148,7 @@
 .jh-shell {
   display: grid;
   grid-template-columns: 232px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
   min-height: 0;
   background: var(--bg);
@@ -256,6 +257,30 @@
   font-family: var(--font-mono);
 }
 .jh-side__nav[aria-current="page"] .jh-side__count { color: var(--fg-mute); }
+
+.jh-side__warn {
+  font-size: 10px;
+  color: var(--st-screening);
+  margin-left: auto;
+  line-height: 1;
+}
+
+.jh-queue-paused-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  background: color-mix(in srgb, var(--st-rejected) 10%, var(--bg-elev));
+  border: 1px solid color-mix(in srgb, var(--st-rejected) 35%, transparent);
+  border-radius: var(--r-3);
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.jh-queue-paused-banner svg { color: var(--st-rejected); margin-top: 2px; }
+.jh-queue-paused-banner > span { flex: 1; }
+.jh-queue-paused-banner strong { color: var(--st-rejected); }
 
 .jh-side__sep {
   height: 1px;
@@ -1260,6 +1285,136 @@
   height: 4px;
   border-radius: 50%;
   background: var(--fg-faint);
+}
+
+.jh-help__section--wide {
+  grid-column: 1 / -1;
+}
+
+/* ── AI setup section ── */
+.jh-help-ai__intro {
+  margin: 0 0 16px;
+  color: var(--fg-mute);
+  font-size: 13px;
+  line-height: 1.55;
+  max-width: 700px;
+}
+.jh-help-ai__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.jh-help-ai__card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border-faint);
+  border-radius: var(--r-3);
+  padding: 14px 16px;
+}
+.jh-help-ai__card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.jh-help-ai__card-head strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+.jh-help-ai__badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.jh-help-ai__badge--local {
+  background: color-mix(in srgb, var(--st-offer) 18%, transparent);
+  color: var(--st-offer);
+}
+.jh-help-ai__badge--cloud {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+}
+.jh-help-ai__card p {
+  font-size: 12.5px;
+  color: var(--fg-mute);
+  line-height: 1.5;
+  margin: 0 0 8px;
+}
+.jh-help-ai__card ol {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.jh-help-ai__card ol li {
+  font-size: 12.5px;
+  color: var(--fg);
+  line-height: 1.5;
+  padding-left: 0;
+}
+.jh-help-ai__card ol li::before { display: none; }
+.jh-help-ai__card code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-faint);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+.jh-help-ai__note {
+  font-size: 12px !important;
+  color: var(--fg-faint) !important;
+  border-left: 2px solid var(--border);
+  padding-left: 8px;
+  margin-top: 4px;
+}
+.jh-help-ai__tips {
+  background: var(--bg-elev);
+  border: 1px solid var(--border-faint);
+  border-radius: var(--r-3);
+  padding: 14px 16px;
+}
+.jh-help-ai__tips h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+.jh-help-ai__tips ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.jh-help-ai__tips li {
+  font-size: 12.5px;
+  color: var(--fg);
+  line-height: 1.5;
+  position: relative;
+  padding-left: 14px;
+}
+.jh-help-ai__tips li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--fg-faint);
+}
+.jh-help-ai__card a, .jh-help-ai__tips a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.jh-help-ai__card a:hover, .jh-help-ai__tips a:hover {
+  text-decoration: underline;
 }
 
 .jh-input {

@@ -541,6 +541,15 @@ Work site 4 days / week in-office`;
 
     assert.equal(normalized.location, 'Remote - United States or Canada');
   });
+
+  it('restores remote country context when the model drops the remote label', () => {
+    const normalized = normalizeLocationFromSource(
+      { company: 'Mercury', title: 'Senior Product Manager', location: 'United States or Canada', remote_type: 'remote' },
+      'Mercury\nSenior Product Manager\nRemote - United States or Canada\nRole details'
+    );
+
+    assert.equal(normalized.location, 'Remote - United States or Canada');
+  });
 });
 
 describe('normalizeEmploymentFromSource', () => {
@@ -597,10 +606,27 @@ Benefits include medical coverage.`
       { nice_to_haves: [] },
       `Required qualifications:
 - 7+ years technical program management experience.
-- Experience leading marketplace programs.`
+- Strong executive communication and cross-functional planning.`
     );
 
     assert.deepEqual(normalized.nice_to_haves, []);
+  });
+
+  it('fills empty nice-to-haves from concrete domain signals when no preferred section exists', () => {
+    const normalized = normalizeNiceToHavesFromSource(
+      { nice_to_haves: [] },
+      `Responsibilities:
+- Drive product strategy and execution across Microsoft 365 experiences.
+- Partner with engineering, design, and research teams.
+
+Required qualifications:
+- 4+ years product or technical program management experience.`
+    );
+
+    assert.deepEqual(normalized.nice_to_haves, [
+      'Drive product strategy and execution across Microsoft 365 experiences',
+      'Partner with engineering, design, and research teams',
+    ]);
   });
 });
 

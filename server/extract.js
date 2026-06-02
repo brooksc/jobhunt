@@ -570,6 +570,9 @@ function remoteLocationFromSource(description) {
 
 export function normalizeLocationFromSource(extracted, description) {
   const remoteLocation = remoteLocationFromSource(description);
+  if (remoteLocation && extracted.remote_type === 'remote' && !/^remote\b/i.test(String(extracted.location || '').trim())) {
+    return { ...extracted, location: remoteLocation };
+  }
   if (remoteLocation && (!extracted.location || /^remote$/i.test(String(extracted.location).trim()))) {
     return { ...extracted, location: remoteLocation };
   }
@@ -623,6 +626,8 @@ function sectionHeadingPattern(headings) {
 
 const NICE_TO_HAVE_HEADING_RE = sectionHeadingPattern(NICE_TO_HAVE_HEADINGS);
 const STOP_SECTION_HEADING_RE = sectionHeadingPattern([...STOP_SECTION_HEADINGS, ...NICE_TO_HAVE_HEADINGS]);
+const DOMAIN_SIGNAL_RE = /\b(?:AI|LLM|model evaluation|developer tooling|developer platform|API|banking|payments?|fintech|marketplace|logistics|consumer|product strategy|engineering|design|research|customer onboarding|fraud|risk|SQL|platform)\b/i;
+const NON_DOMAIN_SIGNAL_RE = /\b(?:salary|compensation|benefits?|medical|dental|vision|401k|PTO|apply|full[-\s]?time)\b/i;
 
 function cleanListItem(line) {
   return line
@@ -664,11 +669,34 @@ function sourceNiceToHaves(description) {
   }).slice(0, 8);
 }
 
+function sourceDomainNiceToHaves(description) {
+  const values = [];
+  for (const rawLine of String(description || '').split('\n')) {
+    const value = cleanListItem(rawLine).replace(/\.$/, '');
+    if (!value || value.length > 180) continue;
+    if (STOP_SECTION_HEADING_RE.test(value)) continue;
+    if (NON_DOMAIN_SIGNAL_RE.test(value)) continue;
+    if (!DOMAIN_SIGNAL_RE.test(value)) continue;
+    if (/^\d+\+?\s+years?\b/i.test(value)) continue;
+    values.push(value);
+  }
+
+  const seen = new Set();
+  return values.filter(value => {
+    const key = value.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 8);
+}
+
 export function normalizeNiceToHavesFromSource(extracted, description) {
   if (Array.isArray(extracted.nice_to_haves) && extracted.nice_to_haves.length > 0) return extracted;
   const niceToHaves = sourceNiceToHaves(description);
-  if (!niceToHaves.length) return extracted;
-  return { ...extracted, nice_to_haves: niceToHaves };
+  if (niceToHaves.length) return { ...extracted, nice_to_haves: niceToHaves };
+  const domainNiceToHaves = sourceDomainNiceToHaves(description);
+  if (domainNiceToHaves.length) return { ...extracted, nice_to_haves: domainNiceToHaves };
+  return extracted;
 }
 
 function metadataValue(lines, label) {
@@ -990,8 +1018,8 @@ export class LMStudioExtractor {
       sourceText: pending.source_text || pending.description,
     });
     extracted = normalizeCompanyFromSource(extracted, pending.source_text || pending.description);
-    extracted = normalizeLocationFromSource(extracted, pending.source_text || pending.description);
     extracted = normalizeRemoteTypeFromSource(extracted, pending.source_text || pending.description, pending.canonical_url || pending.url);
+    extracted = normalizeLocationFromSource(extracted, pending.source_text || pending.description);
     extracted = normalizeEmploymentFromSource(extracted, pending.source_text || pending.description);
     extracted = normalizeNiceToHavesFromSource(extracted, pending.source_text || pending.description);
     extracted = applyLocationFilter(extracted, { preferredLocations: this.preferredLocations, allowRemote: this.allowRemote, allowHybrid: this.allowHybrid, allowOnsite: this.allowOnsite });

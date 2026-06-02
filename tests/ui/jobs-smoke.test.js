@@ -264,6 +264,34 @@ describe('Jobs UI smoke', () => {
     await page.close();
   });
 
+  it('sizes the app shell and jobs table to the viewport', async () => {
+    const page = await browser.newPage();
+    const pageErrors = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
+
+    for (const size of [{ width: 1000, height: 640 }, { width: 1440, height: 900 }]) {
+      await page.setViewportSize(size);
+      await page.goto(`${base}/#/jobs`);
+      await page.getByRole('columnheader', { name: 'Salary min' }).waitFor();
+
+      const metrics = await page.evaluate(() => {
+        const shell = document.querySelector('.jh-shell').getBoundingClientRect();
+        const table = document.querySelector('.jh-tablewrap').getBoundingClientRect();
+        return {
+          viewportHeight: window.innerHeight,
+          shellHeight: shell.height,
+          tableBottom: table.bottom,
+        };
+      });
+
+      assert.ok(Math.abs(metrics.shellHeight - metrics.viewportHeight) <= 1);
+      assert.ok(Math.abs(metrics.tableBottom - metrics.viewportHeight) <= 1);
+    }
+
+    assert.deepEqual(pageErrors, []);
+    await page.close();
+  });
+
   it('shows capture diagnostics on the job detail panel', async () => {
     const page = await browser.newPage();
     const pageErrors = [];

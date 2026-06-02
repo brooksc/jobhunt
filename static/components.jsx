@@ -146,6 +146,7 @@ const StatusChip = ({ value }) => {
     rejected: "Rejected",
     archived: "Archived",
     not_available: "Not available",
+    duplicate: "Duplicate",
   };
   return <Chip status={value}>{labels[value] || value}</Chip>;
 };

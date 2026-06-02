@@ -669,7 +669,11 @@ export function createApp({ dbPath, autoExtract = false } = {}) {
   app.post('/api/duplicates/decision', (req, res) => {
     try {
       const { cleaned_hash, decision, keep_job_id, note } = req.body;
-      db.decideDuplicateGroup(cleaned_hash, decision, keep_job_id, note || '', dbPath);
+      if (cleaned_hash) {
+        db.decideDuplicateGroup(cleaned_hash, decision, keep_job_id, note || '', dbPath);
+      } else {
+        db.decideDuplicateLinks(req.body.job_ids, decision, keep_job_id, note || '', dbPath);
+      }
       res.json({ ok: true });
     } catch (err) {
       res.status(400).json({ error: String(err.message) });
@@ -908,6 +912,7 @@ async function runModelTests(baseUrl, model, apiKey = '') {
 
 function buildUiData(dbPath) {
   const d = db.initDb(dbPath);
+  db.detectDomainDuplicateJobs(dbPath);
   const settingsData = db.getSettings(d);
 
   const jobRows = d.prepare(`SELECT jobs.id AS job_id, jobs.job_number, jobs.capture_id,
@@ -946,16 +951,50 @@ function buildUiData(dbPath) {
     FROM captures JOIN jobs ON jobs.capture_id=captures.id
     LEFT JOIN duplicate_decisions ON duplicate_decisions.cleaned_hash=captures.cleaned_hash
     WHERE captures.cleaned_hash IN (
-      SELECT cleaned_hash FROM captures WHERE cleaned_hash IS NOT NULL
+      SELECT captures.cleaned_hash
+      FROM captures JOIN jobs ON jobs.capture_id=captures.id
+      WHERE captures.cleaned_hash IS NOT NULL
+        AND LENGTH(TRIM(COALESCE(captures.cleaned_description, ''))) >= 200
+        AND jobs.status NOT IN ('archived', 'not_available', 'duplicate')
       GROUP BY cleaned_hash HAVING COUNT(DISTINCT COALESCE(canonical_url, url)) > 1
-    ) AND duplicate_decisions.cleaned_hash IS NULL ORDER BY captures.cleaned_hash`).all();
+    ) AND duplicate_decisions.cleaned_hash IS NULL
+      AND LENGTH(TRIM(COALESCE(captures.cleaned_description, ''))) >= 200
+      AND jobs.status NOT IN ('archived', 'not_available', 'duplicate')
+    ORDER BY captures.cleaned_hash`).all();
 
   const dupGroups = {};
   for (const row of dupRows) {
     if (!dupGroups[row.cleaned_hash]) dupGroups[row.cleaned_hash] = [];
     dupGroups[row.cleaned_hash].push(row.job_id);
   }
-  const dupes = Object.entries(dupGroups).map(([h, ids], i) => ({ group_id: `g-${i}`, cleaned_hash: h, job_ids: ids }));
+  const dupes = Object.entries(dupGroups).map(([h, ids], i) => ({
+    group_id: `g-${i}`,
+    kind: 'exact_hash',
+    cleaned_hash: h,
+    job_ids: ids,
+    reason: 'Identical cleaned description hash',
+    similarity: 1.0,
+  }));
+
+  const heuristicRows = d.prepare(`SELECT duplicate_of_job_id AS keep_job_id,
+      GROUP_CONCAT(id) AS duplicate_job_ids,
+      MAX(COALESCE(duplicate_confidence, 0)) AS confidence
+    FROM jobs
+    WHERE duplicate_of_job_id IS NOT NULL AND status != 'duplicate'
+    GROUP BY duplicate_of_job_id
+    ORDER BY MAX(updated_at) DESC`).all();
+  heuristicRows.forEach((row, i) => {
+    const duplicateIds = String(row.duplicate_job_ids || '').split(',').filter(Boolean);
+    if (!row.keep_job_id || duplicateIds.length === 0) return;
+    dupes.push({
+      group_id: `h-${i}-${row.keep_job_id}`,
+      kind: 'domain_candidate',
+      cleaned_hash: '',
+      job_ids: [row.keep_job_id, ...duplicateIds],
+      reason: 'Likely duplicate: matching company, title, description, and critical fields',
+      similarity: Number(row.confidence || 0),
+    });
+  });
 
   const jobs = jobRows.map(r => {
     let extractedJson = r.extracted_json;
@@ -1033,7 +1072,7 @@ function buildUiData(dbPath) {
 const DB_STATUS_TO_UI = { interested: 'saved', interviewing: 'interview', closed: 'archived', ignored: 'archived' };
 
 function buildMetrics(jobs, sites, dupes, needsActionCount) {
-  const counts = { saved: 0, applied: 0, interview: 0, offers: 0, rejected: 0, archived: 0, pendingExtraction: 0, failedExtraction: 0 };
+  const counts = { saved: 0, applied: 0, interview: 0, offers: 0, rejected: 0, archived: 0, duplicates: 0, pendingExtraction: 0, failedExtraction: 0 };
   for (const job of jobs) {
     const status = DB_STATUS_TO_UI[job.status] || job.status;
     if (status === 'saved') counts.saved++;
@@ -1042,6 +1081,7 @@ function buildMetrics(jobs, sites, dupes, needsActionCount) {
     else if (status === 'offer') counts.offers++;
     else if (status === 'rejected') counts.rejected++;
     else if (status === 'archived') counts.archived++;
+    else if (status === 'duplicate') counts.duplicates++;
     if (job.extraction_status === 'pending') counts.pendingExtraction++;
     else if (job.extraction_status === 'failed') counts.failedExtraction++;
   }

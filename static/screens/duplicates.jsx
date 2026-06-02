@@ -12,8 +12,16 @@ function DuplicatesPage({ mode = "list" }) {
     return m;
   }, []);
 
+  function reviewableJob(j) {
+    return j && !["archived", "not_available", "duplicate"].includes(j.status);
+  }
+
+  const reviewGroups = groups
+    .map(g => ({ ...g, jobIds: g.jobIds.filter(id => reviewableJob(jobById[id])) }))
+    .filter(g => g.jobIds.length >= 2);
+
   const filtered = searchQuery
-    ? groups.filter(g => g.jobIds.some(jid => {
+    ? reviewGroups.filter(g => g.jobIds.some(jid => {
         const j = jobById[jid];
         return j && (
           j.company?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -21,9 +29,9 @@ function DuplicatesPage({ mode = "list" }) {
           j.sourceUrl?.toLowerCase().includes(searchQuery.toLowerCase())
         );
       }))
-    : groups;
+    : reviewGroups;
 
-  const cg = groups.find((g) => g.id === compareGroup);
+  const cg = reviewGroups.find((g) => g.id === compareGroup);
   if (cg) {
     const jobIds = cg.jobIds;
     const compareAIdx = 0;
@@ -58,12 +66,15 @@ function DuplicatesPage({ mode = "list" }) {
           <div style={{ padding: "48px 24px", textAlign: "center", color: "var(--fg-mute)" }}>
             {groups.length === 0
               ? "No duplicate groups found."
-              : "No groups match your search."}
+              : reviewGroups.length === 0
+                ? "No duplicate groups need review."
+                : "No groups match your search."}
           </div>
         )}
         {filtered.map((g) => {
           const rows = g.jobIds.map((id) => window.JH_JOBS.find((j) => j.id === id)).filter(Boolean);
-          const keepId = keepSelections[g.cleanedHash] || g.jobIds[0];
+          const groupKey = g.cleanedHash || g.id;
+          const keepId = keepSelections[groupKey] || g.jobIds[0];
           return (
             <React.Fragment key={g.id}>
               <div className="jh-group">
@@ -78,13 +89,13 @@ function DuplicatesPage({ mode = "list" }) {
                 </span>
                 <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
                   <Btn size="sm" icon={<Icon.Split size={11} />} onClick={() => {
-                    window.JH_API.decideDuplicate({ cleaned_hash: g.cleanedHash, decision: "not_duplicate" })
+                    window.JH_API.decideDuplicate({ cleaned_hash: g.cleanedHash, job_ids: g.jobIds, decision: "not_duplicate" })
                       .then(() => { window.JH_TOAST.show("Marked as not duplicate"); })
                       .catch((e) => window.JH_TOAST.show(e.message, "error"));
                   }}>Not duplicate</Btn>
                   <Btn size="sm" kind="accent" onClick={() => setCompareGroup(g.id)} icon={<Icon.Eye size={11} />}>Compare</Btn>
                   <Btn size="sm" icon={<Icon.Merge size={11} />} onClick={() => {
-                    window.JH_API.decideDuplicate({ cleaned_hash: g.cleanedHash, decision: "merged", keep_job_id: keepId })
+                    window.JH_API.decideDuplicate({ cleaned_hash: g.cleanedHash, job_ids: g.jobIds, decision: "merged", keep_job_id: keepId })
                       .then(() => { window.JH_TOAST.show("Decision recorded"); })
                       .catch(e => window.JH_TOAST.show(e.message, "error"));
                   }}>Merge</Btn>
@@ -105,9 +116,9 @@ function DuplicatesPage({ mode = "list" }) {
                   {rows.map((j) => (
                     <tr key={j.id}>
                       <td>
-                        <input type="radio" name={`keep-${g.cleanedHash}`}
+                        <input type="radio" name={`keep-${groupKey}`}
                           checked={keepId === j.id}
-                          onChange={() => setKeepSelections(prev => ({ ...prev, [g.cleanedHash]: j.id }))}
+                          onChange={() => setKeepSelections(prev => ({ ...prev, [groupKey]: j.id }))}
                           title="Keep this job"
                         />
                       </td>
@@ -125,7 +136,7 @@ function DuplicatesPage({ mode = "list" }) {
                       <td>
                         <span className="row-actions" style={{ visibility: "visible" }}>
                           <Btn size="sm" kind="ghost" icon={<Icon.Pin size={11} />} onClick={() => {
-                            window.JH_API.decideDuplicate({ cleaned_hash: g.cleanedHash, decision: "merged", keep_job_id: j.id })
+                            window.JH_API.decideDuplicate({ cleaned_hash: g.cleanedHash, job_ids: g.jobIds, decision: "merged", keep_job_id: j.id })
                               .then(() => { window.JH_TOAST.show("Decision recorded"); })
                               .catch(e => window.JH_TOAST.show(e.message, "error"));
                           }}>Keep</Btn>
@@ -153,7 +164,7 @@ function DuplicateCompare({ group, left, right, onBack }) {
   const jobB = allJobs[compareB] || right;
 
   function decide(decision, keepJobId) {
-    window.JH_API.decideDuplicate({ cleaned_hash: group.cleanedHash, decision, keep_job_id: keepJobId })
+    window.JH_API.decideDuplicate({ cleaned_hash: group.cleanedHash, job_ids: group.jobIds, decision, keep_job_id: keepJobId })
       .then(() => { window.JH_TOAST.show("Decision recorded"); })
       .catch(e => window.JH_TOAST.show(e.message, "error"));
   }
@@ -253,7 +264,7 @@ function DuplicateCompare({ group, left, right, onBack }) {
       </div>
       <div style={{ padding: "8px 16px", borderTop: "1px solid var(--border-faint)", fontSize: 11.5, color: "var(--fg-mute)", display: "flex", alignItems: "center", gap: 8 }}>
         <Icon.AlertTriangle size={12} />
-        <span>Non-kept jobs are archived with a reference to the kept job.</span>
+        <span>Non-kept jobs are marked duplicate with a reference to the kept job.</span>
       </div>
     </>
   );

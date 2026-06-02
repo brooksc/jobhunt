@@ -168,6 +168,7 @@ function DuplicatePairValidate({ pair, onBack }) {
       .then(() => {
         window.JH_TOAST.show(decision === "merged" ? "Duplicate confirmed" : "Pair dismissed");
         onBack();
+        return window.JH_REFRESH_UI_DATA?.();
       })
       .catch(e => window.JH_TOAST.show(e.message, "error"))
       .finally(() => setBusy(false));

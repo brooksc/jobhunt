@@ -75,21 +75,12 @@ async function createWindow() {
   // Scale page content proportionally to window width so nothing overflows.
   // At the design width (1280px) zoom = 1.0; shrinks gracefully for smaller windows.
   const DESIGN_WIDTH = 1280;
-  // Physical px of clearance needed above the sidebar brand row to clear traffic lights.
-  const TRAFFIC_PAD_PX = 36;
 
   function applyZoom() {
     if (!mainWindow || mainWindow.isDestroyed()) return;
     const [w] = mainWindow.getContentSize();
     const factor = Math.min(1.0, Math.max(0.5, w / DESIGN_WIDTH));
     mainWindow.webContents.setZoomFactor(factor);
-    // CSS pixels shrink as zoom decreases, so physical clearance shrinks too.
-    // Invert the zoom so the sidebar top padding stays ~36 physical pixels.
-    const cssPad = Math.ceil(TRAFFIC_PAD_PX / factor);
-    mainWindow.webContents.executeJavaScript(
-      `document.documentElement.style.setProperty('--electron-sidebar-pad', '${cssPad}px')`,
-      true
-    ).catch(() => {});
   }
   mainWindow.on('resize', applyZoom);
 
@@ -110,8 +101,10 @@ async function createWindow() {
   // hiddenInset places buttons at ~(10,10); brand row is the first thing in the sidebar.
   // Do NOT set -webkit-app-region:drag on .jh-side — it covers the left/top window edges
   // and causes macOS to treat resize-drags as window-move events (window won't resize).
+  // Make the brand row and the tl-space (traffic-light spacer) draggable so users
+  // can move the window from the sidebar area.  The spacer is already -webkit-app-region:drag
+  // via CSS; this covers the brand text row too.
   mainWindow.webContents.insertCSS(`
-    .jh-side { padding-top: var(--electron-sidebar-pad, 36px) !important; }
     .jh-side__brand { -webkit-app-region: drag; }
     .jh-side__brand * { -webkit-app-region: no-drag; }
   `);

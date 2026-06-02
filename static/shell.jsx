@@ -136,6 +136,7 @@ function Sidebar({ route, setRoute, setSavedViewName, theme, themeMode, onToggle
   ];
   return (
     <aside className="jh-side">
+      <div className="jh-side__tl-space" />
       <div className="jh-side__brand">
         <span className="jh-side__mark">J</span>
         <span>Jobhunt</span>

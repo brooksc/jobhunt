@@ -160,6 +160,16 @@
 }
 
 /* ───────── sidebar ───────── */
+
+/* Spacer that sits behind the macOS traffic-light buttons in hiddenInset mode.
+   Static HTML so it's always in place before the first paint — no JS timing issues.
+   In a plain browser this just adds a bit of extra space at the top. */
+.jh-side__tl-space {
+  flex-shrink: 0;
+  height: 32px;
+  -webkit-app-region: drag; /* lets users drag the window from this area */
+}
+
 .jh-side {
   background: var(--bg);
   border-right: 1px solid var(--border-faint);

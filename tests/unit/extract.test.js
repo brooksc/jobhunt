@@ -7,6 +7,7 @@ import {
   normalizeCompanyFromSource,
   normalizeEmploymentFromSource,
   normalizeLocationFromSource,
+  normalizeNiceToHavesFromSource,
   normalizeRemoteTypeFromSource,
   normalizeSalaryFromSource,
   parseExtractedJob,
@@ -559,6 +560,47 @@ describe('normalizeEmploymentFromSource', () => {
     );
 
     assert.equal(normalized.employment_type, 'unknown');
+  });
+});
+
+describe('normalizeNiceToHavesFromSource', () => {
+  it('fills empty nice-to-haves from an explicit nice-to-have section', () => {
+    const normalized = normalizeNiceToHavesFromSource(
+      { nice_to_haves: [] },
+      `Must have:
+- 5+ years technical program management experience.
+
+Nice to have:
+- SQL familiarity.
+- Experience with fraud or risk systems.
+
+Benefits include medical coverage.`
+    );
+
+    assert.deepEqual(normalized.nice_to_haves, [
+      'SQL familiarity',
+      'Experience with fraud or risk systems',
+    ]);
+  });
+
+  it('preserves model-provided nice-to-haves', () => {
+    const normalized = normalizeNiceToHavesFromSource(
+      { nice_to_haves: ['Model evaluation experience'] },
+      'Preferred qualifications:\n- Developer tooling experience.'
+    );
+
+    assert.deepEqual(normalized.nice_to_haves, ['Model evaluation experience']);
+  });
+
+  it('does not copy required-only sections into nice-to-haves', () => {
+    const normalized = normalizeNiceToHavesFromSource(
+      { nice_to_haves: [] },
+      `Required qualifications:
+- 7+ years technical program management experience.
+- Experience leading marketplace programs.`
+    );
+
+    assert.deepEqual(normalized.nice_to_haves, []);
   });
 });
 

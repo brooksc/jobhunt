@@ -117,19 +117,32 @@ describe('POST /captures', () => {
   });
 
   it('creates a new capture', async () => {
+    const jobAddedEvents = [];
+    const onJobAdded = payload => jobAddedEvents.push(payload);
+    process.on('jobhunt:job-added', onJobAdded);
     const res = await post('/captures', CAPTURE);
+    process.off('jobhunt:job-added', onJobAdded);
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.ok, true);
     assert.ok(body.capture_id);
     assert.equal(body.duplicate, false);
+    assert.equal(jobAddedEvents.length, 1);
+    assert.ok(jobAddedEvents[0].jobId);
+    assert.equal(jobAddedEvents[0].jobNumber, 1);
+    assert.equal(jobAddedEvents[0].pageTitle, CAPTURE.page_title);
   });
 
   it('returns duplicate:true for same content', async () => {
+    const jobAddedEvents = [];
+    const onJobAdded = payload => jobAddedEvents.push(payload);
+    process.on('jobhunt:job-added', onJobAdded);
     const res = await post('/captures', CAPTURE);
+    process.off('jobhunt:job-added', onJobAdded);
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.duplicate, true);
+    assert.equal(jobAddedEvents.length, 0);
   });
 });
 

@@ -66,6 +66,25 @@ describe('GET /health', () => {
   });
 });
 
+describe('OPTIONS extension write endpoints', () => {
+  it('allows Chrome extension private-network preflight on captures', async () => {
+    const res = await fetch(`${base}/captures`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'chrome-extension://abcdefghijklmnopabcdefghijklmnop',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'content-type',
+        'Access-Control-Request-Private-Network': 'true',
+      },
+    });
+
+    assert.equal(res.status, 204);
+    assert.equal(res.headers.get('access-control-allow-origin'), 'chrome-extension://abcdefghijklmnopabcdefghijklmnop');
+    assert.equal(res.headers.get('access-control-allow-private-network'), 'true');
+    assert.match(res.headers.get('access-control-allow-methods'), /POST/);
+  });
+});
+
 describe('GET /api/settings', () => {
   it('returns settings with defaults', async () => {
     const res = await fetch(`${base}/api/settings`);

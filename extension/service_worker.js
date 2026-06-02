@@ -11,6 +11,7 @@ chrome.action.setTitle({ title: `Capture job [${BUILD_DATE}]` });
 const CANDIDATE_PORTS = [8765, 8766, 8767, 8768, 8769];
 const PING_PATH = "/api/ping";
 const PORT_CACHE_KEY = "jobhuntServerPort";
+const SERVER_NOT_FOUND_MESSAGE = "jobhunt server not found on any candidate port";
 
 async function findServerPort() {
   // Return cached port if it still responds
@@ -32,7 +33,7 @@ async function findServerPort() {
       }
     } catch (_) { /* try next */ }
   }
-  throw new Error("jobhunt server not found on any candidate port");
+  throw new Error(SERVER_NOT_FOUND_MESSAGE);
 }
 
 async function serverUrl(path) {
@@ -149,9 +150,10 @@ async function submitOrQueue(payload) {
     await showBadge(result.duplicate ? "DUP" : "OK", "#137333");
     return result;
   } catch (_error) {
-    await jobhuntRetryQueue.enqueueCapture(chrome.storage.local, payload);
+    const queueLength = await jobhuntRetryQueue.enqueueCapture(chrome.storage.local, payload);
     await showBadge("Q", "#f9ab00");
-    return { queued: true };
+    await showQueuedStatus(queueLength);
+    return { queued: true, queueLength };
   }
 }
 
@@ -234,4 +236,14 @@ async function showBadge(text, color) {
   setTimeout(() => {
     chrome.action.setBadgeText({ text: "" });
   }, 2000);
+}
+
+async function showQueuedStatus(queueLength) {
+  await chrome.action.setTitle({
+    title: `Capture queued (${queueLength}). Open the Jobhunt Mac app to sync.`
+  });
+  await chrome.tabs.create({
+    url: chrome.runtime.getURL("status.html"),
+    active: true
+  });
 }

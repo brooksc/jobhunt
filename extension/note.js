@@ -12,7 +12,9 @@ document.getElementById("save").addEventListener("click", async () => {
     note: noteInput.value.trim()
   });
 
-  if (response && response.ok) {
+  if (response && response.ok && response.result?.queued) {
+    statusText.textContent = "Queued until Jobhunt is running.";
+  } else if (response && response.ok) {
     statusText.textContent = "Saved.";
     window.setTimeout(() => window.close(), 500);
   } else {

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Jobhunt capture status</title>
+    <link rel="stylesheet" href="status.css">
+  </head>
+  <body>
+    <main>
+      <h1>Capture queued</h1>
+      <p id="summary">Checking local queue...</p>
+      <section>
+        <h2>What works without the Mac app</h2>
+        <ul>
+          <li>Read the current page after you confirm the preflight dialog.</li>
+          <li>Store the captured payload in Chrome local extension storage.</li>
+          <li>Retry queued captures the next time you save a job while the Mac app is running.</li>
+        </ul>
+      </section>
+      <section>
+        <h2>What requires the Mac app</h2>
+        <ul>
+          <li>Write captures to the Jobhunt database.</li>
+          <li>Mark a site as reviewed.</li>
+          <li>Run extraction, fit scoring, availability checks, and the Jobhunt UI.</li>
+        </ul>
+      </section>
+      <p class="next-step">Open Jobhunt, then click the extension button on any job page to flush the queue.</p>
+    </main>
+    <script src="retry_queue.js"></script>
+    <script src="status.js"></script>
+  </body>
+</html>

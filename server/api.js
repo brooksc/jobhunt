@@ -89,7 +89,15 @@ export function createApp({ dbPath, autoExtract = false } = {}) {
     const settings = getDbSettings();
     const extractor = buildExtractor(settings);
     const scorer = buildScorer(settings);
-    return runExtraction({ dbPath, extractor, limit, scorer, resume: settings.resume_text || '' });
+    const summary = await runExtraction({ dbPath, extractor, limit, scorer, resume: settings.resume_text || '' });
+    emitAiRunComplete(summary);
+    return summary;
+  }
+
+  function emitAiRunComplete(summary) {
+    if (summary?.processed > 0) {
+      process.emit('jobhunt:ai-processing-complete', summary);
+    }
   }
 
   if (autoExtract) {
@@ -185,6 +193,14 @@ export function createApp({ dbPath, autoExtract = false } = {}) {
         return res.status(400).json({ error: 'visible_text or selected_text required' });
       }
       const result = db.insertCapture(capture, dbPath);
+      if (result.created) {
+        process.emit('jobhunt:job-added', {
+          jobId: result.job_id,
+          jobNumber: result.job_number,
+          pageTitle: result.page_title || capture.page_title,
+          duplicateOfJobId: result.duplicate_of_job_id,
+        });
+      }
       if (autoExtract && !result.duplicate) {
         runExtractionForApp(10).catch(() => {});
       }
@@ -223,6 +239,7 @@ export function createApp({ dbPath, autoExtract = false } = {}) {
         const extractor = buildExtractor(settings);
         const scorer = buildScorer(settings);
         summary = await runExtractionForSelected({ dbPath, extractor, requestIds, scorer, resume: settings.resume_text || '' });
+        emitAiRunComplete(summary);
       }
       res.json({ ok: true, ...summary });
     } catch (err) {

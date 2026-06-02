@@ -52,11 +52,15 @@ describe('insertCapture', () => {
     assert.ok(result.capture_id, 'capture_id should be set');
     assert.equal(result.duplicate, false);
     assert.equal(result.duplicate_of_job_id, null);
+    assert.equal(result.created, true);
+    assert.ok(result.job_id);
+    assert.equal(result.job_number, 1);
   });
 
   it('returns duplicate:true for the same raw content', () => {
     const result = insertCapture(CAPTURE, dbPath);
     assert.equal(result.duplicate, true);
+    assert.equal(result.created, false);
   });
 
   it('treats different URLs with different content as separate jobs', () => {
@@ -110,6 +114,7 @@ describe('insertCapture', () => {
 
       assert.equal(second.capture_id, first.capture_id);
       assert.equal(second.duplicate, false);
+      assert.equal(second.created, false);
       assert.equal(jobs.length, 1);
       assert.equal(jobs[0].extraction_status, 'pending');
       assert.equal(capture.url, 'https://www.levels.fyi/jobs/title/technical-program-manager?jobId=138073367340032710');

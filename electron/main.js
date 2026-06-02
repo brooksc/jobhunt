@@ -10,16 +10,47 @@ const appIconPath = path.join(__dirname, '../static/icons/icon-512.png');
 let mainWindow = null;
 let serverPort = null;
 
+function pluralize(count, singular, plural = `${singular}s`) {
+  return count === 1 ? singular : plural;
+}
+
+function truncateText(value, maxLength = 120) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1)}…`;
+}
+
+function showMacNotification({ title, body, critical = false }) {
+  if (process.platform !== 'darwin' || !Notification.isSupported()) return;
+  if (!critical && mainWindow?.isFocused()) return;
+  new Notification({ title, body }).show();
+  if (mainWindow && !mainWindow.isFocused()) mainWindow.flashFrame?.(true);
+}
+
+process.on('jobhunt:job-added', ({ jobNumber, pageTitle, duplicateOfJobId } = {}) => {
+  const title = duplicateOfJobId ? 'Jobhunt — Possible duplicate added' : 'Jobhunt — Job added';
+  const jobLabel = jobNumber ? `#${jobNumber}` : 'New job';
+  const body = pageTitle
+    ? `${jobLabel}: ${truncateText(pageTitle)}`
+    : `${jobLabel} was saved.`;
+  showMacNotification({ title, body });
+});
+
+process.on('jobhunt:ai-processing-complete', ({ processed = 0, succeeded = 0, failed = 0 } = {}) => {
+  if (!processed) return;
+  const itemLabel = pluralize(processed, 'AI item');
+  const title = failed > 0 ? 'Jobhunt — AI processing finished with errors' : 'Jobhunt — AI processing complete';
+  const body = `${processed} ${itemLabel} processed: ${succeeded} succeeded, ${failed} failed.`;
+  showMacNotification({ title, body });
+});
+
 // Fired by extract.js when 2 consecutive LLM failures auto-pause the queue.
 process.on('jobhunt:queue-auto-paused', () => {
-  if (Notification.isSupported()) {
-    new Notification({
-      title: 'Jobhunt — AI extraction paused',
-      body: '2 consecutive failures stopped the queue. Open LLM Queue to review errors and resume.',
-    }).show();
-  }
-  // Also flash the window if it exists and isn't focused.
-  if (mainWindow && !mainWindow.isFocused()) mainWindow.flashFrame?.(true);
+  showMacNotification({
+    title: 'Jobhunt — AI extraction paused',
+    body: '2 consecutive failures stopped the queue. Open LLM Queue to review errors and resume.',
+    critical: true,
+  });
 });
 
 async function startServer() {

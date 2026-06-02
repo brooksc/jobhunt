@@ -682,7 +682,7 @@ export function insertCapture(capture, dbPath) {
           WHERE id=?`).run(now, exactMatch.job_id);
         recordRecaptureEvent(db, exactMatch.job_id, capturedAt, now);
         recordDuplicateNote(db, exactMatch.id, capture.user_note, capturedAt, now);
-        return { capture_id: exactMatch.id, duplicate: false, duplicate_of_job_id: null };
+        return { capture_id: exactMatch.id, duplicate: false, duplicate_of_job_id: null, created: false };
       } catch (e) {
         if (!e.message.includes('UNIQUE')) throw e;
         // raw_hash conflict: this content is already stored in another capture.
@@ -695,7 +695,7 @@ export function insertCapture(capture, dbPath) {
         db.prepare(`UPDATE jobs SET extraction_status='pending', extraction_error=NULL, updated_at=? WHERE id=?`)
           .run(now, exactMatch.job_id);
         recordRecaptureEvent(db, exactMatch.job_id, capturedAt, now);
-        return { capture_id: exactMatch.id, duplicate: false, duplicate_of_job_id: null };
+        return { capture_id: exactMatch.id, duplicate: false, duplicate_of_job_id: null, created: false };
       }
     }
 
@@ -703,7 +703,7 @@ export function insertCapture(capture, dbPath) {
     const existing = db.prepare("SELECT id FROM captures WHERE raw_hash = ?").get(rHash);
     if (existing) {
       recordDuplicateNote(db, existing.id, capture.user_note, capturedAt, now);
-      return { capture_id: existing.id, duplicate: true, duplicate_of_job_id: null };
+      return { capture_id: existing.id, duplicate: true, duplicate_of_job_id: null, created: false };
     }
 
     const duplicateOfJobId = findDuplicateJobId(db, cHash, capture.url, capture.canonical_url);
@@ -729,7 +729,15 @@ export function insertCapture(capture, dbPath) {
     db.prepare(`INSERT INTO events (id, job_id, event_type, note, occurred_at, created_at)
       VALUES (?, ?, 'captured', NULL, ?, ?)`).run(makeId('evt'), jobId, capturedAt, now);
 
-    return { capture_id: captureId, duplicate: false, duplicate_of_job_id: duplicateOfJobId };
+    return {
+      capture_id: captureId,
+      duplicate: false,
+      duplicate_of_job_id: duplicateOfJobId,
+      created: true,
+      job_id: jobId,
+      job_number: jobNumber,
+      page_title: capture.page_title,
+    };
   });
 }
 

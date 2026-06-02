@@ -124,12 +124,13 @@ function Sidebar({ route, setRoute, setSavedViewName, theme, themeMode, onToggle
     if (j.status === "archived" || j.status === "not_available") return false;
     return qualityIssuesForJob(j).length > 0;
   }).length;
+  const queuePaused = window.JH_SETTINGS?.llm_queue_paused === 'true';
   const nav = [
     { id: "dashboard", label: "Dashboard", icon: "Home" },
     { id: "jobs", label: "Jobs", icon: "Briefcase", count: metrics.jobs || window.JH_JOBS.length },
     { id: "quality", label: "Data Quality", icon: "AlertTriangle", count: qualityIssueCount || undefined },
     { id: "needs", label: "Needs Action", icon: "Bell", count: metrics.needsAction || 0 },
-    { id: "llm-queue", label: "LLM Queue", icon: "Inbox", count: queueCount || undefined },
+    { id: "llm-queue", label: "LLM Queue", icon: "Inbox", count: queueCount || undefined, warn: queuePaused },
     { id: "sites", label: "Sites", icon: "Globe", count: metrics.sites || window.JH_SITES.length },
     { id: "duplicates", label: "Duplicates", icon: "Copy", count: metrics.duplicateGroups || window.JH_DUPES.length },
   ];
@@ -161,6 +162,7 @@ function Sidebar({ route, setRoute, setSavedViewName, theme, themeMode, onToggle
             >
               <Ico />
               <span>{n.label}</span>
+              {n.warn && <span className="jh-side__warn" title="Queue paused">⏸</span>}
               {n.count != null && <span className="jh-side__count">{n.count}</span>}
             </button>
           );

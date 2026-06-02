@@ -7,7 +7,7 @@ function persistSavedViews(views) {
   window.dispatchEvent(new CustomEvent("jobhunt:views-changed"));
 }
 
-const DEFAULT_COLUMNS = ["company", "title", "status", "rating", "fit", "salaryMin", "salaryMax", "remote", "source", "captured", "processed", "extraction"];
+const DEFAULT_COLUMNS = ["company", "title", "status", "rating", "fit", "salaryMin"];
 const ALL_COLUMNS = ["company", "title", "status", "rating", "fit", "salaryMin", "salaryMax", "remote", "location", "source", "seniority", "employment", "captured", "processed", "extraction"];
 const COLUMN_LABELS = {
   company: "Company", title: "Title", status: "Status", rating: "Rating", fit: "Fit", salaryMin: "Salary min", salaryMax: "Salary max",
@@ -845,7 +845,7 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
             {col("rating") && <col style={{ width: 80 }} />}
             {col("fit") && <col style={{ width: 54 }} />}
             {col("company") && <col style={{ width: panelOpen ? 140 : 170 }} />}
-            {col("title") && <col style={{ width: panelOpen ? 220 : 280 }} />}
+            {col("title") && <col style={{ width: panelOpen ? 220 : 265 }} />}
             {col("location") && !panelOpen && <col style={{ width: 140 }} />}
             {col("remote") && <col style={{ width: 70 }} />}
             {col("salaryMin") && <col style={{ width: 90 }} />}

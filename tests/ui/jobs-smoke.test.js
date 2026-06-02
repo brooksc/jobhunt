@@ -371,6 +371,24 @@ describe('Jobs UI smoke', () => {
     assert.deepEqual(pageErrors, []);
     await page.close();
   });
+
+  it('opens help documentation from the sidebar', async () => {
+    const page = await browser.newPage();
+    const pageErrors = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
+
+    await page.goto(`${base}/#/jobs`);
+    await page.getByRole('button', { name: 'Help' }).click();
+    assert.match(page.url(), /#\/help/);
+    await assertVisibleText(page, 'Operational guide');
+    await assertVisibleText(page, 'Initial setup');
+    await assertVisibleText(page, 'Capturing jobs');
+    await assertVisibleText(page, 'AI extraction');
+    await assertVisibleText(page, 'Troubleshooting');
+
+    assert.deepEqual(pageErrors, []);
+    await page.close();
+  });
 });
 
 async function assertVisibleText(page, text) {

@@ -1,6 +1,6 @@
 // Jobhunt — top-level App, used inside each design-canvas artboard.
 
-const VALID_ROUTES = ["dashboard", "jobs", "quality", "needs", "sites", "duplicates", "settings", "llm-queue"];
+const VALID_ROUTES = ["dashboard", "jobs", "quality", "needs", "sites", "duplicates", "settings", "llm-queue", "help"];
 
 function parseHash() {
   const raw = window.location.hash.replace(/^#\//, "");
@@ -256,6 +256,7 @@ function JobhuntApp({ initialRoute = "jobs", initialJobId = null, initialTheme =
         {route === "duplicates" && <DuplicatesPage mode={panelOpenProp === "compare" ? "compare" : "list"} />}
         {route === "settings" && <SettingsPage />}
         {route === "llm-queue" && <LlmQueuePage />}
+        {route === "help" && <HelpPage />}
       </main>
 
         {panelOpen && route === "jobs" && (
@@ -368,6 +369,9 @@ function RouteActions({ route, onProcessExtractions, processingExtractions, selC
     return null;
   }
   if (route === "llm-queue") {
+    return null;
+  }
+  if (route === "help") {
     return null;
   }
   return <Btn size="sm" kind="accent" icon={<Icon.Plus size={12} />} disabled>Capture URL</Btn>;

@@ -91,6 +91,10 @@ export function createApp({ dbPath, autoExtract = false } = {}) {
     res.json({ app: 'jobhunt', version: VERSION });
   });
 
+  app.get('/favicon.ico', (req, res) => {
+    res.sendFile(join(STATIC_DIR, 'favicon.ico'));
+  });
+
   app.get('/', (req, res) => {
     const indexPath = join(STATIC_DIR, 'index.html');
     if (!existsSync(indexPath)) {

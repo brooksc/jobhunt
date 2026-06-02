@@ -53,8 +53,10 @@
       "static/**/*",
       "package.json"
     ],
+    "icon": "build/icons/icon",
     "mac": {
       "category": "public.app-category.productivity",
+      "icon": "build/icons/icon.icns",
       "target": [
         {
           "target": "dmg",

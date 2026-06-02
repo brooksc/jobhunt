@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const appIconPath = path.join(__dirname, '../static/icons/icon-512.png');
 
 let mainWindow = null;
 let serverPort = null;
@@ -45,6 +46,7 @@ async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
+    icon: appIconPath,
     titleBarStyle: 'hiddenInset',
     webPreferences: {
       nodeIntegration: false,

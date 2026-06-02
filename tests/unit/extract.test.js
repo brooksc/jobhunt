@@ -5,6 +5,7 @@ import {
   applyLocationFilter,
   computeOverallFitScore,
   normalizeCompanyFromSource,
+  normalizeEmploymentFromSource,
   normalizeLocationFromSource,
   normalizeRemoteTypeFromSource,
   normalizeSalaryFromSource,
@@ -167,6 +168,26 @@ $205,000-$216,500 USD
 All other states
 $178,000-$188,000 USD`,
     }, { preferredLocations: 'Seattle, WA, Remote, United States' });
+
+    assert.equal(normalized.salary_min, 205000);
+    assert.equal(normalized.salary_max, 216500);
+  });
+
+  it('uses source text for preferred state-specific bands when the model salary note omits labels', () => {
+    const normalized = normalizeSalaryFromSource({
+      salary_min: 214000,
+      salary_max: 216500,
+      salary_currency: 'USD',
+      salary_note: '$214,000-$216,500 USD; $205,000-$216,500 USD; $178,000-$188,000 USD',
+    }, {
+      preferredLocations: 'Seattle, WA, Remote, United States',
+      sourceText: `CA, NY, CT, NJ
+$214,000-$216,500 USD
+WA
+$205,000-$216,500 USD
+All other states
+$178,000-$188,000 USD`,
+    });
 
     assert.equal(normalized.salary_min, 205000);
     assert.equal(normalized.salary_max, 216500);
@@ -500,6 +521,44 @@ Work site 4 days / week in-office`;
 
     assert.equal(result.location, 'United States, Washington, Redmond + 2 more');
     assert.equal(result.meets_criteria, false);
+  });
+
+  it('preserves remote country context from source text', () => {
+    const normalized = normalizeLocationFromSource(
+      { company: 'Instacart', title: 'Senior Technical Program Manager', location: null, remote_type: 'remote' },
+      'Instacart\nSenior Technical Program Manager\nRemote - United States\nRole details'
+    );
+
+    assert.equal(normalized.location, 'Remote - United States');
+  });
+
+  it('expands bare remote location when source has country context', () => {
+    const normalized = normalizeLocationFromSource(
+      { company: 'Mercury', title: 'Senior Product Manager', location: 'Remote', remote_type: 'remote' },
+      'Mercury\nSenior Product Manager\nRemote - United States or Canada\nRole details'
+    );
+
+    assert.equal(normalized.location, 'Remote - United States or Canada');
+  });
+});
+
+describe('normalizeEmploymentFromSource', () => {
+  it('keeps full-time when the source explicitly says full-time', () => {
+    const normalized = normalizeEmploymentFromSource(
+      { employment_type: 'full_time' },
+      'Employment type: Full-Time'
+    );
+
+    assert.equal(normalized.employment_type, 'full_time');
+  });
+
+  it('removes guessed full-time when the source does not say full-time', () => {
+    const normalized = normalizeEmploymentFromSource(
+      { employment_type: 'full_time' },
+      'Required qualifications:\n- 7+ years technical program management experience.'
+    );
+
+    assert.equal(normalized.employment_type, 'unknown');
   });
 });
 

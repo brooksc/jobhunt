@@ -310,7 +310,7 @@ function salaryBands(text) {
     const range = salaryRangeValue(match[1], match[2], match[3], match[4]);
     if (!range) continue;
     const label = sentenceForIndex(text, match.index || 0);
-    if (bands.some(b => b.min === range.min && b.max === range.max && b.label.includes(label.slice(0, 20)))) continue;
+    if (bands.some(b => b.min === range.min && b.max === range.max)) continue;
     bands.push({ ...range, label });
   }
   return bands;
@@ -333,7 +333,11 @@ function selectSalaryBand(bands, preferredLocations, note) {
   return null;
 }
 
-export function normalizeSalaryFromSource(extracted, { preferredLocations } = {}) {
+/**
+ * @param {any} extracted
+ * @param {{ preferredLocations?: string|null, sourceText?: string|null }} [opts]
+ */
+export function normalizeSalaryFromSource(extracted, { preferredLocations, sourceText } = {}) {
   const note = extracted.salary_note ? String(extracted.salary_note) : '';
   if (!note.trim()) return extracted;
   const salary_currency = normalizeSalaryCurrency(extracted.salary_currency, note);
@@ -351,6 +355,14 @@ export function normalizeSalaryFromSource(extracted, { preferredLocations } = {}
     };
   }
 
+  const sourceSalaryText = sourceText ? salaryTextForCurrency(String(sourceText), salary_currency) : '';
+  const sourceSelectedBand = sourceSalaryText && specificPreferredTerms(preferredLocations).length
+    ? selectSalaryBand(salaryBands(sourceSalaryText), preferredLocations, sourceSalaryText)
+    : null;
+  if (sourceSelectedBand) {
+    return { ...extracted, salary_currency, salary_min: sourceSelectedBand.min, salary_max: sourceSelectedBand.max };
+  }
+
   const selectedBand = selectSalaryBand(salaryBands(salaryText), preferredLocations, salaryText);
   if (selectedBand) {
     return { ...extracted, salary_currency, salary_min: selectedBand.min, salary_max: selectedBand.max };
@@ -364,6 +376,7 @@ export function normalizeSalaryFromSource(extracted, { preferredLocations } = {}
 function sourceIndicatesRemote(description) {
   const text = description || '';
   return (
+    /^Remote(?:\s*[-–—]\s*(?:United States|USA|U\.S\.|US))?\b/im.test(text) ||
     /^Work arrangement:\s*Remote\b/im.test(text) ||
     /\bWork site\s*0\s+days?\s*\/\s*week\s+in-office\b/i.test(text) ||
     /\bRemote\s+or\s+Hybrid\b/i.test(text) ||
@@ -423,7 +436,18 @@ function locationFromBasedIn(description) {
   return match?.[1]?.trim().replace(/\s*,\s*$/, '') || null;
 }
 
+function remoteLocationFromSource(description) {
+  const text = description || '';
+  const match = text.match(/^Remote(?:\s*[-–—]\s*((?:United States|USA|U\.S\.|US)(?:\s+or\s+[A-Za-z]+)?))?\b/im);
+  if (!match) return null;
+  return match[1] ? `Remote - ${match[1].trim()}` : 'Remote';
+}
+
 export function normalizeLocationFromSource(extracted, description) {
+  const remoteLocation = remoteLocationFromSource(description);
+  if (remoteLocation && (!extracted.location || /^remote$/i.test(String(extracted.location).trim()))) {
+    return { ...extracted, location: remoteLocation };
+  }
   if (extracted.location) return extracted;
   const location = sourceLocationFromTitle(description, extracted.title);
   if (!location) {
@@ -431,6 +455,15 @@ export function normalizeLocationFromSource(extracted, description) {
     return extracted;
   }
   return { ...extracted, location };
+}
+
+export function normalizeEmploymentFromSource(extracted, description) {
+  if (extracted.employment_type !== 'full_time') return extracted;
+  const text = description || '';
+  if (/\b(full[-\s]?time|regular employee|permanent)\b/i.test(text) || /"employmentType"\s*:\s*"FULL_TIME"/i.test(text)) {
+    return extracted;
+  }
+  return { ...extracted, employment_type: 'unknown' };
 }
 
 function metadataValue(lines, label) {
@@ -743,10 +776,14 @@ export class LMStudioExtractor {
       err.responseFormatType = responseFormatType;
       throw err;
     }
-    extracted = normalizeSalaryFromSource(extracted, { preferredLocations: this.preferredLocations });
+    extracted = normalizeSalaryFromSource(extracted, {
+      preferredLocations: this.preferredLocations,
+      sourceText: pending.source_text || pending.description,
+    });
     extracted = normalizeCompanyFromSource(extracted, pending.source_text || pending.description);
     extracted = normalizeLocationFromSource(extracted, pending.source_text || pending.description);
     extracted = normalizeRemoteTypeFromSource(extracted, pending.source_text || pending.description, pending.canonical_url || pending.url);
+    extracted = normalizeEmploymentFromSource(extracted, pending.source_text || pending.description);
     extracted = applyLocationFilter(extracted, { preferredLocations: this.preferredLocations, allowRemote: this.allowRemote, allowHybrid: this.allowHybrid, allowOnsite: this.allowOnsite });
     return { extracted, modelName, responseFormatType };
   }

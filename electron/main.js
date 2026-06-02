@@ -44,6 +44,8 @@ async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
+    minWidth: 960,
+    minHeight: 600,
     icon: appIconPath,
     titleBarStyle: 'hiddenInset',
     webPreferences: {

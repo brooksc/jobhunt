@@ -9,6 +9,8 @@ describe('Electron shell smoke', () => {
     assert.match(source, /app\.getPath\('userData'\)/);
     assert.match(source, /process\.env\.JOBHUNT_DB_PATH\s*=\s*dbPath/);
     assert.match(source, /createApp\(\{\s*dbPath,\s*autoExtract:\s*true\s*\}\)/);
+    assert.match(source, /minWidth:\s*960/);
+    assert.match(source, /minHeight:\s*600/);
     assert.match(source, /PREFERRED_PORTS\s*=\s*\[8765,\s*8766,\s*8767,\s*8768,\s*8769\]/);
     assert.match(source, /No preferred extension port available/);
     assert.doesNotMatch(source, /tryPort\(0\)/);

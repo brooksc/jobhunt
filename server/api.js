@@ -432,6 +432,14 @@ export function createApp({ dbPath, autoExtract = false } = {}) {
     }
   });
 
+  app.post('/api/jobs/:jobId/opened', (req, res) => {
+    try {
+      res.json({ ok: true, ...db.markJobOpened(req.params.jobId, dbPath) });
+    } catch (err) {
+      res.status(400).json({ error: String(err.message) });
+    }
+  });
+
   app.patch('/api/jobs/:jobId', (req, res) => {
     try {
       const d = db.initDb(dbPath);
@@ -908,6 +916,7 @@ function buildUiData(dbPath) {
     jobs.salary_note, jobs.extracted_json, jobs.extracted_at, jobs.fit_score, jobs.fit_status,
     jobs.fit_score_json, jobs.rating, jobs.duplicate_of_job_id, jobs.extraction_model,
     jobs.application_url, jobs.extraction_confidence, jobs.manual_overrides,
+    jobs.last_opened_at,
     captures.cleaned_description, captures.raw_hash, captures.cleaned_hash, captures.page_title,
     captures.selected_text, captures.visible_text, captures.structured_data_json,
     captures.url AS source_url, captures.canonical_url, captures.captured_at,
@@ -977,7 +986,7 @@ function buildUiData(dbPath) {
       rating: r.rating, duplicate_of_job_id: r.duplicate_of_job_id,
       extraction_model: r.extraction_model, application_url: r.application_url,
       extraction_confidence: r.extraction_confidence, cleaned_description: r.cleaned_description,
-      manual_overrides: r.manual_overrides,
+      manual_overrides: r.manual_overrides, last_opened_at: r.last_opened_at,
       raw_hash: r.raw_hash, cleaned_hash: r.cleaned_hash,
       raw_byte_size: Buffer.byteLength(rawText, 'utf8'),
       visible_byte_size: Buffer.byteLength(r.visible_text || '', 'utf8'),

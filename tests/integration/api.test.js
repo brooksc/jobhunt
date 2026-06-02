@@ -149,10 +149,41 @@ describe('GET /api/ui-data', () => {
       'job_id', 'job_number', 'status', 'company', 'title', 'location', 'remote_type',
       'salary_min', 'salary_max', 'salary_currency', 'salary_note', 'extraction_status',
       'extracted_at', 'source_url', 'captured_at', 'rating', 'fit_score', 'fit_status',
+      'last_opened_at',
       'duplicate_of_job_id', 'visible_byte_size', 'selected_text_present', 'structured_data_count',
     ]) {
       assert.ok(field in job, `expected ${field} in job payload`);
     }
+  });
+});
+
+describe('POST /api/jobs/:jobId/opened', () => {
+  it('records last opened time and a timeline event', async () => {
+    const created = await post('/captures', {
+      ...CAPTURE,
+      url: 'https://example.com/opened-api',
+      page_title: 'Opened API Job',
+      visible_text: 'Opened API job posting',
+    });
+    const db = initDb(dbPath);
+    const jobId = db.prepare('SELECT id FROM jobs WHERE capture_id=?').get((await created.json()).capture_id).id;
+
+    const res = await post(`/api/jobs/${jobId}/opened`, {});
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.ok, true);
+    assert.ok(body.last_opened_at);
+
+    const check = await fetch(`${base}/api/ui-data`);
+    const { jobs } = await check.json();
+    const job = jobs.find(j => j.job_id === jobId);
+    assert.equal(job.last_opened_at, body.last_opened_at);
+    assert.ok(job.events.some(e => e.event_type === 'source_opened' && e.occurred_at === body.last_opened_at));
+  });
+
+  it('returns 400 for a missing job', async () => {
+    const res = await post('/api/jobs/missing-job/opened', {});
+    assert.equal(res.status, 400);
   });
 });
 

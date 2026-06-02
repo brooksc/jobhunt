@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   extraction_model TEXT,
   application_url TEXT,
   extraction_confidence REAL,
+  last_opened_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -402,6 +403,7 @@ function migrateSchema(db) {
     ['extraction_model', 'TEXT'],
     ['application_url', 'TEXT'],
     ['extraction_confidence', 'REAL'],
+    ['last_opened_at', 'TEXT'],
     ['manual_overrides', "TEXT NOT NULL DEFAULT '[]'"],
     ['fit_score', 'INTEGER'],
     ['fit_status', "TEXT NOT NULL DEFAULT 'none'"],
@@ -1115,6 +1117,18 @@ export function updateJobStatuses(jobIds, status, dbPath) {
       }
     }
     return { requested: ids.length, updated };
+  });
+}
+
+export function markJobOpened(jobId, dbPath) {
+  const db = connect(dbPath);
+  const now = nowIso();
+  return withTransaction(db, () => {
+    const result = db.prepare("UPDATE jobs SET last_opened_at=?, updated_at=? WHERE id=?").run(now, now, jobId);
+    if (result.changes === 0) throw new Error(`job not found: ${jobId}`);
+    db.prepare("INSERT INTO events (id, job_id, event_type, note, occurred_at, created_at) VALUES (?, ?, 'source_opened', NULL, ?, ?)")
+      .run(makeId('evt'), jobId, now, now);
+    return { last_opened_at: now };
   });
 }
 

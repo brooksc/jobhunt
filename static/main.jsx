@@ -193,7 +193,7 @@
         ]}
       >
         <p style={{ marginTop: 0, color: "var(--fg-mute)" }}>
-          Tell Jobhunt where you're willing to work so it can flag matching jobs.
+          Tell Jobhunt where you're willing to work so it can flag matching jobs. The Help page in the left sidebar has the full capture, extraction, and review workflow.
         </p>
         <div style={{ marginTop: 12 }}>
           <div className="jh-label">States you'd work in</div>

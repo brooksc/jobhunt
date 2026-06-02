@@ -7,16 +7,17 @@ function persistSavedViews(views) {
   window.dispatchEvent(new CustomEvent("jobhunt:views-changed"));
 }
 
-const DEFAULT_COLUMNS = ["company", "title", "status", "rating", "fit", "salaryMin"];
-const ALL_COLUMNS = ["company", "title", "status", "rating", "fit", "salaryMin", "salaryMax", "remote", "location", "source", "seniority", "employment", "captured", "processed", "extraction"];
+const DEFAULT_COLUMNS = ["company", "title", "status", "rating", "fit", "salaryMin", "salaryMax", "lastOpened"];
+const ALL_COLUMNS = ["company", "title", "status", "rating", "fit", "salaryMin", "salaryMax", "remote", "location", "source", "seniority", "employment", "captured", "lastOpened", "processed", "extraction"];
 const COLUMN_LABELS = {
   company: "Company", title: "Title", status: "Status", rating: "Rating", fit: "Fit", salaryMin: "Salary min", salaryMax: "Salary max",
   remote: "Meets criteria", location: "Location", source: "Source", seniority: "Seniority",
-  employment: "Employment", captured: "Last captured", processed: "Last processed", extraction: "Extraction",
+  employment: "Employment", captured: "Last captured", lastOpened: "Last opened", processed: "Last processed", extraction: "Extraction",
 };
 
 const SORT_OPTIONS = [
   { key: "capturedAt", label: "Last captured" },
+  { key: "lastOpenedAt", label: "Last opened" },
   { key: "lastProcessedAt", label: "Last processed" },
   { key: "company", label: "Company" },
   { key: "title", label: "Job title" },
@@ -582,9 +583,19 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
         const capturedIndex = parsed.indexOf("captured");
         const next = [...parsed];
         next.splice(capturedIndex === -1 ? next.length : capturedIndex + 1, 0, "processed");
-        return next.flatMap(c => c === "salary" ? ["salaryMin", "salaryMax"] : [c]).filter(c => ALL_COLUMNS.includes(c));
+        const normalized = next.flatMap(c => c === "salary" ? ["salaryMin", "salaryMax"] : [c]).filter(c => ALL_COLUMNS.includes(c));
+        if (!normalized.includes("lastOpened")) {
+          const normalizedCapturedIndex = normalized.indexOf("captured");
+          normalized.splice(normalizedCapturedIndex === -1 ? normalized.length : normalizedCapturedIndex + 1, 0, "lastOpened");
+        }
+        return normalized;
       }
-      return parsed.flatMap(c => c === "salary" ? ["salaryMin", "salaryMax"] : [c]).filter(c => ALL_COLUMNS.includes(c));
+      const next = parsed.flatMap(c => c === "salary" ? ["salaryMin", "salaryMax"] : [c]).filter(c => ALL_COLUMNS.includes(c));
+      if (!next.includes("lastOpened")) {
+        const capturedIndex = next.indexOf("captured");
+        next.splice(capturedIndex === -1 ? next.length : capturedIndex + 1, 0, "lastOpened");
+      }
+      return next;
     } catch { return DEFAULT_COLUMNS; }
   });
   React.useEffect(() => {
@@ -715,6 +726,7 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
     if (key === "fitScore") return job.fit?.score ?? -1;
     if (key === "extractionStatus") return job.extraction?.status || "";
     if (key === "lastProcessedAt") return job.extraction?.at || "";
+    if (key === "lastOpenedAt") return job.lastOpenedAt || "";
     if (key === "nextActionDue") return job.nextAction?.dueDate || "";
     return job[key] ?? "";
   }
@@ -772,7 +784,8 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
 
   function openSelectedSources() {
     const selectedJobs = jobs.filter((j) => sel.has(j.id));
-    const urls = [...new Set(selectedJobs.map((j) => j.sourceUrl).filter(Boolean))];
+    const sourceJobs = selectedJobs.filter((j) => j.sourceUrl);
+    const urls = [...new Set(sourceJobs.map((j) => j.sourceUrl))];
     let opened = 0;
     for (const url of urls) {
       const a = document.createElement("a");
@@ -789,6 +802,9 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
       window.JH_TOAST?.show("No selected jobs have source pages", "error");
     } else {
       window.JH_TOAST?.show(`Opened ${opened} source page${opened !== 1 ? "s" : ""}`);
+      Promise.all(sourceJobs.map((j) => window.JH_API.api(`/api/jobs/${j.id}/opened`, { method: "POST" })))
+        .then(() => window.JH_REFRESH_UI_DATA?.())
+        .catch((e) => window.JH_TOAST?.show(e.message, "error"));
     }
   }
 
@@ -854,6 +870,7 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
             {col("employment") && <col style={{ width: 90 }} />}
             {col("source") && !panelOpen && <col style={{ width: 90 }} />}
             {col("captured") && <col style={{ width: 96 }} />}
+            {col("lastOpened") && <col style={{ width: 96 }} />}
             {col("processed") && <col style={{ width: 96 }} />}
             {col("extraction") && <col style={{ width: 80 }} />}
             {!panelOpen && <col style={{ width: panelOpen ? 0 : 200 }} />}
@@ -882,6 +899,7 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
               {col("employment") && <SortH k="employment">Employment</SortH>}
               {col("source") && !panelOpen && <SortH k="source">Source</SortH>}
               {col("captured") && <SortH k="capturedAt">Captured</SortH>}
+              {col("lastOpened") && <SortH k="lastOpenedAt">Opened</SortH>}
               {col("processed") && <SortH k="lastProcessedAt">Processed</SortH>}
               {col("extraction") && <SortH k="extractionStatus">Extract</SortH>}
               {!panelOpen && <SortH k="nextActionDue">Next action</SortH>}
@@ -952,7 +970,7 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
                   <td className="col-co" title={j.title}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 4, maxWidth: "100%" }}>
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{j.title}</span>
-                      <button className="jh-btn jh-btn--ghost jh-btn--icon jh-btn--sm" style={{ flexShrink: 0, opacity: 0.5 }} title="Open source" aria-label="Open source" onClick={(e) => { e.stopPropagation(); window.open(j.sourceUrl, "_blank"); }}><Icon.External size={10} /></button>
+                      <button className="jh-btn jh-btn--ghost jh-btn--icon jh-btn--sm" style={{ flexShrink: 0, opacity: 0.5 }} title="Open source" aria-label="Open source" onClick={(e) => { e.stopPropagation(); window.JH_API.openJobSource(j.id, j.sourceUrl); }}><Icon.External size={10} /></button>
                     </span>
                   </td>
                 )}
@@ -964,6 +982,7 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
                 {col("employment") && <td className="col-mute">{j.employment || "—"}</td>}
                 {col("source") && !panelOpen && <td className="col-mute"><span className="jh-tag">{j.source}</span></td>}
                 {col("captured") && <td className="col-mono" title={fmtDateTime(j.capturedAt)}>{fmtCaptured(j.capturedAt)}</td>}
+                {col("lastOpened") && <td className="col-mono" title={fmtDateTime(j.lastOpenedAt)}>{fmtCaptured(j.lastOpenedAt)}</td>}
                 {col("processed") && <td className="col-mono" title={fmtDateTime(j.extraction?.at)}>{fmtCaptured(j.extraction?.at)}</td>}
                 {col("extraction") && <td><ExtractionChip ext={j.extraction} /></td>}
                 {!panelOpen && (

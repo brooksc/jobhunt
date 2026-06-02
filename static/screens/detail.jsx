@@ -123,7 +123,7 @@ function JobDetail({ jobId, onClose, initialTab = "overview", jobIds = [], onNav
 
         <div className="jh-panel__actions">
           <StatusDropdown value={job.status} onChange={(status) => window.JH_API.setStatus(job.id, status).catch((e) => window.JH_TOAST.show(e.message, "error"))} />
-          <Btn size="sm" icon={<Icon.External size={11} />} onClick={() => window.open(job.sourceUrl, "_blank")}>Open source</Btn>
+          <Btn size="sm" icon={<Icon.External size={11} />} onClick={() => window.JH_API.openJobSource(job.id, job.sourceUrl)}>Open source</Btn>
           <Btn size="sm" icon={<Icon.Refresh size={11} />} onClick={() => window.JH_API.rerunExtraction(job.id).catch((e) => window.JH_TOAST.show(e.message, "error"))}>Re-run</Btn>
           <Btn size="sm" icon={<Icon.Note size={11} />} onClick={() => setNoteDialog(true)}>Add note</Btn>
           <Btn size="sm" kind="ghost" icon={<Icon.Archive size={11} />} title="Archive" aria-label="Archive job" onClick={() => window.JH_API.archiveJob(job.id).catch((e) => window.JH_TOAST.show(e.message, "error"))} />
@@ -320,7 +320,7 @@ function OverviewTab({ job, onPatch }) {
         <dt>Source</dt>
         <dd>
           <span className="jh-tag">{job.source}</span>
-          <a href={job.sourceUrl} target="_blank" rel="noreferrer" style={{ color: "var(--fg-mute)", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, fontFamily: "var(--font-mono)" }}>
+          <a href={job.sourceUrl} target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); window.JH_API.openJobSource(job.id, job.sourceUrl); }} style={{ color: "var(--fg-mute)", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11.5, fontFamily: "var(--font-mono)" }}>
             <Icon.External size={11} />
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 220 }}>{job.sourceUrl.replace(/^https?:\/\//, "")}</span>
           </a>
@@ -531,6 +531,7 @@ function TimelineItem({ ev }) {
   const TITLES = {
     capture: "Captured",
     recapture: "Recaptured",
+    source_opened: "Source opened",
     applied: "Applied",
     status: "Status changed",
     note: "Note added",
@@ -682,7 +683,7 @@ function CaptureDiagnostics({ job }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
         <h3 style={{ margin: 0 }}>Capture diagnostics</h3>
         <div style={{ marginLeft: "auto", display: "flex", gap: 4, flexWrap: "wrap" }}>
-          <Btn size="sm" kind="ghost" icon={<Icon.External size={11} />} onClick={() => window.open(job.sourceUrl, "_blank")}>Open source</Btn>
+          <Btn size="sm" kind="ghost" icon={<Icon.External size={11} />} onClick={() => window.JH_API.openJobSource(job.id, job.sourceUrl)}>Open source</Btn>
           <Btn size="sm" kind="ghost" icon={<Icon.Refresh size={11} />} onClick={() => {
             window.JH_API.rerunExtraction(job.id)
               .then(() => { window.JH_TOAST?.show("Queued for re-extraction"); return window.JH_REFRESH_UI_DATA?.(); })

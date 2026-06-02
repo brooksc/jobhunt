@@ -333,6 +333,7 @@
         source: urlToSource(j.source_url),
         sourceUrl: j.source_url,
         capturedAt: j.captured_at,
+        lastOpenedAt: j.last_opened_at || null,
         extraction: {
           status: mapExtractionStatus(j.extraction_status),
           at: j.extracted_at || null,
@@ -576,6 +577,13 @@
       addNote: (jobId, note) => mutate(`/api/jobs/${jobId}/notes`, { method: "POST", body: JSON.stringify({ note }) }),
       archiveJob: (jobId) => mutate(`/api/jobs/${jobId}/archive`, { method: "POST" }),
       rerunExtraction: (jobId) => mutate(`/api/jobs/${jobId}/extract`, { method: "POST" }),
+      recordJobOpened: (jobId) => api(`/api/jobs/${jobId}/opened`, { method: "POST" }).then(refreshUiDataOrReload),
+      openJobSource: (jobId, url) => {
+        window.open(url, "_blank");
+        return api(`/api/jobs/${jobId}/opened`, { method: "POST" })
+          .then(refreshUiDataOrReload)
+          .catch((e) => window.JH_TOAST?.show(e.message, "error"));
+      },
       scoreFit: (jobId) => mutate(`/api/jobs/${jobId}/fit-score`, { method: "POST" }),
       processExtractions: () => api("/api/extractions/run", { method: "POST" }),
       checkAvailability: () => api("/api/jobs/check-availability", { method: "POST" }),

@@ -37,9 +37,7 @@ async function startServer() {
       if (err.code !== 'EADDRINUSE') throw err;
     }
   }
-  // All preferred ports busy — let the OS pick
-  const server = await tryPort(0);
-  return server.address().port;
+  throw new Error(`No preferred extension port available: ${PREFERRED_PORTS.join(', ')}`);
 }
 
 async function createWindow() {

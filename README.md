@@ -62,6 +62,10 @@ The app still migrates old `.data/` files into the config directory when no expl
 
 The extension posts captures to `/captures`. If the local service is unavailable, the service worker keeps a retry queue and reports extension status in the UI sidebar.
 
+The extension can discover the app on `127.0.0.1` ports `8765` through `8769`. When the Mac app is not running, the extension can still read the current page after the preflight confirmation and queue the capture in Chrome local extension storage. Writing to SQLite, marking sites reviewed, extraction, fit scoring, availability checks, and the Jobhunt UI all require the Mac app.
+
+Chrome Web Store submission notes live in `docs/chrome-web-store-review.md`.
+
 ## Queue AI Processing
 
 Queue extraction or fit scoring for visible job numbers:

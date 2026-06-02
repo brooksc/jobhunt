@@ -13,6 +13,7 @@ npm run dev          # hot-reload server (node --watch)
 npm start            # supervised local server; killing the node child restarts it
 npm run serve:once   # one-shot server without restart supervision
 node server/index.js serve --port 8765 --auto-extract
+node server/mcp.js --db-path ~/.config/jobhunt/jobhunt.db
 ```
 
 Default: `http://127.0.0.1:8765`. DB lives at `~/.config/jobhunt/jobhunt.db` (override with `--db-path` or `JOBHUNT_DB_PATH`).
@@ -51,5 +52,5 @@ CLI subcommands: `init`, `extract`, `jobs list`, `jobs status`, `jobs note`, `du
 - `db.js` exports functions that accept an optional `dbPath` and call `initDb(dbPath)` internally — this means DB connections are opened per-call (synchronous, fine for SQLite).
 - The `jobs` table has both `status` (user-facing: saved/applied/interview/offer/rejected/archived) and `extraction_status` (pipeline state: pending/running/succeeded/failed).
 - Legacy status values (`interested`, `interviewing`, `closed`, `ignored`) are normalized on read via `LEGACY_STATUS_MAP`.
-- No MCP server has been ported yet — Python's `jobhunt-mcp` is not present in this repo.
+- `server/mcp.js` exposes the Jobhunt MCP stdio server for Claude Code/Codex. The old Python `jobhunt-mcp` entry point is not present in this repo.
 - `SETTINGS_DEFAULTS` in `db.js` defines the whitelist of valid setting keys; `PATCH /api/settings` ignores unknown keys.

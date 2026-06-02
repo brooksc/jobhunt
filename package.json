@@ -8,7 +8,8 @@
     "node": ">=26.0.0"
   },
   "bin": {
-    "jobhunt": "./server/index.js"
+    "jobhunt": "./server/index.js",
+    "jobhunt-mcp": "./server/mcp.js"
   },
   "scripts": {
     "start": "scripts/run-server-loop.sh",
@@ -17,14 +18,15 @@
     "electron": "electron .",
     "electron:build": "electron-builder --dir",
     "electron:dist": "electron-builder",
-    "test": "node --test tests/unit/availability.test.js tests/unit/cleaning.test.js tests/unit/extract.test.js tests/unit/extension_capture.test.js tests/integration/db.test.js tests/integration/api.test.js tests/electron/smoke.test.js",
-    "test:coverage": "node --test --experimental-test-coverage tests/unit/availability.test.js tests/unit/cleaning.test.js tests/unit/extract.test.js tests/unit/extension_capture.test.js tests/integration/db.test.js tests/integration/api.test.js tests/electron/smoke.test.js",
+    "test": "node --test tests/unit/availability.test.js tests/unit/cleaning.test.js tests/unit/extract.test.js tests/unit/extension_capture.test.js tests/integration/db.test.js tests/integration/api.test.js tests/integration/mcp.test.js tests/electron/smoke.test.js",
+    "test:coverage": "node --test --experimental-test-coverage tests/unit/availability.test.js tests/unit/cleaning.test.js tests/unit/extract.test.js tests/unit/extension_capture.test.js tests/integration/db.test.js tests/integration/api.test.js tests/integration/mcp.test.js tests/electron/smoke.test.js",
     "test:ui": "node --test tests/ui/jobs-smoke.test.js",
     "eval:llm": "node tests/llm-eval/eval-llm.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint server/"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "commander": "^12.0.0",
     "express": "^4.19.0",
     "jsonrepair": "^3.8.0"

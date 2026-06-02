@@ -25,6 +25,65 @@ p {
   margin: 0 0 12px;
 }
 
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 10px;
+}
+
+button {
+  background: #1f2937;
+  border: 1px solid #111827;
+  border-radius: 6px;
+  color: white;
+  cursor: pointer;
+  font: inherit;
+  padding: 7px 11px;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: .45;
+}
+
+#clear {
+  background: white;
+  border-color: #c7c7c7;
+  color: #1f1f1f;
+}
+
+#status {
+  min-height: 20px;
+}
+
+.captures {
+  border: 1px solid #d6d6d6;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.capture {
+  border-top: 1px solid #e8e8e8;
+  padding: 10px 12px;
+}
+
+.capture:first-child {
+  border-top: 0;
+}
+
+.capture-title {
+  font-weight: 650;
+  margin-bottom: 4px;
+}
+
+.capture-meta {
+  color: #5f6368;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 ul {
   line-height: 1.45;
   margin: 0;

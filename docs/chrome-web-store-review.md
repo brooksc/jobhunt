@@ -22,8 +22,10 @@ Provide reviewers with a built macOS app artifact or a download link before subm
 8. Return to the Jobhunt Mac app and verify the captured posting appears in the job list.
 9. Close the Mac app.
 10. Capture another job posting.
-11. Verify the extension opens the capture status page and says the capture is queued.
-12. Reopen the Mac app and capture another posting to flush the queued capture.
+11. Verify the extension opens the capture queue and says the capture is saved locally.
+12. Use Export CSV and verify Chrome downloads a CSV containing the saved capture.
+13. Reopen the Mac app.
+14. Use Sync to Jobhunt from the capture queue and verify the queued capture is written to the app.
 
 ## Required Disclosure
 
@@ -32,6 +34,7 @@ The store listing should state:
 - The extension sends captured job posting content only to the local Jobhunt companion app at `127.0.0.1`.
 - The companion app is required for storage, review workflows, extraction, and scoring.
 - Captures can be queued in Chrome extension storage when the companion app is not running.
+- Queued captures can be exported as CSV for use in Google Sheets or another tracker.
 - Optional LLM extraction depends on the provider configured inside the Mac app.
 
 ## Local Server Details

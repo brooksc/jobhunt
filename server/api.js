@@ -22,10 +22,34 @@ const STATIC_DIR = resolve(__dirname, '../static');
 const VERSION = '0.1.0';
 const AUTO_EXTRACT_INTERVAL_MS = 5000;
 const AUTO_AVAILABILITY_INTERVAL_MS = 60 * 60 * 1000;
+const EXTENSION_WRITE_PATHS = new Set(['/captures', '/site-reviews']);
 
 /** @param {{ dbPath?: string, autoExtract?: boolean }} [opts] */
 export function createApp({ dbPath, autoExtract = false } = {}) {
   const app = express();
+
+  app.use((req, res, next) => {
+    if (!EXTENSION_WRITE_PATHS.has(req.path)) {
+      return next();
+    }
+
+    const origin = req.get('origin');
+    if (origin && origin.startsWith('chrome-extension://')) {
+      res.set('Access-Control-Allow-Origin', origin);
+      res.set('Access-Control-Allow-Headers', 'content-type');
+      res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      if (req.get('access-control-request-private-network') === 'true') {
+        res.set('Access-Control-Allow-Private-Network', 'true');
+      }
+    }
+
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
+
+    next();
+  });
+
   app.use(express.json({ limit: '10mb' }));
 
   // No-cache for dynamic assets

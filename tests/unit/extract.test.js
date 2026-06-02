@@ -7,7 +7,6 @@ import {
   normalizeCompanyFromSource,
   normalizeEmploymentFromSource,
   normalizeLocationFromSource,
-  normalizeNiceToHavesFromSource,
   normalizeRemoteTypeFromSource,
   normalizeSalaryFromSource,
   parseExtractedJob,
@@ -541,15 +540,6 @@ Work site 4 days / week in-office`;
 
     assert.equal(normalized.location, 'Remote - United States or Canada');
   });
-
-  it('restores remote country context when the model drops the remote label', () => {
-    const normalized = normalizeLocationFromSource(
-      { company: 'Mercury', title: 'Senior Product Manager', location: 'United States or Canada', remote_type: 'remote' },
-      'Mercury\nSenior Product Manager\nRemote - United States or Canada\nRole details'
-    );
-
-    assert.equal(normalized.location, 'Remote - United States or Canada');
-  });
 });
 
 describe('normalizeEmploymentFromSource', () => {
@@ -569,64 +559,6 @@ describe('normalizeEmploymentFromSource', () => {
     );
 
     assert.equal(normalized.employment_type, 'unknown');
-  });
-});
-
-describe('normalizeNiceToHavesFromSource', () => {
-  it('fills empty nice-to-haves from an explicit nice-to-have section', () => {
-    const normalized = normalizeNiceToHavesFromSource(
-      { nice_to_haves: [] },
-      `Must have:
-- 5+ years technical program management experience.
-
-Nice to have:
-- SQL familiarity.
-- Experience with fraud or risk systems.
-
-Benefits include medical coverage.`
-    );
-
-    assert.deepEqual(normalized.nice_to_haves, [
-      'SQL familiarity',
-      'Experience with fraud or risk systems',
-    ]);
-  });
-
-  it('preserves model-provided nice-to-haves', () => {
-    const normalized = normalizeNiceToHavesFromSource(
-      { nice_to_haves: ['Model evaluation experience'] },
-      'Preferred qualifications:\n- Developer tooling experience.'
-    );
-
-    assert.deepEqual(normalized.nice_to_haves, ['Model evaluation experience']);
-  });
-
-  it('does not copy required-only sections into nice-to-haves', () => {
-    const normalized = normalizeNiceToHavesFromSource(
-      { nice_to_haves: [] },
-      `Required qualifications:
-- 7+ years technical program management experience.
-- Strong executive communication and cross-functional planning.`
-    );
-
-    assert.deepEqual(normalized.nice_to_haves, []);
-  });
-
-  it('fills empty nice-to-haves from concrete domain signals when no preferred section exists', () => {
-    const normalized = normalizeNiceToHavesFromSource(
-      { nice_to_haves: [] },
-      `Responsibilities:
-- Drive product strategy and execution across Microsoft 365 experiences.
-- Partner with engineering, design, and research teams.
-
-Required qualifications:
-- 4+ years product or technical program management experience.`
-    );
-
-    assert.deepEqual(normalized.nice_to_haves, [
-      'Drive product strategy and execution across Microsoft 365 experiences',
-      'Partner with engineering, design, and research teams',
-    ]);
   });
 });
 

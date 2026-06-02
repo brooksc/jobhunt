@@ -226,6 +226,14 @@ function Sidebar({ route, setRoute, setSavedViewName, theme, themeMode, onToggle
         <Icon.Settings />
         <span>Settings</span>
       </button>
+      <button
+        className="jh-side__nav"
+        aria-current={route === "help" ? "page" : undefined}
+        onClick={() => setRoute("help")}
+      >
+        <Icon.Help />
+        <span>Help</span>
+      </button>
 
       <div className="jh-side__footer">
         <div className="jh-side__status">
@@ -266,6 +274,7 @@ const ROUTE_LABELS = {
   duplicates: "Duplicates",
   "llm-queue": "LLM Queue",
   settings: "Settings",
+  help: "Help",
 };
 
 function TopBar({ route, children, right }) {

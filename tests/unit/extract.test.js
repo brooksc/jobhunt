@@ -7,6 +7,7 @@ import {
   normalizeCompanyFromSource,
   normalizeEmploymentFromSource,
   normalizeLocationFromSource,
+  normalizeNiceToHavesFromSource,
   normalizeRemoteTypeFromSource,
   normalizeSalaryFromSource,
   parseExtractedJob,
@@ -187,6 +188,21 @@ WA
 $205,000-$216,500 USD
 All other states
 $178,000-$188,000 USD`,
+    });
+
+    assert.equal(normalized.salary_min, 205000);
+    assert.equal(normalized.salary_max, 216500);
+  });
+
+  it('prefers labeled salary note bands over unrelated listing-page salary text', () => {
+    const normalized = normalizeSalaryFromSource({
+      salary_min: 248000,
+      salary_max: 279000,
+      salary_currency: 'USD',
+      salary_note: 'For US based candidates: CA, NY, CT, NJ $214,000-$216,500 USD; WA $205,000-$216,500 USD; All other states $178,000-$188,000 USD.',
+    }, {
+      preferredLocations: 'Seattle, WA, Remote, United States',
+      sourceText: 'Discord Staff Technical Program Manager On-site $248K - $279K\nInstacart Senior Technical Program Manager\nWA\n$205,000-$216,500 USD',
     });
 
     assert.equal(normalized.salary_min, 205000);
@@ -441,6 +457,24 @@ About the role`
     assert.equal(normalized.remote_type, 'remote');
   });
 
+  it('treats remote-option locations as remote', () => {
+    const normalized = normalizeRemoteTypeFromSource(
+      { company: 'Mercury', title: 'SPM', location: 'San Francisco, CA, or Remote within Canada or United States', remote_type: 'hybrid' },
+      'San Francisco, CA, New York, NY, Portland, OR, or Remote within Canada or United States'
+    );
+
+    assert.equal(normalized.remote_type, 'remote');
+  });
+
+  it('treats slash remote and LI remote tags as remote', () => {
+    const normalized = normalizeRemoteTypeFromSource(
+      { company: 'Pinterest', title: 'PM', location: 'San Francisco / Remote', remote_type: 'hybrid' },
+      'San Francisco / Remote\n#LI-REMOTE'
+    );
+
+    assert.equal(normalized.remote_type, 'remote');
+  });
+
   it('infers Microsoft 0 days in-office as remote', () => {
     const normalized = normalizeRemoteTypeFromSource(
       { company: 'Microsoft', title: 'PM', location: 'United States, Washington, Redmond', remote_type: 'unknown' },
@@ -540,6 +574,24 @@ Work site 4 days / week in-office`;
 
     assert.equal(normalized.location, 'Remote - United States or Canada');
   });
+
+  it('restores remote country context when the model drops the remote label', () => {
+    const normalized = normalizeLocationFromSource(
+      { company: 'Mercury', title: 'Senior Product Manager', location: 'United States or Canada', remote_type: 'remote' },
+      'Mercury\nSenior Product Manager\nRemote - United States or Canada\nRole details'
+    );
+
+    assert.equal(normalized.location, 'Remote - United States or Canada');
+  });
+
+  it('uses Remote as the fallback location for remote jobs with no source location', () => {
+    const normalized = normalizeLocationFromSource(
+      { company: 'GitLab', title: 'Senior Director', location: null, remote_type: 'remote' },
+      'Strength in written and asynchronous communication within a distributed, all-remote environment.'
+    );
+
+    assert.equal(normalized.location, 'Remote');
+  });
 });
 
 describe('normalizeEmploymentFromSource', () => {
@@ -559,6 +611,64 @@ describe('normalizeEmploymentFromSource', () => {
     );
 
     assert.equal(normalized.employment_type, 'unknown');
+  });
+});
+
+describe('normalizeNiceToHavesFromSource', () => {
+  it('fills empty nice-to-haves from an explicit nice-to-have section', () => {
+    const normalized = normalizeNiceToHavesFromSource(
+      { nice_to_haves: [] },
+      `Must have:
+- 5+ years technical program management experience.
+
+Nice to have:
+- SQL familiarity.
+- Experience with fraud or risk systems.
+
+Benefits include medical coverage.`
+    );
+
+    assert.deepEqual(normalized.nice_to_haves, [
+      'SQL familiarity',
+      'Experience with fraud or risk systems',
+    ]);
+  });
+
+  it('preserves model-provided nice-to-haves', () => {
+    const normalized = normalizeNiceToHavesFromSource(
+      { nice_to_haves: ['Model evaluation experience'] },
+      'Preferred qualifications:\n- Developer tooling experience.'
+    );
+
+    assert.deepEqual(normalized.nice_to_haves, ['Model evaluation experience']);
+  });
+
+  it('does not copy required-only sections into nice-to-haves', () => {
+    const normalized = normalizeNiceToHavesFromSource(
+      { nice_to_haves: [] },
+      `Required qualifications:
+- 7+ years technical program management experience.
+- Strong executive communication and cross-functional planning.`
+    );
+
+    assert.deepEqual(normalized.nice_to_haves, []);
+  });
+
+  it('fills empty nice-to-haves from concrete domain signals when no preferred section exists', () => {
+    const normalized = normalizeNiceToHavesFromSource(
+      { nice_to_haves: [] },
+      `Responsibilities:
+- Drive product strategy and execution across Microsoft 365 experiences.
+- Partner with engineering, design, and research teams.
+
+Required qualifications:
+- 4+ years product or technical program management experience.`
+    );
+
+    assert.deepEqual(normalized.nice_to_haves, [
+      'Drive product strategy and execution across Microsoft 365 experiences',
+      'Partner with engineering, design, and research teams',
+    ]);
   });
 });
 

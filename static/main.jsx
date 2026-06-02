@@ -1,6 +1,6 @@
 // Fetches real data from the local API and mounts the app.
 (async function () {
-  const STATUSES = ["saved", "applied", "interview", "offer", "rejected", "archived", "not_available"];
+  const STATUSES = ["saved", "applied", "interview", "offer", "rejected", "archived", "not_available", "duplicate"];
   const rootEl = document.getElementById("root");
   const savedTheme = localStorage.getItem("jobhunt.theme");
   const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -17,6 +17,7 @@
       rejected: "rejected",
       closed: "archived",
       ignored: "archived",
+      duplicate: "duplicate",
     };
     return map[dbStatus] || dbStatus;
   }
@@ -438,14 +439,15 @@
 
     const dupes = (raw.dupes || []).map(g => ({
       id: g.group_id,
+      kind: g.kind || "exact_hash",
       cleanedHash: g.cleaned_hash,
-      hash: g.cleaned_hash ? g.cleaned_hash.slice(0, 8) + "…" : "—",
-      similarity: 1.0,
-      reason: "Identical cleaned description hash",
+      hash: g.cleaned_hash ? g.cleaned_hash.slice(0, 8) + "…" : (g.group_id || "—"),
+      similarity: Number(g.similarity ?? 1.0),
+      reason: g.reason || "Identical cleaned description hash",
       jobIds: g.job_ids,
     }));
 
-    const counts = { saved: 0, applied: 0, interview: 0, offers: 0, rejected: 0, archived: 0, pendingExtraction: 0, failedExtraction: 0 };
+    const counts = { saved: 0, applied: 0, interview: 0, offers: 0, rejected: 0, archived: 0, duplicates: 0, pendingExtraction: 0, failedExtraction: 0 };
     jobs.forEach(j => {
       if (j.status === "saved") counts.saved++;
       else if (j.status === "applied") counts.applied++;
@@ -453,6 +455,7 @@
       else if (j.status === "offer") counts.offers++;
       else if (j.status === "rejected") counts.rejected++;
       else if (j.status === "archived") counts.archived++;
+      else if (j.status === "duplicate") counts.duplicates++;
       if (j.extraction.status === "pending") counts.pendingExtraction++;
       if (j.extraction.status === "fail") counts.failedExtraction++;
     });

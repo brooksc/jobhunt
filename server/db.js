@@ -10,7 +10,7 @@ import { dirname, join, resolve } from 'path';
 import { cleanDescription } from './cleaning.js';
 
 export const JOB_STATUSES = new Set([
-  'saved', 'applied', 'interview', 'offer', 'rejected', 'archived', 'not_available',
+  'saved', 'applied', 'interview', 'offer', 'rejected', 'archived', 'not_available', 'duplicate',
 ]);
 
 export const ACTIVE_JOB_STATUSES = new Set(['saved', 'applied', 'interview', 'offer']);
@@ -250,6 +250,107 @@ function truncateText(value, limit = 2000) {
 
 function hashText(value) {
   return createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+function normalizeDuplicateText(value) {
+  return String(value || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function companyDomainScore(company, url) {
+  if (!company || !url) return 0;
+  let hostname;
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch {
+    return 0;
+  }
+  hostname = hostname.replace(/^www\./, '');
+  const companyText = normalizeDuplicateText(company);
+  const companyCompact = companyText.replace(/\s+/g, '');
+  if (!companyCompact) return 0;
+
+  const labels = hostname.split('.').filter(Boolean);
+  const registrable = labels.length >= 2 ? labels[labels.length - 2] : labels[0] || '';
+  const hostCompact = labels.join('');
+
+  if (registrable === companyCompact) return 100;
+  if (labels.includes(companyCompact)) return 90;
+  if (hostCompact === companyCompact) return 85;
+  if (companyCompact.length >= 4 && labels.some(label => label.includes(companyCompact))) return 70;
+  if (companyCompact.length >= 4 && hostCompact.includes(companyCompact)) return 60;
+
+  const companyTokens = companyText.split(/\s+/).filter(t => t.length >= 3);
+  if (companyTokens.length && companyTokens.some(token => labels.includes(token))) return 50;
+  return 0;
+}
+
+function sourceHostname(url) {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+const DUPLICATE_DESCRIPTION_STOP_WORDS = new Set([
+  'about', 'above', 'across', 'after', 'again', 'against', 'also', 'and', 'another', 'apply',
+  'because', 'been', 'before', 'being', 'benefits', 'between', 'candidate', 'careers', 'company',
+  'could', 'description', 'each', 'employment', 'equal', 'every', 'from', 'have', 'hiring',
+  'into', 'including', 'jobs', 'listed', 'looking', 'more', 'must', 'other', 'over', 'position',
+  'posted', 'posting', 'remote', 'requirements', 'responsibilities', 'role', 'same', 'seeking',
+  'should', 'team', 'than', 'that', 'their', 'there', 'this', 'through', 'with', 'will', 'work',
+  'working', 'would', 'years', 'your',
+]);
+
+function duplicateDescriptionTokens(value) {
+  return new Set(normalizeDuplicateText(value)
+    .split(/\s+/)
+    .filter(token => token.length >= 4 && !DUPLICATE_DESCRIPTION_STOP_WORDS.has(token)));
+}
+
+function duplicateDescriptionSimilarity(left, right) {
+  const leftTokens = duplicateDescriptionTokens(left);
+  const rightTokens = duplicateDescriptionTokens(right);
+  const smaller = Math.min(leftTokens.size, rightTokens.size);
+  if (smaller < 8) return null;
+  let intersection = 0;
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) intersection++;
+  }
+  return intersection / smaller;
+}
+
+function knownValue(value) {
+  const normalized = normalizeDuplicateText(value);
+  return normalized && normalized !== 'unknown' ? normalized : '';
+}
+
+function duplicateCriticalFieldsMatch(left, right) {
+  for (const field of ['location', 'remote_type', 'employment_type', 'seniority']) {
+    const leftValue = knownValue(left[field]);
+    const rightValue = knownValue(right[field]);
+    if (leftValue && rightValue && leftValue !== rightValue) return false;
+  }
+
+  for (const field of ['salary_currency', 'salary_min', 'salary_max']) {
+    if (left[field] != null && right[field] != null && left[field] !== right[field]) return false;
+  }
+  return true;
+}
+
+function duplicateEvidenceMatch(left, right) {
+  if (!duplicateCriticalFieldsMatch(left, right)) return null;
+  const descriptionSimilarity = duplicateDescriptionSimilarity(left.cleaned_description, right.cleaned_description);
+  if (descriptionSimilarity != null && descriptionSimilarity < 0.5) return null;
+  return { descriptionSimilarity };
+}
+
+function duplicateDetectionNote(keep, job, evidence) {
+  const parts = [`preferred ${keep.source_hostname} over ${job.source_hostname}`];
+  if (evidence.descriptionSimilarity != null) {
+    parts.push(`description similarity ${evidence.descriptionSimilarity.toFixed(2)}`);
+  }
+  return parts.join('; ');
 }
 
 // Produces compact JSON with all object keys sorted recursively,
@@ -1007,6 +1108,7 @@ export function markExtractionSucceeded(jobId, extracted, dbPath, requestId, mod
       db.prepare("UPDATE llm_requests SET status='succeeded', model=?, error=NULL, finished_at=? WHERE id=? AND status='running'").run(model ?? null, now, requestId);
     }
   });
+  detectDomainDuplicateJobs(dbPath);
 }
 
 export function markExtractionFailed(jobId, error, dbPath, requestId) {
@@ -1470,6 +1572,136 @@ export function reviewSiteRow(db, row) {
 // Duplicate decisions
 // ------------------------------------------------------------------
 
+export function detectDomainDuplicateJobs(dbPath) {
+  const db = initDb(dbPath);
+  const rows = db.prepare(`SELECT jobs.id, jobs.status, jobs.company, jobs.title,
+      jobs.duplicate_of_job_id, jobs.duplicate_confidence, jobs.application_url,
+      jobs.location, jobs.remote_type, jobs.salary_min, jobs.salary_max, jobs.salary_currency,
+      jobs.employment_type, jobs.seniority,
+      captures.cleaned_description,
+      COALESCE(captures.canonical_url, captures.url) AS source_url
+    FROM jobs JOIN captures ON captures.id=jobs.capture_id
+    WHERE jobs.extraction_status='succeeded'
+      AND jobs.company IS NOT NULL AND TRIM(jobs.company) != ''
+      AND jobs.title IS NOT NULL AND TRIM(jobs.title) != ''
+      AND jobs.status NOT IN ('archived', 'not_available')`).all();
+
+  const groups = new Map();
+  for (const row of rows) {
+    const companyKey = normalizeDuplicateText(row.company);
+    const titleKey = normalizeDuplicateText(row.title);
+    if (!companyKey || !titleKey) continue;
+    const key = `${companyKey}\n${titleKey}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({
+      ...row,
+      source_domain_score: companyDomainScore(row.company, row.source_url),
+      source_hostname: sourceHostname(row.source_url),
+    });
+  }
+
+  const now = nowIso();
+  let groupsDetected = 0;
+  let jobsMarked = 0;
+
+  return withTransaction(db, () => {
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const hostnames = new Set(group.map(row => row.source_hostname).filter(Boolean));
+      if (hostnames.size < 2) continue;
+
+      const sorted = [...group].sort((a, b) => {
+        if (b.source_domain_score !== a.source_domain_score) return b.source_domain_score - a.source_domain_score;
+        return String(a.id).localeCompare(String(b.id));
+      });
+      const keep = sorted[0];
+      const runnerUpScore = sorted[1]?.source_domain_score ?? 0;
+      if (keep.source_domain_score <= 0 || keep.source_domain_score === runnerUpScore) continue;
+
+      let groupMarked = 0;
+      for (const job of sorted.slice(1)) {
+        if (job.status !== 'saved' && job.status !== 'duplicate') continue;
+        const evidence = duplicateEvidenceMatch(keep, job);
+        if (!evidence) continue;
+
+        const domainConfidence = 0.65 + ((keep.source_domain_score - job.source_domain_score) / 100) * 0.24;
+        const descriptionConfidence = evidence.descriptionSimilarity == null
+          ? 0
+          : Math.max(0, evidence.descriptionSimilarity - 0.5) * 0.2;
+        const confidence = Math.min(0.99, domainConfidence + descriptionConfidence);
+        const result = db.prepare(`UPDATE jobs
+          SET duplicate_of_job_id=?, duplicate_confidence=?, updated_at=?
+          WHERE id=? AND (duplicate_of_job_id IS NOT ? OR duplicate_confidence IS NOT ?)`)
+          .run(keep.id, confidence, now, job.id, keep.id, confidence);
+        if (result.changes > 0) {
+          jobsMarked += 1;
+          groupMarked += 1;
+          db.prepare(`INSERT INTO events (id, job_id, event_type, note, occurred_at, created_at)
+            VALUES (?, ?, 'duplicate_detected', ?, ?, ?)`)
+            .run(makeId('evt'), job.id, duplicateDetectionNote(keep, job, evidence), now, now);
+        }
+      }
+
+      const keepResult = db.prepare(`UPDATE jobs
+        SET duplicate_of_job_id=NULL, duplicate_confidence=NULL,
+          status=CASE WHEN status='duplicate' THEN 'saved' ELSE status END,
+          updated_at=?
+        WHERE id=? AND (duplicate_of_job_id IS NOT NULL OR duplicate_confidence IS NOT NULL OR status='duplicate')`)
+        .run(now, keep.id);
+      if (keepResult.changes > 0) {
+        db.prepare(`INSERT INTO events (id, job_id, event_type, note, occurred_at, created_at)
+          VALUES (?, ?, 'duplicate_preferred', ?, ?, ?)`)
+          .run(makeId('evt'), keep.id, `preferred source ${keep.source_hostname}`, now, now);
+      }
+
+      if (groupMarked > 0 || keepResult.changes > 0) groupsDetected += 1;
+    }
+    return { groups_detected: groupsDetected, jobs_marked: jobsMarked };
+  });
+}
+
+export function decideDuplicateLinks(jobIds, decision, keepJobId, note, dbPath) {
+  if (decision !== 'merged' && decision !== 'not_duplicate') {
+    throw new Error("decision must be 'merged' or 'not_duplicate'");
+  }
+  if (!Array.isArray(jobIds) || jobIds.length < 2) {
+    throw new Error('job_ids must include at least two job ids');
+  }
+  const ids = [...new Set(jobIds.map(id => String(id || '').trim()).filter(Boolean))];
+  if (ids.length < 2) throw new Error('job_ids must include at least two job ids');
+
+  const db = connect(dbPath);
+  const now = nowIso();
+
+  return withTransaction(db, () => {
+    const placeholders = ids.map(() => '?').join(',');
+    const existing = db.prepare(`SELECT id FROM jobs WHERE id IN (${placeholders})`).all(...ids).map(row => row.id);
+    if (existing.length !== ids.length) throw new Error('one or more duplicate jobs were not found');
+
+    if (decision === 'merged') {
+      keepJobId = keepJobId || ids[0];
+      if (!ids.includes(keepJobId)) throw new Error(`keep_job_id is not in duplicate group: ${keepJobId}`);
+      for (const jid of ids) {
+        if (jid === keepJobId) continue;
+        db.prepare("UPDATE jobs SET status='duplicate', duplicate_of_job_id=?, duplicate_confidence=COALESCE(duplicate_confidence, 1.0), updated_at=? WHERE id=?")
+          .run(keepJobId, now, jid);
+      }
+      db.prepare("UPDATE jobs SET duplicate_of_job_id=NULL, duplicate_confidence=NULL, status=CASE WHEN status='duplicate' THEN 'saved' ELSE status END, updated_at=? WHERE id=?")
+        .run(now, keepJobId);
+    } else {
+      keepJobId = null;
+      db.prepare(`UPDATE jobs SET duplicate_of_job_id=NULL, duplicate_confidence=NULL,
+        status=CASE WHEN status='duplicate' THEN 'saved' ELSE status END,
+        updated_at=? WHERE id IN (${placeholders})`).run(now, ...ids);
+    }
+
+    for (const jid of ids) {
+      db.prepare("INSERT INTO events (id, job_id, event_type, note, occurred_at, created_at) VALUES (?, ?, 'duplicate_decided', ?, ?, ?)")
+        .run(makeId('evt'), jid, `${decision}${note ? `: ${String(note).trim()}` : ''}`, now, now);
+    }
+  });
+}
+
 export function decideDuplicateGroup(cleanedHash, decision, keepJobId, note, dbPath) {
   if (decision !== 'merged' && decision !== 'not_duplicate') {
     throw new Error("decision must be 'merged' or 'not_duplicate'");
@@ -1488,12 +1720,14 @@ export function decideDuplicateGroup(cleanedHash, decision, keepJobId, note, dbP
       if (!jobIds.includes(keepJobId)) throw new Error(`keep_job_id is not in duplicate group: ${keepJobId}`);
       for (const jid of jobIds) {
         if (jid === keepJobId) continue;
-        db.prepare("UPDATE jobs SET status='archived', duplicate_of_job_id=?, duplicate_confidence=1.0, updated_at=? WHERE id=?").run(keepJobId, now, jid);
+        db.prepare("UPDATE jobs SET status='duplicate', duplicate_of_job_id=?, duplicate_confidence=1.0, updated_at=? WHERE id=?").run(keepJobId, now, jid);
       }
     } else {
       keepJobId = null;
       const placeholders = jobIds.map(() => '?').join(',');
-      db.prepare(`UPDATE jobs SET duplicate_of_job_id=NULL, duplicate_confidence=NULL, updated_at=? WHERE id IN (${placeholders})`).run(now, ...jobIds);
+      db.prepare(`UPDATE jobs SET duplicate_of_job_id=NULL, duplicate_confidence=NULL,
+        status=CASE WHEN status='duplicate' THEN 'saved' ELSE status END,
+        updated_at=? WHERE id IN (${placeholders})`).run(now, ...jobIds);
     }
 
     db.prepare(`INSERT OR REPLACE INTO duplicate_decisions (cleaned_hash, decision, keep_job_id, note, decided_at, created_at) VALUES (?, ?, ?, ?, ?, ?)`).run(cleanedHash, decision, keepJobId, (note || '').trim(), now, now);

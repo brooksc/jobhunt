@@ -7,7 +7,7 @@ import {
   markLlmRequestRunning, startLlmRequestAttempt, finishLlmRequestAttempt,
   getLlmRequestAttempts, resetLlmRequestsForManualRun, getOutstandingLlmRequests,
   markExtractionSucceeded, markDataQualityReviewed, clearDataQualityReviewed, queueBulkLlmJobs,
-  decideDuplicateGroup,
+  decideDuplicateGroup, detectDomainDuplicateJobs, decideDuplicateLinks,
 } from '../../server/db.js';
 import { runExtractionForSelected } from '../../server/extract.js';
 import { tempDbPath, cleanupDb, CAPTURE, CAPTURE2 } from '../helpers.js';
@@ -288,7 +288,7 @@ describe('duplicate decisions', () => {
     assert.equal(jobs.find(j => j.id === keepJobId).status, 'saved');
     assert.equal(jobs.find(j => j.id === keepJobId).duplicate_of_job_id, null);
     for (const job of jobs.filter(j => j.id !== keepJobId)) {
-      assert.equal(job.status, 'archived');
+      assert.equal(job.status, 'duplicate');
       assert.equal(job.duplicate_of_job_id, keepJobId);
       assert.equal(job.duplicate_confidence, 1);
     }
@@ -307,6 +307,173 @@ describe('duplicate decisions', () => {
     assert.equal(decision.keep_job_id, null);
     assert.ok(jobs.every(j => j.duplicate_of_job_id === null));
     assert.ok(jobs.every(j => j.duplicate_confidence === null));
+  });
+});
+
+describe('domain duplicate detection', () => {
+  let dbPath;
+  before(() => { dbPath = tempDbPath(); initDb(dbPath); });
+  after(() => cleanupDb(dbPath));
+
+  function capturedJob(url, pageTitle, visibleText) {
+    const result = insertCapture({ url, page_title: pageTitle, visible_text: visibleText }, dbPath);
+    const db = initDb(dbPath);
+    return db.prepare('SELECT id FROM jobs WHERE capture_id=?').get(result.capture_id).id;
+  }
+
+  const staffEngineerDescription = [
+    'Lead distributed telemetry pipeline development for enterprise customers.',
+    'Design scalable data processing services using JavaScript, TypeScript, SQL, and cloud infrastructure.',
+    'Partner with product managers, security engineers, support teams, and reliability specialists.',
+    'Own incident response, architecture reviews, performance tuning, roadmap planning, and mentoring.',
+  ].join(' ');
+
+  it('links the weaker source-domain match for duplicate review', () => {
+    const companyJob = capturedJob(
+      'https://cribl.io/careers/jobs/staff-engineer',
+      'Staff Engineer - CRIBL',
+      staffEngineerDescription,
+    );
+    const boardJob = capturedJob(
+      'https://www.builtinseattle.com/job/staff-engineer-cribl',
+      'Staff Engineer at CRIBL',
+      `${staffEngineerDescription} Built In Seattle listing metadata.`,
+    );
+
+    markExtractionSucceeded(companyJob, {
+      company: 'CRIBL',
+      title: 'Staff Engineer',
+      location: 'Remote',
+      remote_type: 'remote',
+      salary_min: 180000,
+      salary_max: 220000,
+      salary_currency: 'USD',
+    }, dbPath);
+    markExtractionSucceeded(boardJob, {
+      company: 'CRIBL',
+      title: 'Staff Engineer',
+      location: 'Remote',
+      remote_type: 'remote',
+      salary_min: 180000,
+      salary_max: 220000,
+      salary_currency: 'USD',
+    }, dbPath);
+
+    const db = initDb(dbPath);
+    const rows = db.prepare('SELECT id, status, duplicate_of_job_id, duplicate_confidence FROM jobs WHERE id IN (?, ?) ORDER BY id').all(companyJob, boardJob);
+    const preferred = rows.find(row => row.id === companyJob);
+    const candidate = rows.find(row => row.id === boardJob);
+
+    assert.equal(preferred.status, 'saved');
+    assert.equal(preferred.duplicate_of_job_id, null);
+    assert.equal(candidate.status, 'saved');
+    assert.equal(candidate.duplicate_of_job_id, companyJob);
+    assert.ok(candidate.duplicate_confidence > 0.9);
+  });
+
+  it('marks reviewed duplicate candidates as duplicate', () => {
+    const companyJob = capturedJob(
+      'https://reviewed.example.com/careers/jobs/platform-engineer',
+      'Platform Engineer',
+      staffEngineerDescription,
+    );
+    const boardJob = capturedJob(
+      'https://boards.example.net/reviewed/platform-engineer',
+      'Platform Engineer',
+      staffEngineerDescription,
+    );
+
+    markExtractionSucceeded(companyJob, {
+      company: 'Reviewed',
+      title: 'Platform Engineer',
+      location: 'Remote',
+      remote_type: 'remote',
+    }, dbPath);
+    markExtractionSucceeded(boardJob, {
+      company: 'Reviewed',
+      title: 'Platform Engineer',
+      location: 'Remote',
+      remote_type: 'remote',
+    }, dbPath);
+    decideDuplicateLinks([companyJob, boardJob], 'merged', companyJob, 'reviewed duplicate', dbPath);
+
+    const db = initDb(dbPath);
+    const duplicate = db.prepare('SELECT status, duplicate_of_job_id FROM jobs WHERE id=?').get(boardJob);
+
+    assert.equal(duplicate.status, 'duplicate');
+    assert.equal(duplicate.duplicate_of_job_id, companyJob);
+  });
+
+  it('does not link candidates with conflicting critical fields', () => {
+    const companyJob = capturedJob(
+      'https://salarycheck.example.com/careers/jobs/staff-engineer',
+      'Staff Engineer',
+      staffEngineerDescription,
+    );
+    const boardJob = capturedJob(
+      'https://jobs.example.org/salarycheck/staff-engineer',
+      'Staff Engineer',
+      staffEngineerDescription,
+    );
+
+    markExtractionSucceeded(companyJob, {
+      company: 'Salarycheck',
+      title: 'Staff Engineer',
+      location: 'Remote',
+      remote_type: 'remote',
+      salary_min: 180000,
+      salary_max: 220000,
+      salary_currency: 'USD',
+    }, dbPath);
+    markExtractionSucceeded(boardJob, {
+      company: 'Salarycheck',
+      title: 'Staff Engineer',
+      location: 'Remote',
+      remote_type: 'remote',
+      salary_min: 120000,
+      salary_max: 150000,
+      salary_currency: 'USD',
+    }, dbPath);
+
+    const db = initDb(dbPath);
+    const rows = db.prepare('SELECT status, duplicate_of_job_id FROM jobs WHERE id IN (?, ?)').all(companyJob, boardJob);
+
+    assert.ok(rows.every(row => row.status === 'saved'));
+    assert.ok(rows.every(row => row.duplicate_of_job_id === null));
+  });
+
+  it('leaves ambiguous equal-score matches untouched', () => {
+    const firstJob = capturedJob(
+      'https://jobs.example.com/acme/staff-engineer',
+      'Staff Engineer at Acme',
+      'Acme staff engineer listing from the first site.',
+    );
+    const secondJob = capturedJob(
+      'https://boards.example.org/acme/staff-engineer',
+      'Staff Engineer at Acme',
+      'Acme staff engineer listing from the second site.',
+    );
+
+    markExtractionSucceeded(firstJob, {
+      company: 'Acme',
+      title: 'Staff Engineer',
+      location: 'Remote',
+      remote_type: 'remote',
+    }, dbPath);
+    markExtractionSucceeded(secondJob, {
+      company: 'Acme',
+      title: 'Staff Engineer',
+      location: 'Remote',
+      remote_type: 'remote',
+    }, dbPath);
+
+    const summary = detectDomainDuplicateJobs(dbPath);
+    const db = initDb(dbPath);
+    const rows = db.prepare('SELECT status, duplicate_of_job_id FROM jobs WHERE id IN (?, ?)').all(firstJob, secondJob);
+
+    assert.equal(summary.jobs_marked, 0);
+    assert.ok(rows.every(row => row.status === 'saved'));
+    assert.ok(rows.every(row => row.duplicate_of_job_id === null));
   });
 });
 

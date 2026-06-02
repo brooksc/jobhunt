@@ -58,6 +58,7 @@
   --st-rejected: #C76262;    /* muted red */
   --st-archived: #5A5F68;    /* dim */
   --st-not-available: #B07C35; /* amber-orange */
+  --st-duplicate: #7B6FC8;    /* muted violet */
 
   --shadow-panel: 0 1px 0 rgba(0,0,0,0.5), 0 12px 32px -8px rgba(0,0,0,0.6);
   --shadow-popover: 0 1px 0 rgba(0,0,0,0.6), 0 8px 24px -4px rgba(0,0,0,0.7);
@@ -90,6 +91,7 @@
   --st-rejected: #B14848;
   --st-archived: #9A9EA6;
   --st-not-available: #9E6B1F;
+  --st-duplicate: #7469B8;
 
   --shadow-panel: 0 1px 0 rgba(0,0,0,0.04), 0 12px 32px -8px rgba(0,0,0,0.12);
   --shadow-popover: 0 1px 0 rgba(0,0,0,0.04), 0 8px 24px -4px rgba(0,0,0,0.14);
@@ -488,6 +490,7 @@
 .jh-chip[data-status="rejected"] .dot { background: var(--st-rejected); }
 .jh-chip[data-status="archived"] .dot { background: var(--st-archived); }
 .jh-chip[data-status="not_available"] .dot { background: var(--st-not-available); }
+.jh-chip[data-status="duplicate"] .dot { background: var(--st-duplicate); }
 
 .jh-chip--solid {
   background: var(--accent-bg);

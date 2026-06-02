@@ -4,6 +4,7 @@ import { createApp } from '../../server/api.js';
 import {
   finishLlmRequestAttempt,
   initDb,
+  insertCapture,
   markExtractionSucceeded,
   markFitSucceeded,
   markLlmRequestRunning,
@@ -154,6 +155,76 @@ describe('GET /api/ui-data', () => {
     ]) {
       assert.ok(field in job, `expected ${field} in job payload`);
     }
+  });
+
+  it('does not show closed exact-hash duplicates as review groups', async () => {
+    const first = insertCapture({
+      url: 'https://closed-dupes.example.com/jobs/1',
+      page_title: 'Closed Duplicate 1',
+      visible_text: 'Same closed duplicate description body',
+    }, dbPath);
+    const second = insertCapture({
+      url: 'https://closed-dupes.example.org/jobs/1',
+      page_title: 'Closed Duplicate 2',
+      visible_text: 'Same closed duplicate description body',
+    }, dbPath);
+    const db = initDb(dbPath);
+    const jobIds = db.prepare('SELECT id FROM jobs WHERE capture_id IN (?, ?)').all(first.capture_id, second.capture_id).map(row => row.id);
+    const placeholders = jobIds.map(() => '?').join(',');
+    db.prepare(`UPDATE jobs SET status='archived' WHERE id IN (${placeholders})`).run(...jobIds);
+
+    const res = await fetch(`${base}/api/ui-data`);
+    const body = await res.json();
+    const closedGroups = body.dupes.filter(group => group.job_ids.some(id => jobIds.includes(id)));
+
+    assert.deepEqual(closedGroups, []);
+  });
+
+  it('does not show low-signal exact-hash duplicates as review groups', async () => {
+    const first = insertCapture({
+      url: 'https://weak-dupes.example.com/jobs/1',
+      page_title: 'Weak Duplicate 1',
+      visible_text: '$',
+    }, dbPath);
+    const second = insertCapture({
+      url: 'https://weak-dupes.example.org/jobs/1',
+      page_title: 'Weak Duplicate 2',
+      visible_text: '$',
+    }, dbPath);
+    const db = initDb(dbPath);
+    const jobIds = db.prepare('SELECT id FROM jobs WHERE capture_id IN (?, ?)').all(first.capture_id, second.capture_id).map(row => row.id);
+
+    const res = await fetch(`${base}/api/ui-data`);
+    const body = await res.json();
+    const weakGroups = body.dupes.filter(group => group.job_ids.some(id => jobIds.includes(id)));
+
+    assert.deepEqual(weakGroups, []);
+  });
+
+  it('shows meaningful exact-hash duplicates as review groups', async () => {
+    const meaningfulDescription = [
+      'This duplicate posting describes a senior backend engineering role building reliable workflow systems.',
+      'The team owns distributed services, database integrations, API contracts, observability, incident response,',
+      'performance tuning, product collaboration, customer-facing reliability improvements, and long-term architecture.',
+    ].join(' ');
+    const first = insertCapture({
+      url: 'https://meaningful-dupes.example.com/jobs/1',
+      page_title: 'Meaningful Duplicate 1',
+      visible_text: meaningfulDescription,
+    }, dbPath);
+    const second = insertCapture({
+      url: 'https://meaningful-dupes.example.org/jobs/1',
+      page_title: 'Meaningful Duplicate 2',
+      visible_text: meaningfulDescription,
+    }, dbPath);
+    const db = initDb(dbPath);
+    const jobIds = db.prepare('SELECT id FROM jobs WHERE capture_id IN (?, ?)').all(first.capture_id, second.capture_id).map(row => row.id);
+
+    const res = await fetch(`${base}/api/ui-data`);
+    const body = await res.json();
+    const meaningfulGroups = body.dupes.filter(group => group.job_ids.every(id => jobIds.includes(id)));
+
+    assert.equal(meaningfulGroups.length, 1);
   });
 });
 

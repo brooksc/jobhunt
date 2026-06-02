@@ -8,11 +8,11 @@ function hasValue(value) {
 }
 
 function isActionableJob(job) {
-  return job.status !== "archived" && job.status !== "not_available" && !job.dataQualityReviewedAt;
+  return job.status !== "archived" && job.status !== "not_available" && job.status !== "duplicate" && !job.dataQualityReviewedAt;
 }
 
 function hasActionableStatus(job) {
-  return job.status !== "archived" && job.status !== "not_available";
+  return job.status !== "archived" && job.status !== "not_available" && job.status !== "duplicate";
 }
 
 function qualityIssuesForJob(job) {

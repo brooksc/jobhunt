@@ -121,7 +121,7 @@ function Sidebar({ route, setRoute, setSavedViewName, theme, themeMode, onToggle
     : "LM Studio · not configured";
   const llmState = llmConfigured ? "ok" : "warn";
   const qualityIssueCount = (window.JH_JOBS || []).filter((j) => {
-    if (j.status === "archived" || j.status === "not_available") return false;
+    if (j.status === "archived" || j.status === "not_available" || j.status === "duplicate") return false;
     return qualityIssuesForJob(j).length > 0;
   }).length;
   const queuePaused = window.JH_SETTINGS?.llm_queue_paused === 'true';

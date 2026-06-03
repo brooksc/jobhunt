@@ -230,7 +230,15 @@
       }, 1000);
 
       root.querySelector("[data-jh-cancel]").addEventListener("click", () => { clearInterval(timer); root.remove(); resolve(null); });
-      root.querySelector("[data-jh-open]").addEventListener("click", () => { clearInterval(timer); root.remove(); resolve("open"); });
+      root.querySelector("[data-jh-open]").addEventListener("click", () => {
+        clearInterval(timer);
+        // Show feedback while the service worker saves then opens — keeps dialog visible
+        // so the user knows something is happening before the app focuses.
+        countdownEl.textContent = "Saving…";
+        root.querySelector("[data-jh-cancel]").style.display = "none";
+        root.querySelector("[data-jh-open]").disabled = true;
+        setTimeout(() => { root.remove(); resolve("open"); }, 900);
+      });
     });
   }
 

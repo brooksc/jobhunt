@@ -51,6 +51,7 @@ function makeFixture({
   const doc = {
     title: pageTitle,
     body: { innerText: domText },
+    getElementById(_id) { return null; },
     querySelector(selector) {
       if (selector === 'link[rel="canonical"]') {
         return canonicalUrl ? { href: canonicalUrl } : null;
@@ -164,6 +165,49 @@ describe('extension capture expansion', () => {
 // ---------------------------------------------------------------------------
 
 const MIN_CHARS = 500; // minimum meaningful JD text
+
+describe('extension capture — stale preflight cleanup', () => {
+  // world:MAIN injection persists globalThis across calls. If a previous capturePage
+  // was interrupted (e.g. user double-clicked the extension), the old preflight div
+  // (#jobhunt-capture-preflight) stays in the DOM. The NEXT capturePage call would
+  // include that dialog's text in body.innerText unless it removes it first.
+  it('removes stale preflight dialog before collecting body text', async () => {
+    let preflightRemoved = false;
+    const staleDialog = { remove() { preflightRemoved = true; } };
+
+    const doc = {
+      title: 'Software Engineer',
+      body: { innerText: 'Software Engineer\nRemote\n$150,000 – $200,000\nFull job description here.' },
+      getElementById(id) {
+        return id === 'jobhunt-capture-preflight' ? staleDialog : null;
+      },
+      querySelector(sel) {
+        if (sel === 'link[rel="canonical"]') return null;
+        return null;
+      },
+      querySelectorAll(sel) {
+        if (sel === '[aria-expanded="false"]') return [];
+        if (sel === "button, [role='button'], a") return [];
+        if (sel === 'script[type="application/ld+json"]') return [];
+        return [];
+      },
+      cloneNode() { return this; },
+    };
+    const win = { location: { href: 'https://example.com/jobs/1' }, getSelection: () => ({ toString: () => '' }) };
+
+    const previousDocument = globalThis.document;
+    globalThis.document = doc;
+    try {
+      const capture = loadCaptureScript();
+      const payload = await capture.capturePage(win, doc);
+      assert.ok(preflightRemoved, 'stale preflight element removed before body.innerText');
+      assert.ok(!payload.visible_text.includes('Saving in'), 'stale dialog text not in captured text');
+    } finally {
+      globalThis.document = previousDocument;
+      delete globalThis.jobhuntCapture;
+    }
+  });
+});
 
 describe('job board fixtures — Greenhouse', () => {
   // boards.greenhouse.io — server-rendered HTML, full text in DOM.

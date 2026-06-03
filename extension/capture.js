@@ -252,6 +252,12 @@
   }
 
   async function capturePage(win, doc) {
+    // Remove any preflight dialog left over from a previous interrupted capture.
+    // In world:MAIN the injected script persists across calls, so a stale dialog
+    // from a prior run would otherwise end up in body.innerText.
+    const stale = doc.getElementById("jobhunt-capture-preflight");
+    if (stale) stale.remove();
+
     await expandHiddenContent();
     const payload = {
       schema_version: 1,

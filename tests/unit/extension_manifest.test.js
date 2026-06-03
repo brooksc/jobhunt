@@ -45,6 +45,34 @@ describe('extension manifest', () => {
     }
   });
 
+  it('executeScript calls use world:MAIN so page JS vars (__next_f, __NEXT_DATA__) are accessible', () => {
+    // Default world is ISOLATED, which cannot see page-level JS variables.
+    // capture.js relies on win.__next_f and win.__NEXT_DATA__ for CSR pages like Cribl.
+    // Without world:"MAIN" the extension captures only sparse DOM text and misses salary data.
+    const source = readServiceWorker();
+
+    // Find the captureTabPayload function body
+    const fnStart = source.indexOf('async function captureTabPayload(');
+    assert.ok(fnStart >= 0, 'captureTabPayload function must exist');
+    // Take enough characters to cover the whole function (up to the next top-level function)
+    const fnBody = source.slice(fnStart, fnStart + 3000);
+
+    // Every executeScript block that loads capture.js or calls capturePage must specify world:MAIN
+    const captureJsIdx = fnBody.indexOf('"capture.js"');
+    const capturePageIdx = fnBody.indexOf('capturePage');
+    assert.ok(captureJsIdx >= 0, 'captureTabPayload must inject capture.js');
+    assert.ok(capturePageIdx >= 0, 'captureTabPayload must call capturePage');
+
+    // Both blocks must have world:"MAIN" within 300 chars of the key identifier
+    const captureJsBlock = fnBody.slice(Math.max(0, captureJsIdx - 150), captureJsIdx + 150);
+    const capturePageBlock = fnBody.slice(Math.max(0, capturePageIdx - 150), capturePageIdx + 150);
+
+    assert.ok(/world\s*:\s*["']MAIN["']/.test(captureJsBlock),
+      'capture.js injection must use world:"MAIN" — without it, window.__next_f is invisible');
+    assert.ok(/world\s*:\s*["']MAIN["']/.test(capturePageBlock),
+      'capturePage call must use world:"MAIN" — without it, window.__next_f is invisible');
+  });
+
   it('references packaged extension files that exist', () => {
     const manifest = readManifest();
     const files = [

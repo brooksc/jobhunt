@@ -254,8 +254,7 @@ export function reseedDemoDb(dbPath = DEMO_DB_PATH) {
   seedDemoDb(db, dbPath);
 }
 
-function seedDemoDb(db, dbPath) {
-  const now = new Date().toISOString();
+function seedDemoDb(db) {
 
   // Reset job_number sequence
   db.exec(`DELETE FROM sqlite_sequence WHERE name='jobs'`);

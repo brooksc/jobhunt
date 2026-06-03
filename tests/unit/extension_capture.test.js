@@ -91,6 +91,50 @@ describe('extension capture expansion', () => {
     delete globalThis.jobhuntCapture;
   });
 
+  it('supplements sparse DOM text with Next.js RSC payload containing salary', async () => {
+    // Simulates a page like Cribl that uses BAILOUT_TO_CLIENT_SIDE_RENDERING:
+    // body.innerText is just nav (~950 chars), salary is in __next_f RSC chunks.
+    const jobHtml = '&lt;div class="content-intro"&gt;&lt;p&gt;Join the company building the future of telemetry. We seek an ambitious Staff Technical Program Manager who puts customers first and delivers our most challenging product development programs.&lt;/p&gt;&lt;/div&gt;&lt;p&gt;&lt;strong&gt;If You\'ve Got It - We Want It&lt;/strong&gt;&lt;/p&gt;&lt;ul&gt;&lt;li&gt;5+ years of leadership experience on software teams&lt;/li&gt;&lt;li&gt;Experience delivering complex projects across organizations&lt;/li&gt;&lt;li&gt;Working knowledge of AI (e.g., machine learning, model lifecycle, data pipelines)&lt;/li&gt;&lt;/ul&gt;&lt;p&gt;&lt;br&gt;&lt;strong&gt;Salary Range&lt;/strong&gt; ($134,000 - $210,000)&lt;/p&gt;&lt;p&gt;The salary for this role is dependent on geographic location. The salary offered within the range described will be based on the individual candidate\'s job-related knowledge, skills, and experience.&lt;/p&gt;';
+    const doc = {
+      title: 'Staff TPM',
+      body: { innerText: 'Back to Careers\nENGINEERING\nREMOTE - UNITED STATES' },
+      querySelector(selector) {
+        if (selector === 'link[rel="canonical"]') return null;
+        return null;
+      },
+      querySelectorAll(selector) {
+        if (selector === '[aria-expanded="false"]') return [];
+        if (selector === "button, [role='button'], a") return [];
+        if (selector === 'script[type="application/ld+json"]') return [];
+        return [];
+      },
+      cloneNode() { return this; },
+    };
+    const win = {
+      location: { href: 'https://example.com/jobs/123' },
+      getSelection: () => ({ toString: () => '' }),
+      __next_f: [
+        [1, 'c:I[12846,[],""]'],  // RSC wire format noise (no HTML entities, filtered out)
+        [1, jobHtml],              // Job description HTML chunk with salary
+        [0, null],                 // Non-text chunk, filtered out
+      ],
+    };
+    const previousDocument = globalThis.document;
+    globalThis.document = doc;
+
+    try {
+      const capture = loadCaptureScript();
+      const payload = await capture.capturePage(win, doc);
+
+      assert.ok(payload.visible_text.includes('$134,000'), 'salary in visible_text');
+      assert.ok(payload.visible_text.includes('$210,000'), 'salary max in visible_text');
+      assert.equal(payload.preflight.salary, true, 'preflight salary detected');
+    } finally {
+      globalThis.document = previousDocument;
+      delete globalThis.jobhuntCapture;
+    }
+  });
+
   it('reports missing preflight signals for weak captures', () => {
     const capture = loadCaptureScript();
     const preflight = capture.capturePreflight({

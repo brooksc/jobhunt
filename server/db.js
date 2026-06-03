@@ -258,6 +258,16 @@ function normalizeDuplicateText(value) {
   return String(value || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+// Company-specific normalization for grouping: strips legal suffixes so
+// "Akamai Technologies" and "Akamai" land in the same duplicate group.
+const COMPANY_SUFFIX_RE = /\b(inc|corp|corporation|co|ltd|llc|llp|lp|plc|technologies|technology|tech|group|holdings|holding|solutions|services|systems|software|global|international|worldwide|ventures|labs|lab)\b\.?/g;
+function normalizeCompanyForGrouping(value) {
+  return normalizeDuplicateText(value)
+    .replace(COMPANY_SUFFIX_RE, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function companyDomainScore(company, url) {
   if (!company || !url) return 0;
   let hostname;
@@ -1636,7 +1646,7 @@ export function detectDomainDuplicateJobs(dbPath) {
 
   const groups = new Map();
   for (const row of rows) {
-    const companyKey = normalizeDuplicateText(row.company);
+    const companyKey = normalizeCompanyForGrouping(row.company);
     const titleKey = normalizeDuplicateText(row.title);
     if (!companyKey || !titleKey) continue;
     const key = `${companyKey}\n${titleKey}`;

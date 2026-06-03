@@ -480,6 +480,21 @@ describe('domain duplicate detection', () => {
     assert.ok(rows.every(row => row.status === 'saved'));
     assert.ok(rows.every(row => row.duplicate_of_job_id === null));
   });
+
+  it('groups jobs whose company names differ only by legal suffix (e.g. "Akamai Technologies" vs "Akamai")', () => {
+    const desc = staffEngineerDescription;
+    const jobA = capturedJob('https://jobs.akamai.com/job/2695', 'Senior TPM - Akamai', desc);
+    const jobB = capturedJob('https://www.builtinseattle.com/job/senior-tpm-akamai', 'Senior TPM at Akamai Technologies', `${desc} BuiltIn listing.`);
+
+    markExtractionSucceeded(jobA, { company: 'Akamai', title: 'Senior Technical Program Manager', location: 'Remote', remote_type: 'remote' }, dbPath);
+    markExtractionSucceeded(jobB, { company: 'Akamai Technologies', title: 'Senior Technical Program Manager', location: 'Remote', remote_type: 'remote' }, dbPath);
+
+    detectDomainDuplicateJobs(dbPath);
+    const db = initDb(dbPath);
+    const rows = db.prepare('SELECT status, duplicate_of_job_id FROM jobs WHERE id IN (?, ?)').all(jobA, jobB);
+    const hasLink = rows.some(r => r.duplicate_of_job_id !== null);
+    assert.ok(hasLink, 'one job should be linked as duplicate of the other despite suffix difference');
+  });
 });
 
 describe('data quality review persistence', () => {

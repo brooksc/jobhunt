@@ -172,6 +172,8 @@ function visibleJobMetadata(visibleText) {
   }
 
   // Salary range — "160K-235K Annually", "$130,000-$260,000", "130K–260K", etc.
+  // First try short standalone lines (badges); fall back to extracting the range
+  // from a longer paragraph (e.g. Akamai's 800-char compensation paragraph).
   const hasSalary = !metadata.some(m => /salary/i.test(m));
   if (hasSalary) {
     const salaryLine = topLines.find(l =>
@@ -181,7 +183,21 @@ function visibleJobMetadata(visibleText) {
         (/annually|per year|\/yr/i.test(l) && /\d/.test(l))
       )
     );
-    if (salaryLine) append(metadata, 'Salary range', salaryLine);
+    if (salaryLine) {
+      append(metadata, 'Salary range', salaryLine);
+    } else {
+      // Scan for a salary range that appears in a dedicated Compensation/Salary section.
+      // Only extract when a standalone section header precedes the paragraph — this avoids
+      // pulling salary numbers from generic body text (e.g. funding amounts, role levels).
+      const compIdx = lines.findIndex(l =>
+        /^(?:compensation|salary|pay range|salary range|total compensation)$/i.test(l.trim())
+      );
+      if (compIdx >= 0) {
+        const sectionText = lines.slice(compIdx, compIdx + 6).join(' ');
+        const rangeMatch = sectionText.match(/\$[\d,]+\s*[-–]\s*\$?[\d,]+(?:\/(?:year|yr|hour|hr))?/i);
+        if (rangeMatch) append(metadata, 'Salary range', rangeMatch[0]);
+      }
+    }
   }
 
   // Seniority level — "Senior level", "Mid level", "Staff", etc.

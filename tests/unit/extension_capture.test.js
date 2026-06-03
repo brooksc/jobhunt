@@ -690,6 +690,45 @@ describe('job board fixtures — Meta Careers (metacareers.com)', () => {
   });
 });
 
+describe('job board fixtures — Akamai (jobs.akamai.com)', () => {
+  // jobs.akamai.com is server-rendered HTML (no Next.js). Salary is embedded in an
+  // 862-char "Compensation" section paragraph — the old 180-char line filter missed it.
+  // Fix: visibleJobMetadata now scans lines after a standalone "Compensation" header.
+  it('captures salary from Akamai server-rendered DOM with long compensation paragraph', async () => {
+    const domText = [
+      'Senior Technical Program Manager (Akamai Inference Cloud)',
+      'United States (Remote)',
+      'JOB DESCRIPTION',
+      'Do you thrive on driving complex technical programs from vision to reality? Are you ready to orchestrate the design, development, and delivery of cutting-edge AI infrastructure?',
+      'What You Will Do',
+      'Lead cross-functional programs spanning engineering, product, and operations',
+      'Drive technical roadmap alignment across multiple engineering teams',
+      'Manage dependencies, risks, and delivery timelines for large-scale infrastructure programs',
+      'What You Will Need',
+      '8+ years of technical program management experience in a fast-paced engineering environment',
+      'Strong track record of delivering complex distributed systems programs',
+      'Excellent written and verbal communication skills; experience presenting to senior leadership',
+      'Compensation',
+      'Akamai is committed to fair and equitable compensation practices. For US based candidates only - the base salary for this position ranges from $119,600 - $215,400/year; a candidate\'s salary is determined by various factors including, but not limited to, relevant work experience, skills, certifications, qualifications, and location.',
+      'Benefits: health, dental, vision, 401(k), equity, paid time off',
+    ].join('\n');
+
+    const fixture = makeFixture({
+      url: 'https://jobs.akamai.com/en/sites/CX_1/job/2695/',
+      pageTitle: 'Senior Technical Program Manager (Akamai Inference Cloud) - Akamai Career Site Careers',
+      domText,
+    });
+
+    const payload = await runCapture(fixture);
+    assert.ok(payload.visible_text.length >= MIN_CHARS, `too short: ${payload.visible_text.length}`);
+    assert.ok(payload.visible_text.includes('$119,600'), 'salary min present');
+    assert.ok(payload.visible_text.includes('$215,400'), 'salary max present');
+    assert.ok(payload.visible_text.includes('Akamai Inference Cloud'), 'title present');
+    assert.equal(payload.preflight.salary, true, 'preflight salary detected');
+    assert.equal(payload.preflight.remote, true, 'preflight remote detected');
+  });
+});
+
 describe('job board fixtures — JSON-LD structured data', () => {
   // Many job boards (Greenhouse, smart recruiters, company sites) emit a
   // JobPosting JSON-LD block. The extension reads it via querySelectorAll.

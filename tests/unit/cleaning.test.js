@@ -144,6 +144,27 @@ We are looking for an experienced Sr. Staff Technical Program Manager.`,
     assert.equal(result, '');
   });
 
+  it('extracts salary from long compensation paragraph (Akamai pattern)', () => {
+    // Akamai embeds salary in an 862-char paragraph — well above the old 180-char line limit.
+    // cleanDescription must surface it as a Salary range: metadata line so the LLM sees it.
+    const visibleText = [
+      'Senior Technical Program Manager (Akamai Inference Cloud)',
+      'United States (Remote)',
+      'JOB DESCRIPTION',
+      'Do you thrive on driving complex technical programs from vision to reality?',
+      'Requirements',
+      '8+ years technical program management experience',
+      'Strong cross-functional leadership skills',
+      'Compensation',
+      'Akamai is committed to fair and equitable compensation practices. For US based candidates only - the base salary for this position ranges from $119,600 - $215,400/year; a candidate\'s salary is determined by various factors including, but not limited to, relevant work experience, skills, certifications, qualifications, and location.',
+    ].join('\n');
+
+    const result = cleanDescription({ visibleText });
+    assert.ok(result.includes('119'), 'salary min in cleaned output');
+    assert.ok(result.includes('215'), 'salary max in cleaned output');
+    assert.ok(/salary range/i.test(result), 'Salary range metadata line present');
+  });
+
   it('prefers selected_text over structured data and visible_text', () => {
     const result = cleanDescription({
       selectedText: 'Selected',

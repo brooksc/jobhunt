@@ -4,10 +4,10 @@
 import { jsonrepair } from 'jsonrepair';
 import { expandMetros } from './metros.js';
 import {
-  connect, getSettings, setSetting,
+  connect, initDb, getSettings, setSetting,
   getLlmQueueForProcessing, getLlmRequestsByIds,
   getPendingExtractionForJob, getJobFitContext,
-  markExtractionSucceeded, markExtractionFailed,
+  markExtractionSucceeded, markExtractionFailed, resetJobExtraction,
   markFitSucceeded, markFitFailed,
   markLlmRequestRunning, queueFitScoreForJob,
   getLlmRequestState, startLlmRequestAttempt, finishLlmRequestAttempt,
@@ -1133,8 +1133,17 @@ async function processFitScoreRequest({ dbPath, scorer, resume, item }) {
 
   const context = getJobFitContext(dbPath, item.job_id);
   if (!context) {
-    markFitFailed(item.job_id, 'Job is not extracted yet — fit scoring needs the extracted job details.', dbPath, item.id);
-    return { wasProcessed: true, didSucceed: false };
+    // Extraction hasn't completed yet. Re-queue extraction and reset fit_score
+    // to queued so it retries after extraction finishes. Returning wasProcessed:false
+    // means this iteration doesn't count toward the failure streak so the queue
+    // won't pause on this transient dependency.
+    const db = initDb(dbPath);
+    const job = db.prepare("SELECT extraction_status FROM jobs WHERE id=?").get(item.job_id);
+    if (job && job.extraction_status !== 'succeeded') {
+      resetJobExtraction(item.job_id, dbPath);
+    }
+    db.prepare("UPDATE llm_requests SET status='queued', error=NULL, started_at=NULL, finished_at=NULL WHERE id=?").run(item.id);
+    return { wasProcessed: false, didSucceed: false };
   }
 
   if (!markLlmRequestRunning(item.id, dbPath)) return { wasProcessed: false, didSucceed: false };

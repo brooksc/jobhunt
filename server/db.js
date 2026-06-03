@@ -680,6 +680,13 @@ function findOriginalCaptureForUrl(db, url, canonicalUrl) {
   return row || null;
 }
 
+export function findJobByUrl(dbPath, url) {
+  const db = initDb(dbPath);
+  const row = findOriginalCaptureForUrl(db, url, null);
+  if (!row) return null;
+  return { job_id: row.job_id, job_number: row.job_number };
+}
+
 function recordDuplicateNote(db, captureId, note, occurredAt, createdAt) {
   if (!note || !note.trim()) return;
   const row = db.prepare("SELECT id FROM jobs WHERE capture_id = ? LIMIT 1").get(captureId);

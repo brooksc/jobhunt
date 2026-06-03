@@ -1003,6 +1003,12 @@ export function getLlmRequestAttempts(dbPath, requestId) {
     ORDER BY started_at DESC`).all(requestId);
 }
 
+export function getMaxObservedPromptChars(dbPath) {
+  const db = initDb(dbPath);
+  const row = db.prepare(`SELECT MAX(prompt_chars) AS max_chars FROM llm_request_attempts WHERE status='succeeded'`).get();
+  return row ? (Number(row.max_chars) || null) : null;
+}
+
 export function countUnqueuedPendingJobs(dbPath) {
   const db = initDb(dbPath);
   const row = db.prepare(`SELECT COUNT(*) AS n FROM jobs

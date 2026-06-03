@@ -94,8 +94,8 @@ export const FIT_DIMENSION_WEIGHTS = {
   domain_fit: 0.15,
 };
 
-const MAX_DESCRIPTION_CHARS = 32000;
-const MAX_RESUME_CHARS = 12000;
+export const MAX_DESCRIPTION_CHARS = 32000;
+export const MAX_RESUME_CHARS = 12000;
 
 // ------------------------------------------------------------------
 // HTTP helpers — per-provider

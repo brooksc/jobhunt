@@ -16,6 +16,7 @@ import {
   runExtraction, runExtractionForSelected,
   parseBoolSetting, makeExtractorFromSettings, makeScorerFromSettings,
   resolveProviderBaseUrl, ANTHROPIC_MODELS, GOOGLE_MODELS,
+  MAX_DESCRIPTION_CHARS, MAX_RESUME_CHARS,
 } from './extract.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -944,6 +945,81 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
       res.json({ ok: true, models: modelIds, modelTests });
     } catch (err) {
       res.json({ ok: false, error: String(err.message) });
+    }
+  });
+
+  // Known context windows for hardcoded provider models (tokens)
+  const KNOWN_CONTEXT_LENGTHS = {
+    'gpt-4o': 128000, 'gpt-4o-mini': 128000,
+    'o3': 200000, 'o3-mini': 200000,
+    'claude-opus-4-8': 200000, 'claude-sonnet-4-6': 200000, 'claude-haiku-4-5-20251001': 200000,
+    'gemini-2.5-pro': 1048576, 'gemini-2.5-flash': 1048576, 'gemini-2.0-flash': 1048576,
+    'gemini-1.5-pro': 2000000, 'gemini-1.5-flash': 1000000,
+  };
+
+  // Minimum recommended context (tokens): max description + resume + system prompt overhead
+  const RECOMMENDED_MIN_TOKENS = Math.ceil((MAX_DESCRIPTION_CHARS + MAX_RESUME_CHARS) / 4) + 2000;
+
+  app.get('/api/settings/model-context', async (req, res) => {
+    try {
+      const settings = getDbSettings();
+      const provider = settings.llm_provider || 'lmstudio';
+      const apiKey = settings.llm_api_key || '';
+      const model = settings.llm_model || '';
+      const rawBaseUrl = settings.llm_base_url || 'http://127.0.0.1:1234';
+
+      const maxObservedChars = db.getMaxObservedPromptChars(dbPath);
+      const maxObservedPromptTokens = maxObservedChars ? Math.ceil(maxObservedChars / 4) : null;
+
+      // Try to resolve context length from provider
+      let contextLength = KNOWN_CONTEXT_LENGTHS[model] || null;
+
+      // For OpenRouter, query model info endpoint for exact context length
+      if (!contextLength && provider === 'openrouter' && model) {
+        try {
+          const headers = {};
+          if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 5000);
+          try {
+            const r = await fetch(`https://openrouter.ai/api/v1/models`, { headers, signal: controller.signal });
+            if (r.ok) {
+              const data = await r.json();
+              const found = (data.data || []).find(m => m.id === model);
+              if (found?.context_length) contextLength = found.context_length;
+            }
+          } finally {
+            clearTimeout(timer);
+          }
+        } catch { /* ignore */ }
+      }
+
+      // For LM Studio / custom OpenAI-compatible: /v1/models returns max_context_length per model
+      if (!contextLength && (provider === 'lmstudio' || provider === 'custom') && model) {
+        try {
+          const baseUrl = resolveProviderBaseUrl(provider, rawBaseUrl);
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 5000);
+          try {
+            const r = await fetch(`${baseUrl}/v1/models`, { signal: controller.signal });
+            if (r.ok) {
+              const data = await r.json();
+              const found = (data.data || []).find(m => m.id === model);
+              if (found?.max_context_length) contextLength = found.max_context_length;
+            }
+          } finally {
+            clearTimeout(timer);
+          }
+        } catch { /* ignore */ }
+      }
+
+      res.json({
+        contextLength,
+        maxObservedPromptTokens,
+        recommendedMinTokens: RECOMMENDED_MIN_TOKENS,
+      });
+    } catch (err) {
+      res.status(500).json({ error: String(err.message) });
     }
   });
 

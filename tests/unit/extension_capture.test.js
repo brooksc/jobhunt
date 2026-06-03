@@ -166,6 +166,30 @@ describe('extension capture expansion', () => {
 
 const MIN_CHARS = 500; // minimum meaningful JD text
 
+describe('extension capture — expansion control safety', () => {
+  // expandHiddenContent clicks elements matching SHOW_MORE_RE ("view more", "read more", etc.)
+  // Navigation links like "View More Jobs" (<a href="/jobs">) also match but must NOT be clicked —
+  // clicking them navigates the page and the capture sees only the redirected page's sparse text.
+  it('does not click navigation links that match the expand text pattern', async () => {
+    const navLink = fakeElement({ text: 'View More Jobs', closestResult: null });
+    navLink.tagName = 'A';
+    navLink.getAttribute = (attr) => attr === 'href' ? 'https://jobs.akamai.com/en/sites/CX_1/jobs' : null;
+
+    const safeButton = fakeElement({ text: 'Show more' });
+    safeButton.tagName = 'BUTTON';
+    safeButton.getAttribute = () => null;
+
+    const fixture = makeFixture({
+      domText: 'Senior Technical Program Manager\nRemote – United States\nJob description text here with compensation details.',
+      showMoreButtons: [navLink, safeButton],
+    });
+
+    const payload = await runCapture(fixture);
+    assert.equal(navLink.clicked, 0, 'navigation link must not be clicked');
+    assert.equal(safeButton.clicked, 1, 'safe expand button must be clicked');
+  });
+});
+
 describe('extension capture — stale preflight cleanup', () => {
   // world:MAIN injection persists globalThis across calls. If a previous capturePage
   // was interrupted (e.g. user double-clicked the extension), the old preflight div

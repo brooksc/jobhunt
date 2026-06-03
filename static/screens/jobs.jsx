@@ -944,7 +944,10 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
                 data-selected={sel.has(j.id) || undefined}
                 aria-current={selectedJobId === j.id ? "true" : undefined}
                 onClick={() => onSelectJob(j.id)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectJob(j.id); } }}
+                onKeyDown={(e) => {
+                  if (e.key === " ") { e.preventDefault(); toggle(j.id, undefined, e.shiftKey); }
+                  if (e.key === "Enter") { e.preventDefault(); onSelectJob(j.id); }
+                }}
               >
                 <td onClick={(e) => e.stopPropagation()} className="col-shrink">
                   <input

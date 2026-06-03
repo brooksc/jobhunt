@@ -746,6 +746,9 @@ export function insertCapture(capture, dbPath) {
         db.prepare(`UPDATE jobs SET extraction_status='pending', extraction_error=NULL,
           duplicate_of_job_id=NULL, duplicate_confidence=NULL, updated_at=?
           WHERE id=?`).run(now, exactMatch.job_id);
+        // Re-queue extraction even if a previous extract request succeeded —
+        // content changed so we need a fresh run.
+        upsertLlmRequest(db, exactMatch.job_id, 'extract', { resetAttempts: true });
         recordRecaptureEvent(db, exactMatch.job_id, capturedAt, now);
         recordDuplicateNote(db, exactMatch.id, capture.user_note, capturedAt, now);
         return { capture_id: exactMatch.id, job_number: exactMatch.job_number, duplicate: false, duplicate_of_job_id: null, created: false };
@@ -760,6 +763,7 @@ export function insertCapture(capture, dbPath) {
         }
         db.prepare(`UPDATE jobs SET extraction_status='pending', extraction_error=NULL, updated_at=? WHERE id=?`)
           .run(now, exactMatch.job_id);
+        upsertLlmRequest(db, exactMatch.job_id, 'extract', { resetAttempts: true });
         recordRecaptureEvent(db, exactMatch.job_id, capturedAt, now);
         return { capture_id: exactMatch.id, job_number: exactMatch.job_number, duplicate: false, duplicate_of_job_id: null, created: false };
       }

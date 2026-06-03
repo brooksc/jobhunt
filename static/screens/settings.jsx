@@ -73,6 +73,7 @@ function SettingsPage() {
   const [testing, setTesting] = React.useState(false);
   const [models, setModels] = React.useState([]);
   const [fetchingModels, setFetchingModels] = React.useState(false);
+  const [contextInfo, setContextInfo] = React.useState(null);
   const [debugEnabled, setDebugEnabled] = React.useState(() => localStorage.getItem('jh.debug') === '1');
   const [activeTab, setActiveTab] = React.useState('settings');
 
@@ -213,6 +214,15 @@ function SettingsPage() {
       .then(data => { if (data.ok && data.models?.length > 0) setModels(data.models); })
       .catch(() => {});
   }, [llmProvider]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch context window info when model or provider changes
+  React.useEffect(() => {
+    setContextInfo(null);
+    fetch('/api/settings/model-context')
+      .then(r => r.json())
+      .then(data => setContextInfo(data))
+      .catch(() => {});
+  }, [llmModel, llmProvider]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleTestLlm() {
     setTesting(true);
@@ -401,6 +411,32 @@ function SettingsPage() {
               </div>
             )}
           </div>
+
+          {(() => {
+            if (!contextInfo) return null;
+            const { contextLength, maxObservedPromptTokens, recommendedMinTokens } = contextInfo;
+            if (!contextLength) return null;
+            const fmt = n => n >= 1000 ? `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k` : String(n);
+            const isRed = maxObservedPromptTokens && contextLength < maxObservedPromptTokens;
+            const isYellow = !isRed && contextLength < recommendedMinTokens;
+            const color = isRed ? 'var(--st-rejected)' : isYellow ? 'var(--st-screening)' : 'var(--st-offer)';
+            const symbol = isRed ? '✗' : isYellow ? '⚠' : '✓';
+            const label = isRed
+              ? `Context window too small — some captured jobs cannot be processed (longest seen: ~${fmt(maxObservedPromptTokens)} tokens)`
+              : isYellow
+              ? `Context window may be too small for long job descriptions — truncation possible (recommended: ${fmt(recommendedMinTokens)}+ tokens)`
+              : `Context window sufficient for all job extractions`;
+            return (
+              <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', display: 'flex', gap: 6, alignItems: 'flex-start', color }}>
+                <span style={{ flexShrink: 0, fontWeight: 'bold' }}>{symbol}</span>
+                <span>
+                  <span style={{ color: 'var(--fg-mute)' }}>Context window: </span>
+                  <span style={{ fontWeight: 600 }}>{fmt(contextLength)} tokens</span>
+                  {' — '}{label}
+                </span>
+              </div>
+            );
+          })()}
 
           <Row style={{ marginTop: 4 }}>
             <Btn size="sm" kind="accent" icon={<Icon.Check size={11} />} onClick={handleTestLlm} disabled={testing}>

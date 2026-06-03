@@ -258,14 +258,55 @@ function normalizeDuplicateText(value) {
   return String(value || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-// Company-specific normalization for grouping: strips legal suffixes so
-// "Akamai Technologies" and "Akamai" land in the same duplicate group.
-const COMPANY_SUFFIX_RE = /\b(inc|corp|corporation|co|ltd|llc|llp|lp|plc|technologies|technology|tech|group|holdings|holding|solutions|services|systems|software|global|international|worldwide|ventures|labs|lab)\b\.?/g;
-function normalizeCompanyForGrouping(value) {
-  return normalizeDuplicateText(value)
-    .replace(COMPANY_SUFFIX_RE, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+// Tokens that carry no signal for distinguishing company identity.
+const COMPANY_STOP_WORDS = new Set([
+  'the','a','an','of','for','and','or','in','at','by','to','its','with',
+  'inc','corp','corporation','co','ltd','llc','llp','lp','plc',
+  'technologies','technology','tech','group','holdings','holding',
+  'solutions','services','systems','software','platforms','platform',
+  'global','international','worldwide','ventures','labs','lab','ai',
+]);
+
+function companyTokens(name) {
+  return new Set(
+    normalizeDuplicateText(name).split(' ')
+      .filter(t => t.length > 1 && !COMPANY_STOP_WORDS.has(t))
+  );
+}
+
+// Jaccard similarity on meaningful company name tokens.
+// "Akamai Technologies" and "Akamai" → both reduce to {"akamai"} → 1.0.
+// "Google" and "Amazon" → {"google"} vs {"amazon"} → 0.
+function companyJaccard(a, b) {
+  const ta = companyTokens(a);
+  const tb = companyTokens(b);
+  if (ta.size === 0 && tb.size === 0) return 1;
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let intersection = 0;
+  for (const t of ta) if (tb.has(t)) intersection++;
+  const union = new Set([...ta, ...tb]).size;
+  return intersection / union;
+}
+
+// Union-find cluster: group an array of jobs by company Jaccard >= threshold.
+function clusterByCompany(jobs, threshold = 0.5) {
+  const n = jobs.length;
+  const parent = Array.from({ length: n }, (_, i) => i);
+  function find(x) { return parent[x] === x ? x : (parent[x] = find(parent[x])); }
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (companyJaccard(jobs[i].company, jobs[j].company) >= threshold) {
+        parent[find(i)] = find(j);
+      }
+    }
+  }
+  const clusters = new Map();
+  for (let i = 0; i < n; i++) {
+    const root = find(i);
+    if (!clusters.has(root)) clusters.set(root, []);
+    clusters.get(root).push(jobs[i]);
+  }
+  return [...clusters.values()];
 }
 
 function companyDomainScore(company, url) {
@@ -1644,18 +1685,27 @@ export function detectDomainDuplicateJobs(dbPath) {
       AND jobs.title IS NOT NULL AND TRIM(jobs.title) != ''
       AND jobs.status NOT IN ('archived', 'not_available')`).all();
 
-  const groups = new Map();
+  // Group by title, then cluster within each title group using company Jaccard similarity.
+  // This handles variants like "Akamai" vs "Akamai Technologies" (Jaccard ≥ 0.5).
+  const byTitle = new Map();
   for (const row of rows) {
-    const companyKey = normalizeCompanyForGrouping(row.company);
     const titleKey = normalizeDuplicateText(row.title);
-    if (!companyKey || !titleKey) continue;
-    const key = `${companyKey}\n${titleKey}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push({
+    if (!titleKey || !row.company?.trim()) continue;
+    if (!byTitle.has(titleKey)) byTitle.set(titleKey, []);
+    byTitle.get(titleKey).push({
       ...row,
       source_domain_score: companyDomainScore(row.company, row.source_url),
       source_hostname: sourceHostname(row.source_url),
     });
+  }
+
+  // Flatten title groups into company-clustered duplicate groups
+  const groups = [];
+  for (const titleGroup of byTitle.values()) {
+    if (titleGroup.length < 2) continue;
+    for (const cluster of clusterByCompany(titleGroup)) {
+      if (cluster.length >= 2) groups.push(cluster);
+    }
   }
 
   const now = nowIso();
@@ -1663,7 +1713,7 @@ export function detectDomainDuplicateJobs(dbPath) {
   let jobsMarked = 0;
 
   return withTransaction(db, () => {
-    for (const group of groups.values()) {
+    for (const group of groups) {
       if (group.length < 2) continue;
       const hostnames = new Set(group.map(row => row.source_hostname).filter(Boolean));
       if (hostnames.size < 2) continue;

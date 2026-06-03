@@ -428,18 +428,26 @@ function SettingsPage() {
             const isYellow = !isRed && contextLength < recommendedMinTokens;
             const color = isRed ? 'var(--st-rejected)' : isYellow ? 'var(--st-screening)' : 'var(--st-offer)';
             const symbol = isRed ? '✗' : isYellow ? '⚠' : '✓';
-            const label = isRed
-              ? `Context window too small — some captured jobs cannot be processed (longest seen: ~${fmt(maxObservedPromptTokens)} tokens)`
+            const statusLabel = isRed
+              ? `too small — cannot process some jobs`
               : isYellow
-              ? `Context window may be too small for long job descriptions — truncation possible (recommended: ${fmt(recommendedMinTokens)}+ tokens)`
-              : `Context window sufficient for all job extractions`;
+              ? `may truncate long job descriptions`
+              : `sufficient`;
             return (
               <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', display: 'flex', gap: 6, alignItems: 'flex-start', color }}>
                 <span style={{ flexShrink: 0, fontWeight: 'bold' }}>{symbol}</span>
-                <span>
-                  <span style={{ color: 'var(--fg-mute)' }}>Context window: </span>
-                  <span style={{ fontWeight: 600 }}>{fmt(contextLength)} tokens</span>
-                  {' — '}{label}
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span>
+                    <span style={{ color: 'var(--fg-mute)' }}>Context window: </span>
+                    <span style={{ fontWeight: 600 }}>{fmt(contextLength)} tokens</span>
+                    {' — '}{statusLabel}
+                  </span>
+                  <span style={{ color: 'var(--fg-mute)' }}>
+                    {maxObservedPromptTokens
+                      ? `Largest prompt seen: ~${fmt(maxObservedPromptTokens)} tokens · `
+                      : 'No jobs processed yet · '}
+                    {`Recommended minimum: ${fmt(recommendedMinTokens)} tokens`}
+                  </span>
                 </span>
               </div>
             );

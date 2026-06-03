@@ -498,46 +498,6 @@
   color: var(--fg-strong);
 }
 
-.jh-status-select {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-}
-
-.jh-status-select .jh-chip {
-  padding-right: 18px;
-}
-
-.jh-status-select select {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.jh-status-select select:disabled {
-  cursor: wait;
-}
-
-.jh-status-select:has(select:focus-visible) .jh-chip {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.jh-status-select[data-saving="true"] .jh-chip {
-  opacity: 0.65;
-}
-
-.jh-status-select__chevron {
-  position: absolute;
-  right: 6px;
-  pointer-events: none;
-  color: var(--fg-faint);
-}
-
 .jh-tag {
   display: inline-flex;
   align-items: center;

@@ -43,13 +43,14 @@
       });
   }
 
-  function collectVisibleText(doc) {
+  function collectVisibleText(doc, win) {
     // Always capture the raw top of the page first.
     // Job boards put key metadata (Remote, salary, seniority, location) in a structured
     // header card that Readability treats as sidebar and strips. The first ~2000 chars of
     // body.innerText almost always covers that card before the nav noise dominates.
     const rawTop = (doc.body && doc.body.innerText ? doc.body.innerText : "").slice(0, 2000).trim();
 
+    let combined = "";
     if (typeof Readability !== "undefined") {
       try {
         const clone = doc.cloneNode(true);
@@ -58,19 +59,60 @@
           const body = article.textContent.trim();
           // Prepend raw header so metadata badges are never lost, then append the
           // Readability-cleaned body for the full description text.
-          return rawTop ? `${rawTop}\n\n---\n\n${body}` : body;
+          combined = rawTop ? `${rawTop}\n\n---\n\n${body}` : body;
         }
       } catch (_error) {
         // fall through
       }
     }
-    // Fallback: raw visible text
-    return (doc.body && doc.body.innerText ? doc.body.innerText : "").trim();
+    if (!combined) {
+      // Fallback: raw visible text
+      combined = (doc.body && doc.body.innerText ? doc.body.innerText : "").trim();
+    }
+
+    // Supplement with Next.js RSC data when the DOM text is sparse.
+    // Some Next.js job pages (e.g. Cribl) bail out to client-side rendering and
+    // put the full job description in __next_f payload scripts rather than the DOM.
+    const nextjsText = win ? collectNextJSText(win) : "";
+    if (nextjsText && nextjsText.length > combined.length / 2) {
+      return `${combined}\n\n---\n\n${nextjsText}`;
+    }
+
+    return combined;
   }
 
   function collectSelectedText(win) {
     const selection = win.getSelection ? win.getSelection() : null;
     return selection ? selection.toString().trim() : "";
+  }
+
+  function collectNextJSText(win) {
+    // Extract text from Next.js RSC data (__next_f). Pages that bail out to
+    // client-side rendering (e.g. Cribl, many Next.js job boards) embed the full
+    // job description in RSC payload scripts instead of rendering it into the DOM,
+    // so body.innerText misses it entirely.
+    const arr = win.__next_f;
+    if (!Array.isArray(arr)) return '';
+    const JOB_SIGNALS = /\$[\d,]+|\b(?:salary|compensation|pay range|requirements|qualifications|responsibilities|experience)\b/i;
+    const texts = arr
+      .filter(c => Array.isArray(c) && c[0] === 1 && typeof c[1] === 'string')
+      // Exclude tiny chunks and very large framework/routing data blobs (>30KB)
+      .filter(c => c[1].length >= 500 && c[1].length <= 30000)
+      // Only include chunks that look like HTML job description content
+      // (must have entity-encoded HTML tags AND job-relevant signals)
+      .filter(c => /&lt;[a-z]/.test(c[1]) && JOB_SIGNALS.test(c[1]))
+      .map(c => c[1]
+        .replace(/&lt;\/?[a-z][^&]{0,50}&gt;/gi, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/\s+/g, ' ')
+        .trim()
+      )
+      .filter(s => s.length > 100);
+    return [...new Set(texts)].join('\n');
   }
 
   function collectCanonicalUrl(doc) {
@@ -190,7 +232,7 @@
       canonical_url: collectCanonicalUrl(doc),
       page_title: doc.title || win.location.href,
       selected_text: collectSelectedText(win),
-      visible_text: collectVisibleText(doc),
+      visible_text: collectVisibleText(doc, win),
       structured_data: collectStructuredData(doc),
       user_note: "",
       source: {

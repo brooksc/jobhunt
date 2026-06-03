@@ -284,6 +284,18 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
   });
 
   // ------------------------------------------------------------------
+  // Look up a job by URL (used by the extension's right-click menu)
+  // ------------------------------------------------------------------
+
+  app.get('/api/jobs/by-url', (req, res) => {
+    const { url } = req.query;
+    if (!url) return res.status(400).json({ error: 'url required' });
+    const job = db.findJobByUrl(dbPath, url);
+    if (!job) return res.status(404).json({ error: 'not found' });
+    res.json(job);
+  });
+
+  // ------------------------------------------------------------------
   // Manual URL capture (server-side fetch)
   // ------------------------------------------------------------------
 

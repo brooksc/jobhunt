@@ -44,6 +44,7 @@ async function serverUrl(path) {
 
 const SAVE_WITH_NOTE_MENU_ID = "save-job-with-note";
 const MARK_SITE_REVIEWED_MENU_ID = "mark-site-reviewed";
+const OPEN_JOB_IN_APP_MENU_ID = "open-job-in-app";
 const OPEN_CAPTURE_QUEUE_MENU_ID = "open-capture-queue";
 const SYNC_QUEUE_MENU_ID = "sync-queue";
 const EXPORT_CSV_MENU_ID = "export-csv";
@@ -59,6 +60,11 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: MARK_SITE_REVIEWED_MENU_ID,
     title: "Mark site reviewed",
+    contexts: ["page", "action"]
+  });
+  chrome.contextMenus.create({
+    id: OPEN_JOB_IN_APP_MENU_ID,
+    title: "Open this job in JobHunt",
     contexts: ["page", "action"]
   });
   chrome.contextMenus.create({
@@ -148,6 +154,12 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
   if (info.menuItemId === MARK_SITE_REVIEWED_MENU_ID) {
     await markSiteReviewed(tab);
+    return;
+  }
+
+  if (info.menuItemId === OPEN_JOB_IN_APP_MENU_ID) {
+    await openJobInApp(tab);
+    return;
   }
 });
 
@@ -381,6 +393,25 @@ async function checkServerConnection() {
     await showBadge("OK", "#137333");
   } catch (_error) {
     await chrome.action.setTitle({ title: `Capture job [${BUILD_DATE}] — server not found` });
+    await showBadge("ERR", "#b00020");
+  }
+}
+
+async function openJobInApp(tab) {
+  if (!tab?.url) {
+    await showBadge("ERR", "#b00020");
+    return;
+  }
+  try {
+    const lookupUrl = await serverUrl("/api/jobs/by-url?url=" + encodeURIComponent(tab.url));
+    const res = await fetch(lookupUrl, { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) {
+      await showBadge("?", "#888888");
+      return;
+    }
+    const { job_number } = await res.json();
+    await openApp(job_number);
+  } catch (_error) {
     await showBadge("ERR", "#b00020");
   }
 }

@@ -175,9 +175,9 @@ function Sidebar({ route, setRoute, setSavedViewName, savedViewName, theme, them
                     key={sv.key}
                     className="jh-side__nav jh-side__nav--sub"
                     aria-current={isActive ? "page" : undefined}
-                    style={{ "--jh-status-dot": sv.color }}
                     onClick={() => applySavedView(`status:${sv.key}`, setRoute, setSavedViewName)}
                   >
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: sv.color, flexShrink: 0 }} />
                     <span>{sv.label}</span>
                     <span className="jh-side__count">{count}</span>
                   </button>

@@ -277,10 +277,10 @@ function buildDailyActivity(jobs) {
   for (const job of jobs) {
     bump(job.capturedAt, 'saved');
     for (const ev of (job.events || [])) {
-      if (ev.event_type === 'status_changed' && ev.note) {
+      if (ev.kind === 'status' && ev.note) {
         const s = ev.note;
         if (s === 'applied' || s === 'interview' || s === 'offer' || s === 'rejected') {
-          bump(ev.occurred_at, s);
+          bump(ev.at, s);
         }
       }
     }

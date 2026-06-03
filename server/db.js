@@ -807,6 +807,8 @@ export function insertCapture(capture, dbPath) {
     db.prepare(`INSERT INTO events (id, job_id, event_type, note, occurred_at, created_at)
       VALUES (?, ?, 'captured', NULL, ?, ?)`).run(makeId('evt'), jobId, capturedAt, now);
 
+    upsertLlmRequest(db, jobId, 'extract');
+
     return {
       capture_id: captureId,
       duplicate: false,

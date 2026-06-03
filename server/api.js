@@ -539,20 +539,36 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
     }
   });
 
-  app.post('/api/jobs/bulk/llm', (req, res) => {
+  app.post('/api/jobs/bulk/llm', async (req, res) => {
     try {
       const result = db.queueBulkLlmJobs(req.body.job_ids, req.body.mode, dbPath);
-      if (autoExtract) runExtractionForApp(100).catch(() => {});
+      // Explicit user action: unpause queue and run the specific requests directly,
+      // bypassing the queue-paused guard so nothing can block a manual trigger.
+      const d = db.initDb(dbPath);
+      db.setSetting(d, 'llm_queue_paused', 'false');
+      if (result.request_ids?.length) {
+        const settings = getDbSettings();
+        runExtractionForSelected({ dbPath, extractor: buildExtractor(settings), requestIds: result.request_ids, scorer: buildScorer(settings), resume: settings.resume_text || '' }).then(emitAiRunComplete).catch(() => {});
+      } else if (autoExtract) {
+        runExtractionForApp(100).catch(() => {});
+      }
       res.json({ ok: true, ...result });
     } catch (err) {
       res.status(400).json({ error: String(err.message) });
     }
   });
 
-  app.post('/api/jobs/bulk/llm-by-number', (req, res) => {
+  app.post('/api/jobs/bulk/llm-by-number', async (req, res) => {
     try {
       const result = db.queueBulkLlmJobsByNumbers(req.body.job_numbers, req.body.mode, dbPath);
-      if (autoExtract) runExtractionForApp(100).catch(() => {});
+      const d = db.initDb(dbPath);
+      db.setSetting(d, 'llm_queue_paused', 'false');
+      if (result.request_ids?.length) {
+        const settings = getDbSettings();
+        runExtractionForSelected({ dbPath, extractor: buildExtractor(settings), requestIds: result.request_ids, scorer: buildScorer(settings), resume: settings.resume_text || '' }).then(emitAiRunComplete).catch(() => {});
+      } else if (autoExtract) {
+        runExtractionForApp(100).catch(() => {});
+      }
       res.json({ ok: true, ...result });
     } catch (err) {
       res.status(400).json({ error: String(err.message) });

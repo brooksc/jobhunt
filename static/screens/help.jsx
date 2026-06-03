@@ -319,20 +319,11 @@ function HelpPage() {
         <div>
           <section className="jh-help__section--wide" style={{ marginBottom: 28 }}>
             <h2>Chrome extension</h2>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 8, background: 'var(--bg-elev-2)', border: '1px solid var(--border)', marginBottom: 16, maxWidth: 600 }}>
-              <span style={{ fontSize: 16 }}>🏪</span>
-              <div>
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-mute)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Coming soon</span>
-                <div style={{ fontSize: 13, color: 'var(--fg)' }}>Chrome Web Store listing — one-click install once published.</div>
-              </div>
-            </div>
             <div style={{ padding: '16px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elev)', maxWidth: 600 }}>
-              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 14 }}>Install now with Developer mode</div>
-              <div style={step}><div style={num}>1</div><div>Open <span style={code}>chrome://extensions</span> in Chrome or any Chromium-based browser (Edge, Brave, Arc).</div></div>
-              <div style={step}><div style={num}>2</div><div>Enable <strong>Developer mode</strong> using the toggle in the top-right corner.</div></div>
-              <div style={step}><div style={num}>3</div><div>Click <strong>Load unpacked</strong> → select the <span style={code}>extension/</span> folder in the Jobhunt project directory.</div></div>
-              <div style={step}><div style={num}>4</div><div>Click the puzzle-piece icon in Chrome's toolbar and pin <strong>Jobhunt Capture</strong> for quick access.</div></div>
-              <div style={{ ...step, borderBottom: 'none', paddingBottom: 0 }}><div style={num}>5</div><div>Keep the Jobhunt service running (<span style={code}>npm start</span>), then open any job posting and click the icon.</div></div>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 14 }}>Install from the Chrome Web Store</div>
+              <div style={step}><div style={num}>1</div><div>Visit <a href="https://chromewebstore.google.com/detail/jobhunt-capture/jekcbebhfeidkpapienoflbcaeeknlch" target="_blank" rel="noopener noreferrer">Jobhunt Capture on the Chrome Web Store</a> and click <strong>Add to Chrome</strong>.</div></div>
+              <div style={step}><div style={num}>2</div><div>Click the puzzle-piece icon in Chrome's toolbar and pin <strong>Jobhunt Capture</strong> for quick access.</div></div>
+              <div style={{ ...step, borderBottom: 'none', paddingBottom: 0 }}><div style={num}>3</div><div>Keep the Jobhunt service running (<span style={code}>npm start</span>), then open any job posting and click the icon.</div></div>
             </div>
           </section>
           <div className="jh-help__grid">

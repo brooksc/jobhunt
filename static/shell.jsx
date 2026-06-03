@@ -86,7 +86,17 @@ function applySavedView(name, setRoute, setSavedViewName) {
   }, 30);
 }
 
-function Sidebar({ route, setRoute, setSavedViewName, theme, themeMode, onToggleTheme }) {
+const STATUS_VIEWS = [
+  { key: "saved",     label: "Saved",      color: "var(--st-saved)" },
+  { key: "applied",   label: "Applied",    color: "var(--st-applied)" },
+  { key: "interview", label: "Interview",  color: "var(--st-interview)" },
+  { key: "offer",     label: "Offer",      color: "var(--st-offer)" },
+  { key: "rejected",  label: "Rejected",   color: "var(--st-rejected)" },
+  { key: "duplicate", label: "Duplicates", color: "var(--st-duplicate)" },
+  { key: "archived",  label: "Archived",   color: "var(--st-archived)" },
+];
+
+function Sidebar({ route, setRoute, setSavedViewName, savedViewName, theme, themeMode, onToggleTheme }) {
   const metrics = window.JH_METRICS || {};
   const queueStats = window.JH_QUEUE_STATS || {};
   const queueCount = Number.isFinite(queueStats.totalOutstanding)
@@ -136,39 +146,44 @@ function Sidebar({ route, setRoute, setSavedViewName, theme, themeMode, onToggle
   ];
   return (
     <aside className="jh-side">
-      <div className="jh-side__tl-space" />
-      <div className="jh-side__brand">
-        <span className="jh-side__mark">J</span>
-        <span>Jobhunt</span>
-        <span style={{ marginLeft: "auto", color: "var(--fg-faint)", fontSize: 11, fontFamily: "var(--font-mono)" }}>{window.JH_SETTINGS.version || ""}</span>
-      </div>
-
-      <div className="jh-side__user">
-        <span className="avatar">B</span>
-        <span>brooks · local</span>
-      </div>
-
       <div className="jh-side__group">
         {nav.map((n) => {
           const Ico = Icon[n.icon];
           return (
-            <button
-              key={n.id}
-              className="jh-side__nav"
-              aria-current={route === n.id ? "page" : undefined}
-              onClick={() => {
-                if (n.id === "jobs") {
-                  setSavedViewName?.(null);
-                  window.JH_RESET_JOBS_VIEW?.();
-                }
-                setRoute(n.id);
-              }}
-            >
-              <Ico />
-              <span>{n.label}</span>
-              {n.warn && <span className="jh-side__warn" title="Queue paused">⏸</span>}
-              {n.count != null && <span className="jh-side__count">{n.count}</span>}
-            </button>
+            <React.Fragment key={n.id}>
+              <button
+                className="jh-side__nav"
+                aria-current={route === n.id && (n.id !== "jobs" || !savedViewName) ? "page" : undefined}
+                onClick={() => {
+                  if (n.id === "jobs") {
+                    setSavedViewName?.(null);
+                    window.JH_RESET_JOBS_VIEW?.();
+                  }
+                  setRoute(n.id);
+                }}
+              >
+                <Ico />
+                <span>{n.label}</span>
+                {n.warn && <span className="jh-side__warn" title="Queue paused">⏸</span>}
+                {n.count != null && <span className="jh-side__count">{n.count}</span>}
+              </button>
+              {n.id === "jobs" && STATUS_VIEWS.map(sv => {
+                const count = (window.JH_JOBS || []).filter(j => j.status === sv.key).length;
+                const isActive = route === "jobs" && savedViewName === `status:${sv.key}`;
+                return (
+                  <button
+                    key={sv.key}
+                    className="jh-side__nav jh-side__nav--sub"
+                    aria-current={isActive ? "page" : undefined}
+                    style={{ "--jh-status-dot": sv.color }}
+                    onClick={() => applySavedView(`status:${sv.key}`, setRoute, setSavedViewName)}
+                  >
+                    <span>{sv.label}</span>
+                    <span className="jh-side__count">{count}</span>
+                  </button>
+                );
+              })}
+            </React.Fragment>
           );
         })}
       </div>
@@ -271,6 +286,48 @@ function Sidebar({ route, setRoute, setSavedViewName, theme, themeMode, onToggle
   );
 }
 
+async function switchDb(mode) {
+  await fetch('/api/db/switch', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  });
+  window.location.reload();
+}
+
+function DemoBanner() {
+  const [reseeding, setReseeding] = React.useState(false);
+
+  async function reseed() {
+    if (!window.confirm('Reset demo data to its original state?')) return;
+    setReseeding(true);
+    await fetch('/api/db/reseed-demo', { method: 'POST' });
+    window.location.reload();
+  }
+
+  return (
+    <div style={{
+      background: 'var(--accent)', color: '#fff',
+      fontSize: 12, fontWeight: 500,
+      padding: '6px 16px',
+      display: 'flex', alignItems: 'center', gap: 12,
+      flexShrink: 0,
+    }}>
+      <span>🎮 Demo mode — explore the app with sample data</span>
+      <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <button onClick={reseed} disabled={reseeding}
+          style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 4, padding: '2px 8px', fontSize: 11, cursor: 'pointer' }}>
+          {reseeding ? 'Resetting…' : 'Reset demo'}
+        </button>
+        <button onClick={() => switchDb('user')}
+          style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 4, padding: '2px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
+          Switch to my data →
+        </button>
+      </span>
+    </div>
+  );
+}
+
 const ROUTE_LABELS = {
   dashboard: "Dashboard",
   jobs: "Jobs",
@@ -300,4 +357,4 @@ function TopBar({ route, children, right }) {
   );
 }
 
-Object.assign(window, { Sidebar, TopBar, ROUTE_LABELS });
+Object.assign(window, { Sidebar, TopBar, ROUTE_LABELS, DemoBanner, switchDb });

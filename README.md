@@ -33,7 +33,7 @@ node server/index.js serve --port 8765 --auto-extract
 curl http://127.0.0.1:8765/health
 ```
 
-The UI is served from `http://127.0.0.1:8765`.
+The UI is served from `http://127.0.0.1:8765`. On first launch, the app guides the user through an onboarding workflow to configure preferences, LM Studio endpoints, and paste their resume. The interface also supports tracking job details, resolving duplicate entries, queuing bulk AI extractions, reviewing data quality, and viewing local metrics.
 
 ## Runtime Data
 

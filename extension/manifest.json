@@ -3,7 +3,7 @@
   "name": "Jobhunt Capture",
   "version": "0.2.0",
   "description": "Capture job postings into the local jobhunt tracker.",
-  "permissions": ["activeTab", "scripting", "storage", "contextMenus"],
+  "permissions": ["activeTab", "scripting", "storage", "contextMenus", "downloads"],
   "host_permissions": [
     "http://127.0.0.1:8765/*",
     "http://127.0.0.1:8766/*",

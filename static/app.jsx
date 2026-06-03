@@ -173,6 +173,18 @@ function JobhuntApp({ initialRoute = "jobs", initialJobId = null, initialTheme =
     if (newRoute !== "quality") setQualityIssue(null);
   }
 
+  function navigateToView(viewName) {
+    window.JH_PENDING_SAVED_VIEW = viewName;
+    setSavedViewName(viewName);
+    navigate("jobs");
+    setTimeout(() => {
+      if (window.JH_APPLY_SAVED_VIEW) {
+        window.JH_APPLY_SAVED_VIEW(viewName);
+        delete window.JH_PENDING_SAVED_VIEW;
+      }
+    }, 30);
+  }
+
   function selectJob(id) {
     setSelectedJobId(id);
     setNotFound(null);
@@ -192,6 +204,9 @@ function JobhuntApp({ initialRoute = "jobs", initialJobId = null, initialTheme =
   function closeSiteDetail() { setSelectedSiteId(null); }
   const [processingExtractions, setProcessingExtractions] = React.useState(false);
   const [selCount, setSelCount] = React.useState(0);
+  const [welcomeOpen, setWelcomeOpen] = React.useState(() => {
+    return !localStorage.getItem(WELCOME_KEY) && (window.JH_JOBS || []).length === 0;
+  });
   React.useEffect(() => { window.JH_SET_SEL_COUNT = setSelCount; return () => { delete window.JH_SET_SEL_COUNT; }; }, []);
 
   function processPendingExtractions() {
@@ -222,10 +237,12 @@ function JobhuntApp({ initialRoute = "jobs", initialJobId = null, initialTheme =
   }
 
   return (
-    <div className="jh-root" data-theme={theme}>
+    <div className="jh-root" data-theme={theme} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <ToastContainer />
-      <div className={`jh-shell ${panelOpen ? "jh-shell--with-panel" : ""}`}>
-        <Sidebar route={route} setRoute={navigate} setSavedViewName={setSavedViewName} theme={theme} themeMode={themeMode} onToggleTheme={() => setThemeMode((t) => t === "dark" ? "light" : t === "light" ? "auto" : "dark")} />
+      {welcomeOpen && <OnboardingWizard onClose={() => setWelcomeOpen(false)} />}
+      {window.JH_IS_DEMO && <DemoBanner />}
+      <div className={`jh-shell ${panelOpen ? "jh-shell--with-panel" : ""}`} style={{ flex: 1, minHeight: 0 }}>
+        <Sidebar route={route} setRoute={navigate} setSavedViewName={setSavedViewName} savedViewName={savedViewName} theme={theme} themeMode={themeMode} onToggleTheme={() => setThemeMode((t) => t === "dark" ? "light" : t === "light" ? "auto" : "dark")} />
 
         <main className="jh-main">
           <TopBar
@@ -248,7 +265,7 @@ function JobhuntApp({ initialRoute = "jobs", initialJobId = null, initialTheme =
             </div>
           )}
 
-          {route === "dashboard" && <DashboardPage onSelectJob={selectJob} onProcessExtractions={processPendingExtractions} processingExtractions={processingExtractions} />}
+          {route === "dashboard" && <DashboardPage onSelectJob={selectJob} onProcessExtractions={processPendingExtractions} processingExtractions={processingExtractions} onNavigate={setRoute} onNavigateToView={navigateToView} />}
           {route === "jobs" && <JobsPage selectedJobId={selectedJobId} onSelectJob={selectJob} panelOpen={panelOpen} savedViewName={savedViewName} setSavedViewName={setSavedViewName} />}
           {route === "quality" && <DataQualityPage onSelectJob={selectJob} onSelectJobs={selectJobs} issue={qualityIssue} setIssue={setQualityIssue} />}
           {route === "needs" && <NeedsActionPage onSelectJob={selectJob} />}
@@ -282,6 +299,7 @@ function JobhuntApp({ initialRoute = "jobs", initialJobId = null, initialTheme =
 }
 
 function RouteActions({ route, onProcessExtractions, processingExtractions, selCount = 0 }) {
+  const [addJobDialog, setAddJobDialog] = React.useState(false);
   const [addSiteDialog, setAddSiteDialog] = React.useState(null); // null | "url" | "note"
   const [pendingSiteUrl, setPendingSiteUrl] = React.useState("");
   const [checkingAvailability, setCheckingAvailability] = React.useState(false);
@@ -307,6 +325,8 @@ function RouteActions({ route, onProcessExtractions, processingExtractions, selC
     return (
       <>
         <Btn size="sm" kind="accent" icon={<Icon.Sparkles size={12} />} onClick={onProcessExtractions} disabled={processingExtractions}>{processLabel}</Btn>
+        <Btn size="sm" icon={<Icon.Plus size={12} />} onClick={() => setAddJobDialog(true)}>Add Job URL</Btn>
+        {addJobDialog && <AddJobUrlDialog onClose={() => setAddJobDialog(false)} />}
         <Btn size="sm" kind="ghost" icon={<Icon.Search size={12} />} onClick={checkAvailability} disabled={checkingAvailability} title="Check all active jobs for availability">Check availability</Btn>
         <Btn size="sm" kind="ghost" icon={<Icon.Refresh size={12} />} onClick={() => window.location.reload()}>Reload</Btn>
         <Btn size="sm" icon={<Icon.External size={12} />} onClick={() => window.open("/exports/jobs.csv", "_blank")}>Export</Btn>
@@ -314,8 +334,28 @@ function RouteActions({ route, onProcessExtractions, processingExtractions, selC
     );
   }
   if (route === "dashboard") {
-    const processLabel = processingExtractions ? "Running…" : selCount > 0 ? `Run AI extraction (${selCount})` : "Run AI extraction";
-    return <Btn size="sm" kind="accent" icon={<Icon.Sparkles size={12} />} onClick={onProcessExtractions} disabled={processingExtractions}>{processLabel}</Btn>;
+    const jobs = window.JH_JOBS || [];
+    const needsExtraction = jobs.filter(j => j.extraction?.status === 'pending' || j.extraction?.status === 'fail').length;
+    const needsFit = jobs.filter(j => j.extraction?.status === 'ok' && j.fit?.score == null).length;
+    const total = needsExtraction + needsFit;
+    const hasResume = Boolean((window.JH_SETTINGS || {}).resume_text);
+    const disabled = processingExtractions || total === 0 || (!hasResume && needsExtraction === 0);
+
+    const parts = [];
+    if (needsExtraction > 0) parts.push(`${needsExtraction} need extraction`);
+    if (needsFit > 0 && hasResume) parts.push(`${needsFit} need fit scoring`);
+    if (needsFit > 0 && !hasResume) parts.push(`add resume to score ${needsFit} jobs`);
+
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {parts.length > 0 && !processingExtractions && (
+          <span style={{ fontSize: 12, color: 'var(--fg-mute)' }}>{parts.join(' · ')}</span>
+        )}
+        <Btn size="sm" kind="accent" icon={<Icon.Sparkles size={12} />} onClick={onProcessExtractions} disabled={disabled}>
+          {processingExtractions ? 'Running…' : 'Run AI extraction'}
+        </Btn>
+      </div>
+    );
   }
   if (route === "needs") {
     return (
@@ -378,4 +418,64 @@ function RouteActions({ route, onProcessExtractions, processingExtractions, selC
 }
 
 
-Object.assign(window, { JobhuntApp });
+const WELCOME_KEY = 'jh.welcome_dismissed';
+
+function AddJobUrlDialog({ onClose }) {
+  const [url, setUrl] = React.useState('');
+  const [status, setStatus] = React.useState(null); // null | 'loading' | 'done' | 'error'
+  const [msg, setMsg] = React.useState('');
+
+  async function submit() {
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    setStatus('loading');
+    setMsg('');
+    try {
+      const res = await fetch('/api/captures/from-url', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url: trimmed }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setStatus('error'); setMsg(data.error || 'Failed'); return; }
+      if (data.duplicate) {
+        setStatus('error');
+        setMsg('This URL was already captured.');
+      } else {
+        setStatus('done');
+        setMsg('Job added — AI extraction will run shortly.');
+        window.JH_REFRESH_UI_DATA?.();
+        setTimeout(onClose, 1400);
+      }
+    } catch (e) {
+      setStatus('error');
+      setMsg(e.message);
+    }
+  }
+
+  return (
+    <AppDialog title="Add Job URL" onClose={onClose} maxWidth={440}
+      actions={[
+        { label: 'Cancel', onClick: onClose },
+        { label: status === 'loading' ? 'Fetching…' : 'Add job', kind: 'accent', onClick: submit, disabled: !url.trim() || status === 'loading' || status === 'done' },
+      ]}
+    >
+      <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--fg-mute)', lineHeight: 1.5 }}>
+        Paste a job posting URL. Jobhunt will fetch the page and queue it for AI extraction.
+      </p>
+      <input
+        autoFocus
+        value={url}
+        onChange={e => { setUrl(e.target.value); setStatus(null); setMsg(''); }}
+        onKeyDown={e => e.key === 'Enter' && submit()}
+        placeholder="https://jobs.example.com/posting/12345"
+        style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--fg)', fontSize: 13, boxSizing: 'border-box' }}
+      />
+      {msg && (
+        <p style={{ margin: '8px 0 0', fontSize: 12, color: status === 'error' ? 'var(--st-rejected)' : 'var(--st-offer)' }}>{msg}</p>
+      )}
+    </AppDialog>
+  );
+}
+
+Object.assign(window, { JobhuntApp, AddJobUrlDialog, WELCOME_KEY });

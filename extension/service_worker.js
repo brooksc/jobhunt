@@ -1,7 +1,8 @@
 importScripts("capture.js");
 importScripts("retry_queue.js");
+importScripts("export_csv.js");
 
-const BUILD_DATE = "2026-05-31";
+const BUILD_DATE = "2026-06-02";
 
 // Show build date in the icon tooltip so it's easy to confirm the loaded version
 chrome.action.setTitle({ title: `Capture job [${BUILD_DATE}]` });
@@ -44,21 +45,55 @@ async function serverUrl(path) {
 const SAVE_WITH_NOTE_MENU_ID = "save-job-with-note";
 const MARK_SITE_REVIEWED_MENU_ID = "mark-site-reviewed";
 const OPEN_CAPTURE_QUEUE_MENU_ID = "open-capture-queue";
+const SYNC_QUEUE_MENU_ID = "sync-queue";
+const EXPORT_CSV_MENU_ID = "export-csv";
+const CHECK_SERVER_MENU_ID = "check-server";
+const OPEN_APP_MENU_ID = "open-app";
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: SAVE_WITH_NOTE_MENU_ID,
     title: "Save job with note",
-    contexts: ["page", "selection"]
+    contexts: ["page", "selection", "action"]
   });
   chrome.contextMenus.create({
     id: MARK_SITE_REVIEWED_MENU_ID,
     title: "Mark site reviewed",
-    contexts: ["page"]
+    contexts: ["page", "action"]
+  });
+  chrome.contextMenus.create({
+    type: "separator",
+    id: "sep-queue",
+    contexts: ["action"]
   });
   chrome.contextMenus.create({
     id: OPEN_CAPTURE_QUEUE_MENU_ID,
-    title: "Open capture queue",
+    title: "View capture queue",
+    contexts: ["action"]
+  });
+  chrome.contextMenus.create({
+    id: SYNC_QUEUE_MENU_ID,
+    title: "Sync queue now",
+    contexts: ["action"]
+  });
+  chrome.contextMenus.create({
+    id: EXPORT_CSV_MENU_ID,
+    title: "Export queue to CSV",
+    contexts: ["action"]
+  });
+  chrome.contextMenus.create({
+    type: "separator",
+    id: "sep-server",
+    contexts: ["action"]
+  });
+  chrome.contextMenus.create({
+    id: CHECK_SERVER_MENU_ID,
+    title: "Check server connection",
+    contexts: ["action"]
+  });
+  chrome.contextMenus.create({
+    id: OPEN_APP_MENU_ID,
+    title: "Open Jobhunt app",
     contexts: ["action"]
   });
 });
@@ -67,6 +102,7 @@ chrome.action.onClicked.addListener(async (tab) => {
   try {
     await captureCurrentTab(tab);
   } catch (error) {
+    console.error("[jobhunt] capture error:", error);
     await showBadge(String(error?.message || "").includes("canceled") ? "CAN" : "ERR", "#b00020");
   }
 });
@@ -74,6 +110,26 @@ chrome.action.onClicked.addListener(async (tab) => {
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === OPEN_CAPTURE_QUEUE_MENU_ID) {
     await openQueueStatus();
+    return;
+  }
+
+  if (info.menuItemId === SYNC_QUEUE_MENU_ID) {
+    await syncQueueFromMenu();
+    return;
+  }
+
+  if (info.menuItemId === EXPORT_CSV_MENU_ID) {
+    await exportQueueCsv();
+    return;
+  }
+
+  if (info.menuItemId === CHECK_SERVER_MENU_ID) {
+    await checkServerConnection();
+    return;
+  }
+
+  if (info.menuItemId === OPEN_APP_MENU_ID) {
+    await openApp();
     return;
   }
 
@@ -122,8 +178,11 @@ async function captureCurrentTab(tab, userNote = "") {
     return;
   }
 
-  const payload = await captureTabPayload(tab.id, userNote);
-  await submitOrQueue(payload);
+  const { payload, action } = await captureTabPayload(tab.id, userNote);
+  const result = await submitOrQueue(payload);
+  if (action === "open" && result && !result.queued) {
+    await openApp(result.job_number);
+  }
 }
 
 async function captureTabPayload(tabId, userNote = "") {
@@ -141,16 +200,17 @@ async function captureTabPayload(tabId, userNote = "") {
     target: { tabId },
     func: async () => {
       const payload = await globalThis.jobhuntCapture.capturePage(window, document);
-      const confirmed = await globalThis.jobhuntCapture.showCapturePreflight(payload.preflight);
-      return confirmed ? payload : null;
+      const action = await globalThis.jobhuntCapture.showCapturePreflight(payload.preflight);
+      return action ? { payload, action } : null;
     }
   });
   if (!injection.result) {
     throw new Error("Capture canceled");
   }
+  const { payload, action } = injection.result;
   return {
-    ...injection.result,
-    user_note: userNote
+    payload: { ...payload, user_note: userNote },
+    action,
   };
 }
 
@@ -171,10 +231,14 @@ async function submitOrQueue(payload) {
     await showBadge(result.duplicate ? "DUP" : "OK", "#137333");
     return result;
   } catch (_error) {
-    const queueLength = await jobhuntRetryQueue.enqueueCapture(chrome.storage.local, payload);
+    const { length, duplicate } = await jobhuntRetryQueue.enqueueCapture(chrome.storage.local, payload);
+    if (duplicate) {
+      await showBadge("DUP", "#f9ab00");
+      return { queued: false, localDuplicate: true };
+    }
     await showBadge("Q", "#f9ab00");
-    await showQueuedStatus(queueLength);
-    return { queued: true, queueLength };
+    await showQueuedStatus(length);
+    return { queued: true, queueLength: length };
   }
 }
 
@@ -194,7 +258,7 @@ async function capturePendingNote(note) {
   }
 
   await chrome.storage.session.remove("pendingNoteTabId");
-  const payload = await captureTabPayload(tabId, note);
+  const { payload } = await captureTabPayload(tabId, note);
   return submitOrQueue(payload);
 }
 
@@ -279,4 +343,60 @@ async function openQueueStatus() {
     url: chrome.runtime.getURL("status.html"),
     active: true
   });
+}
+
+async function syncQueueFromMenu() {
+  const result = await flushQueuedCaptures();
+  if (result.submitted === 0 && result.remaining > 0) {
+    await showBadge("ERR", "#b00020");
+  } else if (result.remaining > 0) {
+    await showBadge("Q", "#f9ab00");
+  } else {
+    await showBadge("OK", "#137333");
+  }
+}
+
+async function exportQueueCsv() {
+  const queue = await jobhuntRetryQueue.getQueue(chrome.storage.local);
+  if (queue.length === 0) {
+    await showBadge("MT", "#888888");
+    return;
+  }
+  const csv = jobhuntCsv.queueToCsv(queue);
+  const dataUrl = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+  await chrome.downloads.download({ url: dataUrl, filename: jobhuntCsv.csvFilename() });
+  await showBadge("CSV", "#137333");
+}
+
+async function checkServerConnection() {
+  try {
+    const port = await findServerPort();
+    await chrome.action.setTitle({ title: `Capture job [${BUILD_DATE}] — server on :${port}` });
+    await showBadge("OK", "#137333");
+  } catch (_error) {
+    await chrome.action.setTitle({ title: `Capture job [${BUILD_DATE}] — server not found` });
+    await showBadge("ERR", "#b00020");
+  }
+}
+
+async function openApp(jobNumber) {
+  try {
+    // Ask the Electron window to focus and navigate — no new browser tab needed.
+    const focusUrl = await serverUrl("/api/app/focus");
+    const res = await fetch(focusUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ job_number: jobNumber ?? null }),
+    });
+    if (res.ok) return;
+  } catch (_error) { /* fall through */ }
+
+  // Fallback: open the web UI in a browser tab (CLI server or Electron not responding).
+  try {
+    const hash = jobNumber ? `#/jobs/${jobNumber}` : "";
+    const url = await serverUrl("/") + hash;
+    await chrome.tabs.create({ url, active: true });
+  } catch (_error) {
+    await showBadge("ERR", "#b00020");
+  }
 }

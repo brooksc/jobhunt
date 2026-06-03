@@ -9,6 +9,26 @@ const appIconPath = path.join(__dirname, '../static/icons/icon-512.png');
 
 let mainWindow = null;
 let serverPort = null;
+let pendingDeepLink = null;
+
+// Register jobhunt:// URL scheme so macOS can open the app from external links.
+// In dev mode (process.defaultApp is set) we must pass the script path explicitly.
+if (process.defaultApp && process.argv.length >= 2) {
+  app.setAsDefaultProtocolClient('jobhunt', process.execPath, [path.resolve(process.argv[1])]);
+} else {
+  app.setAsDefaultProtocolClient('jobhunt');
+}
+
+// Must be registered before app.whenReady() on macOS.
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  if (mainWindow) {
+    focusWindow();
+    navigateDeepLink(url);
+  } else {
+    pendingDeepLink = url;
+  }
+});
 
 function pluralize(count, singular, plural = `${singular}s`) {
   return count === 1 ? singular : plural;
@@ -53,6 +73,46 @@ process.on('jobhunt:queue-auto-paused', () => {
   });
 });
 
+// Called by the server API bridge (/api/app/focus) and open-url handler.
+process.on('jobhunt:open-job', ({ jobNumber } = {}) => {
+  if (!mainWindow) return;
+  focusWindow();
+  if (jobNumber) navigateToJob(jobNumber);
+});
+
+function focusWindow() {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
+}
+
+function navigateToJob(jobNumber) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const hash = JSON.stringify(`#/jobs/${jobNumber}`);
+  // Refresh UI data so the new job appears in JH_JOBS, then push the hash
+  // via history.pushState so the app's popstate handler selects the row and
+  // opens the detail pane.
+  const script = `(async () => {
+    await window.JH_REFRESH_UI_DATA?.();
+    await new Promise(r => setTimeout(r, 400));
+    history.pushState(null, '', ${hash});
+    window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
+  })()`;
+  if (mainWindow.webContents.isLoading()) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      mainWindow.webContents.executeJavaScript(script).catch(() => {});
+    });
+  } else {
+    mainWindow.webContents.executeJavaScript(script).catch(() => {});
+  }
+}
+
+function navigateDeepLink(url) {
+  // jobhunt://jobs/42
+  const match = url.match(/^jobhunt:\/\/jobs\/(\d+)/i);
+  if (match) navigateToJob(parseInt(match[1], 10));
+}
+
 async function startServer() {
   // Use the same DB as the CLI server: ~/.config/jobhunt/jobhunt.db
   // Respect JOBHUNT_DB_PATH if already set (same convention as the CLI).
@@ -65,7 +125,8 @@ async function startServer() {
   requeueRunningRequests(dbPath, 0);
 
   const { createApp } = await import('../server/api.js');
-  const expressApp = createApp({ dbPath, autoExtract: true });
+  const { DEMO_DB_PATH } = await import('../server/demo.js');
+  const expressApp = createApp({ dbPath, autoExtract: true, demoDemoPath: DEMO_DB_PATH });
 
   // Try preferred ports in order so the extension can find us predictably.
   // Fall back to an OS-assigned port if all are busy.
@@ -96,7 +157,6 @@ async function createWindow() {
     show: false,
     resizable: true,
     icon: appIconPath,
-    titleBarStyle: 'hiddenInset',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -118,6 +178,11 @@ async function createWindow() {
   mainWindow.once('ready-to-show', () => {
     applyZoom();
     mainWindow.show();
+    // Handle URL that arrived before window was ready (open-url fired during startup)
+    if (pendingDeepLink) {
+      navigateDeepLink(pendingDeepLink);
+      pendingDeepLink = null;
+    }
   });
 
   // Open external links in the system browser, not inside the app
@@ -128,22 +193,14 @@ async function createWindow() {
 
   await mainWindow.loadURL(`http://127.0.0.1:${serverPort}`);
 
-  // Push sidebar content down so macOS traffic lights don't overlap.
-  // hiddenInset places buttons at ~(10,10); brand row is the first thing in the sidebar.
-  // Do NOT set -webkit-app-region:drag on .jh-side — it covers the left/top window edges
-  // and causes macOS to treat resize-drags as window-move events (window won't resize).
-  // Make the brand row and the tl-space (traffic-light spacer) draggable so users
-  // can move the window from the sidebar area.  The spacer is already -webkit-app-region:drag
-  // via CSS; this covers the brand text row too.
-  mainWindow.webContents.insertCSS(`
-    .jh-side__brand { -webkit-app-region: drag; }
-    .jh-side__brand * { -webkit-app-region: no-drag; }
-  `);
-
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
 app.whenReady().then(async () => {
+  // On macOS the URL can arrive in argv when the app is launched cold via the scheme.
+  const argUrl = process.argv.find(a => a.startsWith('jobhunt://'));
+  if (argUrl && !pendingDeepLink) pendingDeepLink = argUrl;
+
   try {
     serverPort = await startServer();
     await createWindow();

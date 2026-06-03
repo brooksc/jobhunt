@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { expandMetros } from '../../server/metros.js';
 import {
   parseBoolSetting,
   applyLocationFilter,
@@ -432,6 +433,15 @@ About the role`
     assert.equal(withLocation.location, 'Remote');
   });
 
+  it('overrides bare country location with Remote when source has Remote line', () => {
+    // LLM sees "Hiring Remotely in USA" and returns location: 'USA'; source has "Remote" on its own line
+    const result = normalizeLocationFromSource(
+      { company: 'Google Fiber', title: 'Senior TPM', location: 'USA', remote_type: 'remote' },
+      'Remote\nHiring Remotely in USA'
+    );
+    assert.equal(result.location, 'Remote');
+  });
+
   it('treats explicit remote-candidate language as remote', () => {
     const normalized = normalizeRemoteTypeFromSource(
       { company: 'Zscaler', title: 'SPM', location: null, remote_type: 'unknown' },
@@ -570,5 +580,71 @@ describe('normalizeCompanyFromSource', () => {
     );
 
     assert.equal(normalized.company, 'Blue Acorn iCi');
+  });
+});
+
+describe('expandMetros', () => {
+  it('returns empty array for empty string', () => {
+    assert.deepEqual(expandMetros(''), []);
+  });
+
+  it('returns empty array for null/undefined', () => {
+    assert.deepEqual(expandMetros(null), []);
+    assert.deepEqual(expandMetros(undefined), []);
+  });
+
+  it('expands a single metro to its cities plus state terms', () => {
+    const result = expandMetros('wa:seattle');
+    assert.ok(result.includes('Seattle'), 'should include Seattle');
+    assert.ok(result.includes('Bellevue'), 'should include Bellevue');
+    assert.ok(result.includes('Redmond'), 'should include Redmond');
+    assert.ok(result.includes('WA'), 'should include state abbreviation WA');
+    assert.ok(result.includes('Washington'), 'should include full state name');
+  });
+
+  it('expands multiple metros and deduplicates state terms', () => {
+    const result = expandMetros('wa:seattle,ca:bay-area');
+    assert.ok(result.includes('Seattle'));
+    assert.ok(result.includes('San Francisco'));
+    assert.ok(result.includes('WA'));
+    assert.ok(result.includes('CA'));
+    // State terms should not appear twice
+    assert.equal(result.filter(c => c === 'WA').length, 1);
+  });
+
+  it('ignores unknown state/metro tokens gracefully', () => {
+    assert.deepEqual(expandMetros('xx:unknown'), []);
+    assert.deepEqual(expandMetros('wa:nonexistent'), []);
+  });
+});
+
+describe('applyLocationFilter — filterEnabled', () => {
+  it('returns meets_criteria=true for any location when filterEnabled is false', () => {
+    const base = { company: 'Acme', title: 'SWE', location: 'Austin, TX', remote_type: 'onsite' };
+    const result = applyLocationFilter({ ...base }, {
+      preferredLocations: 'Seattle',
+      allowOnsite: true,
+      filterEnabled: false,
+    });
+    assert.equal(result.meets_criteria, true);
+  });
+
+  it('still filters when filterEnabled defaults to true', () => {
+    const base = { company: 'Acme', title: 'SWE', location: 'Austin, TX', remote_type: 'onsite' };
+    const result = applyLocationFilter({ ...base }, {
+      preferredLocations: 'Seattle',
+      allowOnsite: true,
+    });
+    assert.equal(result.meets_criteria, false);
+  });
+
+  it('does not filter remote jobs regardless of filterEnabled', () => {
+    const base = { company: 'Acme', title: 'SWE', location: 'Austin, TX', remote_type: 'remote' };
+    const result = applyLocationFilter({ ...base }, {
+      preferredLocations: 'Seattle',
+      allowRemote: true,
+      filterEnabled: true,
+    });
+    assert.equal(result.meets_criteria, true);
   });
 });

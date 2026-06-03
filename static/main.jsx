@@ -483,6 +483,8 @@
       metrics,
       meta,
       settings: raw.settings || {},
+      metros: raw.metros || {},
+      isDemo: raw.isDemo || false,
     };
   }
 
@@ -498,6 +500,8 @@
       JH_METRICS: mapped.metrics,
       JH_META: mapped.meta,
       JH_SETTINGS: mapped.settings,
+      JH_METROS: mapped.metros,
+      JH_IS_DEMO: mapped.isDemo || false,
       JH_QUEUE_STATS: {
         totalOutstanding: pendingExtraction + failedExtraction,
         queued: pendingExtraction,
@@ -579,6 +583,7 @@
       saveSettings: (body) => api("/api/settings", { method: "PATCH", body: JSON.stringify(body) }),
       addNote: (jobId, note) => mutate(`/api/jobs/${jobId}/notes`, { method: "POST", body: JSON.stringify({ note }) }),
       archiveJob: (jobId) => mutate(`/api/jobs/${jobId}/archive`, { method: "POST" }),
+      deleteJob: (jobId) => mutate(`/api/jobs/${jobId}`, { method: "DELETE" }),
       rerunExtraction: (jobId) => mutate(`/api/jobs/${jobId}/extract`, { method: "POST" }),
       recordJobOpened: (jobId) => api(`/api/jobs/${jobId}/opened`, { method: "POST" }).then(refreshUiDataOrReload),
       openJobSource: (jobId, url) => {

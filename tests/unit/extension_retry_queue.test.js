@@ -29,10 +29,11 @@ describe('extension retry queue', () => {
     const queue = loadRetryQueue();
     const storage = fakeStorage();
 
-    const length = await queue.enqueueCapture(storage, { url: 'https://example.com/job' });
+    const result = await queue.enqueueCapture(storage, { url: 'https://example.com/job' });
     const items = await queue.getQueue(storage);
 
-    assert.equal(length, 1);
+    assert.equal(result.length, 1);
+    assert.equal(result.duplicate, false);
     assert.equal(items.length, 1);
     assert.equal(items[0].payload.url, 'https://example.com/job');
     assert.match(items[0].queued_at, /^\d{4}-\d{2}-\d{2}T/);

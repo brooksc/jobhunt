@@ -11,10 +11,10 @@ const HELP_SECTIONS = [
   {
     title: "Initial setup",
     items: [
-      "Start the local service with npm start, then open the app URL shown by the server.",
-      "Install the unpacked Chrome extension from the extension directory and keep the local service running while capturing pages.",
-      "Open Settings to configure the LLM provider, model, preferred locations, work arrangements, follow-up defaults, and resume text for fit scoring.",
-      "Use Test connection in Settings before queueing a large extraction batch.",
+      "Launch the Jobhunt app. The local service starts automatically and the UI opens in your browser.",
+      "Install the Chrome extension — see the Capture tab for instructions. Keep the app running while capturing pages.",
+      "Open Settings to configure your AI provider, preferred locations, work arrangements, follow-up defaults, and resume text for fit scoring.",
+      "Use Test connection in Settings before queuing a large extraction batch.",
     ],
   },
   {
@@ -30,9 +30,9 @@ const HELP_SECTIONS = [
     title: "Jobs",
     items: [
       "Use the Jobs table to search, filter, sort, select rows, bulk-change status, queue AI work, compare selected jobs, and export CSV.",
-      "Open a row to view details, edit extracted fields, inspect timeline events, read captured descriptions, view raw diagnostics, re-run AI, copy debug data, or mark a job unavailable.",
-      "Saved views in the sidebar let you return to common filters such as active applications, matching remote jobs, and recent captures.",
-      "Press Command-K or Control-K from anywhere in the app to jump to Jobs search.",
+      "Open a row to view details, edit extracted fields, inspect timeline events, read captured descriptions, view raw diagnostics, re-run AI, or mark a job unavailable.",
+      "Saved views in the sidebar store a named combination of filters and search — create one from the current filter state using the bookmark icon. Common uses: active applications, remote-only, recent captures.",
+      "Press ⌘K (Mac) or Ctrl-K (Windows/Linux) from anywhere in the app to jump to Jobs search.",
     ],
   },
   {
@@ -41,7 +41,16 @@ const HELP_SECTIONS = [
       "Run AI extraction from Dashboard, Jobs, or the LLM Queue after your provider and model are configured.",
       "Use Full extraction when the page needs complete parsing, Missing fields only for cleanup, and Fit score only after adding or changing your resume.",
       "The LLM Queue shows outstanding, running, failed, and completed requests with attempt history and retry controls.",
-      "Failed attempts are durable. Settings can enable LLM debug logging for deeper troubleshooting.",
+      "Failed attempts are durable. Enable LLM debug logging in Settings → Debug if extraction fails silently.",
+    ],
+  },
+  {
+    title: "Fit scoring",
+    items: [
+      "Fit scoring rates each job 0–100 against your resume and breaks the score down by dimension (skills match, seniority, location, etc.).",
+      "Add your resume in Settings → Resume as plain text. Re-run Fit score only mode after updating it to refresh all scores without re-extracting.",
+      "The fit score appears as a badge in the Jobs table and as a full dimension breakdown in the job detail panel.",
+      "Jobs with no resume configured show no fit score — the badge is absent rather than zero.",
     ],
   },
   {
@@ -85,17 +94,18 @@ const HELP_SECTIONS = [
       "Export CSV from Settings or Jobs when you need a spreadsheet copy of the current job table.",
     ],
   },
-  {
-    title: "Troubleshooting",
-    items: [
-      "No new captures: confirm the local service is running, reload the extension, and check the sidebar Extension status.",
-      "Extraction does not run: check Settings provider details, load or select a model, run Test connection, then inspect LLM Queue failures.",
-      "Fields look wrong: inspect Capture diagnostics, re-run AI, or recapture the page with more visible job text selected.",
-      "Availability checks mark jobs unavailable: open the source URL from job details and restore the status manually if the site blocks automated checks.",
-      "UI looks stale: use Reload in the top bar or restart the local service.",
-    ],
-  },
 ];
+
+const TROUBLESHOOTING_SECTION = {
+  title: "Troubleshooting",
+  items: [
+    "No new captures: confirm the local service is running, reload the extension, and check the sidebar Extension status.",
+    "Extraction does not run: check Settings provider details, load or select a model, run Test connection, then inspect LLM Queue failures.",
+    "Fields look wrong: inspect Capture diagnostics, re-run AI, or recapture the page with more visible job text selected.",
+    "Availability checks mark jobs unavailable: open the source URL from job details and restore the status manually if the site blocks automated checks.",
+    "UI looks stale: use Reload in the top bar or restart the local service.",
+  ],
+};
 
 function AiProviderCard({ badge, badgeKind = "local", name, children }) {
   return (
@@ -158,7 +168,7 @@ function AiSetupContent() {
           <p>Claude models are strong at structured extraction and following detailed instructions. Competitive pricing at higher quality tiers.</p>
           <ol>
             <li>Create an account at <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer">console.anthropic.com</a> and add a payment method.</li>
-            <li>Go to <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">console.anthropic.com/settings/keys</a> and create an API key.</li>
+            <li>Go to <a href="https://console.anthropic.com/account/keys" target="_blank" rel="noopener noreferrer">console.anthropic.com/account/keys</a> and create an API key.</li>
             <li>In Jobhunt Settings: choose <strong>Anthropic</strong> as provider, paste your key (starts with <code>sk-ant-…</code>), and pick a model.</li>
           </ol>
           <p className="jh-help-ai__note"><strong>Recommended models:</strong> <code>claude-haiku-4-5</code> for fast/cheap extraction, <code>claude-sonnet-4-6</code> for best quality.</p>
@@ -203,6 +213,40 @@ function AiSetupContent() {
 }
 
 function HelpPage() {
+  const [helpPage, setHelpPage] = React.useState('setup');
+
+  const tabs = [
+    { id: 'setup', label: 'Setup' },
+    { id: 'capture', label: 'Capture' },
+    { id: 'extract', label: 'Extract' },
+    { id: 'review', label: 'Review' },
+    { id: 'followup', label: 'Follow Up' },
+    { id: 'about', label: 'About', right: true },
+  ];
+
+  const workflowSteps = [
+    { id: 'capture', Icon: Icon.Briefcase, label: 'Capture' },
+    { id: 'extract', Icon: Icon.Sparkles, label: 'Extract' },
+    { id: 'review', Icon: Icon.AlertTriangle, label: 'Review' },
+    { id: 'followup', Icon: Icon.Bell, label: 'Follow Up' },
+  ];
+
+  const step = { fontSize: 13, padding: '7px 0', borderBottom: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'flex-start' };
+  const num = { flexShrink: 0, width: 20, height: 20, borderRadius: 10, background: 'var(--accent)', color: '#fff', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 };
+  const code = { fontFamily: 'var(--font-mono)', fontSize: 12, background: 'var(--bg-elev-2)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' };
+
+  function HelpSection({ section }) {
+    return (
+      <section className="jh-help__section">
+        <h2>{section.title}</h2>
+        {section.body?.map((text) => <p key={text}>{text}</p>)}
+        {section.items && <ul>{section.items.map((item) => <li key={item}>{item}</li>)}</ul>}
+      </section>
+    );
+  }
+
+  const S = Object.fromEntries(HELP_SECTIONS.map(s => [s.title, s]));
+
   return (
     <div className="jh-help">
       <div className="jh-help__intro">
@@ -211,32 +255,236 @@ function HelpPage() {
           <p>Operational guide for running the local job-search workflow end to end.</p>
         </div>
         <div className="jh-help__quick">
-          <span><Icon.Briefcase size={12} />Capture</span>
-          <span><Icon.Sparkles size={12} />Extract</span>
-          <span><Icon.AlertTriangle size={12} />Review</span>
-          <span><Icon.Bell size={12} />Follow up</span>
+          {workflowSteps.map((ws, i) => (
+            <React.Fragment key={ws.id}>
+              {i > 0 && <span style={{ color: 'var(--fg-faint)', fontSize: 14, padding: '0 2px', border: 'none', background: 'none' }}>→</span>}
+              <button
+                onClick={() => setHelpPage(ws.id)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  height: 26, padding: '0 8px',
+                  border: `1px solid ${helpPage === ws.id ? 'var(--accent-border)' : 'var(--border)'}`,
+                  borderRadius: 'var(--r-2)',
+                  background: helpPage === ws.id ? 'var(--accent-bg)' : 'var(--bg-elev)',
+                  color: helpPage === ws.id ? 'var(--accent)' : 'var(--fg)',
+                  fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                <ws.Icon size={12} />{ws.label}
+              </button>
+            </React.Fragment>
+          ))}
         </div>
       </div>
 
-      <div className="jh-help__grid">
-        {HELP_SECTIONS.map((section) => (
-          <section key={section.title} className="jh-help__section">
-            <h2>{section.title}</h2>
-            {section.body?.map((text) => <p key={text}>{text}</p>)}
-            {section.items && (
-              <ul>
-                {section.items.map((item) => <li key={item}>{item}</li>)}
-              </ul>
-            )}
-          </section>
-        ))}
-
-        {/* AI setup — spans both columns */}
-        <section className="jh-help__section jh-help__section--wide">
-          <h2>Setting up AI extraction</h2>
-          <AiSetupContent />
-        </section>
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', marginBottom: 24, background: 'var(--bg)', alignItems: 'center' }}>
+        {tabs.filter(t => !t.right).map(tab => {
+          const active = helpPage === tab.id;
+          return (
+            <button key={tab.id} onClick={() => setHelpPage(tab.id)} style={{
+              background: 'none', border: 'none', borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
+              color: active ? 'var(--fg)' : 'var(--fg-mute)', cursor: 'pointer',
+              fontSize: 13, fontWeight: active ? 600 : 400, padding: '10px 16px 8px', marginBottom: -1,
+            }}>{tab.label}</button>
+          );
+        })}
+        <div style={{ flex: 1 }} />
+        {tabs.filter(t => t.right).map(tab => {
+          const active = helpPage === tab.id;
+          return (
+            <button key={tab.id} onClick={() => setHelpPage(tab.id)} style={{
+              background: 'none', border: 'none', borderBottom: active ? '2px solid var(--accent)' : '2px solid transparent',
+              color: active ? 'var(--fg)' : 'var(--fg-mute)', cursor: 'pointer',
+              fontSize: 13, fontWeight: active ? 600 : 400, padding: '10px 16px 8px', marginBottom: -1,
+            }}>{tab.label}</button>
+          );
+        })}
       </div>
+
+      {/* Setup tab */}
+      {helpPage === 'setup' && (
+        <div className="jh-help__grid">
+          <HelpSection section={S['Start here']} />
+          <HelpSection section={S['Initial setup']} />
+          <HelpSection section={S['Capturing jobs']} />
+          <HelpSection section={S['AI extraction']} />
+          <HelpSection section={S['Settings and data']} />
+          <HelpSection section={TROUBLESHOOTING_SECTION} />
+        </div>
+      )}
+
+      {/* Capture tab */}
+      {helpPage === 'capture' && (
+        <div>
+          <section className="jh-help__section--wide" style={{ marginBottom: 28 }}>
+            <h2>Chrome extension</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 8, background: 'var(--bg-elev-2)', border: '1px solid var(--border)', marginBottom: 16, maxWidth: 600 }}>
+              <span style={{ fontSize: 16 }}>🏪</span>
+              <div>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-mute)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Coming soon</span>
+                <div style={{ fontSize: 13, color: 'var(--fg)' }}>Chrome Web Store listing — one-click install once published.</div>
+              </div>
+            </div>
+            <div style={{ padding: '16px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elev)', maxWidth: 600 }}>
+              <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 14 }}>Install now with Developer mode</div>
+              <div style={step}><div style={num}>1</div><div>Open <span style={code}>chrome://extensions</span> in Chrome or any Chromium-based browser (Edge, Brave, Arc).</div></div>
+              <div style={step}><div style={num}>2</div><div>Enable <strong>Developer mode</strong> using the toggle in the top-right corner.</div></div>
+              <div style={step}><div style={num}>3</div><div>Click <strong>Load unpacked</strong> → select the <span style={code}>extension/</span> folder in the Jobhunt project directory.</div></div>
+              <div style={step}><div style={num}>4</div><div>Click the puzzle-piece icon in Chrome's toolbar and pin <strong>Jobhunt Capture</strong> for quick access.</div></div>
+              <div style={{ ...step, borderBottom: 'none', paddingBottom: 0 }}><div style={num}>5</div><div>Keep the Jobhunt service running (<span style={code}>npm start</span>), then open any job posting and click the icon.</div></div>
+            </div>
+          </section>
+          <div className="jh-help__grid">
+            <HelpSection section={S['Capturing jobs']} />
+            <HelpSection section={S['Sites']} />
+            <section className="jh-help__section">
+              <h2>Add Job URL</h2>
+              <p>Don't have the extension installed yet? Use <strong>Add Job URL</strong> in the Jobs toolbar. Paste any public job posting URL and Jobhunt fetches and captures the page server-side. Works for most public job boards — the extension gives better results on pages that require JavaScript rendering.</p>
+            </section>
+          </div>
+        </div>
+      )}
+
+      {/* Extract tab */}
+      {helpPage === 'extract' && (
+        <div>
+          <div className="jh-help__grid" style={{ marginBottom: 28 }}>
+            <HelpSection section={S['AI extraction']} />
+            <HelpSection section={S['Fit scoring']} />
+          </div>
+          <section className="jh-help__section--wide">
+            <h2>AI provider setup</h2>
+            <AiSetupContent />
+          </section>
+        </div>
+      )}
+
+      {/* Review tab */}
+      {helpPage === 'review' && (
+        <div className="jh-help__grid">
+          <HelpSection section={S['Jobs']} />
+          <HelpSection section={S['Data Quality']} />
+          <HelpSection section={S['Duplicates']} />
+          <section className="jh-help__section">
+            <h2>Keyboard shortcuts</h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 16px', alignItems: 'center', fontSize: 13 }}>
+              {[
+                ['⌘K / Ctrl-K', 'Focus Jobs search from anywhere'],
+                ['↑ / ↓', 'Navigate between jobs in the table'],
+                ['Enter', 'Open focused job detail'],
+                ['Escape', 'Close detail panel / clear search'],
+              ].map(([key, desc]) => (
+                <React.Fragment key={key}>
+                  <Kbd>{key}</Kbd>
+                  <span style={{ color: 'var(--fg-mute)' }}>{desc}</span>
+                </React.Fragment>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* Follow Up tab */}
+      {helpPage === 'followup' && (
+        <div>
+          <div className="jh-help__grid" style={{ marginBottom: 28 }}>
+            {/* Pipeline */}
+            <section className="jh-help__section jh-help__section--wide">
+              <h2>Job pipeline</h2>
+              <p>Move jobs through these statuses as your application progresses. Only <strong>Saved</strong>, <strong>Applied</strong>, <strong>Interview</strong>, and <strong>Offer</strong> are considered active and appear in default filters.</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, margin: '16px 0' }}>
+                {[
+                  { status: 'saved', color: 'var(--st-saved, var(--fg-mute))', label: 'Saved', desc: 'Captured and under consideration. Default state for all new jobs.' },
+                  { status: 'applied', color: 'var(--st-applied, #4a90d9)', label: 'Applied', desc: 'Application submitted. Set a follow-up reminder to check status.' },
+                  { status: 'interview', color: 'var(--st-interview, #9b6fd4)', label: 'Interview', desc: 'Actively interviewing. Track rounds and contacts in job notes.' },
+                  { status: 'offer', color: 'var(--st-offer, #4caf6e)', label: 'Offer', desc: 'Offer received. Compare compensation against your criteria.' },
+                ].map(({ status, color, label, desc }) => (
+                  <div key={status} style={{ padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elev)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 4, background: color, flexShrink: 0 }} />
+                      <strong style={{ fontSize: 13 }}>{label}</strong>
+                    </div>
+                    <p style={{ margin: 0, fontSize: 12, color: 'var(--fg-mute)', lineHeight: 1.45 }}>{desc}</p>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                {[
+                  { status: 'rejected', color: 'var(--st-rejected, #e05c5c)', label: 'Rejected', desc: 'Application declined. Kept for reference — useful for identifying patterns.' },
+                  { status: 'archived', color: 'var(--fg-faint)', label: 'Archived', desc: 'No longer pursuing. Removed from active views but preserved in history.' },
+                  { status: 'not_available', color: 'var(--fg-faint)', label: 'Not available', desc: 'Posting is no longer live. Set automatically by availability checks or manually.' },
+                ].map(({ status, color, label, desc }) => (
+                  <div key={status} style={{ padding: '12px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elev)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 4, background: color, flexShrink: 0 }} />
+                      <strong style={{ fontSize: 13 }}>{label}</strong>
+                    </div>
+                    <p style={{ margin: 0, fontSize: 12, color: 'var(--fg-mute)', lineHeight: 1.45 }}>{desc}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+          <div className="jh-help__grid">
+            <HelpSection section={S['Needs Action']} />
+            <section className="jh-help__section">
+              <h2>Workflow tips</h2>
+              <ul>
+                <li>Change status from the job detail panel or select multiple rows in the Jobs table and use bulk status change.</li>
+                <li>When you move a job to <strong>Applied</strong>, set a follow-up date immediately — it takes seconds and prevents applications from going silent.</li>
+                <li>Use job notes to track recruiter names, interview rounds, and compensation details. Notes appear in the timeline.</li>
+                <li>Filter Jobs by status using the sidebar or the status filter to see only active applications, or only offers.</li>
+                <li>Rejected and archived jobs are hidden from default views but searchable — use the status filter to review past applications.</li>
+              </ul>
+            </section>
+          </div>
+        </div>
+      )}
+      {/* About tab */}
+      {helpPage === 'about' && (
+        <div style={{ maxWidth: 560 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28 }}>
+            <img src="/static/apple-touch-icon.png" alt="Jobhunt" style={{ width: 56, height: 56, borderRadius: 14, flexShrink: 0 }} />
+            <div>
+              <h2 style={{ margin: '0 0 2px', fontSize: 20 }}>Jobhunt</h2>
+              <div style={{ fontSize: 13, color: 'var(--fg-mute)' }}>Version {(window.JH_SETTINGS || {}).version || '—'} · Local-first job tracker</div>
+            </div>
+          </div>
+
+          <p style={{ fontSize: 14, lineHeight: 1.65, color: 'var(--fg-mute)', marginBottom: 24 }}>
+            Jobhunt helps you manage a job search without spreadsheets or SaaS subscriptions. It captures job postings from the web, uses AI to extract structured data, scores opportunities against your resume, and keeps your pipeline organized locally on your machine.
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 28 }}>
+            <a href="https://github.com/brooksc/jobhunt" target="_blank" rel="noopener noreferrer"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elev)', color: 'var(--fg)', textDecoration: 'none', fontSize: 13, width: 'fit-content' }}>
+              <Icon.External size={14} />
+              github.com/brooksc/jobhunt
+            </a>
+          </div>
+
+          <section className="jh-help__section">
+            <h2>Privacy</h2>
+            <ul>
+              <li>All data is stored locally in a SQLite database on your machine. Nothing is sent to any remote server.</li>
+              <li>When using a cloud AI provider (OpenAI, Anthropic, Google, OpenRouter), job posting text is sent to that provider's API for extraction. No other data is shared.</li>
+              <li>When using LM Studio or Ollama, all AI processing stays on-device. No job data ever leaves your machine.</li>
+              <li>The Chrome extension only communicates with the local Jobhunt service running on your machine (localhost).</li>
+            </ul>
+          </section>
+
+          <section className="jh-help__section">
+            <h2>Tech stack</h2>
+            <ul>
+              <li><strong>Server</strong>: Node.js with Express, SQLite via node:sqlite (built-in)</li>
+              <li><strong>Frontend</strong>: React served as JSX — no build step</li>
+              <li><strong>Desktop</strong>: Electron wraps the local service and browser UI</li>
+              <li><strong>AI</strong>: Any OpenAI-compatible API endpoint (local or cloud)</li>
+            </ul>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

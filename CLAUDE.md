@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI coding assistants (like Antigravity and Claude Code) when working with code in this repository.
 
 ## What it is
 
@@ -20,7 +20,7 @@ Default: `http://127.0.0.1:8765`. DB lives at `~/.config/jobhunt/jobhunt.db` (ov
 
 When changing server code during an interactive session, restart the app by killing the `node server/index.js serve` child process; `npm start` runs a supervisor loop that should automatically bring it back.
 
-**MCP config reminder:** The Claude desktop app (`~/Library/Application Support/Claude/claude_desktop_config.json`) has a `jobhunt` MCP server entry. If the MCP server command, arguments, or DB path ever change, update that file and remind the user to restart the Claude app. Current correct entry:
+**MCP config reminder:** The assistant's desktop host app (e.g. Claude Desktop app config at `~/Library/Application Support/Claude/claude_desktop_config.json`) has a `jobhunt` MCP server entry. If the MCP server command, arguments, or DB path ever change, update that file and restart the desktop host app. Current correct entry:
 ```json
 "jobhunt": {
   "command": "node",
@@ -32,7 +32,7 @@ When changing server code during an interactive session, restart the app by kill
 }
 ```
 
-CLI subcommands: `init`, `extract`, `jobs list`, `jobs status`, `jobs note`, `duplicates list`, `export csv`.
+CLI subcommands: `serve`, `init`, `extract`, `jobs list`, `jobs status`, `jobs note`, `jobs queue-ai`, `duplicates list`, `export csv`.
 
 ## Architecture
 
@@ -44,13 +44,16 @@ CLI subcommands: `init`, `extract`, `jobs list`, `jobs status`, `jobs note`, `du
 - `cleaning.js` — text normalization before hashing/storage
 - `availability.js` — checks whether captured job URLs are still live
 - `export.js` — CSV export
+- `metros.js` — contains geographic metro areas definition and matching logic
 
 **Frontend** (`static/`) — no build step; React + Babel loaded from `static/vendor/` at runtime, JSX served directly:
-- `index.html` — loads vendor scripts then all JSX files as `type="text/babel"`; the server injects cache-busting version hashes
+- `index.html` — loads vendor scripts then all JSX/JS files as `type="text/babel"`; the server injects cache-busting version hashes
+- `main.jsx` — sets up global app configuration and React rendering target
 - `app.jsx` — top-level `JobhuntApp` component; hash-based routing (`#/jobs`, `#/sites`, etc.)
 - `shell.jsx` — nav shell and data-loading layer; polls `/api/ui-data`
 - `components.jsx` — shared UI primitives
-- `screens/` — one file per route: `jobs.jsx`, `detail.jsx`, `sites.jsx`, `duplicates.jsx`, `needs.jsx`, `settings.jsx`, `llm_queue.jsx`, `dashboard.jsx`
+- `onboarding.jsx` — modal/screen for setting up the application initially
+- `screens/` — one file per route: `jobs.jsx`, `detail.jsx`, `sites.jsx`, `duplicates.jsx`, `needs.jsx`, `settings.jsx`, `llm_queue.jsx`, `dashboard.jsx`, `help.jsx`, `quality.jsx`
 
 **Chrome extension** (`extension/`) — Manifest V3 extension with a service worker (`service_worker.js`), capture script (`capture.js`), and note UI (`note.html/js`). POSTs captured page content to the local server. Install via `chrome://extensions` → Load unpacked → select `extension/`.
 
@@ -64,5 +67,5 @@ CLI subcommands: `init`, `extract`, `jobs list`, `jobs status`, `jobs note`, `du
 - `db.js` exports functions that accept an optional `dbPath` and call `initDb(dbPath)` internally — this means DB connections are opened per-call (synchronous, fine for SQLite).
 - The `jobs` table has both `status` (user-facing: saved/applied/interview/offer/rejected/archived) and `extraction_status` (pipeline state: pending/running/succeeded/failed).
 - Legacy status values (`interested`, `interviewing`, `closed`, `ignored`) are normalized on read via `LEGACY_STATUS_MAP`.
-- `server/mcp.js` exposes the Jobhunt MCP stdio server for Claude Code/Codex. The old Python `jobhunt-mcp` entry point is not present in this repo.
+- `server/mcp.js` exposes the Jobhunt MCP stdio server. The old Python `jobhunt-mcp` entry point is not present in this repo.
 - `SETTINGS_DEFAULTS` in `db.js` defines the whitelist of valid setting keys; `PATCH /api/settings` ignores unknown keys.

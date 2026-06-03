@@ -10,6 +10,12 @@ let base;
 let server;
 let dbPath;
 let browser;
+const DUPLICATE_SMOKE_TEXT = [
+  'Duplicate TPM accessibility smoke posting for a principal technical program manager.',
+  'The role owns roadmap planning, stakeholder communication, engineering execution, release readiness, risk tracking, metrics review, and launch coordination.',
+  'Candidates partner with product, design, data, security, infrastructure, and customer teams across multiple programs.',
+  'This realistic duplicate description is intentionally longer than the low-signal duplicate threshold.',
+].join(' ');
 
 before(async () => {
   dbPath = tempDbPath();
@@ -30,12 +36,12 @@ before(async () => {
   await post('/captures', {
     url: 'https://dupes.example/jobs/a',
     page_title: 'Duplicate TPM at Acme',
-    visible_text: 'Duplicate role text for accessibility smoke.',
+    visible_text: DUPLICATE_SMOKE_TEXT,
   });
   await post('/captures', {
     url: 'https://dupes.example/jobs/b',
     page_title: 'Duplicate TPM at Acme',
-    visible_text: 'Duplicate   role text for accessibility smoke.',
+    visible_text: DUPLICATE_SMOKE_TEXT.replace('principal technical program manager', 'principal   technical   program   manager'),
   });
   seedJobRows();
   browser = await launchBrowser();

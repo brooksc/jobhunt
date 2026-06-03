@@ -670,6 +670,38 @@ function DebugTab({ llmDebugLevel, onToggleVerbose }) {
         </div>
       </Section>
 
+      <Section title="Token usage" desc="Actual prompt sizes from succeeded LLM attempts vs. configured caps. Use this to right-size your model's loaded context window.">
+        {(() => {
+          const p = stats?.promptStats;
+          const j = stats?.jdStats;
+          const caps = stats?.tokenCaps;
+          const fmtTok = chars => chars == null ? '—' : `~${Math.ceil(chars / 4).toLocaleString()} tokens (${Math.round(chars / 1024 * 10) / 10} KB)`;
+          const fmtMs = ms => ms == null ? '—' : ms >= 60000 ? `${(ms / 60000).toFixed(1)}m` : `${(ms / 1000).toFixed(1)}s`;
+          const rows = [
+            { label: 'Attempts (succeeded)', val: p?.attempts == null ? '—' : p.attempts.toLocaleString() },
+            { label: 'Largest prompt sent', val: fmtTok(p?.max_prompt_chars) },
+            { label: 'Average prompt sent', val: fmtTok(p?.avg_prompt_chars) },
+            { label: 'Largest JD captured', val: fmtTok(j?.max_jd_chars) },
+            { label: 'Average JD captured', val: fmtTok(j?.avg_jd_chars) },
+            { label: 'JD truncation cap', val: fmtTok(caps?.maxDescriptionChars) },
+            { label: 'Resume truncation cap', val: fmtTok(caps?.maxResumeChars) },
+            { label: 'Theoretical max prompt', val: fmtTok((caps?.maxDescriptionChars ?? 0) + (caps?.maxResumeChars ?? 0)) },
+            { label: 'Avg processing time', val: fmtMs(p?.avg_duration_ms) },
+            { label: 'Longest processing time', val: fmtMs(p?.max_duration_ms) },
+          ];
+          return (
+            <div style={{ maxWidth: 480 }}>
+              {rows.map(({ label, val }) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: 13, borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ color: 'var(--fg-mute)' }}>{label}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{val}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+      </Section>
+
       <Section title="Logging" desc="Controls verbosity of LLM attempt logging to the debug log file.">
         <Row>
           <Btn size="sm" variant={verbose ? 'primary' : undefined} onClick={onToggleVerbose}>

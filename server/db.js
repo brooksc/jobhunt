@@ -1670,7 +1670,8 @@ export function detectDomainDuplicateJobs(dbPath) {
         // so their similarity has little effect in either direction.
         const descWeight = evidence.descriptionSimilarity == null ? 0
           : Math.min(1, evidence.descriptionTokenCount / 30);
-        const descriptionAdjustment = descWeight * (evidence.descriptionSimilarity - 0.5) * 0.3;
+        const descriptionAdjustment = evidence.descriptionSimilarity == null ? 0
+          : descWeight * (evidence.descriptionSimilarity - 0.5) * 0.3;
         const fieldPenalty = evidence.fieldConflicts.length * 0.08;
         const confidence = Math.min(0.99, Math.max(0.01, domainConfidence + descriptionAdjustment - fieldPenalty));
         const result = db.prepare(`UPDATE jobs

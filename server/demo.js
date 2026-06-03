@@ -234,7 +234,7 @@ export function ensureDemoDb(dbPath = DEMO_DB_PATH) {
   const db = initDb(dbPath);
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM jobs').get();
   if (n > 0) return; // already seeded
-  seedDemoDb(db, dbPath);
+  seedDemoDb(db);
 }
 
 export function reseedDemoDb(dbPath = DEMO_DB_PATH) {
@@ -251,7 +251,7 @@ export function reseedDemoDb(dbPath = DEMO_DB_PATH) {
     DELETE FROM captures;
     DELETE FROM sites;
   `);
-  seedDemoDb(db, dbPath);
+  seedDemoDb(db);
 }
 
 function seedDemoDb(db) {

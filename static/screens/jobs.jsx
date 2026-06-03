@@ -649,31 +649,23 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
     }
   }
 
+  function resetToAllJobs() {
+    setQ("");
+    setFilters({ status: "All", minRating: "All", remote: "All", extraction: "All", source: "All", dup: "All", salary: "All", recentDays: null, dynamic: {} });
+    setSort({ key: "capturedAt", dir: "desc" });
+    setCurrentViewName(null);
+  }
+
   // Register saved view handler (built-in + custom)
   React.useEffect(() => {
-    window.JH_APPLY_SAVED_VIEW = (view) => {
-      applySavedViewToState(view);
-    };
+    window.JH_APPLY_SAVED_VIEW = (view) => { applySavedViewToState(view); };
+    window.JH_RESET_JOBS_VIEW = resetToAllJobs;
     if (window.JH_PENDING_SAVED_VIEW) {
       window.JH_APPLY_SAVED_VIEW(window.JH_PENDING_SAVED_VIEW);
       delete window.JH_PENDING_SAVED_VIEW;
     }
-    return () => { delete window.JH_APPLY_SAVED_VIEW; };
+    return () => { delete window.JH_APPLY_SAVED_VIEW; delete window.JH_RESET_JOBS_VIEW; };
   }, []);
-
-  const prevSavedViewName = React.useRef(savedViewName);
-  React.useEffect(() => {
-    if (savedViewName) {
-      applySavedViewToState(savedViewName);
-    } else if (prevSavedViewName.current) {
-      // Transitioned from a saved view back to "all jobs" — reset filters to defaults.
-      setQ("");
-      setFilters({ status: "All", minRating: "All", remote: "All", extraction: "All", source: "All", dup: "All", salary: "All", recentDays: null, dynamic: {} });
-      setSort({ key: "capturedAt", dir: "desc" });
-      setCurrentViewName(null);
-    }
-    prevSavedViewName.current = savedViewName;
-  }, [savedViewName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleSaveView(name, { makeActive = false } = {}) {
     const views = loadSavedViews().filter(v => v.name !== name);

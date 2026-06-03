@@ -57,6 +57,21 @@ describe('insertCapture', () => {
     assert.equal(result.job_number, 1);
   });
 
+  it('immediately queues new job for extraction in llm_requests', () => {
+    const localDbPath = tempDbPath();
+    try {
+      initDb(localDbPath);
+      const result = insertCapture({ ...CAPTURE, url: 'https://example.com/queue-on-save' }, localDbPath);
+      const db = initDb(localDbPath);
+      const req = db.prepare("SELECT request_type, status FROM llm_requests WHERE job_id=?").get(result.job_id);
+      assert.ok(req, 'llm_request should be created on save');
+      assert.equal(req.request_type, 'extract');
+      assert.equal(req.status, 'queued');
+    } finally {
+      cleanupDb(localDbPath);
+    }
+  });
+
   it('returns duplicate:true for the same raw content', () => {
     const result = insertCapture(CAPTURE, dbPath);
     assert.equal(result.duplicate, true);

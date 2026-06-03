@@ -661,8 +661,18 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
     return () => { delete window.JH_APPLY_SAVED_VIEW; };
   }, []);
 
+  const prevSavedViewName = React.useRef(savedViewName);
   React.useEffect(() => {
-    if (savedViewName) applySavedViewToState(savedViewName);
+    if (savedViewName) {
+      applySavedViewToState(savedViewName);
+    } else if (prevSavedViewName.current) {
+      // Transitioned from a saved view back to "all jobs" — reset filters to defaults.
+      setQ("");
+      setFilters({ status: "All", minRating: "All", remote: "All", extraction: "All", source: "All", dup: "All", salary: "All", recentDays: null, dynamic: {} });
+      setSort({ key: "capturedAt", dir: "desc" });
+      setCurrentViewName(null);
+    }
+    prevSavedViewName.current = savedViewName;
   }, [savedViewName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleSaveView(name, { makeActive = false } = {}) {

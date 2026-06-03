@@ -1581,7 +1581,7 @@ export function deleteSite(db, siteId) {
 
 export function deleteJob(jobId, dbPath) {
   const db = initDb(dbPath);
-  return db.transaction(() => {
+  return withTransaction(db, () => {
     const job = db.prepare("SELECT capture_id FROM jobs WHERE id=?").get(jobId);
     if (!job) return false;
     // Clear FK references that have no ON DELETE CASCADE

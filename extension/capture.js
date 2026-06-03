@@ -86,7 +86,7 @@
     const text = `${payload.page_title || ""}\n${visibleText}\n${selectedText}`;
     return {
       title: Boolean((payload.page_title || "").trim()) || /\b(program|manager|engineer|developer|director|principal|staff)\b/i.test(text),
-      location: /\b(remote|hybrid|onsite|on-site|united states|[A-Z][a-z]+,\s*[A-Z]{2})\b/.test(text),
+      location: /\b(remote|hybrid|onsite|on-site|united states|hiring remotely|[A-Z][a-z]+,\s*[A-Z]{2})\b/i.test(text),
       salary: /(?:\$|USD|base salary|pay range|compensation|salary|[0-9]{2,3}k)/i.test(text),
       remote: /\b(remote|hybrid|work from home|telecommute|days?\s*\/\s*week\s+in-office|hiring remotely)\b/i.test(text),
       structuredData: structuredData.length,
@@ -128,14 +128,31 @@
         <div style="margin-top:8px;color:#9ca3af;font-size:12px;line-height:1.35;">
           ${preflight.visibleChars.toLocaleString()} visible chars · ${preflight.structuredData} structured item${preflight.structuredData === 1 ? "" : "s"}${preflight.selectedText ? " · selected text" : ""}
         </div>
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
-          <button data-jh-cancel style="background:transparent;color:#d1d5db;border:1px solid #4b5563;border-radius:6px;padding:6px 10px;cursor:pointer;">Cancel</button>
-          <button data-jh-save style="background:#4f46e5;color:white;border:1px solid #6366f1;border-radius:6px;padding:6px 10px;cursor:pointer;">Save job</button>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;">
+          <span data-jh-countdown style="font-size:13px;color:#86efac;font-weight:600;">Saving in 5…</span>
+          <div style="display:flex;gap:8px;">
+            <button data-jh-cancel style="background:transparent;color:#d1d5db;border:1px solid #4b5563;border-radius:6px;padding:6px 10px;cursor:pointer;">Cancel</button>
+            <button data-jh-open style="background:transparent;color:#93c5fd;border:1px solid #3b82f6;border-radius:6px;padding:6px 10px;cursor:pointer;">Open in app</button>
+          </div>
         </div>
       `;
       document.body.appendChild(root);
-      root.querySelector("[data-jh-cancel]").addEventListener("click", () => { root.remove(); resolve(false); });
-      root.querySelector("[data-jh-save]").addEventListener("click", () => { root.remove(); resolve(true); });
+
+      let secondsLeft = 5;
+      const countdownEl = root.querySelector("[data-jh-countdown]");
+      const timer = setInterval(() => {
+        secondsLeft -= 1;
+        if (secondsLeft <= 0) {
+          clearInterval(timer);
+          root.remove();
+          resolve("save");
+        } else {
+          countdownEl.textContent = `Saving in ${secondsLeft}…`;
+        }
+      }, 1000);
+
+      root.querySelector("[data-jh-cancel]").addEventListener("click", () => { clearInterval(timer); root.remove(); resolve(null); });
+      root.querySelector("[data-jh-open]").addEventListener("click", () => { clearInterval(timer); root.remove(); resolve("open"); });
     });
   }
 
@@ -177,7 +194,7 @@
       structured_data: collectStructuredData(doc),
       user_note: "",
       source: {
-        extension_version: "0.1.0",
+        extension_version: "0.2.0",
         browser: "chrome"
       }
     };

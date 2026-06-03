@@ -163,14 +163,6 @@
 
 /* ───────── sidebar ───────── */
 
-/* Spacer that sits behind the macOS traffic-light buttons in hiddenInset mode.
-   Static HTML so it's always in place before the first paint — no JS timing issues.
-   In a plain browser this just adds a bit of extra space at the top. */
-.jh-side__tl-space {
-  flex-shrink: 0;
-  height: 32px;
-  -webkit-app-region: drag; /* lets users drag the window from this area */
-}
 
 .jh-side {
   background: var(--bg);
@@ -269,6 +261,28 @@
   font-family: var(--font-mono);
 }
 .jh-side__nav[aria-current="page"] .jh-side__count { color: var(--fg-mute); }
+.jh-side__nav--sub {
+  padding-left: 30px;
+  font-size: 12px;
+  color: var(--fg-mute);
+  position: relative;
+}
+.jh-side__nav--sub::before {
+  content: '';
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--jh-status-dot, var(--fg-faint));
+  flex-shrink: 0;
+}
+.jh-side__nav--sub[aria-current="page"] {
+  background: var(--bg-hover);
+  color: var(--fg-strong);
+}
 
 .jh-side__warn {
   font-size: 10px;
@@ -1042,6 +1056,46 @@
 }
 .jh-pills .jh-tag {
   background: var(--bg-elev);
+}
+
+/* pipeline funnel */
+.jh-funnel__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  border-radius: var(--r-1);
+  padding: 2px 0;
+}
+.jh-funnel__row:hover { opacity: 0.8; }
+.jh-funnel__label {
+  width: 76px;
+  font-size: 12px;
+  color: var(--fg-mute);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+.jh-funnel__bar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--bg-hover);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.jh-funnel__bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+.jh-funnel__count {
+  width: 28px;
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  flex-shrink: 0;
 }
 
 /* metrics */

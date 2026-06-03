@@ -639,6 +639,10 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
     } else if (view === "recent") {
       setFilters(f => ({ ...f, recentDays: 7 }));
       setCurrentViewName(null);
+    } else if (view.startsWith("status:")) {
+      const status = view.slice(7);
+      setFilters(f => ({ ...f, status: [status] }));
+      setCurrentViewName(null);
     } else {
       const custom = loadSavedViews().find(v => v.name === view);
       if (custom) {

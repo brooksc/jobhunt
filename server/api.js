@@ -6,10 +6,12 @@ import { fileURLToPath } from 'url';
 import { dirname, join, resolve } from 'path';
 import { readFileSync, statSync, existsSync } from 'fs';
 import { readdirSync } from 'fs';
+import { isIP } from 'net';
 
 import * as db from './db.js';
 import { jobsCsv } from './export.js';
 import { checkJobsAvailability, maybeRunStaleAvailabilityCheck } from './availability.js';
+import { METRO_DATA } from './metros.js';
 import {
   runExtraction, runExtractionForSelected,
   parseBoolSetting, makeExtractorFromSettings, makeScorerFromSettings,
@@ -19,13 +21,52 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const STATIC_DIR = resolve(__dirname, '../static');
-const VERSION = '0.1.0';
+const VERSION = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf8')).version;
 const AUTO_EXTRACT_INTERVAL_MS = 5000;
 const AUTO_AVAILABILITY_INTERVAL_MS = 60 * 60 * 1000;
 const EXTENSION_WRITE_PATHS = new Set(['/captures', '/site-reviews']);
+const PRIVATE_IPV4_RANGES = [
+  { pattern: /^10\./, label: 'private network' },
+  { pattern: /^127\./, label: 'localhost' },
+  { pattern: /^169\.254\./, label: 'link-local network' },
+  { pattern: /^172\.(1[6-9]|2\d|3[0-1])\./, label: 'private network' },
+  { pattern: /^192\.168\./, label: 'private network' },
+];
 
-/** @param {{ dbPath?: string, autoExtract?: boolean }} [opts] */
-export function createApp({ dbPath, autoExtract = false } = {}) {
+function validateFetchableCaptureUrl(value) {
+  let parsed;
+  try {
+    parsed = new URL(String(value || ''));
+  } catch {
+    throw new Error('valid http(s) url required');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('only http(s) URLs can be captured');
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.localhost')) {
+    throw new Error('localhost URLs cannot be captured from the server');
+  }
+  if (host === '0.0.0.0' || host === '::' || host === '::1') {
+    throw new Error('local URLs cannot be captured from the server');
+  }
+  if (isIP(host) === 4) {
+    for (const range of PRIVATE_IPV4_RANGES) {
+      if (range.pattern.test(host)) throw new Error(`${range.label} URLs cannot be captured from the server`);
+    }
+  }
+  if (isIP(host) === 6) {
+    if (host === '::1' || host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80')) {
+      throw new Error('local IPv6 URLs cannot be captured from the server');
+    }
+  }
+  return parsed.toString();
+}
+
+/** @param {{ dbPath?: string, autoExtract?: boolean, demoDemoPath?: string }} [opts] */
+export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemoPath } = {}) {
+  let dbPath = initialDbPath;
+  let isDemo = false;
   const app = express();
 
   app.use((req, res, next) => {
@@ -120,7 +161,38 @@ export function createApp({ dbPath, autoExtract = false } = {}) {
 
   // Used by the Chrome extension to discover which port the server is on
   app.get('/api/ping', (req, res) => {
-    res.json({ app: 'jobhunt', version: VERSION });
+    res.json({ app: 'jobhunt', version: VERSION, isDemo });
+  });
+
+  app.post('/api/db/switch', async (req, res) => {
+    const { mode } = req.body || {};
+    if (mode === 'demo') {
+      if (!demoDemoPath) return res.status(400).json({ error: 'Demo DB not configured' });
+      const { ensureDemoDb } = await import('./demo.js');
+      ensureDemoDb(demoDemoPath);
+      dbPath = demoDemoPath;
+      isDemo = true;
+    } else {
+      dbPath = initialDbPath;
+      isDemo = false;
+    }
+    process.emit('jobhunt:db-switched', { isDemo });
+    res.json({ ok: true, isDemo });
+  });
+
+  app.post('/api/db/reseed-demo', async (req, res) => {
+    if (!isDemo || !demoDemoPath) return res.status(400).json({ error: 'Not in demo mode' });
+    const { reseedDemoDb } = await import('./demo.js');
+    reseedDemoDb(demoDemoPath);
+    res.json({ ok: true });
+  });
+
+  // Ask the Electron window to come to front and navigate to a job.
+  // No-op when running as a plain CLI server (process has no BrowserWindow).
+  app.post('/api/app/focus', (req, res) => {
+    const { job_number } = req.body || {};
+    process.emit('jobhunt:open-job', { jobNumber: job_number ? Number(job_number) : null });
+    res.json({ ok: true });
   });
 
   app.get('/favicon.ico', (req, res) => {
@@ -162,11 +234,11 @@ export function createApp({ dbPath, autoExtract = false } = {}) {
   // ------------------------------------------------------------------
 
   app.get('/api/dashboard', (req, res) => {
-    res.json(buildUiData(dbPath));
+    res.json({ ...buildUiData(dbPath), isDemo });
   });
 
   app.get('/api/ui-data', (req, res) => {
-    res.json(buildUiData(dbPath));
+    res.json({ ...buildUiData(dbPath), isDemo });
   });
 
   // ------------------------------------------------------------------
@@ -204,9 +276,73 @@ export function createApp({ dbPath, autoExtract = false } = {}) {
       if (autoExtract && !result.duplicate) {
         runExtractionForApp(10).catch(() => {});
       }
-      res.json({ ok: true, capture_id: result.capture_id, duplicate: result.duplicate });
+      res.json({ ok: true, capture_id: result.capture_id, job_number: result.job_number, duplicate: result.duplicate });
     } catch (err) {
       res.status(400).json({ error: String(err.message) });
+    }
+  });
+
+  // ------------------------------------------------------------------
+  // Manual URL capture (server-side fetch)
+  // ------------------------------------------------------------------
+
+  app.post('/api/captures/from-url', async (req, res) => {
+    const { url, note = '' } = req.body || {};
+    if (!url) return res.status(400).json({ error: 'url required' });
+    let safeUrl;
+    try {
+      safeUrl = validateFetchableCaptureUrl(url);
+    } catch (err) {
+      return res.status(400).json({ error: String(err.message) });
+    }
+    try {
+      const response = await fetch(safeUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Jobhunt/1.0)' },
+        signal: AbortSignal.timeout(15000),
+        redirect: 'follow',
+      });
+      try {
+        validateFetchableCaptureUrl(response.url);
+      } catch (err) {
+        return res.status(400).json({ error: String(err.message) });
+      }
+      if (!response.ok) return res.status(400).json({ error: `Fetch failed: HTTP ${response.status}` });
+      const html = await response.text();
+      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+      const pageTitle = titleMatch ? titleMatch[1].trim().replace(/\s+/g, ' ') : url;
+      const visibleText = html
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&[a-z]+;/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 50000);
+      const capture = {
+        schema_version: 1,
+        captured_at: new Date().toISOString(),
+        url: safeUrl,
+        canonical_url: null,
+        page_title: pageTitle,
+        visible_text: visibleText,
+        selected_text: '',
+        structured_data: [],
+        user_note: note,
+        source: { extension_version: null, browser: 'manual' },
+      };
+      const result = db.insertCapture(capture, dbPath);
+      if (result.created) {
+        process.emit('jobhunt:job-added', {
+          jobId: result.job_id,
+          jobNumber: result.job_number,
+          pageTitle: result.page_title || pageTitle,
+          duplicateOfJobId: result.duplicate_of_job_id,
+        });
+      }
+      if (autoExtract && !result.duplicate) runExtractionForApp(10).catch(() => {});
+      res.json({ ok: true, capture_id: result.capture_id, duplicate: result.duplicate });
+    } catch (err) {
+      res.status(500).json({ error: String(err.message) });
     }
   });
 
@@ -443,6 +579,16 @@ export function createApp({ dbPath, autoExtract = false } = {}) {
   app.post('/api/jobs/:jobId/archive', (req, res) => {
     try {
       db.updateJobStatus(req.params.jobId, 'archived', dbPath);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(400).json({ error: String(err.message) });
+    }
+  });
+
+  app.delete('/api/jobs/:jobId', (req, res) => {
+    try {
+      const deleted = db.deleteJob(req.params.jobId, dbPath);
+      if (!deleted) return res.status(404).json({ error: 'Job not found' });
       res.json({ ok: true });
     } catch (err) {
       res.status(400).json({ error: String(err.message) });
@@ -694,6 +840,25 @@ export function createApp({ dbPath, autoExtract = false } = {}) {
       res.json({ ok: true });
     } catch (err) {
       res.status(400).json({ error: String(err.message) });
+    }
+  });
+
+  // ------------------------------------------------------------------
+  // Debug
+  // ------------------------------------------------------------------
+
+  app.get('/api/debug/stats', (req, res) => {
+    try {
+      const d = db.initDb(dbPath);
+      const jobsByStatus = d.prepare(`SELECT status, COUNT(*) as n FROM jobs GROUP BY status`).all();
+      const jobsByExtraction = d.prepare(`SELECT extraction_status, COUNT(*) as n FROM jobs GROUP BY extraction_status`).all();
+      const llmCounts = d.prepare(`SELECT status, COUNT(*) as n FROM llm_requests GROUP BY status`).all();
+      const captureCount = d.prepare(`SELECT COUNT(*) as n FROM captures`).get().n;
+      const resolvedPath = resolve(dbPath || db.defaultDbPath());
+      const dbSize = (() => { try { return statSync(resolvedPath).size; } catch { return null; } })();
+      res.json({ jobsByStatus, jobsByExtraction, llmCounts, captureCount, dbSize, dbPath: resolvedPath });
+    } catch (err) {
+      res.status(500).json({ error: String(err.message) });
     }
   });
 
@@ -1060,7 +1225,7 @@ function buildUiData(dbPath) {
   const resolvedDbPath = dbPath || db.defaultDbPath();
 
   return {
-    jobs, sites: siteRows, dupes, metrics,
+    jobs, sites: siteRows, dupes, metrics, metros: METRO_DATA,
     meta: { total_jobs: jobs.length, loaded_jobs: jobs.length, total_sites: siteRows.length, loaded_sites: siteRows.length },
     settings: {
       version: VERSION,
@@ -1082,6 +1247,8 @@ function buildUiData(dbPath) {
       location_allow_remote: settingsData.location_allow_remote || 'true',
       location_allow_hybrid: settingsData.location_allow_hybrid || 'true',
       location_allow_onsite: settingsData.location_allow_onsite || 'true',
+      preferred_metros: settingsData.preferred_metros || '',
+      location_filter_enabled: settingsData.location_filter_enabled || 'true',
     },
   };
 }

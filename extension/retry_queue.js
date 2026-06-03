@@ -12,12 +12,16 @@
 
   async function enqueueCapture(storageArea, payload) {
     const queue = await getQueue(storageArea);
+    const url = payload.canonical_url || payload.url;
+    if (url && queue.some(item => (item.payload.canonical_url || item.payload.url) === url)) {
+      return { length: queue.length, duplicate: true };
+    }
     queue.push({
       payload,
       queued_at: new Date().toISOString()
     });
     await setQueue(storageArea, queue);
-    return queue.length;
+    return { length: queue.length, duplicate: false };
   }
 
   async function flushQueue(storageArea, submitCapture) {

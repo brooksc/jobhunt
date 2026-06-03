@@ -68,7 +68,7 @@ function DuplicatesPage({ mode = "list" }) {
         </div>
         <div style={{ marginLeft: "auto" }}>
           <span style={{ fontSize: 11.5, color: "var(--fg-mute)" }}>
-            {filtered.length} pairs · {pairs.length} total
+            {filtered.length} candidates · {pairs.length} total
           </span>
         </div>
       </div>
@@ -125,7 +125,7 @@ function DuplicatePairRow({ pair, onValidate }) {
         {group.hash && <span className="jh-group__hash" style={{ display: "block", marginTop: 2 }}>hash {group.hash}</span>}
       </td>
       <td>
-        <Btn size="sm" kind="accent" icon={<Icon.Eye size={11} />} onClick={onValidate}>Validate</Btn>
+        <Btn size="sm" kind="accent" icon={<Icon.Eye size={11} />} onClick={onValidate}>Compare</Btn>
       </td>
     </tr>
   );
@@ -178,7 +178,7 @@ function DuplicatePairValidate({ pair, onBack }) {
     <>
       <div className="jh-toolbar">
         <Btn size="sm" kind="ghost" icon={<Icon.ChevronLeft size={11} />} onClick={onBack}>Back</Btn>
-        <span style={{ fontSize: 12.5, color: "var(--fg-mute)" }}>Validate duplicate pair</span>
+        <span style={{ fontSize: 12.5, color: "var(--fg-mute)" }}>Compare duplicate group</span>
         <span style={{ marginLeft: 12, fontSize: 11.5, color: "var(--fg-mute)" }}>
           <span data-mono>similarity </span>
           <span data-mono style={{ color: "var(--fg-strong)" }}>{Number(group.similarity || 0).toFixed(2)}</span>

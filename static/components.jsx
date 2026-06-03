@@ -428,9 +428,160 @@ function StarRating({ value, onChange, size = 14, readonly = false }) {
   );
 }
 
+function LocationPicker({ preferredMetros, setPreferredMetros, preferredLocations, setPreferredLocations, filterEnabled, setFilterEnabled, allowRemote, setAllowRemote, allowHybrid, setAllowHybrid, allowOnsite, setAllowOnsite }) {
+  const metros = window.JH_METROS || {};
+
+  // Parse "wa:seattle,ca:bay-area" into a Set of "wa:seattle" tokens
+  function parseMetroSet(str) {
+    return new Set((str || '').split(',').map(t => t.trim()).filter(Boolean));
+  }
+
+  // Toggle a single metro in the CSV string
+  function toggleMetro(state, metroId) {
+    const key = `${state}:${metroId}`;
+    const set = parseMetroSet(preferredMetros);
+    if (set.has(key)) set.delete(key); else set.add(key);
+    setPreferredMetros([...set].join(','));
+  }
+
+  // Toggle all metros in a state
+  function toggleState(state) {
+    const stateMetros = Object.keys(metros[state]?.metros || {});
+    const set = parseMetroSet(preferredMetros);
+    const allSelected = stateMetros.every(m => set.has(`${state}:${m}`));
+    if (allSelected) {
+      stateMetros.forEach(m => set.delete(`${state}:${m}`));
+    } else {
+      stateMetros.forEach(m => set.add(`${state}:${m}`));
+    }
+    setPreferredMetros([...set].join(','));
+  }
+
+  // Build preview city list
+  function getPreviewCities() {
+    const set = parseMetroSet(preferredMetros);
+    const cities = new Set();
+    for (const token of set) {
+      const [state, metroId] = token.split(':');
+      const metroData = metros[state]?.metros?.[metroId];
+      if (metroData) metroData.cities.forEach(c => cities.add(c));
+    }
+    (preferredLocations || '').split(',').forEach(c => { const t = c.trim(); if (t) cities.add(t); });
+    return [...cities].sort();
+  }
+
+  const metroSet = parseMetroSet(preferredMetros);
+  const sortedStates = Object.entries(metros).sort((a, b) => a[1].label.localeCompare(b[1].label));
+  const previewCities = filterEnabled ? getPreviewCities() : [];
+  const disabled = !filterEnabled;
+
+  const checkRow = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', userSelect: 'none', padding: '2px 0' };
+  const faded = { opacity: disabled ? 0.4 : 1, pointerEvents: disabled ? 'none' : 'auto' };
+
+  return (
+    <div>
+      {/* Open to relocation */}
+      <label style={{ ...checkRow, marginBottom: 14, fontWeight: 500 }}>
+        <input type="checkbox" checked={!filterEnabled} onChange={e => setFilterEnabled(!e.target.checked)} />
+        Open to relocation — don't filter by location
+      </label>
+
+      <div style={faded}>
+        {/* Work arrangement */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--fg-mute)', marginBottom: 6 }}>Work arrangement</div>
+          <div style={{ display: 'flex', gap: 20 }}>
+            <label style={checkRow}><input type="checkbox" checked={allowRemote} onChange={e => setAllowRemote(e.target.checked)} /> Remote</label>
+            <label style={checkRow}><input type="checkbox" checked={allowHybrid} onChange={e => setAllowHybrid(e.target.checked)} /> Hybrid</label>
+            <label style={checkRow}><input type="checkbox" checked={allowOnsite} onChange={e => setAllowOnsite(e.target.checked)} /> In-office</label>
+          </div>
+        </div>
+
+        {/* State/metro picker */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--fg-mute)', marginBottom: 6 }}>Preferred regions</div>
+          <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', background: 'var(--bg)' }}>
+            {sortedStates.map(([stateKey, stateData]) => {
+              const stateMetros = Object.entries(stateData.metros);
+              const selectedCount = stateMetros.filter(([mId]) => metroSet.has(`${stateKey}:${mId}`)).length;
+              const allSelected = selectedCount === stateMetros.length;
+              const someSelected = selectedCount > 0 && !allSelected;
+              return (
+                <StateRow key={stateKey} stateKey={stateKey} stateData={stateData} stateMetros={stateMetros}
+                  allSelected={allSelected} someSelected={someSelected} metroSet={metroSet}
+                  onToggleState={() => toggleState(stateKey)} onToggleMetro={(mId) => toggleMetro(stateKey, mId)} />
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Manual additions */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--fg-mute)', marginBottom: 4 }}>Additional locations <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(cities not in the list above)</span></div>
+          <input
+            value={preferredLocations}
+            onChange={e => setPreferredLocations(e.target.value)}
+            placeholder="e.g. Boise, ID, Spokane, WA"
+            style={{ width: '100%', padding: '6px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--fg)', fontSize: 12, boxSizing: 'border-box' }}
+          />
+        </div>
+
+        {/* Preview */}
+        {previewCities.length > 0 && (
+          <div style={{ fontSize: 11, color: 'var(--fg-faint)', lineHeight: 1.4 }}>
+            <span style={{ fontWeight: 600, color: 'var(--fg-mute)' }}>Effective filter: </span>
+            {previewCities.slice(0, 12).join(', ')}{previewCities.length > 12 ? ` + ${previewCities.length - 12} more` : ''}
+          </div>
+        )}
+        {filterEnabled && previewCities.length === 0 && (
+          <div style={{ fontSize: 11, color: 'var(--fg-faint)' }}>No regions selected — all locations will match.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StateRow({ stateKey, stateData, stateMetros, allSelected, someSelected, metroSet, onToggleState, onToggleMetro }) {
+  const cbRef = React.useRef(null);
+  React.useEffect(() => {
+    if (cbRef.current) cbRef.current.indeterminate = someSelected;
+  }, [someSelected]);
+
+  const checkRow = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', userSelect: 'none', padding: '2px 0' };
+
+  return (
+    <div style={{ marginBottom: 2 }}>
+      <label style={{ ...checkRow, fontWeight: 500 }}>
+        <input ref={cbRef} type="checkbox" checked={allSelected} onChange={onToggleState} />
+        {stateData.label}
+      </label>
+      {(allSelected || someSelected) && (
+        <div style={{ marginLeft: 22, marginBottom: 4 }}>
+          {stateMetros.map(([metroId, metroData]) => (
+            <label key={metroId} style={{ ...checkRow, fontSize: 12, color: 'var(--fg-mute)' }}>
+              <input type="checkbox" checked={metroSet.has(`${stateKey}:${metroId}`)} onChange={() => onToggleMetro(metroId)} />
+              {metroData.label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Metric({ label, value, delta, warn, emphasis }) {
+  return (
+    <div className="jh-metric" style={emphasis ? { borderColor: 'var(--accent-border)', background: 'var(--accent-bg)' } : undefined}>
+      <span className="jh-metric__label">{label}</span>
+      <span className="jh-metric__value">{value}</span>
+      <span className="jh-metric__delta" style={warn ? { color: 'var(--st-rejected)' } : undefined}>{delta}</span>
+    </div>
+  );
+}
+
 Object.assign(window, {
   Icon, Chip, StatusChip, ExtractionChip, CoLogo, CompanyCell, Btn, Kbd,
   fmtSalary, fmtCaptured, fmtDate, fmtDateTime, daysFrom, dueState, dueLabel,
   AppDialog, AppTextInputDialog, AppSelectDialog, ToastContainer, JH_TOAST,
-  StarRating,
+  StarRating, LocationPicker, Metric,
 });

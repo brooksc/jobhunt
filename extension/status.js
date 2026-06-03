@@ -19,6 +19,7 @@
     syncButton.disabled = count === 0;
     exportButton.disabled = count === 0;
     clearButton.disabled = count === 0;
+    resetClearButton();
 
     if (count === 0) {
       captures.innerHTML = '<div class="capture"><div class="capture-meta">No saved captures.</div></div>';
@@ -90,18 +91,37 @@
   }
 
   async function clearQueue() {
-    const queue = await jobhuntRetryQueue.getQueue(chrome.storage.local);
-    if (queue.length === 0 || !window.confirm(`Clear ${queue.length} saved capture${queue.length === 1 ? "" : "s"}?`)) {
-      return;
-    }
     await jobhuntRetryQueue.setQueue(chrome.storage.local, []);
     render([]);
     setStatus("Queue cleared.");
   }
 
+  let clearPending = false;
+  let clearResetTimer = null;
+
+  function resetClearButton() {
+    clearPending = false;
+    clearButton.textContent = "Clear queue";
+    clearResetTimer = null;
+  }
+
   syncButton.addEventListener("click", syncQueue);
   exportButton.addEventListener("click", exportCsv);
-  clearButton.addEventListener("click", clearQueue);
+  clearButton.addEventListener("click", async () => {
+    if (!clearPending) {
+      clearPending = true;
+      clearButton.textContent = "Confirm clear?";
+      clearResetTimer = setTimeout(resetClearButton, 3000);
+      return;
+    }
+    clearTimeout(clearResetTimer);
+    resetClearButton();
+    try {
+      await clearQueue();
+    } catch (_error) {
+      setStatus("Failed to clear queue.");
+    }
+  });
 
   await loadQueue();
 })();

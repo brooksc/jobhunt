@@ -16,6 +16,7 @@ export default [
         clearTimeout: 'readonly',
         URL: 'readonly',
         AbortController: 'readonly',
+        AbortSignal: 'readonly',
       },
     },
     rules: {

@@ -146,6 +146,17 @@ describe('POST /captures', () => {
   });
 });
 
+describe('POST /api/captures/from-url', () => {
+  it('rejects non-http and local server-side URLs', async () => {
+    for (const url of ['file:///etc/hosts', 'http://localhost:8765', 'http://127.0.0.1:8765', 'http://192.168.1.10/job']) {
+      const res = await post('/api/captures/from-url', { url });
+      assert.equal(res.status, 400);
+      const body = await res.json();
+      assert.match(body.error, /http|local|localhost|private/i);
+    }
+  });
+});
+
 describe('GET /api/ui-data', () => {
   it('returns jobs array', async () => {
     const res = await fetch(`${base}/api/ui-data`);

@@ -2,6 +2,7 @@
 // LLM extraction and fit scoring via OpenAI-compatible API.
 
 import { jsonrepair } from 'jsonrepair';
+import { expandMetros } from './metros.js';
 import {
   connect, getSettings, setSetting,
   getLlmQueueForProcessing, getLlmRequestsByIds,
@@ -570,7 +571,9 @@ function remoteLocationFromSource(description) {
 
 export function normalizeLocationFromSource(extracted, description) {
   const remoteLocation = remoteLocationFromSource(description);
-  if (remoteLocation && (!extracted.location || /^remote$/i.test(String(extracted.location).trim()))) {
+  const loc = String(extracted.location || '').trim();
+  const isBareCountry = /^(USA|United States|U\.S\.A?\.?|US)$/i.test(loc);
+  if (remoteLocation && (!extracted.location || /^remote$/i.test(loc) || isBareCountry)) {
     return { ...extracted, location: remoteLocation };
   }
   if (extracted.location) return extracted;
@@ -693,9 +696,10 @@ function matchLocationTerms(location, terms) {
 
 /**
  * @param {any} extracted
- * @param {{ preferredLocations?: string|null, allowRemote?: boolean, allowHybrid?: boolean, allowOnsite?: boolean }} [opts]
+ * @param {{ preferredLocations?: string|null, allowRemote?: boolean, allowHybrid?: boolean, allowOnsite?: boolean, filterEnabled?: boolean }} [opts]
  */
-export function applyLocationFilter(extracted, { preferredLocations, allowRemote = true, allowHybrid = true, allowOnsite = true } = {}) {
+export function applyLocationFilter(extracted, { preferredLocations, allowRemote = true, allowHybrid = true, allowOnsite = true, filterEnabled = true } = {}) {
+  if (!filterEnabled) return { ...extracted, meets_criteria: true };
   const terms = parsePreferredLocations(preferredLocations);
   const remoteType = extracted.remote_type;
   const { hasMatch } = matchLocationTerms(extracted.location, terms);
@@ -870,8 +874,8 @@ ${resume.slice(0, MAX_RESUME_CHARS)}`.trim();
 // ------------------------------------------------------------------
 
 export class LMStudioExtractor {
-  /** @param {{ provider?: string, baseUrl?: string, apiKey?: string, model?: string, timeout?: number, preferredLocations?: string|null, allowRemote?: boolean, allowHybrid?: boolean, allowOnsite?: boolean }} [opts] */
-  constructor({ provider, baseUrl, apiKey, model, timeout = 120, preferredLocations, allowRemote = true, allowHybrid = true, allowOnsite = true } = {}) {
+  /** @param {{ provider?: string, baseUrl?: string, apiKey?: string, model?: string, timeout?: number, preferredLocations?: string|null, allowRemote?: boolean, allowHybrid?: boolean, allowOnsite?: boolean, filterEnabled?: boolean }} [opts] */
+  constructor({ provider, baseUrl, apiKey, model, timeout = 120, preferredLocations, allowRemote = true, allowHybrid = true, allowOnsite = true, filterEnabled = true } = {}) {
     this.provider = provider || 'lmstudio';
     this.baseUrl = resolveProviderBaseUrl(this.provider, baseUrl);
     this.apiKey = apiKey || '';
@@ -881,6 +885,7 @@ export class LMStudioExtractor {
     this.allowRemote = allowRemote;
     this.allowHybrid = allowHybrid;
     this.allowOnsite = allowOnsite;
+    this.filterEnabled = filterEnabled;
   }
 
   async extract(pending) {
@@ -913,7 +918,7 @@ export class LMStudioExtractor {
     extracted = normalizeLocationFromSource(extracted, pending.source_text || pending.description);
     extracted = normalizeRemoteTypeFromSource(extracted, pending.source_text || pending.description, pending.canonical_url || pending.url);
     extracted = normalizeEmploymentFromSource(extracted, pending.source_text || pending.description);
-    extracted = applyLocationFilter(extracted, { preferredLocations: this.preferredLocations, allowRemote: this.allowRemote, allowHybrid: this.allowHybrid, allowOnsite: this.allowOnsite });
+    extracted = applyLocationFilter(extracted, { preferredLocations: this.preferredLocations, allowRemote: this.allowRemote, allowHybrid: this.allowHybrid, allowOnsite: this.allowOnsite, filterEnabled: this.filterEnabled });
     return { extracted, modelName, responseFormatType };
   }
 }
@@ -1173,16 +1178,21 @@ function pauseLlmQueueForErrors(dbPath) {
 }
 
 export function makeExtractorFromSettings(settings) {
+  const metroTerms = expandMetros(settings.preferred_metros || '');
+  const manualTerms = (settings.preferred_locations || '').split(',').map(t => t.trim()).filter(Boolean);
+  const combinedLocations = [...new Set([...metroTerms, ...manualTerms])].join(', ');
+  const filterEnabled = parseBoolSetting(settings.location_filter_enabled, true);
   return new LMStudioExtractor({
     provider: settings.llm_provider || 'lmstudio',
     baseUrl: settings.llm_base_url,
     apiKey: settings.llm_api_key || '',
     model: settings.llm_model,
     timeout: parseFloat(settings.llm_timeout || '60'),
-    preferredLocations: settings.preferred_locations || null,
+    preferredLocations: filterEnabled ? (combinedLocations || null) : null,
     allowRemote: parseBoolSetting(settings.location_allow_remote, true),
     allowHybrid: parseBoolSetting(settings.location_allow_hybrid, true),
     allowOnsite: parseBoolSetting(settings.location_allow_onsite, true),
+    filterEnabled,
   });
 }
 

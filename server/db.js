@@ -34,6 +34,8 @@ export const SETTINGS_DEFAULTS = {
   followup_default_days: '7',
   job_description_markdown: '',
   preferred_locations: '',
+  preferred_metros: '',
+  location_filter_enabled: 'true',
   location_allow_remote: 'true',
   location_allow_hybrid: 'true',
   location_allow_onsite: 'true',
@@ -1556,6 +1558,24 @@ export function updateSiteNote(db, siteId, note) {
 
 export function deleteSite(db, siteId) {
   db.prepare("DELETE FROM sites WHERE id=?").run(siteId);
+}
+
+export function deleteJob(jobId, dbPath) {
+  const db = initDb(dbPath);
+  return db.transaction(() => {
+    const job = db.prepare("SELECT capture_id FROM jobs WHERE id=?").get(jobId);
+    if (!job) return false;
+    // Clear FK references that have no ON DELETE CASCADE
+    db.prepare("UPDATE jobs SET duplicate_of_job_id = NULL WHERE duplicate_of_job_id=?").run(jobId);
+    db.prepare("DELETE FROM events WHERE job_id=?").run(jobId);
+    db.prepare("DELETE FROM job_actions WHERE job_id=?").run(jobId);
+    db.prepare("DELETE FROM duplicate_decisions WHERE keep_job_id=?").run(jobId);
+    // Delete job — cascades to data_quality_reviews, llm_requests, llm_request_attempts
+    db.prepare("DELETE FROM jobs WHERE id=?").run(jobId);
+    // Delete the now-orphaned capture
+    if (job.capture_id) db.prepare("DELETE FROM captures WHERE id=?").run(job.capture_id);
+    return true;
+  })();
 }
 
 export function getSitesDueCount(db) {

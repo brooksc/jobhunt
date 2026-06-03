@@ -586,6 +586,66 @@ describe('job board fixtures — BuiltIn', () => {
   });
 });
 
+describe('job board fixtures — Meta Careers (metacareers.com)', () => {
+  // metacareers.com is server-rendered (no Next.js).
+  // body.innerText has the full JD including salary at ~3.9k chars into a 7.1k-char page.
+  // JSON-LD has JobPosting type but no baseSalary field.
+  // Capture is straightforward DOM; the issue is queue-paused preventing LLM extraction.
+  it('captures salary from Meta Careers server-rendered DOM', async () => {
+    const domText = [
+      'Skip to main content\nJobs\nTeams\nCareer Programs\nWorking at Meta\nBlog\nPodcasts',
+      'Product Manager',
+      'Sunnyvale, CA · Remote · Seattle, WA · Los Angeles, CA',
+      'Product Strategy · Full-time',
+      'Meta Product Managers work with cross-functional teams of engineers, designers, data scientists and researchers to build products.',
+      'We are looking for extremely effective Product Managers to help innovate and execute product initiatives across the company and value moving quickly.',
+      'Product Manager Responsibilities',
+      'Is the primary driver for identifying significant near and long-term opportunities and driving product mission, strategies and roadmaps',
+      'Generates buy-in and prioritizes what to work on by working with engineers, researchers, data scientists, designers, and other cross-functional partners',
+      'Defines and analyzes metrics that inform the success of products',
+      'Understands Meta\'s strategic and competitive position and delivers products that are recognizably best in class',
+      'Minimum Qualifications',
+      '5+ years of product management or related industry experience',
+      'Experience shipping products with consumers at scale',
+      'Experience working with technical teams and deeply understanding technology',
+      'Experience defining and influencing product strategy',
+      'Preferred Qualifications',
+      'Experience working in AR/VR, consumer hardware, or platform products',
+      'Experience at a high-growth startup or leading large cross-functional teams at scale',
+      'For those who live in or expect to work from California, Colorado, Hawaii, New Jersey, New York, Washington, or Washington, D.C., please click here for additional information.',
+      '$205,000/year to $277,000/year + bonus + equity + benefits',
+      'Individual compensation is determined by skills, qualifications, experience, and location. Compensation details listed in this posting reflect the base hourly rate, monthly rate, or annual salary only.',
+      'Meta is proud to be an Equal Employment Opportunity employer.',
+    ].join('\n');
+
+    const ldJson = {
+      '@context': 'https://schema.org',
+      '@type': 'JobPosting',
+      title: 'Product Manager',
+      hiringOrganization: { name: 'Meta' },
+      jobLocation: { address: { addressLocality: 'Sunnyvale', addressRegion: 'CA' } },
+      // Note: Meta's JSON-LD omits baseSalary — salary only appears in body text
+    };
+
+    const fixture = makeFixture({
+      url: 'https://www.metacareers.com/profile/job_details/720234290553790',
+      canonicalUrl: 'https://www.metacareers.com/profile/job_details/720234290553790/',
+      pageTitle: 'Meta Careers',
+      domText,
+      ldJson,
+    });
+
+    const payload = await runCapture(fixture);
+    assert.ok(payload.visible_text.length >= MIN_CHARS, `too short: ${payload.visible_text.length}`);
+    assert.ok(payload.visible_text.includes('$205,000'), 'salary min present');
+    assert.ok(payload.visible_text.includes('$277,000'), 'salary max present');
+    assert.ok(payload.visible_text.includes('Product Manager'), 'title present');
+    assert.equal(payload.preflight.salary, true, 'preflight salary detected');
+    assert.equal(payload.preflight.location, true, 'preflight location detected');
+    assert.equal(payload.structured_data.length, 1, 'JSON-LD captured');
+  });
+});
+
 describe('job board fixtures — JSON-LD structured data', () => {
   // Many job boards (Greenhouse, smart recruiters, company sites) emit a
   // JobPosting JSON-LD block. The extension reads it via querySelectorAll.

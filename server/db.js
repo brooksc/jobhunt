@@ -1595,7 +1595,7 @@ export function deleteJob(jobId, dbPath) {
     // Delete the now-orphaned capture
     if (job.capture_id) db.prepare("DELETE FROM captures WHERE id=?").run(job.capture_id);
     return true;
-  })();
+  });
 }
 
 export function getSitesDueCount(db) {

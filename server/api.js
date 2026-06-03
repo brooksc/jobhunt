@@ -167,25 +167,33 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
 
   app.post('/api/db/switch', async (req, res) => {
     const { mode } = req.body || {};
-    if (mode === 'demo') {
-      if (!demoDemoPath) return res.status(400).json({ error: 'Demo DB not configured' });
-      const { ensureDemoDb } = await import('./demo.js');
-      ensureDemoDb(demoDemoPath);
-      dbPath = demoDemoPath;
-      isDemo = true;
-    } else {
-      dbPath = initialDbPath;
-      isDemo = false;
+    try {
+      if (mode === 'demo') {
+        if (!demoDemoPath) return res.status(400).json({ error: 'Demo DB not configured' });
+        const { ensureDemoDb } = await import('./demo.js');
+        ensureDemoDb(demoDemoPath);
+        dbPath = demoDemoPath;
+        isDemo = true;
+      } else {
+        dbPath = initialDbPath;
+        isDemo = false;
+      }
+      process.emit('jobhunt:db-switched', { isDemo });
+      res.json({ ok: true, isDemo });
+    } catch (err) {
+      res.status(500).json({ error: String(err.message) });
     }
-    process.emit('jobhunt:db-switched', { isDemo });
-    res.json({ ok: true, isDemo });
   });
 
   app.post('/api/db/reseed-demo', async (req, res) => {
     if (!isDemo || !demoDemoPath) return res.status(400).json({ error: 'Not in demo mode' });
-    const { reseedDemoDb } = await import('./demo.js');
-    reseedDemoDb(demoDemoPath);
-    res.json({ ok: true });
+    try {
+      const { reseedDemoDb } = await import('./demo.js');
+      reseedDemoDb(demoDemoPath);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: String(err.message) });
+    }
   });
 
   // Ask the Electron window to come to front and navigate to a job.
@@ -320,7 +328,10 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
         return res.status(400).json({ error: String(err.message) });
       }
       if (!response.ok) return res.status(400).json({ error: `Fetch failed: HTTP ${response.status}` });
+      const contentLength = Number(response.headers.get('content-length') || 0);
+      if (contentLength > 10 * 1024 * 1024) return res.status(400).json({ error: 'Response too large (>10MB)' });
       const html = await response.text();
+      if (html.length > 10 * 1024 * 1024) return res.status(400).json({ error: 'Response too large (>10MB)' });
       const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
       const pageTitle = titleMatch ? titleMatch[1].trim().replace(/\s+/g, ' ') : url;
       const visibleText = html

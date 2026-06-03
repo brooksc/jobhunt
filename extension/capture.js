@@ -22,6 +22,14 @@
       return false;
     }
 
+    // Skip anchors with a real href — those navigate the page, not expand content.
+    // Real expansion controls use href="#", href="", or no href at all.
+    const tag = (node.tagName || '').toUpperCase();
+    if (tag === 'A') {
+      const href = (node.getAttribute ? node.getAttribute('href') : node.href) || '';
+      if (href && !href.startsWith('#')) return false;
+    }
+
     if (isLikelyLayoutElement(node)) {
       return false;
     }

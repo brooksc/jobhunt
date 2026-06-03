@@ -196,6 +196,7 @@ function JobsToolbar({ q, setQ, searchRef, filters, setFilters, sourceOptions, d
 
   const F = (key, label, val, options) => (
     <FilterPill
+      key={key}
       label={label}
       value={val}
       active={filterIsActive(val)}

@@ -262,6 +262,109 @@ function OperationsStrip({ jobs, metrics, queueStats, onSelectJob, onProcessExtr
   );
 }
 
+// ── Zone 4: Daily activity table ─────────────────────────────────────────────
+
+function buildDailyActivity(jobs) {
+  const byDate = {};
+
+  function bump(iso, key) {
+    if (!iso) return;
+    const d = iso.slice(0, 10);
+    if (!byDate[d]) byDate[d] = { saved: 0, applied: 0, interview: 0, offer: 0, rejected: 0 };
+    byDate[d][key]++;
+  }
+
+  for (const job of jobs) {
+    bump(job.capturedAt, 'saved');
+    for (const ev of (job.events || [])) {
+      if (ev.event_type === 'status_changed' && ev.note) {
+        const s = ev.note;
+        if (s === 'applied' || s === 'interview' || s === 'offer' || s === 'rejected') {
+          bump(ev.occurred_at, s);
+        }
+      }
+    }
+  }
+
+  return Object.entries(byDate)
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([date, counts]) => ({ date, ...counts }));
+}
+
+const ACTIVITY_COLS = [
+  { key: 'saved',     label: 'Saved',     color: 'var(--st-saved)' },
+  { key: 'applied',   label: 'Applied',   color: 'var(--st-applied)' },
+  { key: 'interview', label: 'Interview', color: 'var(--st-interview)' },
+  { key: 'offer',     label: 'Offer',     color: 'var(--st-offer)' },
+  { key: 'rejected',  label: 'Rejected',  color: 'var(--st-rejected)' },
+];
+
+function DailyActivityTable({ jobs }) {
+  const [expanded, setExpanded] = React.useState(false);
+  const rows = buildDailyActivity(jobs);
+  const visible = expanded ? rows : rows.slice(0, 14);
+  const totals = ACTIVITY_COLS.reduce((acc, c) => { acc[c.key] = rows.reduce((s, r) => s + r[c.key], 0); return acc; }, {});
+
+  if (rows.length === 0) return null;
+
+  const thStyle = { padding: '6px 12px', fontSize: 11, fontWeight: 500, color: 'var(--fg-mute)', textAlign: 'right', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', background: 'var(--bg-elev)' };
+  const tdStyle = { padding: '5px 12px', fontSize: 12, fontVariantNumeric: 'tabular-nums', textAlign: 'right', borderBottom: '1px solid var(--border-faint)', color: 'var(--fg-mute)' };
+
+  function cellVal(n) {
+    return n > 0 ? <span style={{ color: 'var(--fg)', fontWeight: 500 }}>{n}</span> : <span style={{ color: 'var(--fg-faint)' }}>—</span>;
+  }
+
+  return (
+    <Card title="Daily activity" hint={`${rows.length} active day${rows.length !== 1 ? 's' : ''}`}>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+          <colgroup>
+            <col style={{ width: '120px' }} />
+            {ACTIVITY_COLS.map(c => <col key={c.key} />)}
+          </colgroup>
+          <thead>
+            <tr>
+              <th style={{ ...thStyle, textAlign: 'left' }}>Date</th>
+              {ACTIVITY_COLS.map(c => (
+                <th key={c.key} style={thStyle}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.color, display: 'inline-block' }} />
+                    {c.label}
+                  </span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map(row => (
+              <tr key={row.date}>
+                <td style={{ ...tdStyle, textAlign: 'left', color: 'var(--fg)', fontFamily: 'var(--font-mono)', fontSize: 11.5 }}>{fmtDate(row.date)}</td>
+                {ACTIVITY_COLS.map(c => <td key={c.key} style={tdStyle}>{cellVal(row[c.key])}</td>)}
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td style={{ ...tdStyle, borderTop: '1px solid var(--border)', borderBottom: 'none', color: 'var(--fg-mute)', fontSize: 11, fontWeight: 500 }}>Total</td>
+              {ACTIVITY_COLS.map(c => (
+                <td key={c.key} style={{ ...tdStyle, borderTop: '1px solid var(--border)', borderBottom: 'none', fontWeight: 500, color: totals[c.key] > 0 ? 'var(--fg)' : 'var(--fg-faint)' }}>
+                  {totals[c.key] > 0 ? totals[c.key] : '—'}
+                </td>
+              ))}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      {rows.length > 14 && (
+        <div style={{ padding: '6px 12px', fontSize: 11, color: 'var(--fg-faint)', cursor: 'pointer', borderTop: '1px solid var(--border-faint)' }}
+          onClick={() => setExpanded(e => !e)}>
+          {expanded ? '▲ Show less' : `▼ Show all ${rows.length} days`}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 function DashboardPage({ onSelectJob, onProcessExtractions, processingExtractions, onNavigate, onNavigateToView }) {
@@ -288,6 +391,9 @@ function DashboardPage({ onSelectJob, onProcessExtractions, processingExtraction
       <OperationsStrip jobs={jobs} metrics={metrics} queueStats={queueStats} onSelectJob={onSelectJob} onProcessExtractions={onProcessExtractions} processingExtractions={processingExtractions} onNavigate={onNavigate} />
 
       <QualityStrip jobs={jobs} />
+
+      {/* Zone 4: Daily activity */}
+      <DailyActivityTable jobs={jobs} />
 
     </div>
   );

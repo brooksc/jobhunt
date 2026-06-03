@@ -157,7 +157,10 @@ function Sidebar({ route, setRoute, setSavedViewName, theme, themeMode, onToggle
               className="jh-side__nav"
               aria-current={route === n.id ? "page" : undefined}
               onClick={() => {
-                if (n.id === "jobs") setSavedViewName?.(null);
+                if (n.id === "jobs") {
+                  setSavedViewName?.(null);
+                  window.JH_RESET_JOBS_VIEW?.();
+                }
                 setRoute(n.id);
               }}
             >

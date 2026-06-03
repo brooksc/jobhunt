@@ -857,7 +857,22 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
       const captureCount = d.prepare(`SELECT COUNT(*) as n FROM captures`).get().n;
       const resolvedPath = resolve(dbPath || db.defaultDbPath());
       const dbSize = (() => { try { return statSync(resolvedPath).size; } catch { return null; } })();
-      res.json({ jobsByStatus, jobsByExtraction, llmCounts, captureCount, dbSize, dbPath: resolvedPath });
+      const promptStats = d.prepare(`
+        SELECT COUNT(*) as attempts,
+          MAX(prompt_chars) as max_prompt_chars,
+          CAST(ROUND(AVG(prompt_chars)) AS INT) as avg_prompt_chars,
+          CAST(ROUND(AVG(duration_ms)) AS INT) as avg_duration_ms,
+          MAX(duration_ms) as max_duration_ms
+        FROM llm_request_attempts WHERE status='succeeded' AND prompt_chars IS NOT NULL`).get();
+      const jdStats = d.prepare(`
+        SELECT MAX(LENGTH(cleaned_description)) as max_jd_chars,
+          CAST(ROUND(AVG(LENGTH(cleaned_description))) AS INT) as avg_jd_chars
+        FROM captures WHERE cleaned_description IS NOT NULL AND LENGTH(TRIM(cleaned_description)) > 100`).get();
+      res.json({
+        jobsByStatus, jobsByExtraction, llmCounts, captureCount, dbSize, dbPath: resolvedPath,
+        promptStats, jdStats,
+        tokenCaps: { maxDescriptionChars: MAX_DESCRIPTION_CHARS, maxResumeChars: MAX_RESUME_CHARS },
+      });
     } catch (err) {
       res.status(500).json({ error: String(err.message) });
     }

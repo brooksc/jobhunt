@@ -994,8 +994,32 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
         } catch { /* ignore */ }
       }
 
-      // For LM Studio / custom OpenAI-compatible: /v1/models returns max_context_length per model
-      if (!contextLength && (provider === 'lmstudio' || provider === 'custom') && model) {
+      // For LM Studio: try /api/v0/models first (richer, includes loaded_context_length)
+      if (!contextLength && provider === 'lmstudio') {
+        try {
+          const baseUrl = resolveProviderBaseUrl(provider, rawBaseUrl);
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 5000);
+          try {
+            const r = await fetch(`${baseUrl}/api/v0/models`, { signal: controller.signal });
+            if (r.ok) {
+              const data = await r.json();
+              const models = data.data || [];
+              // Prefer exact match, fall back to the only loaded model
+              const exact = models.find(m => m.id === model);
+              const loaded = models.find(m => m.state === 'loaded');
+              const best = exact || loaded;
+              if (best?.loaded_context_length) contextLength = best.loaded_context_length;
+              else if (best?.max_context_length) contextLength = best.max_context_length;
+            }
+          } finally {
+            clearTimeout(timer);
+          }
+        } catch { /* ignore */ }
+      }
+
+      // For custom OpenAI-compatible: /v1/models may return max_context_length
+      if (!contextLength && provider === 'custom' && model) {
         try {
           const baseUrl = resolveProviderBaseUrl(provider, rawBaseUrl);
           const controller = new AbortController();
@@ -1004,7 +1028,8 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
             const r = await fetch(`${baseUrl}/v1/models`, { signal: controller.signal });
             if (r.ok) {
               const data = await r.json();
-              const found = (data.data || []).find(m => m.id === model);
+              const models = data.data || [];
+              const found = models.find(m => m.id === model) || models[0];
               if (found?.max_context_length) contextLength = found.max_context_length;
             }
           } finally {

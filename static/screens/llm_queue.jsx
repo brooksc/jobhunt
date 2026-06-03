@@ -453,7 +453,7 @@ function LlmQueuePage() {
               <col style={{ width: 170 }} />
               <col style={{ width: 190 }} />
               <col style={{ width: 260 }} />
-              <col style={{ width: 150 }} />
+              <col style={{ width: 1, whiteSpace: "nowrap" }} />
             </colgroup>
             <thead>
               <tr>
@@ -654,7 +654,7 @@ function LlmQueuePage() {
                             </div>
                           )}
                         </td>
-                        <td>
+                        <td style={{ whiteSpace: "nowrap" }}>
                           <div className="row-actions" style={{ visibility: "visible", justifyContent: "flex-end", gap: 4 }}>
                             <Btn
                               size="sm"

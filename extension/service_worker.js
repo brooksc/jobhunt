@@ -104,6 +104,19 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
+// Queue-management items are only useful when the server is unreachable.
+// Hide them when we have a cached server port (i.e. the Mac app is running).
+const QUEUE_MENU_IDS = [OPEN_CAPTURE_QUEUE_MENU_ID, SYNC_QUEUE_MENU_ID, EXPORT_CSV_MENU_ID, "sep-queue"];
+
+chrome.contextMenus.onShown.addListener(async () => {
+  const cached = (await chrome.storage.session.get(PORT_CACHE_KEY))[PORT_CACHE_KEY];
+  const visible = !cached;
+  await Promise.all(QUEUE_MENU_IDS.map(id =>
+    chrome.contextMenus.update(id, { visible })
+  ));
+  chrome.contextMenus.refresh();
+});
+
 chrome.action.onClicked.addListener(async (tab) => {
   try {
     await captureCurrentTab(tab);

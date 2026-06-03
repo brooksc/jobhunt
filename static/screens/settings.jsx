@@ -415,7 +415,14 @@ function SettingsPage() {
           {(() => {
             if (!contextInfo) return null;
             const { contextLength, maxObservedPromptTokens, recommendedMinTokens } = contextInfo;
-            if (!contextLength) return null;
+            if (!contextLength) {
+              return (
+                <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', display: 'flex', gap: 6, alignItems: 'flex-start', color: 'var(--fg-mute)' }}>
+                  <span style={{ flexShrink: 0 }}>?</span>
+                  <span><span>Context window: </span><span style={{ fontWeight: 600 }}>Unknown</span>{' — provider did not report context length for this model'}</span>
+                </div>
+              );
+            }
             const fmt = n => n >= 1000 ? `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k` : String(n);
             const isRed = maxObservedPromptTokens && contextLength < maxObservedPromptTokens;
             const isYellow = !isRed && contextLength < recommendedMinTokens;

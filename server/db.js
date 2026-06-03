@@ -327,8 +327,8 @@ function knownValue(value) {
   return normalized && normalized !== 'unknown' ? normalized : '';
 }
 
-// Returns {descriptionSimilarity, descriptionTokenCount, fieldConflicts}.
-// All signals are soft — they contribute to confidence rather than hard-blocking.
+// Returns {descriptionSimilarity, descriptionTokenCount, fieldConflicts}, or null if a
+// critical field conflict makes these clearly different postings (hard block).
 // Grouping is already on company+title, so domain score is the primary signal;
 // description similarity and field conflicts fine-tune the confidence.
 function duplicateEvidenceMatch(left, right) {
@@ -337,20 +337,21 @@ function duplicateEvidenceMatch(left, right) {
   const rightTokens = duplicateDescriptionTokens(right.cleaned_description || '');
   const descriptionTokenCount = Math.min(leftTokens.size, rightTokens.size);
 
+  // Hard block: salary bands that diverge by >10% on both bounds indicate different postings.
+  if (left.salary_min != null && right.salary_min != null && left.salary_max != null && right.salary_max != null) {
+    const minDiff = Math.abs(left.salary_min - right.salary_min) / Math.max(left.salary_min, right.salary_min);
+    const maxDiff = Math.abs(left.salary_max - right.salary_max) / Math.max(left.salary_max, right.salary_max);
+    if (minDiff > 0.1 && maxDiff > 0.1) return null;
+  }
+
   const fieldConflicts = [];
   for (const field of ['remote_type', 'employment_type', 'seniority', 'location']) {
     const leftValue = knownValue(left[field]);
     const rightValue = knownValue(right[field]);
     if (leftValue && rightValue && leftValue !== rightValue) fieldConflicts.push(field);
   }
-  // Salary: only flag when both bounds are present and diverge by more than 10% (rounding is common)
   if (left.salary_currency && right.salary_currency && left.salary_currency !== right.salary_currency) {
     fieldConflicts.push('salary_currency');
-  }
-  if (left.salary_min != null && right.salary_min != null && left.salary_max != null && right.salary_max != null) {
-    const minDiff = Math.abs(left.salary_min - right.salary_min) / Math.max(left.salary_min, right.salary_min);
-    const maxDiff = Math.abs(left.salary_max - right.salary_max) / Math.max(left.salary_max, right.salary_max);
-    if (minDiff > 0.1 && maxDiff > 0.1) fieldConflicts.push('salary_range');
   }
 
   return { descriptionSimilarity, descriptionTokenCount, fieldConflicts };

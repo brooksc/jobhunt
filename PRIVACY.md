@@ -1,3 +1,8 @@
+---
+layout: default
+title: Privacy Policy
+---
+
 # Privacy Policy — Jobhunt Capture
 
 **Last updated: June 2, 2026**

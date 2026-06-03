@@ -373,7 +373,7 @@ function DashboardPage({ onSelectJob, onProcessExtractions, processingExtraction
   const queueStats = window.JH_QUEUE_STATS || {};
 
   return (
-    <div style={{ padding: '16px 16px 24px', overflow: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ padding: '16px 16px 24px', overflow: 'auto', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
 
       {/* Zone 1: Top opportunities */}
       <div>

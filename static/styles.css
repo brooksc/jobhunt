@@ -172,7 +172,8 @@
   padding: 12px 8px;
   gap: 14px;
   min-height: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .jh-side__brand {
@@ -1354,6 +1355,7 @@
 /* help */
 .jh-help {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 24px 28px 32px;
   max-width: 1180px;

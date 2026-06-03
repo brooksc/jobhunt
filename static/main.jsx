@@ -374,6 +374,7 @@
         benefits: extracted?.benefits || [],
         rating: j.rating || null,
         hasDuplicate: !!j.duplicate_of_job_id,
+        duplicateOfJobId: j.duplicate_of_job_id || null,
         cleanedHash: j.cleaned_hash || null,
         rawHash: j.raw_hash || null,
         rawByteSize: j.raw_byte_size || 0,

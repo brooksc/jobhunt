@@ -43,6 +43,7 @@ function EditableField({ value, onSave, children }) {
 
 function JobDetail({ jobId, onClose, initialTab = "overview", jobIds = [], onNavigate }) {
   const job = window.JH_JOBS.find((j) => j.id === jobId);
+  const originalJob = job?.duplicateOfJobId ? window.JH_JOBS.find((j) => j.id === job.duplicateOfJobId) : null;
   const [tab, setTab] = React.useState(initialTab);
   const [note, setNote] = React.useState("");
   const [noteDialog, setNoteDialog] = React.useState(false);
@@ -167,6 +168,25 @@ function JobDetail({ jobId, onClose, initialTab = "overview", jobIds = [], onNav
           </button>
         ))}
       </div>
+
+      {originalJob && (
+        <div className="jh-dupe-banner">
+          <span className="jh-dupe-banner__label">Duplicate of</span>
+          <span className="jh-dupe-banner__info">
+            <strong>#{originalJob.jobNumber}</strong>
+            {" · "}{originalJob.company}{" — "}{originalJob.title}
+          </span>
+          <button className="jh-dupe-banner__link" onClick={() => onNavigate && onNavigate(originalJob.id)}>
+            View original →
+          </button>
+        </div>
+      )}
+      {!originalJob && job?.status === "duplicate" && (
+        <div className="jh-dupe-banner jh-dupe-banner--unknown">
+          <span className="jh-dupe-banner__label">Duplicate</span>
+          <span className="jh-dupe-banner__info">Original job not found or was deleted.</span>
+        </div>
+      )}
 
       <div className="jh-panel__body">
         {tab === "overview" && <OverviewTab job={effectiveJob} onPatch={patchJob} onClose={onClose} />}

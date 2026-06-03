@@ -70,12 +70,14 @@
       combined = (doc.body && doc.body.innerText ? doc.body.innerText : "").trim();
     }
 
-    // Supplement with Next.js RSC data when the DOM text is sparse.
-    // Some Next.js job pages (e.g. Cribl) bail out to client-side rendering and
-    // put the full job description in __next_f payload scripts rather than the DOM.
+    // Supplement with Next.js data when present. Some CSR pages (e.g. Cribl) put
+    // the full JD in __NEXT_DATA__ / __next_f rather than rendering it into the DOM.
     const nextjsText = win ? collectNextJSText(win) : "";
-    if (nextjsText && nextjsText.length > combined.length / 2) {
-      return `${combined}\n\n---\n\n${nextjsText}`;
+    if (nextjsText) {
+      // Always include Next.js data; prepend DOM text only if it adds signal
+      return combined.length > 200
+        ? `${combined}\n\n---\n\n${nextjsText}`
+        : nextjsText;
     }
 
     return combined;
@@ -87,32 +89,58 @@
   }
 
   function collectNextJSText(win) {
-    // Extract text from Next.js RSC data (__next_f). Pages that bail out to
-    // client-side rendering (e.g. Cribl, many Next.js job boards) embed the full
-    // job description in RSC payload scripts instead of rendering it into the DOM,
-    // so body.innerText misses it entirely.
+    // Extract text from Next.js RSC data (__next_f) and __NEXT_DATA__ page props.
+    // CSR Next.js pages (e.g. Cribl) embed the full job description in these
+    // payloads rather than rendering it into the DOM.
+    const JOB_SIGNALS = /\$[\d,]+|\b(?:salary|compensation|pay range|requirements|qualifications|responsibilities|experience|description)\b/i;
+    const parts = [];
+
+    // ── __NEXT_DATA__ (page props JSON, available on all Next.js pages) ──────
+    if (win.__NEXT_DATA__ && typeof win.__NEXT_DATA__ === 'object') {
+      try {
+        const raw = JSON.stringify(win.__NEXT_DATA__);
+        if (JOB_SIGNALS.test(raw)) {
+          // Walk the JSON extracting long string values (likely description fields)
+          function extractStrings(obj, depth) {
+            if (depth > 8 || !obj) return [];
+            if (typeof obj === 'string') return obj.length > 80 ? [obj] : [];
+            if (Array.isArray(obj)) return obj.flatMap(v => extractStrings(v, depth + 1));
+            if (typeof obj === 'object') return Object.values(obj).flatMap(v => extractStrings(v, depth + 1));
+            return [];
+          }
+          const strings = extractStrings(win.__NEXT_DATA__, 0)
+            .filter(s => JOB_SIGNALS.test(s))
+            .map(s => s.replace(/<[^>]{0,200}>/g, ' ').replace(/\s+/g, ' ').trim())
+            .filter(s => s.length > 100);
+          if (strings.length) parts.push([...new Set(strings)].join('\n'));
+        }
+      } catch (_) { /* ignore */ }
+    }
+
+    // ── __next_f RSC payload ─────────────────────────────────────────────────
     const arr = win.__next_f;
-    if (!Array.isArray(arr)) return '';
-    const JOB_SIGNALS = /\$[\d,]+|\b(?:salary|compensation|pay range|requirements|qualifications|responsibilities|experience)\b/i;
-    const texts = arr
-      .filter(c => Array.isArray(c) && c[0] === 1 && typeof c[1] === 'string')
-      // Exclude tiny chunks and very large framework/routing data blobs (>30KB)
-      .filter(c => c[1].length >= 500 && c[1].length <= 30000)
-      // Only include chunks that look like HTML job description content
-      // (must have entity-encoded HTML tags AND job-relevant signals)
-      .filter(c => /&lt;[a-z]/.test(c[1]) && JOB_SIGNALS.test(c[1]))
-      .map(c => c[1]
-        .replace(/&lt;\/?[a-z][^&]{0,50}&gt;/gi, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/\s+/g, ' ')
-        .trim()
-      )
-      .filter(s => s.length > 100);
-    return [...new Set(texts)].join('\n');
+    if (Array.isArray(arr)) {
+      const texts = arr
+        .filter(c => Array.isArray(c) && c[0] === 1 && typeof c[1] === 'string')
+        .filter(c => c[1].length >= 200 && c[1].length <= 30000)
+        // Accept entity-encoded HTML OR plain text with job signals
+        .filter(c => (/&lt;[a-z]/.test(c[1]) || JOB_SIGNALS.test(c[1])) && JOB_SIGNALS.test(c[1]))
+        .map(c => c[1]
+          .replace(/&lt;\/?[a-z][^&]{0,50}&gt;/gi, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&quot;/g, '"')
+          .replace(/<[^>]{0,200}>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+        )
+        .filter(s => s.length > 100);
+      if (texts.length) parts.push([...new Set(texts)].join('\n'));
+    }
+
+    return parts.join('\n\n---\n\n');
   }
 
   function collectCanonicalUrl(doc) {

@@ -186,18 +186,24 @@ async function captureCurrentTab(tab, userNote = "") {
 }
 
 async function captureTabPayload(tabId, userNote = "") {
+  // world:"MAIN" is required so the injected scripts can access page-level JS variables
+  // (window.__next_f, window.__NEXT_DATA__) used by CSR Next.js job boards like Cribl.
+  // The default ISOLATED world shares the DOM but not the page's JavaScript scope.
   await chrome.scripting.executeScript({
     target: { tabId },
+    world: "MAIN",
     files: ["Readability.js"]
   });
 
   await chrome.scripting.executeScript({
     target: { tabId },
+    world: "MAIN",
     files: ["capture.js"]
   });
 
   const [injection] = await chrome.scripting.executeScript({
     target: { tabId },
+    world: "MAIN",
     func: async () => {
       const payload = await globalThis.jobhuntCapture.capturePage(window, document);
       const action = await globalThis.jobhuntCapture.showCapturePreflight(payload.preflight);

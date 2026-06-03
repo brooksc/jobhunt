@@ -325,6 +325,74 @@ describe('job board fixtures — Workday', () => {
   });
 });
 
+describe('job board fixtures — Cribl (cribl.io, verified against live page)', () => {
+  // Root cause: executeScript defaults to ISOLATED world, which cannot see page JS variables.
+  // window.__next_f is only visible from world:"MAIN". service_worker.js must pass world:"MAIN".
+  // These tests verify capture.js correctly extracts salary from __next_f when given access.
+
+  it('captures salary from sparse DOM + entity-encoded __next_f RSC chunk (MAIN world)', async () => {
+    // Matches actual cribl.io/job-detail/5990961004/ structure observed in browser:
+    // - body.innerText: ~950 chars of nav text, no salary
+    // - __next_f: 5,829-char entity-encoded HTML chunk containing salary
+    // Format confirmed: &lt;strong&gt;Salary Range&lt;/strong&gt; ($134,000 - $210,000)
+    const criblChunk = [
+      '&lt;div class="jc-description"&gt;',
+      '&lt;div class="content-intro"&gt;&lt;p&gt;Join the company building the telemetry infrastructure for the AI era. ',
+      'We partner with IT and Security teams at many of the world\'s biggest enterprises to bridge the gap between AI ambition and infrastructure reality.&lt;/p&gt;&lt;/div&gt;',
+      '&lt;p&gt;&lt;strong&gt;Why You\'ll Love This Role&lt;/strong&gt;&lt;/p&gt;',
+      '&lt;p&gt;We are seeking an ambitious Staff Technical Program Manager who puts customers first and will deliver our most challenging product development programs. ',
+      'This includes managing program schedules, identifying risks and clearly communicating them to stakeholders.&lt;/p&gt;',
+      '&lt;p&gt;&lt;strong&gt;As An Active Member Of Our Team, You Will&lt;/strong&gt;&lt;/p&gt;',
+      '&lt;ul&gt;&lt;li&gt;Provide leadership for development initiatives and lead end to end delivery of the most complex initiatives across multiple teams&lt;/li&gt;',
+      '&lt;li&gt;Be a change advocate responsible for initiating and leading multiple organizations through pivots needed to address shifts in business trends&lt;/li&gt;',
+      '&lt;li&gt;Drive Technical Program Management best practices and develop best of class software development processes&lt;/li&gt;&lt;/ul&gt;',
+      '&lt;p&gt;&lt;strong&gt;If You\'ve Got It - We Want It&lt;/strong&gt;&lt;/p&gt;',
+      '&lt;ul&gt;&lt;li&gt;5+ years of leadership experience on software teams as a Technical Program Manager or Development Manager&lt;/li&gt;',
+      '&lt;li&gt;Experience driving large-scale, multi-team, multi-platform programs from scoping through delivery in a fast-paced environment&lt;/li&gt;',
+      '&lt;li&gt;Working knowledge of AI (e.g., machine learning, model lifecycle, data pipelines)&lt;/li&gt;&lt;/ul&gt;',
+      '&lt;p&gt;&lt;strong&gt;Salary Range&lt;/strong&gt; ($134,000 - $210,000)&lt;/p&gt;',
+      '&lt;p&gt;The salary for this role is dependent on geographic location. The salary offered within the range described will be based on the individual candidate\'s job-related knowledge, skills, and experience.&lt;/p&gt;',
+      '&lt;/div&gt;',
+    ].join('');
+
+    const fixture = makeFixture({
+      url: 'https://cribl.io/job-detail/5990961004/',
+      pageTitle: 'Staff Technical Program Manager | Cribl',
+      // Sparse DOM — what the isolated world sees without __next_f
+      domText: 'Back to Careers\nENGINEERING\nREMOTE - UNITED STATES\nStaff Technical Program Manager\nApply',
+      // __next_f only visible in MAIN world — this is what world:"MAIN" unlocks
+      nextF: [
+        [1, 'c:I[12846,[],""]'],      // RSC noise chunk — filtered out
+        [1, criblChunk],               // Job description chunk with salary
+        [0, null],                     // Non-text chunk — filtered out
+      ],
+    });
+
+    const payload = await runCapture(fixture);
+    assert.ok(payload.visible_text.includes('$134,000'), 'salary min in visible_text');
+    assert.ok(payload.visible_text.includes('$210,000'), 'salary max in visible_text');
+    assert.ok(payload.visible_text.includes('Technical Program Manager'), 'role in visible_text');
+    assert.ok(payload.visible_text.includes('data pipelines'), 'requirements in visible_text');
+    assert.equal(payload.preflight.salary, true, 'preflight detects salary');
+    assert.equal(payload.preflight.remote, false, 'remote not in this chunk (location in DOM)');
+  });
+
+  it('preflight shows salary:missing when __next_f inaccessible (isolated world bug)', async () => {
+    // Documents the original bug: without world:"MAIN", window.__next_f is undefined.
+    // Salary lives in RSC chunks, not the DOM, so isolated-world capture misses it.
+    const fixture = makeFixture({
+      url: 'https://cribl.io/job-detail/5990961004/',
+      pageTitle: 'Staff Technical Program Manager | Cribl',
+      domText: 'Back to Careers\nENGINEERING\nREMOTE - UNITED STATES\nStaff Technical Program Manager\nApply',
+      // No nextF — simulates executeScript without world:"MAIN"
+    });
+
+    const payload = await runCapture(fixture);
+    assert.equal(payload.preflight.salary, false, 'salary missing without __next_f access');
+    assert.ok(payload.visible_text.length < 300, 'only sparse DOM captured');
+  });
+});
+
 describe('job board fixtures — Next.js CSR (Cribl pattern)', () => {
   // Pages using Next.js BAILOUT_TO_CLIENT_SIDE_RENDERING — DOM is nearly empty;
   // full JD lives in __next_f RSC payloads (entity-encoded HTML chunks).

@@ -619,7 +619,7 @@ function findOriginalCaptureForUrl(db, url, canonicalUrl) {
   // Return the ORIGINAL (lowest job_number) capture for this URL so updates
   // always target the canonical job, not a later duplicate.
   const q = `SELECT captures.id, captures.url, captures.canonical_url,
-    captures.cleaned_description, captures.raw_hash, jobs.id AS job_id
+    captures.cleaned_description, captures.raw_hash, jobs.id AS job_id, jobs.job_number
     FROM captures JOIN jobs ON jobs.capture_id = captures.id
     WHERE {where} ORDER BY jobs.job_number ASC LIMIT 1`;
   let row = db.prepare(q.replace('{where}', 'captures.url = ?')).get(url);
@@ -697,7 +697,7 @@ export function insertCapture(capture, dbPath) {
           WHERE id=?`).run(now, exactMatch.job_id);
         recordRecaptureEvent(db, exactMatch.job_id, capturedAt, now);
         recordDuplicateNote(db, exactMatch.id, capture.user_note, capturedAt, now);
-        return { capture_id: exactMatch.id, duplicate: false, duplicate_of_job_id: null, created: false };
+        return { capture_id: exactMatch.id, job_number: exactMatch.job_number, duplicate: false, duplicate_of_job_id: null, created: false };
       } catch (e) {
         if (!e.message.includes('UNIQUE')) throw e;
         // raw_hash conflict: this content is already stored in another capture.
@@ -710,15 +710,16 @@ export function insertCapture(capture, dbPath) {
         db.prepare(`UPDATE jobs SET extraction_status='pending', extraction_error=NULL, updated_at=? WHERE id=?`)
           .run(now, exactMatch.job_id);
         recordRecaptureEvent(db, exactMatch.job_id, capturedAt, now);
-        return { capture_id: exactMatch.id, duplicate: false, duplicate_of_job_id: null, created: false };
+        return { capture_id: exactMatch.id, job_number: exactMatch.job_number, duplicate: false, duplicate_of_job_id: null, created: false };
       }
     }
 
-    // Hash dedup
-    const existing = db.prepare("SELECT id FROM captures WHERE raw_hash = ?").get(rHash);
+    // Hash dedup — look up job_number so the extension can navigate to the existing job
+    const existing = db.prepare(`SELECT captures.id, jobs.job_number FROM captures
+      JOIN jobs ON jobs.capture_id=captures.id WHERE captures.raw_hash=?`).get(rHash);
     if (existing) {
       recordDuplicateNote(db, existing.id, capture.user_note, capturedAt, now);
-      return { capture_id: existing.id, duplicate: true, duplicate_of_job_id: null, created: false };
+      return { capture_id: existing.id, job_number: existing.job_number, duplicate: true, duplicate_of_job_id: null, created: false };
     }
 
     const duplicateOfJobId = findDuplicateJobId(db, cHash, capture.url, capture.canonical_url);

@@ -32,12 +32,13 @@ function resolveSiteRef(siteRef) {
 
 function JobhuntApp({ initialRoute = "jobs", initialJobId = null, initialTheme = "auto", initialTab = "overview", panelOpen: panelOpenProp = null }) {
   const initial = parseHash();
-  // If the hash has a route, use it; otherwise fall back to prop
+  // If the hash has a route, use it; otherwise restore from localStorage; then fall back to prop
   const hasHash = window.location.hash.length > 1;
-  const startRoute = hasHash ? initial.route : initialRoute;
+  const persisted = (() => { try { return JSON.parse(localStorage.getItem("jh.last-view") || "null"); } catch { return null; } })();
+  const startRoute = hasHash ? initial.route : (persisted?.route || initialRoute);
   const startJobId = hasHash && initial.route === "jobs" ? resolveJobRef(initial.itemRef) : initialJobId;
   const startSiteId = hasHash && initial.route === "sites" ? resolveSiteRef(initial.itemRef) : null;
-  const startSavedView = hasHash && initial.route === "jobs" ? initial.view : null;
+  const startSavedView = hasHash && initial.route === "jobs" ? initial.view : (!hasHash && persisted?.route === "jobs" ? (persisted?.savedViewName || null) : null);
   const startQualityIssue = hasHash && initial.route === "quality" ? initial.issue : null;
 
   const [route, setRoute] = React.useState(startRoute);
@@ -105,6 +106,12 @@ function JobhuntApp({ initialRoute = "jobs", initialJobId = null, initialTheme =
   React.useEffect(() => {
     pushHash(route, selectedJobId, selectedSiteId, savedViewName, qualityIssue);
   }, [route, selectedJobId, selectedSiteId, savedViewName, qualityIssue]);
+
+  // Persist last view across relaunches (skip in demo mode)
+  React.useEffect(() => {
+    if (window.JH_IS_DEMO) return;
+    try { localStorage.setItem("jh.last-view", JSON.stringify({ route, savedViewName: savedViewName || null })); } catch { /* ignore */ }
+  }, [route, savedViewName]);
 
   // Handle browser back/forward
   React.useEffect(() => {

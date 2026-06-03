@@ -309,7 +309,7 @@ function LlmQueuePage() {
   }, []);
 
   return (
-    <div style={{ overflow: "auto", flex: 1 }}>
+    <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
       <div style={{ padding: "16px 16px 20px" }}>
         <div className="jh-row" style={{ gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 260 }}>

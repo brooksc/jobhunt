@@ -261,7 +261,7 @@ function SettingsPage() {
   const tabs = debugEnabled ? ['Settings', 'Debug'] : [];
 
   return (
-    <div style={{ overflow: "auto", flex: 1 }}>
+    <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
       {tabs.length > 0 && (
         <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', padding: '0 28px', background: 'var(--bg)' }}>
           {tabs.map(tab => {

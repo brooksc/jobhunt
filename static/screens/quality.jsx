@@ -239,7 +239,7 @@ function DataQualityPage({ onSelectJob, onSelectJobs, issue, setIssue }) {
   const siteHealth = summarizeSiteHealth(window.JH_JOBS || []);
 
   return (
-    <div style={{ padding: "16px 16px 24px", overflow: "auto", flex: 1 }}>
+    <div style={{ padding: "16px 16px 24px", overflow: "auto", flex: 1, minHeight: 0 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(110px, 1fr))", gap: 8, marginBottom: 14 }}>
         <Metric label="Active jobs" value={counts.active} delta={`${counts.excluded} excluded`} />
         <Metric label="With gaps" value={counts.withIssues} delta="needs review" warn={counts.withIssues > 0} />

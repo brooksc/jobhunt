@@ -327,30 +327,42 @@ function knownValue(value) {
   return normalized && normalized !== 'unknown' ? normalized : '';
 }
 
-function duplicateCriticalFieldsMatch(left, right) {
-  for (const field of ['location', 'remote_type', 'employment_type', 'seniority']) {
+// Returns {descriptionSimilarity, descriptionTokenCount, fieldConflicts}.
+// All signals are soft — they contribute to confidence rather than hard-blocking.
+// Grouping is already on company+title, so domain score is the primary signal;
+// description similarity and field conflicts fine-tune the confidence.
+function duplicateEvidenceMatch(left, right) {
+  const descriptionSimilarity = duplicateDescriptionSimilarity(left.cleaned_description, right.cleaned_description);
+  const leftTokens = duplicateDescriptionTokens(left.cleaned_description || '');
+  const rightTokens = duplicateDescriptionTokens(right.cleaned_description || '');
+  const descriptionTokenCount = Math.min(leftTokens.size, rightTokens.size);
+
+  const fieldConflicts = [];
+  for (const field of ['remote_type', 'employment_type', 'seniority', 'location']) {
     const leftValue = knownValue(left[field]);
     const rightValue = knownValue(right[field]);
-    if (leftValue && rightValue && leftValue !== rightValue) return false;
+    if (leftValue && rightValue && leftValue !== rightValue) fieldConflicts.push(field);
+  }
+  // Salary: only flag when both bounds are present and diverge by more than 10% (rounding is common)
+  if (left.salary_currency && right.salary_currency && left.salary_currency !== right.salary_currency) {
+    fieldConflicts.push('salary_currency');
+  }
+  if (left.salary_min != null && right.salary_min != null && left.salary_max != null && right.salary_max != null) {
+    const minDiff = Math.abs(left.salary_min - right.salary_min) / Math.max(left.salary_min, right.salary_min);
+    const maxDiff = Math.abs(left.salary_max - right.salary_max) / Math.max(left.salary_max, right.salary_max);
+    if (minDiff > 0.1 && maxDiff > 0.1) fieldConflicts.push('salary_range');
   }
 
-  for (const field of ['salary_currency', 'salary_min', 'salary_max']) {
-    if (left[field] != null && right[field] != null && left[field] !== right[field]) return false;
-  }
-  return true;
-}
-
-function duplicateEvidenceMatch(left, right) {
-  if (!duplicateCriticalFieldsMatch(left, right)) return null;
-  const descriptionSimilarity = duplicateDescriptionSimilarity(left.cleaned_description, right.cleaned_description);
-  if (descriptionSimilarity != null && descriptionSimilarity < 0.5) return null;
-  return { descriptionSimilarity };
+  return { descriptionSimilarity, descriptionTokenCount, fieldConflicts };
 }
 
 function duplicateDetectionNote(keep, job, evidence) {
   const parts = [`preferred ${keep.source_hostname} over ${job.source_hostname}`];
   if (evidence.descriptionSimilarity != null) {
-    parts.push(`description similarity ${evidence.descriptionSimilarity.toFixed(2)}`);
+    parts.push(`description similarity ${evidence.descriptionSimilarity.toFixed(2)} (${evidence.descriptionTokenCount} tokens)`);
+  }
+  if (evidence.fieldConflicts.length > 0) {
+    parts.push(`field conflicts: ${evidence.fieldConflicts.join(', ')}`);
   }
   return parts.join('; ');
 }
@@ -1653,10 +1665,13 @@ export function detectDomainDuplicateJobs(dbPath) {
         if (!evidence) continue;
 
         const domainConfidence = 0.65 + ((keep.source_domain_score - job.source_domain_score) / 100) * 0.24;
-        const descriptionConfidence = evidence.descriptionSimilarity == null
-          ? 0
-          : Math.max(0, evidence.descriptionSimilarity - 0.5) * 0.2;
-        const confidence = Math.min(0.99, domainConfidence + descriptionConfidence);
+        // Description similarity is weighted by token count: sparse captures (<30 tokens) are unreliable
+        // so their similarity has little effect in either direction.
+        const descWeight = evidence.descriptionSimilarity == null ? 0
+          : Math.min(1, evidence.descriptionTokenCount / 30);
+        const descriptionAdjustment = descWeight * (evidence.descriptionSimilarity - 0.5) * 0.3;
+        const fieldPenalty = evidence.fieldConflicts.length * 0.08;
+        const confidence = Math.min(0.99, Math.max(0.01, domainConfidence + descriptionAdjustment - fieldPenalty));
         const result = db.prepare(`UPDATE jobs
           SET duplicate_of_job_id=?, duplicate_confidence=?, updated_at=?
           WHERE id=? AND (duplicate_of_job_id IS NOT ? OR duplicate_confidence IS NOT ?)`)

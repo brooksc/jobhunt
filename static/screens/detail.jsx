@@ -169,7 +169,7 @@ function JobDetail({ jobId, onClose, initialTab = "overview", jobIds = [], onNav
       </div>
 
       <div className="jh-panel__body">
-        {tab === "overview" && <OverviewTab job={effectiveJob} onPatch={patchJob} />}
+        {tab === "overview" && <OverviewTab job={effectiveJob} onPatch={patchJob} onClose={onClose} />}
         {tab === "timeline" && <TimelineTab job={job} note={note} setNote={setNote} />}
         {tab === "description" && <DescriptionTab job={job} />}
         {tab === "raw" && <RawTab job={job} />}
@@ -216,7 +216,7 @@ function StatusDropdown({ value, onChange }) {
   );
 }
 
-function OverviewTab({ job, onPatch }) {
+function OverviewTab({ job, onPatch, onClose }) {
   const [localSkills, setLocalSkills] = React.useState(job.skills || []);
   const [skillsDirty, setSkillsDirty] = React.useState(false);
   const [addSkillDialog, setAddSkillDialog] = React.useState(false);
@@ -369,7 +369,7 @@ function OverviewTab({ job, onPatch }) {
       )}
 
       <FitScorePanel job={job} />
-      <CaptureDiagnostics job={job} />
+      <CaptureDiagnostics job={job} onClose={onClose} />
 
       <div className="jh-section">
         <h3>Extraction</h3>
@@ -628,7 +628,29 @@ function RawTab({ job }) {
   );
 }
 
-function CaptureDiagnostics({ job }) {
+function CaptureDiagnostics({ job, onClose }) {
+  const [deleteConfirm, setDeleteConfirm] = React.useState(false);
+  const deleteTimer = React.useRef(null);
+
+  function armDelete() {
+    setDeleteConfirm(true);
+    deleteTimer.current = setTimeout(() => setDeleteConfirm(false), 3000);
+  }
+  function cancelDelete() {
+    clearTimeout(deleteTimer.current);
+    setDeleteConfirm(false);
+  }
+  function confirmDelete() {
+    clearTimeout(deleteTimer.current);
+    setDeleteConfirm(false);
+    window.JH_API.deleteJob(job.id)
+      .then(() => { window.JH_TOAST?.show("Job deleted"); return window.JH_REFRESH_UI_DATA?.(); })
+      .then(() => onClose?.())
+      .catch((e) => window.JH_TOAST?.show(e.message, "error"));
+  }
+
+  React.useEffect(() => () => clearTimeout(deleteTimer.current), []);
+
   const bytes = (n) => `${Number(n || 0).toLocaleString()} bytes`;
   const likelyTruncated = (job.rawByteSize || 0) < 1000 || (job.cleanedByteSize || 0) < 700;
   const copyDebugSummary = async () => {
@@ -699,6 +721,11 @@ function CaptureDiagnostics({ job }) {
               .then(() => { window.JH_TOAST?.show("Job archived"); return window.JH_REFRESH_UI_DATA?.(); })
               .catch((e) => window.JH_TOAST?.show(e.message, "error"));
           }}>Archive</Btn>
+          {deleteConfirm
+            ? <><Btn size="sm" kind="danger" icon={<Icon.Trash size={11} />} onClick={confirmDelete}>Confirm delete</Btn>
+                <Btn size="sm" kind="ghost" onClick={cancelDelete}>Cancel</Btn></>
+            : <Btn size="sm" kind="ghost" icon={<Icon.Trash size={11} />} onClick={armDelete}>Delete</Btn>
+          }
           <Btn size="sm" kind="ghost" icon={<Icon.Copy size={11} />} onClick={copyDebugSummary}>Copy debug</Btn>
         </div>
       </div>

@@ -8,3 +8,9 @@ node_modules/
 
 # Electron build output
 dist/
+
+# macOS metadata
+.DS_Store
+
+# Antigravity CLI sessions
+.antigravitycli/

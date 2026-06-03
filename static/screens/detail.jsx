@@ -41,6 +41,69 @@ function EditableField({ value, onSave, children }) {
   );
 }
 
+function CompareTab({ duplicate, original, onNavigate }) {
+  const rows = [
+    { label: "Job #",       dup: `#${duplicate.jobNumber}`,    orig: `#${original.jobNumber}` },
+    { label: "Company",     dup: duplicate.company,             orig: original.company },
+    { label: "Title",       dup: duplicate.title,               orig: original.title },
+    { label: "Location",    dup: duplicate.location,            orig: original.location },
+    { label: "Work mode",   dup: duplicate.workMode,            orig: original.workMode },
+    { label: "Salary",      dup: fmtSalary(duplicate),          orig: fmtSalary(original) },
+    { label: "Employment",  dup: duplicate.employment,          orig: original.employment },
+    { label: "Seniority",   dup: duplicate.seniority || "—",   orig: original.seniority || "—" },
+    { label: "Source",      dup: duplicate.source,              orig: original.source },
+    { label: "Captured",    dup: fmtCaptured(duplicate.capturedAt), orig: fmtCaptured(original.capturedAt) },
+    { label: "Status",      dup: duplicate.status,              orig: original.status },
+  ];
+
+  return (
+    <div style={{ padding: 16 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+        <colgroup>
+          <col style={{ width: 90 }} />
+          <col style={{ width: "calc(50% - 45px)" }} />
+          <col style={{ width: "calc(50% - 45px)" }} />
+        </colgroup>
+        <thead>
+          <tr>
+            <th style={{ textAlign: "left", padding: "4px 8px 8px 0", color: "var(--fg-mute)", fontWeight: 500 }}></th>
+            <th style={{ textAlign: "left", padding: "4px 8px 8px 8px", color: "var(--fg-mute)", fontWeight: 500, borderBottom: "1px solid var(--border)" }}>
+              This job (duplicate)
+            </th>
+            <th style={{ textAlign: "left", padding: "4px 8px 8px 8px", color: "var(--fg-mute)", fontWeight: 500, borderBottom: "1px solid var(--border)" }}>
+              <span>Original </span>
+              <button className="jh-dupe-banner__link" style={{ fontSize: 11 }} onClick={() => onNavigate && onNavigate(original.id)}>
+                View →
+              </button>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ label, dup, orig }) => {
+            const differs = String(dup || "").trim() !== String(orig || "").trim();
+            return (
+              <tr key={label} style={{ borderBottom: "1px solid var(--border)" }}>
+                <td style={{ padding: "5px 8px 5px 0", color: "var(--fg-mute)", verticalAlign: "top", whiteSpace: "nowrap" }}>{label}</td>
+                <td style={{ padding: "5px 8px", verticalAlign: "top", background: differs ? "color-mix(in srgb, var(--st-duplicate) 8%, transparent)" : "transparent" }}>{dup || "—"}</td>
+                <td style={{ padding: "5px 8px", verticalAlign: "top" }}>{orig || "—"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
+        <Btn size="sm" kind="ghost" onClick={() => window.JH_API.setStatus(duplicate.id, "saved").catch(e => window.JH_TOAST.show(e.message, "error"))}>
+          Unmark as duplicate
+        </Btn>
+        <Btn size="sm" kind="danger" onClick={() => window.JH_API.deleteJob(duplicate.id).then(() => window.JH_REFRESH_UI_DATA()).catch(e => window.JH_TOAST.show(e.message, "error"))}>
+          Delete this job
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
 function JobDetail({ jobId, onClose, initialTab = "overview", jobIds = [], onNavigate }) {
   const job = window.JH_JOBS.find((j) => j.id === jobId);
   const originalJob = job?.duplicateOfJobId ? window.JH_JOBS.find((j) => j.id === job.duplicateOfJobId) : null;
@@ -149,12 +212,12 @@ function JobDetail({ jobId, onClose, initialTab = "overview", jobIds = [], onNav
       </div>
 
       <div className="jh-tabs" role="tablist" onKeyDown={(e) => {
-        const tabs = ["overview", "timeline", "description", "raw"];
+        const tabs = originalJob ? ["overview", "compare", "timeline", "description", "raw"] : ["overview", "timeline", "description", "raw"];
         const current = tabs.indexOf(tab);
         if (e.key === "ArrowRight" && current < tabs.length - 1) { e.preventDefault(); setTab(tabs[current + 1]); }
         if (e.key === "ArrowLeft" && current > 0) { e.preventDefault(); setTab(tabs[current - 1]); }
       }}>
-        {["overview", "timeline", "description", "raw"].map((t) => (
+        {(originalJob ? ["overview", "compare", "timeline", "description", "raw"] : ["overview", "timeline", "description", "raw"]).map((t) => (
           <button
             key={t}
             role="tab"
@@ -190,6 +253,7 @@ function JobDetail({ jobId, onClose, initialTab = "overview", jobIds = [], onNav
 
       <div className="jh-panel__body">
         {tab === "overview" && <OverviewTab job={effectiveJob} onPatch={patchJob} onClose={onClose} />}
+        {tab === "compare" && originalJob && <CompareTab duplicate={effectiveJob} original={originalJob} onNavigate={onNavigate} />}
         {tab === "timeline" && <TimelineTab job={job} note={note} setNote={setNote} />}
         {tab === "description" && <DescriptionTab job={job} />}
         {tab === "raw" && <RawTab job={job} />}

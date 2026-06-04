@@ -514,6 +514,7 @@ function OnboardingWizard({ onClose }) {
             if (!res.ok) { alert(`Failed to switch to demo: ${(await res.json().catch(() => ({}))).error || res.status}`); return; }
             localStorage.setItem(window.WELCOME_KEY || 'jh.welcome_dismissed', '1');
             localStorage.removeItem('jobhunt.force_first_run');
+            window.location.replace('#/jobs');
             window.location.reload();
           }} />}
           {step === 1 && <StepExtension onNext={next} onBack={back} />}

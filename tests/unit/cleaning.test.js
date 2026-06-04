@@ -165,6 +165,33 @@ We are looking for an experienced Sr. Staff Technical Program Manager.`,
     assert.ok(/salary range/i.test(result), 'Salary range metadata line present');
   });
 
+  it('extracts Workday salary bands (no $ sign, USD Annual) from bottom of page', () => {
+    // Workday posts salary at the bottom of the page in "NUMBER - NUMBER USD Annual" format.
+    // The $ sign is absent, topLines won't contain it, and "Annual" ≠ "annually".
+    // cleanDescription must surface this as Salary range: metadata for the LLM.
+    const description = Array(45).fill('Job description line.').join('\n');
+    const visibleText = [
+      'Technical Program Manager, Calix Cloud',
+      'locations',
+      'Remote - USA',
+      'Remote - Canada',
+      'time type',
+      'Full time',
+      'job requisition id',
+      'R-11186',
+      description,
+      'The base pay range for this position varies based on geographic location.',
+      'San Francisco Bay Area:',
+      '133,400 - 226,600 USD Annual',
+      'All Other US Locations:',
+      '116,000 - 197,000 USD Annual',
+    ].join('\n');
+
+    const result = cleanDescription({ visibleText });
+    assert.ok(/salary range/i.test(result), 'Salary range metadata line must be present');
+    assert.ok(result.includes('133,400') || result.includes('116,000'), 'salary values must appear in metadata');
+  });
+
   it('prefers selected_text over structured data and visible_text', () => {
     const result = cleanDescription({
       selectedText: 'Selected',

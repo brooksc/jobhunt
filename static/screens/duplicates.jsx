@@ -8,7 +8,7 @@ function DuplicatesPage({ mode = "list" }) {
     const m = {};
     (window.JH_JOBS || []).forEach(j => { m[j.id] = j; });
     return m;
-  }, []);
+  }, [window.JH_JOBS]);
 
   function reviewableJob(j) {
     return j && !["archived", "not_available", "duplicate"].includes(j.status);

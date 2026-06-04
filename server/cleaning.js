@@ -196,6 +196,15 @@ function visibleJobMetadata(visibleText) {
         const sectionText = lines.slice(compIdx, compIdx + 6).join(' ');
         const rangeMatch = sectionText.match(/\$[\d,]+\s*[-–]\s*\$?[\d,]+(?:\/(?:year|yr|hour|hr))?/i);
         if (rangeMatch) append(metadata, 'Salary range', rangeMatch[0]);
+      } else {
+        // Workday and similar platforms list salary without a $ sign at the bottom of the page:
+        // "133,400 - 226,600 USD Annual". Scan the full page (not just topLines) for this pattern.
+        // The currency code + "Annual" suffix is distinctive enough to avoid false positives.
+        const workdayRe = /\b(\d{2,3}(?:,\d{3})+)\s*[-–—]\s*(\d{2,3}(?:,\d{3})+)\s+(?:USD|CAD|EUR|GBP)\s+Annual\b/i;
+        const workdaySalaryLines = lines.filter(l => workdayRe.test(l) && l.length < 180);
+        if (workdaySalaryLines.length) {
+          append(metadata, 'Salary range', workdaySalaryLines.join('; '));
+        }
       }
     }
   }

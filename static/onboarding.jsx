@@ -510,7 +510,8 @@ function OnboardingWizard({ onClose }) {
         <div style={cardStyle}>
           <StepDots step={step} />
           {step === 0 && <StepWelcome onNext={next} onDemo={async () => {
-            await fetch('/api/db/switch', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: 'demo' }) });
+            const res = await fetch('/api/db/switch', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: 'demo' }) });
+            if (!res.ok) { alert(`Failed to switch to demo: ${(await res.json().catch(() => ({}))).error || res.status}`); return; }
             localStorage.setItem(window.WELCOME_KEY || 'jh.welcome_dismissed', '1');
             localStorage.removeItem('jobhunt.force_first_run');
             window.location.reload();

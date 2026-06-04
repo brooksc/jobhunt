@@ -1,11 +1,15 @@
 // Demo database seeding — creates a representative dataset for first-run exploration.
+import { copyFileSync, existsSync } from 'fs';
+import os from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { initDb } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// Bundled pre-seeded demo DB checked into the repo alongside this file.
-export const DEMO_DB_PATH = join(__dirname, 'demo.db');
+// Bundled seed template checked into the repo — never written to at runtime.
+const SEED_DB_PATH = join(__dirname, 'demo.db');
+// Writable working copy in the user's config directory.
+export const DEMO_DB_PATH = join(os.homedir(), '.config', 'jobhunt', 'demo.db');
 
 function daysAgo(n) {
   return new Date(Date.now() - n * 24 * 3600 * 1000).toISOString();
@@ -233,9 +237,13 @@ const SEED = {
 };
 
 export function ensureDemoDb(dbPath = DEMO_DB_PATH) {
+  // Bootstrap from bundled seed template when no working copy exists yet.
+  if (!existsSync(dbPath) && existsSync(SEED_DB_PATH)) {
+    copyFileSync(SEED_DB_PATH, dbPath);
+  }
   const db = initDb(dbPath);
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM jobs').get();
-  if (n > 0) return; // already seeded
+  if (n > 0) return;
   seedDemoDb(db);
 }
 

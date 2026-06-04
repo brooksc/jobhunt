@@ -1,5 +1,8 @@
 // Fetches real data from the local API and mounts the app.
 (async function () {
+  // toStringArray mirrors static/transform.js — keep in sync.
+  const toStringArray = window._JHT?.toStringArray ?? (v => Array.isArray(v) ? v : v ? [String(v)] : []);
+
   const STATUSES = ["saved", "applied", "interview", "offer", "rejected", "archived", "not_available", "duplicate"];
   const rootEl = document.getElementById("root");
   const savedTheme = localStorage.getItem("jobhunt.theme");
@@ -270,11 +273,11 @@
           dueDate: j.next_action.due_date,
           snoozedUntil: j.next_action.snoozed_until || null,
         } : null,
-        skills: extracted?.skills || [],
+        skills: toStringArray(extracted?.skills),
         summary: extracted?.summary || null,
-        requirements: Array.isArray(extracted?.requirements) ? extracted.requirements : extracted?.requirements ? [String(extracted.requirements)] : [],
-        niceToHaves: Array.isArray(extracted?.nice_to_haves) ? extracted.nice_to_haves : extracted?.nice_to_haves ? [String(extracted.nice_to_haves)] : [],
-        benefits: Array.isArray(extracted?.benefits) ? extracted.benefits : extracted?.benefits ? [String(extracted.benefits)] : [],
+        requirements: toStringArray(extracted?.requirements),
+        niceToHaves: toStringArray(extracted?.nice_to_haves),
+        benefits: toStringArray(extracted?.benefits),
         rating: j.rating || null,
         hasDuplicate: !!j.duplicate_of_job_id,
         duplicateOfJobId: j.duplicate_of_job_id || null,

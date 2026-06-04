@@ -29,7 +29,7 @@ function NeedsActionPage({ onSelectJob }) {
     return () => document.removeEventListener("keydown", h);
   }, [statusDropdownOpen]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const _today = new Date().toISOString().slice(0, 10);
 
   const allJobs = window.JH_JOBS.filter((j) => j.nextAction !== null);
 

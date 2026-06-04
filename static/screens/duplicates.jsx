@@ -115,7 +115,7 @@ function DuplicatesPage({ mode = "list" }) {
 function DuplicatePairRow({ pair, onValidate }) {
   const { original, candidate, group } = pair;
   return (
-    <tr>
+    <tr onClick={onValidate} style={{ cursor: "pointer" }}>
       <td><DuplicateJobSummary job={original} label="Original" /></td>
       <td><DuplicateJobSummary job={candidate} label={pair.total > 1 ? `Duplicate ${pair.index} of ${pair.total}` : "Possible duplicate"} /></td>
       <td data-mono>{Number(group.similarity || 0).toFixed(2)}</td>
@@ -145,6 +145,7 @@ function DuplicateJobSummary({ job, label }) {
         href={job.sourceUrl}
         target="_blank"
         rel="noreferrer"
+        onClick={e => e.stopPropagation()}
       >
         <Icon.External size={10} />
         {shortUrl(job.sourceUrl)}

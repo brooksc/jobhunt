@@ -213,7 +213,8 @@ function JobhuntApp({ initialRoute = "jobs", initialJobId = null, initialTheme =
   const [processingExtractions, setProcessingExtractions] = React.useState(false);
   const [selCount, setSelCount] = React.useState(0);
   const [welcomeOpen, setWelcomeOpen] = React.useState(() => {
-    return !localStorage.getItem(WELCOME_KEY) && (window.JH_JOBS || []).length === 0;
+    const forced = localStorage.getItem('jobhunt.force_first_run') === '1';
+    return forced || (!localStorage.getItem(WELCOME_KEY) && (window.JH_JOBS || []).length === 0);
   });
   React.useEffect(() => { window.JH_SET_SEL_COUNT = setSelCount; return () => { delete window.JH_SET_SEL_COUNT; }; }, []);
   React.useEffect(() => { window.JH_OPEN_ONBOARDING = () => setWelcomeOpen(true); return () => { delete window.JH_OPEN_ONBOARDING; }; }, []);
@@ -245,11 +246,20 @@ function JobhuntApp({ initialRoute = "jobs", initialJobId = null, initialTheme =
     }
   }
 
+  const [onboardingDone, setOnboardingDone] = React.useState(() => !!localStorage.getItem(WELCOME_KEY));
+
   return (
     <div className="jh-root" data-theme={theme} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <ToastContainer />
-      {welcomeOpen && <OnboardingWizard onClose={() => setWelcomeOpen(false)} />}
+      {welcomeOpen && <OnboardingWizard onClose={() => { setWelcomeOpen(false); setOnboardingDone(!!localStorage.getItem(WELCOME_KEY)); }} />}
       {window.JH_IS_DEMO && <DemoBanner />}
+      {!window.JH_IS_DEMO && !welcomeOpen && !onboardingDone && (
+        <div style={{ background: 'var(--bg-elev-2)', borderBottom: '1px solid var(--border)', padding: '7px 16px', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, flexShrink: 0 }}>
+          <span style={{ color: 'var(--fg-mute)' }}>⚙️ Finish setting up Jobhunt to enable AI extraction and fit scoring.</span>
+          <button onClick={() => setWelcomeOpen(true)} style={{ marginLeft: 'auto', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 5, padding: '3px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Complete setup →</button>
+          <button onClick={() => setOnboardingDone(true)} style={{ background: 'transparent', border: 'none', color: 'var(--fg-mute)', fontSize: 16, cursor: 'pointer', lineHeight: 1, padding: '0 2px' }} title="Dismiss">×</button>
+        </div>
+      )}
       <div className={`jh-shell ${panelOpen ? "jh-shell--with-panel" : ""}`} style={{ flex: 1, minHeight: 0 }}>
         <Sidebar route={route} setRoute={navigate} setSavedViewName={setSavedViewName} savedViewName={savedViewName} theme={theme} themeMode={themeMode} onToggleTheme={() => setThemeMode((t) => t === "dark" ? "light" : t === "light" ? "auto" : "dark")} />
 

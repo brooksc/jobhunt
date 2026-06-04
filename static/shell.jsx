@@ -292,6 +292,10 @@ async function switchDb(mode) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ mode }),
   });
+  if (mode === 'user' && !localStorage.getItem(window.WELCOME_KEY || 'jh.welcome_dismissed')) {
+    localStorage.setItem('jobhunt.force_first_run', '1');
+  }
+  window.location.replace('#/jobs');
   window.location.reload();
 }
 

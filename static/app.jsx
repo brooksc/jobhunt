@@ -213,7 +213,8 @@ function JobhuntApp({ initialRoute = "jobs", initialJobId = null, initialTheme =
   const [processingExtractions, setProcessingExtractions] = React.useState(false);
   const [selCount, setSelCount] = React.useState(0);
   const [welcomeOpen, setWelcomeOpen] = React.useState(() => {
-    return !localStorage.getItem(WELCOME_KEY) && (window.JH_JOBS || []).length === 0;
+    const forced = localStorage.getItem('jobhunt.force_first_run') === '1';
+    return forced || (!localStorage.getItem(WELCOME_KEY) && (window.JH_JOBS || []).length === 0);
   });
   React.useEffect(() => { window.JH_SET_SEL_COUNT = setSelCount; return () => { delete window.JH_SET_SEL_COUNT; }; }, []);
 

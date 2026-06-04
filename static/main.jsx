@@ -171,6 +171,7 @@
         await window.JH_API.saveSettings(payload);
         Object.assign(window.JH_SETTINGS, payload);
         localStorage.setItem("jobhunt.first_run_complete", "1");
+        localStorage.removeItem("jobhunt.force_first_run");
         onComplete();
       } catch (e) {
         setError(e.message || String(e));
@@ -181,6 +182,7 @@
 
     function handleSkip() {
       localStorage.setItem("jobhunt.first_run_complete", "1");
+      localStorage.removeItem("jobhunt.force_first_run");
       onComplete();
     }
 
@@ -633,6 +635,7 @@
 
   const root = ReactDOM.createRoot(rootEl);
   const firstRunComplete = localStorage.getItem("jobhunt.first_run_complete") === "1";
-  const shouldShowFirstRun = !firstRunComplete && JH_JOBS.length === 0 && JH_SITES.length === 0;
+  const forceFirstRun = localStorage.getItem("jobhunt.force_first_run") === "1";
+  const shouldShowFirstRun = forceFirstRun || (!firstRunComplete && JH_JOBS.length === 0 && JH_SITES.length === 0);
   root.render(<JobhuntFirstRunBootstrap shouldShow={shouldShowFirstRun} initialTheme={initialTheme} />);
 })();

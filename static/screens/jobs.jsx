@@ -8,11 +8,11 @@ function persistSavedViews(views) {
 }
 
 const DEFAULT_COLUMNS = ["company", "title", "status", "rating", "fit", "salaryMin", "salaryMax", "lastOpened"];
-const ALL_COLUMNS = ["company", "title", "status", "rating", "fit", "salaryMin", "salaryMax", "remote", "location", "source", "seniority", "employment", "captured", "lastOpened", "processed", "extraction"];
+const ALL_COLUMNS = ["company", "title", "status", "rating", "fit", "salaryMin", "salaryMax", "remote", "location", "source", "seniority", "employment", "captured", "lastOpened", "lastStatusChanged", "processed", "extraction"];
 const COLUMN_LABELS = {
   company: "Company", title: "Title", status: "Status", rating: "Rating", fit: "Fit", salaryMin: "Salary min", salaryMax: "Salary max",
   remote: "Meets criteria", location: "Location", source: "Source", seniority: "Seniority",
-  employment: "Employment", captured: "Last captured", lastOpened: "Last opened", processed: "Last processed", extraction: "Extraction",
+  employment: "Employment", captured: "Last captured", lastOpened: "Last opened", lastStatusChanged: "Last status change", processed: "Last processed", extraction: "Extraction",
 };
 
 const SORT_OPTIONS = [
@@ -734,6 +734,7 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
     if (key === "extractionStatus") return job.extraction?.status || "";
     if (key === "lastProcessedAt") return job.extraction?.at || "";
     if (key === "lastOpenedAt") return job.lastOpenedAt || "";
+    if (key === "lastStatusChangedAt") return job.lastStatusChangedAt || "";
     if (key === "nextActionDue") return job.nextAction?.dueDate || "";
     return job[key] ?? "";
   }
@@ -878,6 +879,7 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
             {col("source") && !panelOpen && <col style={{ width: 90 }} />}
             {col("captured") && <col style={{ width: 96 }} />}
             {col("lastOpened") && <col style={{ width: 96 }} />}
+            {col("lastStatusChanged") && <col style={{ width: 96 }} />}
             {col("processed") && <col style={{ width: 96 }} />}
             {col("extraction") && <col style={{ width: 80 }} />}
             {!panelOpen && <col style={{ width: panelOpen ? 0 : 200 }} />}
@@ -907,6 +909,7 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
               {col("source") && !panelOpen && <SortH k="source">Source</SortH>}
               {col("captured") && <SortH k="capturedAt">Captured</SortH>}
               {col("lastOpened") && <SortH k="lastOpenedAt">Opened</SortH>}
+              {col("lastStatusChanged") && <SortH k="lastStatusChangedAt">Status changed</SortH>}
               {col("processed") && <SortH k="lastProcessedAt">Processed</SortH>}
               {col("extraction") && <SortH k="extractionStatus">Extract</SortH>}
               {!panelOpen && <SortH k="nextActionDue">Next action</SortH>}
@@ -993,6 +996,7 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
                 {col("source") && !panelOpen && <td className="col-mute"><span className="jh-tag">{j.source}</span></td>}
                 {col("captured") && <td className="col-mono" title={fmtDateTime(j.capturedAt)}>{fmtCaptured(j.capturedAt)}</td>}
                 {col("lastOpened") && <td className="col-mono" title={fmtDateTime(j.lastOpenedAt)}>{fmtCaptured(j.lastOpenedAt)}</td>}
+                {col("lastStatusChanged") && <td className="col-mono" title={fmtDateTime(j.lastStatusChangedAt)}>{fmtCaptured(j.lastStatusChangedAt)}</td>}
                 {col("processed") && <td className="col-mono" title={fmtDateTime(j.extraction?.at)}>{fmtCaptured(j.extraction?.at)}</td>}
                 {col("extraction") && <td><ExtractionChip ext={j.extraction} /></td>}
                 {!panelOpen && (

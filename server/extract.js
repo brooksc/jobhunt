@@ -87,12 +87,31 @@ export const FIT_DIMENSIONS = [
 ];
 
 export const FIT_DIMENSION_WEIGHTS = {
-  required_qualifications: 0.35,
+  required_qualifications: 0.45,
   preferred_qualifications: 0.05,
-  skills: 0.25,
+  skills: 0.15,
   experience_level: 0.20,
   domain_fit: 0.15,
 };
+
+// Keywords that indicate a domain-specific skill gap deserving a heavier score penalty
+const DOMAIN_GAP_KEYWORDS = [
+  'asic', 'fpga', 'rtl', 'tapeout', 'tape-out', 'silicon', 'emulation',
+  'hyperscaler', 'cloud service', 'soc ', 'vlsi', 'gds',
+];
+
+// Returns how many points to subtract from the overall score based on missing requirements.
+// Generic gaps cost 5 pts each; domain-specific gaps cost 10 pts each. Capped at 50.
+function missingRequirementsPenalty(requirements_not_met) {
+  if (!Array.isArray(requirements_not_met) || requirements_not_met.length === 0) return 0;
+  let penalty = 0;
+  for (const item of requirements_not_met) {
+    const lower = item.toLowerCase();
+    const isDomainGap = DOMAIN_GAP_KEYWORDS.some(kw => lower.includes(kw));
+    penalty += isDomainGap ? 10 : 5;
+  }
+  return Math.min(penalty, 50);
+}
 
 export const MAX_DESCRIPTION_CHARS = 32000;
 export const MAX_RESUME_CHARS = 12000;
@@ -465,7 +484,20 @@ function selectSalaryBand(bands, preferredLocations, note) {
  */
 export function normalizeSalaryFromSource(extracted, { preferredLocations, sourceText } = {}) {
   const note = extracted.salary_note ? String(extracted.salary_note) : '';
-  if (!note.trim()) return extracted;
+  if (!note.trim()) {
+    // salary_note is absent — try to recover salary bands from the raw source text.
+    // This handles platforms (e.g. Workday) where the LLM may miss salary text that
+    // has no $ sign ("133,400 - 226,600 USD Annual").
+    if (!sourceText) return extracted;
+    const src = String(sourceText);
+    const salary_currency = normalizeSalaryCurrency(extracted.salary_currency, src);
+    const filteredSrc = salaryTextForCurrency(src, salary_currency);
+    const selectedBand = selectSalaryBand(salaryBands(filteredSrc), preferredLocations, filteredSrc);
+    if (selectedBand) return { ...extracted, salary_currency, salary_min: selectedBand.min, salary_max: selectedBand.max };
+    const annual = minMax(moneyAmounts(filteredSrc).filter(a => a >= 1000));
+    if (!annual) return { ...extracted, salary_currency };
+    return { ...extracted, salary_currency, salary_min: annual.min, salary_max: annual.max };
+  }
   const salary_currency = normalizeSalaryCurrency(extracted.salary_currency, note);
   const salaryText = salaryTextForCurrency(note, salary_currency);
 
@@ -626,11 +658,17 @@ function parseFitScore(content) {
         rationale: d.rationale ? String(d.rationale) : '',
       }))
     : [];
+  const requirements_met = Array.isArray(data.requirements_met) ? data.requirements_met.filter(Boolean).map(String) : [];
+  const requirements_not_met = Array.isArray(data.requirements_not_met) ? data.requirements_not_met.filter(Boolean).map(String) : [];
+  const baseScore = computeOverallFitScore(dimensions);
+  const penalty = missingRequirementsPenalty(requirements_not_met);
+  const overall_score = baseScore !== null ? Math.max(0, baseScore - penalty) : null;
   return {
-    overall_score: computeOverallFitScore(dimensions),
+    overall_score,
+    requirements_penalty: penalty,
     summary: data.summary ?? null,
-    requirements_met: Array.isArray(data.requirements_met) ? data.requirements_met.filter(Boolean).map(String) : [],
-    requirements_not_met: Array.isArray(data.requirements_not_met) ? data.requirements_not_met.filter(Boolean).map(String) : [],
+    requirements_met,
+    requirements_not_met,
     score_weights: FIT_DIMENSION_WEIGHTS,
     dimensions,
   };

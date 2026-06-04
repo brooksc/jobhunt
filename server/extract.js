@@ -827,6 +827,7 @@ Salary rules:
 - ALWAYS extract salary_min and salary_max when any numeric pay range appears in the posting.
 - If hourly pay appears, extract the raw hourly rate range into salary_hourly_min and salary_hourly_max.
 - Store values as annual integers (e.g. 119800, not "119,800" or "$119,800").
+- Some job boards (e.g. Workday) express annual salary without a $ sign: "133,400 - 226,600 USD Annual". Treat these as annual USD amounts.
 - If the posting lists an hourly rate, convert to annual using exactly 2,080 hours/year:
   hourly × 40 hours/week × 52 weeks/year = hourly × 2080.
   Do not subtract holidays, PTO, unpaid time, or use any other annual-hours estimate.
@@ -1203,6 +1204,11 @@ async function processFitScoreRequest({ dbPath, scorer, resume, item }) {
     const { fit, modelName, responseFormatType } = await scorer.score(context, resume);
     markFitSucceeded(item.job_id, fit, dbPath, item.id, modelName);
     finishLlmRequestAttempt(dbPath, attemptId, { status: 'succeeded', modelReturned: modelName, responseFormat: responseFormatType });
+    process.emit('jobhunt:job-ready', {
+      jobNumber: item.job_number,
+      title: item.title,
+      fitScore: typeof fit?.overall_score === 'number' ? fit.overall_score : null,
+    });
     return { wasProcessed: true, didSucceed: true };
   } catch (err) {
     markFitFailed(item.job_id, String(err), dbPath, item.id);

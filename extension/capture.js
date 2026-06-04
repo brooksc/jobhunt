@@ -157,11 +157,29 @@
     return href || null;
   }
 
+  function extractStructuredDescriptions(structuredData) {
+    const descriptions = [];
+    function walk(obj) {
+      if (!obj || typeof obj !== 'object') return;
+      if (Array.isArray(obj)) { obj.forEach(walk); return; }
+      const typeValue = obj['@type'];
+      const types = Array.isArray(typeValue) ? typeValue : [typeValue];
+      if (types.includes('JobPosting')) {
+        if (typeof obj.description === 'string') descriptions.push(obj.description);
+        return;
+      }
+      if (obj['@graph']) walk(obj['@graph']);
+    }
+    walk(structuredData);
+    return descriptions.join('\n');
+  }
+
   function capturePreflight(payload) {
     const visibleText = payload.visible_text || "";
     const selectedText = payload.selected_text || "";
     const structuredData = Array.isArray(payload.structured_data) ? payload.structured_data : [];
-    const text = `${payload.page_title || ""}\n${visibleText}\n${selectedText}`;
+    const structuredText = extractStructuredDescriptions(structuredData);
+    const text = `${payload.page_title || ""}\n${visibleText}\n${selectedText}\n${structuredText}`;
     return {
       title: Boolean((payload.page_title || "").trim()) || /\b(program|manager|engineer|developer|director|principal|staff)\b/i.test(text),
       location: /\b(remote|hybrid|onsite|on-site|united states|hiring remotely|[A-Z][a-z]+,\s*[A-Z]{2})\b/i.test(text),

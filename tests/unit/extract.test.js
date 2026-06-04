@@ -277,6 +277,30 @@ $178,000-$188,000 USD`,
     assert.equal(normalized.salary_min, 133400);
     assert.equal(normalized.salary_max, 226600);
   });
+
+  it('selects All Other US band from cleaned Workday sourceText when user is outside SF', () => {
+    // cleaning.js now preserves location labels as "Label: range" lines, e.g.:
+    // "San Francisco Bay Area: 133,400 - 226,600 USD Annual"
+    // "All Other US Locations: 116,000 - 197,000 USD Annual"
+    // normalizeSalaryFromSource must select the right band from this format.
+    const cleanedFragment = [
+      'San Francisco Bay Area: 133,400 - 226,600 USD Annual',
+      'All Other US Locations: 116,000 - 197,000 USD Annual',
+    ].join('\n');
+
+    const normalized = normalizeSalaryFromSource({
+      salary_min: null,
+      salary_max: null,
+      salary_note: null,
+    }, {
+      sourceText: cleanedFragment,
+      preferredLocations: 'Seattle, WA, Remote, United States',
+    });
+
+    assert.equal(normalized.salary_currency, 'USD');
+    assert.equal(normalized.salary_min, 116000);
+    assert.equal(normalized.salary_max, 197000);
+  });
 });
 
 describe('computeOverallFitScore', () => {

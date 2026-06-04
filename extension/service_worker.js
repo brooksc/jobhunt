@@ -106,18 +106,20 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // Queue-management items are only useful when the server is unreachable.
 // Hide them when we have a cached server port (i.e. the Mac app is running).
+// Note: chrome.contextMenus.onShown does not exist in Chrome (Firefox-only).
+// Instead we update visibility whenever the action is clicked or the server port changes.
 const QUEUE_MENU_IDS = [OPEN_CAPTURE_QUEUE_MENU_ID, SYNC_QUEUE_MENU_ID, EXPORT_CSV_MENU_ID, "sep-queue"];
 
-chrome.contextMenus.onShown.addListener(async () => {
+async function updateQueueMenuVisibility() {
   const cached = (await chrome.storage.session.get(PORT_CACHE_KEY))[PORT_CACHE_KEY];
   const visible = !cached;
   await Promise.all(QUEUE_MENU_IDS.map(id =>
-    chrome.contextMenus.update(id, { visible })
+    chrome.contextMenus.update(id, { visible }).catch(() => {})
   ));
-  chrome.contextMenus.refresh();
-});
+}
 
 chrome.action.onClicked.addListener(async (tab) => {
+  await updateQueueMenuVisibility();
   try {
     await captureCurrentTab(tab);
   } catch (error) {
@@ -249,12 +251,20 @@ async function submitOrQueue(payload) {
   await flushQueuedCaptures();
 
   // Debug: log what was captured so you can inspect in the service worker console
+  const vt = payload.visible_text || '';
+  const workdayRe = /\b(\d{2,3}(?:,\d{3})+)\s*[-–—]\s*(\d{2,3}(?:,\d{3})+)\s+(?:USD|CAD|EUR|GBP)\s+Annual\b/i;
+  const salaryShortRe = /\$[\d,]+\s*[-–]\s*\$?[\d,]+|\d+[kK]\s*[-–]\s*\d+[kK]|annually|per year|\/yr/i;
+  const vtLines = vt.split('\n');
+  const salaryLines = vtLines.filter(l => salaryShortRe.test(l) || workdayRe.test(l));
   console.log("[jobhunt] captured:", {
     url: payload.url,
     title: payload.page_title,
-    visible_text_length: payload.visible_text?.length,
-    visible_text_head: payload.visible_text?.slice(0, 500),
+    visible_text_length: vt.length,
+    visible_text_head: vt.slice(0, 500),
+    visible_text_tail: vt.slice(-500),
     structured_data_count: payload.structured_data?.length,
+    structured_data: JSON.stringify(payload.structured_data),
+    salary_lines_found: salaryLines,
   });
 
   try {

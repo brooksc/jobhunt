@@ -1317,7 +1317,7 @@ function buildUiData(dbPath) {
       GROUP_CONCAT(id) AS duplicate_job_ids,
       MAX(COALESCE(duplicate_confidence, 0)) AS confidence
     FROM jobs
-    WHERE duplicate_of_job_id IS NOT NULL AND status != 'duplicate'
+    WHERE duplicate_of_job_id IS NOT NULL AND status NOT IN ('duplicate', 'archived', 'not_available')
     GROUP BY duplicate_of_job_id
     ORDER BY MAX(updated_at) DESC`).all();
   heuristicRows.forEach((row, i) => {

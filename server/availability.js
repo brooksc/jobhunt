@@ -92,11 +92,12 @@ export async function checkUrl(job, fetchImpl = fetch) {
 
 export async function checkJobsAvailability(dbPath) {
   const db = initDb(dbPath);
-  const rows = db.prepare(`SELECT j.id, j.title, c.url, c.canonical_url FROM jobs j
+  const rows = db.prepare(`SELECT j.id, j.job_number, j.title, c.url, c.canonical_url FROM jobs j
     JOIN captures c ON c.id=j.capture_id
     WHERE j.status NOT IN ('archived','not_available')
     AND (c.canonical_url IS NOT NULL OR c.url IS NOT NULL)`).all();
 
+  const jobMeta = new Map(rows.map(r => [r.id, { jobNumber: r.job_number, title: r.title }]));
   const jobs = rows.map(r => ({ id: r.id, title: r.title, url: r.url || r.canonical_url }));
   if (!jobs.length) return { checked: 0, unavailable: 0, marked: 0 };
 
@@ -104,7 +105,12 @@ export async function checkJobsAvailability(dbPath) {
   const unavailable = results.filter(r => !r.available);
   let marked = 0;
   for (const r of unavailable) {
-    try { updateJobStatus(r.jobId, 'not_available', dbPath); marked++; } catch { /* skip */ }
+    try {
+      updateJobStatus(r.jobId, 'not_available', dbPath);
+      marked++;
+      const meta = jobMeta.get(r.jobId);
+      process.emit('jobhunt:job-unavailable', { jobNumber: meta?.jobNumber, title: meta?.title });
+    } catch { /* skip */ }
   }
   return { checked: results.length, unavailable: unavailable.length, marked };
 }
@@ -112,7 +118,7 @@ export async function checkJobsAvailability(dbPath) {
 export async function checkStaleJobsAvailability(dbPath, { staleDays = 21, limit = 25 } = {}) {
   const db = initDb(dbPath);
   const cutoff = new Date(Date.now() - Number(staleDays || 21) * 86400000).toISOString();
-  const rows = db.prepare(`SELECT j.id, j.title, c.url, c.canonical_url, c.captured_at FROM jobs j
+  const rows = db.prepare(`SELECT j.id, j.job_number, j.title, c.url, c.canonical_url, c.captured_at FROM jobs j
     JOIN captures c ON c.id=j.capture_id
     WHERE j.status NOT IN ('archived','not_available')
     AND (c.canonical_url IS NOT NULL OR c.url IS NOT NULL)
@@ -120,6 +126,7 @@ export async function checkStaleJobsAvailability(dbPath, { staleDays = 21, limit
     ORDER BY c.captured_at ASC
     LIMIT ?`).all(cutoff, Number(limit || 25));
 
+  const jobMeta = new Map(rows.map(r => [r.id, { jobNumber: r.job_number, title: r.title }]));
   const jobs = rows.map(r => ({ id: r.id, title: r.title, url: r.url || r.canonical_url }));
   if (!jobs.length) return { checked: 0, unavailable: 0, marked: 0 };
 
@@ -127,7 +134,12 @@ export async function checkStaleJobsAvailability(dbPath, { staleDays = 21, limit
   const unavailable = results.filter(r => !r.available);
   let marked = 0;
   for (const r of unavailable) {
-    try { updateJobStatus(r.jobId, 'not_available', dbPath); marked++; } catch { /* skip */ }
+    try {
+      updateJobStatus(r.jobId, 'not_available', dbPath);
+      marked++;
+      const meta = jobMeta.get(r.jobId);
+      process.emit('jobhunt:job-unavailable', { jobNumber: meta?.jobNumber, title: meta?.title });
+    } catch { /* skip */ }
   }
   return { checked: results.length, unavailable: unavailable.length, marked };
 }

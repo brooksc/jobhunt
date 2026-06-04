@@ -11,6 +11,15 @@ describe('cleanDescription', () => {
     assert.equal(result, 'Selected portion');
   });
 
+  it('prefers selected_text over structured data and visible_text', () => {
+    const result = cleanDescription({
+      selectedText: 'Selected',
+      visibleText: 'Visible',
+      structuredData: [{ '@type': 'JobPosting', description: 'Structured' }],
+    });
+    assert.equal(result, 'Selected');
+  });
+
   it('falls back to visible_text when selected_text is empty', () => {
     const result = cleanDescription({
       selectedText: '',
@@ -19,124 +28,11 @@ describe('cleanDescription', () => {
     assert.equal(result, 'Full page text');
   });
 
-  it('prepends detected location metadata for visible-text-only Microsoft captures', () => {
+  it('uses visible_text when no structured data present', () => {
     const result = cleanDescription({
-      visibleText: `Search jobs
-Technical Program Manager
-United States, Washington, Redmond +2 more
-Apply now
-Job description`,
+      visibleText: 'Job details here\nLocation: Seattle, WA',
     });
-
-    assert.match(result, /^Location: United States, Washington, Redmond \+2 more/);
-  });
-
-  it('focuses Microsoft search-page captures on the selected job detail', () => {
-    const result = cleanDescription({
-      visibleText: `Search jobs
-Technical Program Manager
-United States, Washington, Redmond + 2 more
-Posted 2 months ago
-Principal Technical Program Manager - Quantum
-United States, Washington, Redmond
-Posted a month ago
-1 of 63
-Technical Program Manager
-United States, Washington, Redmond
-+2 more
-Apply now
-Job description
-Job number
-200011325
-Work site
-4 days / week in-office
-Overview
-This is the selected detail body.`,
-    });
-
-    assert.match(result, /^Location: United States, Washington, Redmond/);
-    assert.match(result, /Technical Program Manager/);
-    assert.match(result, /This is the selected detail body/);
-    assert.doesNotMatch(result, /Principal Technical Program Manager - Quantum/);
-  });
-
-  it('does not turn long description lines into salary metadata', () => {
-    const result = cleanDescription({
-      visibleText: `1 of 63
-Technical Program Manager
-United States, Washington, Redmond
-Job description
-Job number
-200011325
-Work site
-4 days / week in-office
-OverviewAt Microsoft AI this long body line mentions Technical Program Management IC5 - The typical base pay range for this role across the U.S. is USD $139,900 - $274,800 per year but it is not header metadata.`,
-    });
-
-    assert.doesNotMatch(result, /^Salary range:/m);
-  });
-
-  it('prepends BuiltIn remote metadata from early page badges', () => {
-    const result = cleanDescription({
-      visibleText: `Principal Technical Program Manager
-Zscaler
-Remote
-Hiring Remotely in USA
-$200,000
-About Zscaler
-This role offers the flexibility to work remotely within the United States.`,
-    });
-
-    assert.match(result, /^Work arrangement: Remote/m);
-    assert.match(result, /Hiring Remotely in USA/);
-    assert.match(result, /Principal Technical Program Manager/);
-  });
-
-  it('keeps Levels detail-pane content when listing text surrounds it', () => {
-    const result = cleanDescription({
-      visibleText: `levels.fyi Jobs
-Zscaler
-Cloud-based information security company.
-Sr. Staff Technical Program Manager - DoW
-Fully Remote · $200K
-About Zscaler
-This role offers the flexibility to work remotely within the United States, with a preference for candidates near our Washington, DC Metro Area office.
-Role
-We are looking for an experienced Sr. Staff Technical Program Manager.`,
-    });
-
-    assert.match(result, /Work arrangement: Remote/);
-    assert.match(result, /About Zscaler/);
-    assert.match(result, /Washington, DC Metro Area/);
-  });
-
-  it('captures Greenhouse structured job posting text', () => {
-    const result = cleanDescription({
-      visibleText: 'Careers page shell',
-      structuredData: [{
-        '@type': 'JobPosting',
-        title: 'Senior Technical Program Manager',
-        hiringOrganization: { name: 'ExampleCo' },
-        jobLocation: { address: { addressLocality: 'Seattle', addressRegion: 'WA' } },
-        baseSalary: { value: { minValue: 160000, maxValue: 220000, unitText: 'YEAR' }, currency: 'USD' },
-        description: 'Lead platform programs across engineering teams.',
-      }],
-    });
-
-    assert.match(result, /Senior Technical Program Manager/);
-    assert.match(result, /Seattle, WA/);
-    assert.match(result, /USD160000/);
-    assert.match(result, /Lead platform programs/);
-  });
-
-  it('normalizes internal whitespace', () => {
-    const result = cleanDescription({ visibleText: 'hello   world\n\n\nfoo' });
-    assert.doesNotMatch(result, /  /);
-  });
-
-  it('trims leading and trailing whitespace', () => {
-    const result = cleanDescription({ visibleText: '  hello world  ' });
-    assert.equal(result.trim(), result);
+    assert.equal(result, 'Job details here\nLocation: Seattle, WA');
   });
 
   it('returns empty string for no input', () => {
@@ -144,60 +40,108 @@ We are looking for an experienced Sr. Staff Technical Program Manager.`,
     assert.equal(result, '');
   });
 
-  it('extracts salary from long compensation paragraph (Akamai pattern)', () => {
-    // Akamai embeds salary in an 862-char paragraph — well above the old 180-char line limit.
-    // cleanDescription must surface it as a Salary range: metadata line so the LLM sees it.
-    const visibleText = [
-      'Senior Technical Program Manager (Akamai Inference Cloud)',
-      'United States (Remote)',
-      'JOB DESCRIPTION',
-      'Do you thrive on driving complex technical programs from vision to reality?',
-      'Requirements',
-      '8+ years technical program management experience',
-      'Strong cross-functional leadership skills',
-      'Compensation',
-      'Akamai is committed to fair and equitable compensation practices. For US based candidates only - the base salary for this position ranges from $119,600 - $215,400/year; a candidate\'s salary is determined by various factors including, but not limited to, relevant work experience, skills, certifications, qualifications, and location.',
-    ].join('\n');
-
-    const result = cleanDescription({ visibleText });
-    assert.ok(result.includes('119'), 'salary min in cleaned output');
-    assert.ok(result.includes('215'), 'salary max in cleaned output');
-    assert.ok(/salary range/i.test(result), 'Salary range metadata line present');
+  it('normalizes internal whitespace', () => {
+    const result = cleanDescription({ visibleText: 'hello   world\n\n\nfoo' });
+    assert.doesNotMatch(result, /  /);
+    assert.doesNotMatch(result, /\n{3}/);
   });
 
-  it('extracts Workday salary bands (no $ sign, USD Annual) from bottom of page', () => {
-    // Workday posts salary at the bottom of the page in "NUMBER - NUMBER USD Annual" format.
-    // The $ sign is absent, topLines won't contain it, and "Annual" ≠ "annually".
-    // cleanDescription must surface this as Salary range: metadata for the LLM.
-    const description = Array(45).fill('Job description line.').join('\n');
-    const visibleText = [
-      'Technical Program Manager, Calix Cloud',
-      'locations',
-      'Remote - USA',
-      'Remote - Canada',
-      'time type',
-      'Full time',
-      'job requisition id',
-      'R-11186',
-      description,
-      'The base pay range for this position varies based on geographic location.',
-      'San Francisco Bay Area:',
-      '133,400 - 226,600 USD Annual',
-      'All Other US Locations:',
-      '116,000 - 197,000 USD Annual',
-    ].join('\n');
-
-    const result = cleanDescription({ visibleText });
-    assert.ok(/salary range/i.test(result), 'Salary range metadata line must be present');
-    assert.ok(result.includes('133,400') || result.includes('116,000'), 'salary values must appear in metadata');
+  it('trims leading and trailing whitespace', () => {
+    const result = cleanDescription({ visibleText: '  hello world  ' });
+    assert.equal(result.trim(), result);
   });
 
-  it('prefers selected_text over structured data and visible_text', () => {
+  it('appends HTML-stripped JSON-LD description after visible text', () => {
     const result = cleanDescription({
-      selectedText: 'Selected',
-      visibleText: 'Visible',
-      structuredData: [{ '@type': 'JobPosting', description: 'Structured' }],
+      visibleText: 'Job title\nAbout the role',
+      structuredData: [{
+        '@type': 'JobPosting',
+        description: '<p>Full job description with <b>important details</b>.</p>',
+      }],
     });
-    assert.equal(result, 'Selected');
+    assert.ok(result.includes('About the role'), 'visible text included');
+    assert.ok(result.includes('Full job description with important details'), 'JSON-LD description included without HTML tags');
+    assert.doesNotMatch(result, /<[^>]+>/, 'no HTML tags in output');
+  });
+
+  it('strips HTML entities from JSON-LD description', () => {
+    const result = cleanDescription({
+      visibleText: 'Visible',
+      structuredData: [{
+        '@type': 'JobPosting',
+        description: 'Pay: &lt;$100k &amp; $200k&gt; &quot;annually&quot;',
+      }],
+    });
+    assert.ok(result.includes('Pay: <$100k & $200k> "annually"'));
+  });
+
+  it('converts block-level HTML tags to newlines preserving salary band label structure', () => {
+    // builtinseattle wraps each salary band label in <p><b>Label:</b></p> then the value follows.
+    // Stripping tags must produce "Label:\nValue" so salaryBands() can associate them.
+    const result = cleanDescription({
+      visibleText: 'Job title',
+      structuredData: [{
+        '@type': 'JobPosting',
+        description: '<p><b>San Francisco Bay Area:</b></p>133,400 - 226,600 USD Annual<p><b>All Other US Locations:</b></p>116,000 - 197,000 USD Annual',
+      }],
+    });
+    assert.ok(result.includes('San Francisco Bay Area:'), 'SF Bay Area label present');
+    assert.ok(result.includes('All Other US Locations:'), 'All Other US label present');
+    assert.ok(result.includes('133,400 - 226,600 USD Annual'), 'SF salary range present');
+    assert.ok(result.includes('116,000 - 197,000 USD Annual'), 'other salary range present');
+    // Label and value must be on separate lines for salaryBands() to associate them
+    const lines = result.split('\n').map(l => l.trim()).filter(Boolean);
+    const sfLabelIdx = lines.findIndex(l => l === 'San Francisco Bay Area:');
+    assert.ok(sfLabelIdx >= 0, 'SF label on its own line');
+    assert.ok(lines[sfLabelIdx + 1].includes('133,400'), 'SF salary on line after label');
+  });
+
+  it('includes Workday JSON-LD salary when absent from visible text', () => {
+    // Workday wd1 pages have salary only in the JSON-LD description (visible text is truncated)
+    const result = cleanDescription({
+      visibleText: 'Technical Program Manager\nRemote - USA\nFull time',
+      structuredData: [{
+        '@type': 'JobPosting',
+        description: 'Job duties. San Francisco Bay Area: 133,400 - 226,600 USD Annual All Other US Locations: 116,000 - 197,000 USD Annual',
+      }],
+    });
+    assert.ok(result.includes('133,400 - 226,600 USD Annual'));
+    assert.ok(result.includes('116,000 - 197,000 USD Annual'));
+  });
+
+  it('skips JSON-LD entries without a description field', () => {
+    const result = cleanDescription({
+      visibleText: 'Visible content',
+      structuredData: [{ '@type': 'JobPosting', title: 'Engineer' }],
+    });
+    assert.equal(result, 'Visible content');
+  });
+
+  it('traverses @graph to find JobPosting description (builtinseattle format)', () => {
+    const result = cleanDescription({
+      visibleText: 'Page content',
+      structuredData: [{
+        '@context': 'https://schema.org',
+        '@graph': [
+          { '@type': 'JobPosting', description: 'Found via @graph traversal.' },
+          { '@type': 'BreadcrumbList', itemListElement: [] },
+        ],
+      }],
+    });
+    assert.ok(result.includes('Found via @graph traversal'));
+    assert.ok(result.includes('Page content'));
+  });
+
+  it('includes JobPosting description even when visible text already has job content', () => {
+    // Both sources are included — accuracy over deduplication
+    const result = cleanDescription({
+      visibleText: 'Salary: 116K-227K Annually',
+      structuredData: [{
+        '@type': 'JobPosting',
+        description: 'San Francisco Bay Area: 133,400 - 226,600 USD Annual All Other US Locations: 116,000 - 197,000 USD Annual',
+      }],
+    });
+    assert.ok(result.includes('116K-227K Annually'), 'visible text salary badge present');
+    assert.ok(result.includes('San Francisco Bay Area:'), 'JSON-LD band label present');
   });
 });

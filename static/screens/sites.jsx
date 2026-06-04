@@ -365,7 +365,7 @@ function SitesPage({ selectedSiteId, onSelectSite, panelOpen }) {
       if (s.origin) {
         try {
           return new URL(s.origin).origin;
-        } catch (e) {
+        } catch {
           if (s.origin.startsWith("http://") || s.origin.startsWith("https://")) return s.origin;
         }
       }

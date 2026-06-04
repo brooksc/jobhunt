@@ -1,5 +1,23 @@
 // Jobhunt — top-level App, used inside each design-canvas artboard.
 
+class DetailErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 24, color: 'var(--fg-mute)', fontSize: 13 }}>
+          <div style={{ fontWeight: 600, marginBottom: 8, color: 'var(--st-rejected)' }}>Could not render job details</div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+            {this.state.error.message}
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const VALID_ROUTES = ["dashboard", "jobs", "quality", "needs", "sites", "duplicates", "settings", "llm-queue", "help"];
 
 function parseHash() {
@@ -296,14 +314,16 @@ function JobhuntApp({ initialRoute = "jobs", initialJobId = null, initialTheme =
       </main>
 
         {panelOpen && route === "jobs" && (
-          <JobDetail
-            jobId={selectedJobId}
-            onClose={closeDetail}
-            initialTab={detailTab}
-            key={selectedJobId + ":" + detailTab}
-            jobIds={window.JH_JOBS.map(j => j.id)}
-            onNavigate={setSelectedJobId}
-          />
+          <DetailErrorBoundary key={selectedJobId}>
+            <JobDetail
+              jobId={selectedJobId}
+              onClose={closeDetail}
+              initialTab={detailTab}
+              key={selectedJobId + ":" + detailTab}
+              jobIds={window.JH_JOBS.map(j => j.id)}
+              onNavigate={setSelectedJobId}
+            />
+          </DetailErrorBoundary>
         )}
 
         {panelOpen && route === "sites" && (

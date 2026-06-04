@@ -18,12 +18,12 @@
     "electron": "electron .",
     "electron:build": "electron-builder --dir",
     "electron:dist": "electron-builder",
-    "test": "node --test tests/unit/availability.test.js tests/unit/cleaning.test.js tests/unit/extract.test.js tests/unit/extension_capture.test.js tests/unit/extension_csv.test.js tests/unit/extension_manifest.test.js tests/unit/extension_retry_queue.test.js tests/integration/db.test.js tests/integration/api.test.js tests/integration/mcp.test.js tests/electron/smoke.test.js",
-    "test:coverage": "node --test --experimental-test-coverage tests/unit/availability.test.js tests/unit/cleaning.test.js tests/unit/extract.test.js tests/unit/extension_capture.test.js tests/unit/extension_csv.test.js tests/unit/extension_manifest.test.js tests/unit/extension_retry_queue.test.js tests/integration/db.test.js tests/integration/api.test.js tests/integration/mcp.test.js tests/electron/smoke.test.js",
+    "test": "node --test tests/unit/availability.test.js tests/unit/cleaning.test.js tests/unit/extract.test.js tests/unit/extension_capture.test.js tests/unit/extension_csv.test.js tests/unit/extension_manifest.test.js tests/unit/extension_retry_queue.test.js tests/unit/transform.test.js tests/integration/db.test.js tests/integration/api.test.js tests/integration/mcp.test.js tests/electron/smoke.test.js",
+    "test:coverage": "node --test --experimental-test-coverage tests/unit/availability.test.js tests/unit/cleaning.test.js tests/unit/extract.test.js tests/unit/extension_capture.test.js tests/unit/extension_csv.test.js tests/unit/extension_manifest.test.js tests/unit/extension_retry_queue.test.js tests/unit/transform.test.js tests/integration/db.test.js tests/integration/api.test.js tests/integration/mcp.test.js tests/electron/smoke.test.js",
     "test:ui": "node --test tests/ui/jobs-smoke.test.js",
     "eval:llm": "node tests/llm-eval/eval-llm.js",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint server/"
+    "lint": "eslint server/ static/transform.js static/**/*.jsx"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -42,7 +42,7 @@
     "typescript": "^6.0.3"
   },
   "build": {
-    "appId": "com.brooksc.jobhunt",
+    "appId": "com.jobhunt-app.jobhunt",
     "productName": "Jobhunt",
     "directories": {
       "output": "dist"

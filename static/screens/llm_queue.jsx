@@ -267,7 +267,7 @@ function LlmQueuePage() {
         try {
           await window.JH_API.enqueueAllPending();
           await refreshQueue();
-        } catch (_) {}
+        } catch { /* queue may already be running */ }
       }
     })();
   }, []);

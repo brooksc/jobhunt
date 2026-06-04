@@ -711,10 +711,12 @@ function DebugTab({ llmDebugLevel, onToggleVerbose }) {
         </Row>
       </Section>
 
-      <Section title="Onboarding" desc="Reset the first-run welcome dialog. Takes effect on next app launch.">
+      <Section title="Onboarding" desc="Reset the first-run setup dialog. Shows on next app launch regardless of whether jobs exist.">
         <Row>
           <Btn size="sm" onClick={() => {
             localStorage.removeItem(window.WELCOME_KEY || 'jh.welcome_dismissed');
+            localStorage.removeItem('jobhunt.first_run_complete');
+            localStorage.setItem('jobhunt.force_first_run', '1');
             window.JH_TOAST?.show('Onboarding reset — will show on next launch', 'info');
           }}>Reset onboarding</Btn>
         </Row>

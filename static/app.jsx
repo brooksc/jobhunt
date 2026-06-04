@@ -213,10 +213,10 @@ function JobhuntApp({ initialRoute = "jobs", initialJobId = null, initialTheme =
   const [processingExtractions, setProcessingExtractions] = React.useState(false);
   const [selCount, setSelCount] = React.useState(0);
   const [welcomeOpen, setWelcomeOpen] = React.useState(() => {
-    const forced = localStorage.getItem('jobhunt.force_first_run') === '1';
-    return forced || (!localStorage.getItem(WELCOME_KEY) && (window.JH_JOBS || []).length === 0);
+    return !localStorage.getItem(WELCOME_KEY) && (window.JH_JOBS || []).length === 0;
   });
   React.useEffect(() => { window.JH_SET_SEL_COUNT = setSelCount; return () => { delete window.JH_SET_SEL_COUNT; }; }, []);
+  React.useEffect(() => { window.JH_OPEN_ONBOARDING = () => setWelcomeOpen(true); return () => { delete window.JH_OPEN_ONBOARDING; }; }, []);
 
   function processPendingExtractions() {
     if (processingExtractions) return;

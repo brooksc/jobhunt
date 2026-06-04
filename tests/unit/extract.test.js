@@ -218,6 +218,65 @@ $178,000-$188,000 USD`,
     assert.equal(normalized.salary_min, 200700);
     assert.equal(normalized.salary_max, 250900);
   });
+
+  // Workday platform uses "133,400 - 226,600 USD Annual" format (no $ sign, comma-separated
+  // thousands, currency code after range, "Annual" keyword). This format appears at the bottom
+  // of the page under location-specific salary bands.
+  it('parses Workday multi-band salary_note (comma-separated thousands, USD Annual)', () => {
+    const normalized = normalizeSalaryFromSource({
+      salary_min: null,
+      salary_max: null,
+      salary_note: 'San Francisco Bay Area:\n133,400 - 226,600 USD Annual\nAll Other US Locations:\n116,000 - 197,000 USD Annual',
+    });
+
+    assert.equal(normalized.salary_currency, 'USD');
+    assert.equal(normalized.salary_min, 116000);
+    assert.equal(normalized.salary_max, 226600);
+  });
+
+  it('recovers Workday salary from sourceText when LLM returns null salary_note', () => {
+    // When the LLM misses the salary (no $ sign → salary_note stays null), the extractor
+    // passes the raw page text as sourceText. normalizeSalaryFromSource must fall back to it.
+    const workdayPageFragment = [
+      'The base pay range varies based on geographic location.',
+      'San Francisco Bay Area:',
+      '133,400 - 226,600 USD Annual',
+      'All Other US Locations:',
+      '116,000 - 197,000 USD Annual',
+    ].join('\n');
+
+    const normalized = normalizeSalaryFromSource({
+      salary_min: null,
+      salary_max: null,
+      salary_note: null,
+    }, { sourceText: workdayPageFragment });
+
+    assert.equal(normalized.salary_currency, 'USD');
+    assert.equal(normalized.salary_min, 116000);
+    assert.equal(normalized.salary_max, 226600);
+  });
+
+  it('recovers Workday salary from sourceText respecting preferred location band', () => {
+    const workdayPageFragment = [
+      'San Francisco Bay Area:',
+      '133,400 - 226,600 USD Annual',
+      'All Other US Locations:',
+      '116,000 - 197,000 USD Annual',
+    ].join('\n');
+
+    const normalized = normalizeSalaryFromSource({
+      salary_min: null,
+      salary_max: null,
+      salary_note: null,
+    }, {
+      sourceText: workdayPageFragment,
+      preferredLocations: 'San Francisco, CA',
+    });
+
+    assert.equal(normalized.salary_currency, 'USD');
+    assert.equal(normalized.salary_min, 133400);
+    assert.equal(normalized.salary_max, 226600);
+  });
 });
 
 describe('computeOverallFitScore', () => {
@@ -230,7 +289,7 @@ describe('computeOverallFitScore', () => {
       { name: 'domain_fit', score: 60 },
     ]);
 
-    assert.equal(score, 82);
+    assert.equal(score, 84);
   });
 
   it('renormalizes when only known dimensions are present', () => {
@@ -240,7 +299,7 @@ describe('computeOverallFitScore', () => {
       { name: 'skills', score: 80 },
     ]);
 
-    assert.equal(score, 92);
+    assert.equal(score, 95);
   });
 });
 

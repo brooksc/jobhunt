@@ -148,110 +148,10 @@
     return fallback;
   }
 
-  function FirstRunSetupDialog({ initialSettings, onComplete }) {
-    const [preferredLocations, setPreferredLocations] = React.useState(initialSettings.preferred_locations || "");
-    const [allowRemote, setAllowRemote] = React.useState(parseSettingBool(initialSettings.location_allow_remote, true));
-    const [allowHybrid, setAllowHybrid] = React.useState(parseSettingBool(initialSettings.location_allow_hybrid, true));
-    const [allowOnsite, setAllowOnsite] = React.useState(parseSettingBool(initialSettings.location_allow_onsite, true));
-    const [saving, setSaving] = React.useState(false);
-    const [error, setError] = React.useState(null);
-    const canSave = allowRemote || allowHybrid || allowOnsite;
 
-    async function handleSave() {
-      if (!canSave) return;
-      setSaving(true);
-      setError(null);
-      try {
-        const payload = {
-          preferred_locations: preferredLocations.trim(),
-          location_allow_remote: allowRemote,
-          location_allow_hybrid: allowHybrid,
-          location_allow_onsite: allowOnsite,
-        };
-        await window.JH_API.saveSettings(payload);
-        Object.assign(window.JH_SETTINGS, payload);
-        localStorage.setItem("jobhunt.first_run_complete", "1");
-        localStorage.removeItem("jobhunt.force_first_run");
-        onComplete();
-      } catch (e) {
-        setError(e.message || String(e));
-      } finally {
-        setSaving(false);
-      }
-    }
 
-    function handleSkip() {
-      localStorage.setItem("jobhunt.first_run_complete", "1");
-      localStorage.removeItem("jobhunt.force_first_run");
-      onComplete();
-    }
-
-    return (
-      <AppDialog
-        title="Welcome to Jobhunt"
-        onClose={handleSkip}
-        actions={[
-          { label: "Skip for now", kind: "ghost", onClick: handleSkip },
-          { label: "Save preferences", kind: "accent", onClick: handleSave, disabled: !canSave || saving },
-        ]}
-      >
-        <p style={{ marginTop: 0, color: "var(--fg-mute)" }}>
-          Tell Jobhunt where you're willing to work so it can flag matching jobs. The Help page in the left sidebar has the full capture, extraction, and review workflow.
-        </p>
-        <div style={{ marginTop: 12 }}>
-          <div className="jh-label">States you'd work in</div>
-          <div className="jh-input">
-            <input
-              value={preferredLocations}
-              onChange={(e) => setPreferredLocations(e.target.value)}
-              placeholder="e.g. WA, TX, NY"
-              autoFocus
-            />
-          </div>
-          <div style={{ fontSize: 11, color: "var(--fg-mute)", marginTop: 4 }}>
-            Enter state abbreviations — a state match covers all cities in that state. Add specific cities if you want to narrow further (WA, Seattle).
-          </div>
-        </div>
-        <div style={{ marginTop: 14 }}>
-          <div className="jh-label" style={{ marginBottom: 6 }}>Work arrangements you'd consider</div>
-          <div className="jh-row" style={{ gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-            <label className="jh-label" style={{ width: "auto", margin: 0 }}>
-              <input type="checkbox" checked={allowRemote} onChange={(e) => setAllowRemote(e.target.checked)} />
-              Remote
-            </label>
-            <label className="jh-label" style={{ width: "auto", margin: 0 }}>
-              <input type="checkbox" checked={allowHybrid} onChange={(e) => setAllowHybrid(e.target.checked)} />
-              Hybrid
-            </label>
-            <label className="jh-label" style={{ width: "auto", margin: 0 }}>
-              <input type="checkbox" checked={allowOnsite} onChange={(e) => setAllowOnsite(e.target.checked)} />
-              In-office
-            </label>
-          </div>
-        </div>
-        {error && (
-          <div style={{ marginTop: 10, color: "var(--st-rejected)", fontSize: 12 }}>
-            {error}
-          </div>
-        )}
-        {!canSave && (
-          <div style={{ marginTop: 8, fontSize: 11, color: "var(--fg-mute)" }}>
-            Select at least one work arrangement to continue.
-          </div>
-        )}
-      </AppDialog>
-    );
-  }
-
-  function JobhuntFirstRunBootstrap({ shouldShow, initialTheme = "auto" }) {
-    const [showSetup, setShowSetup] = React.useState(shouldShow);
-
-    return (
-      <>
-        <JobhuntApp initialRoute="jobs" initialTheme={initialTheme} />
-        {showSetup && <FirstRunSetupDialog initialSettings={window.JH_SETTINGS} onComplete={() => setShowSetup(false)} />}
-      </>
-    );
+  function JobhuntFirstRunBootstrap({ initialTheme = "auto" }) {
+    return <JobhuntApp initialRoute="jobs" initialTheme={initialTheme} />;
   }
 
   function mapExtractionStatus(s) {
@@ -634,8 +534,5 @@
   });
 
   const root = ReactDOM.createRoot(rootEl);
-  const firstRunComplete = localStorage.getItem("jobhunt.first_run_complete") === "1";
-  const forceFirstRun = localStorage.getItem("jobhunt.force_first_run") === "1";
-  const shouldShowFirstRun = forceFirstRun || (!firstRunComplete && JH_JOBS.length === 0 && JH_SITES.length === 0);
-  root.render(<JobhuntFirstRunBootstrap shouldShow={shouldShowFirstRun} initialTheme={initialTheme} />);
+  root.render(<JobhuntFirstRunBootstrap initialTheme={initialTheme} />);
 })();

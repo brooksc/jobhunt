@@ -715,7 +715,6 @@ function DebugTab({ llmDebugLevel, onToggleVerbose }) {
         <Row>
           <Btn size="sm" onClick={() => {
             localStorage.removeItem(window.WELCOME_KEY || 'jh.welcome_dismissed');
-            localStorage.removeItem('jobhunt.first_run_complete');
             localStorage.setItem('jobhunt.force_first_run', '1');
             window.JH_TOAST?.show('Onboarding reset — will show on next launch', 'info');
           }}>Reset onboarding</Btn>

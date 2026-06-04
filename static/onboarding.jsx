@@ -474,6 +474,7 @@ function OnboardingWizard({ onClose }) {
         }),
       });
       if (dontShow) localStorage.setItem(window.WELCOME_KEY || 'jh.welcome_dismissed', '1');
+      localStorage.removeItem('jobhunt.force_first_run');
     } finally {
       setSaving(false);
       onClose();
@@ -511,6 +512,7 @@ function OnboardingWizard({ onClose }) {
           {step === 0 && <StepWelcome onNext={next} onDemo={async () => {
             await fetch('/api/db/switch', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: 'demo' }) });
             localStorage.setItem(window.WELCOME_KEY || 'jh.welcome_dismissed', '1');
+            localStorage.removeItem('jobhunt.force_first_run');
             window.location.reload();
           }} />}
           {step === 1 && <StepExtension onNext={next} onBack={back} />}

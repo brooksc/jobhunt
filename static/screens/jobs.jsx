@@ -567,7 +567,16 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
   });
   const [sel, setSel] = React.useState(new Set());
   React.useEffect(() => { window.JH_SELECTED_JOB_IDS = [...sel]; window.JH_SET_SEL_COUNT?.(sel.size); return () => { window.JH_SELECTED_JOB_IDS = []; window.JH_SET_SEL_COUNT?.(0); }; }, [sel]);
-  const [sort, setSort] = React.useState({ key: "capturedAt", dir: "desc" });
+  const [sort, setSort] = React.useState(() => {
+    try {
+      const saved = localStorage.getItem("jobhunt.sort");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.key && parsed?.dir) return parsed;
+      }
+    } catch { /* ignore */ }
+    return { key: "capturedAt", dir: "desc" };
+  });
   const [currentViewName, setCurrentViewName] = React.useState(null);
   const [batchStatusDialog, setBatchStatusDialog] = React.useState(false);
   const [batchAiDialog, setBatchAiDialog] = React.useState(false);
@@ -602,6 +611,9 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
   React.useEffect(() => {
     localStorage.setItem("jobhunt.columns", JSON.stringify(visibleColumns));
   }, [visibleColumns]);
+  React.useEffect(() => {
+    localStorage.setItem("jobhunt.sort", JSON.stringify(sort));
+  }, [sort]);
 
   // Real indeterminate property on select-all checkbox
   React.useEffect(() => {

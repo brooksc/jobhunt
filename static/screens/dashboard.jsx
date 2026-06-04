@@ -269,7 +269,8 @@ function buildDailyActivity(jobs) {
 
   function bump(iso, key) {
     if (!iso) return;
-    const d = iso.slice(0, 10);
+    const dt = new Date(iso);
+    const d = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
     if (!byDate[d]) byDate[d] = { saved: 0, applied: 0, interview: 0, offer: 0, rejected: 0 };
     byDate[d][key]++;
   }

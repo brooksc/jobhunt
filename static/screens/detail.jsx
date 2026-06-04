@@ -186,7 +186,7 @@ function JobDetail({ jobId, onClose, initialTab = "overview", jobIds = [], onNav
         </div>
 
         <div className="jh-panel__actions">
-          <StatusDropdown value={job.status} onChange={(status) => window.JH_API.setStatus(job.id, status).catch((e) => window.JH_TOAST.show(e.message, "error"))} />
+          <StatusDropdown value={job.status} onChange={(status) => window.JH_API.setStatus(job.id, status).then(() => window.JH_REFRESH_UI_DATA?.()).catch((e) => window.JH_TOAST.show(e.message, "error"))} />
           <Btn size="sm" icon={<Icon.External size={11} />} onClick={() => window.JH_API.openJobSource(job.id, job.sourceUrl)}>Open source</Btn>
           <Btn size="sm" icon={<Icon.Refresh size={11} />} onClick={() => window.JH_API.rerunExtraction(job.id).catch((e) => window.JH_TOAST.show(e.message, "error"))}>Re-run</Btn>
           <Btn size="sm" icon={<Icon.Note size={11} />} onClick={() => setNoteDialog(true)}>Add note</Btn>

@@ -14,3 +14,10 @@ dist/
 
 # Antigravity CLI sessions
 .antigravitycli/
+
+# Internal AI session notes
+claude/
+
+# Chrome Web Store submission binaries (use GitHub Releases instead)
+chromestore/*.zip
+chromestore/*.png

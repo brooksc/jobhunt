@@ -11,6 +11,31 @@ let mainWindow = null;
 let serverPort = null;
 let pendingDeepLink = null;
 
+// Badge count: increments as jobs become ready, clears when the window is focused.
+let badgeCount = 0;
+
+// When the LLM queue auto-pauses we record why so the window can navigate
+// to the right page the moment the user clicks the dock icon.
+let pendingCriticalRoute = null;
+
+function incrementBadge() {
+  badgeCount++;
+  app.dock?.setBadge(String(badgeCount));
+}
+
+function clearBadge() {
+  badgeCount = 0;
+  app.dock?.setBadge('');
+}
+
+function handleWindowFocus() {
+  clearBadge();
+  if (pendingCriticalRoute) {
+    navigateToHash(pendingCriticalRoute);
+    pendingCriticalRoute = null;
+  }
+}
+
 // Register jobhunt:// URL scheme so macOS can open the app from external links.
 // In dev mode (process.defaultApp is set) we must pass the script path explicitly.
 if (process.defaultApp && process.argv.length >= 2) {
@@ -40,36 +65,68 @@ function truncateText(value, maxLength = 120) {
   return `${text.slice(0, maxLength - 1)}…`;
 }
 
-function showMacNotification({ title, body, critical = false }) {
+function showMacNotification({ title, body, critical = false, onClick = null }) {
   if (process.platform !== 'darwin' || !Notification.isSupported()) return;
   if (!critical && mainWindow?.isFocused()) return;
-  new Notification({ title, body }).show();
-  if (mainWindow && !mainWindow.isFocused()) mainWindow.flashFrame?.(true);
+  const n = new Notification({ title, body });
+  if (onClick) n.on('click', onClick);
+  n.show();
 }
 
-process.on('jobhunt:job-added', ({ jobNumber, pageTitle, duplicateOfJobId } = {}) => {
-  const title = duplicateOfJobId ? 'Jobhunt — Possible duplicate added' : 'Jobhunt — Job added';
-  const jobLabel = jobNumber ? `#${jobNumber}` : 'New job';
-  const body = pageTitle
-    ? `${jobLabel}: ${truncateText(pageTitle)}`
-    : `${jobLabel} was saved.`;
-  showMacNotification({ title, body });
+// Job ready for review: both extraction and fit scoring completed.
+// Fires once per job from processFitScoreRequest in extract.js.
+process.on('jobhunt:job-ready', ({ jobNumber, title, fitScore } = {}) => {
+  incrementBadge();
+  const isHighFit = typeof fitScore === 'number' && fitScore >= 80;
+  // Always notify for high-fit jobs; skip notification (just badge) for normal ones
+  // so capturing a large batch doesn't flood the notification center.
+  if (!isHighFit && badgeCount > 1) return;
+  const notifTitle = isHighFit
+    ? `Jobhunt — High fit job ready`
+    : `Jobhunt — Job ready`;
+  const scoreStr = isHighFit ? ` · score ${fitScore}` : '';
+  const body = `${truncateText(title || `Job #${jobNumber}`)}${scoreStr}`;
+  showMacNotification({
+    title: notifTitle,
+    body,
+    onClick: () => { focusWindow(); if (jobNumber) navigateToJob(jobNumber); },
+  });
 });
 
-process.on('jobhunt:ai-processing-complete', ({ processed = 0, succeeded = 0, failed = 0 } = {}) => {
-  if (!processed) return;
-  const itemLabel = pluralize(processed, 'AI item');
-  const title = failed > 0 ? 'Jobhunt — AI processing finished with errors' : 'Jobhunt — AI processing complete';
-  const body = `${processed} ${itemLabel} processed: ${succeeded} succeeded, ${failed} failed.`;
-  showMacNotification({ title, body });
+// A saved/applied job is no longer available at its URL.
+process.on('jobhunt:job-unavailable', ({ jobNumber, title } = {}) => {
+  showMacNotification({
+    title: 'Jobhunt — Job no longer available',
+    body: truncateText(title || `Job #${jobNumber}`),
+    onClick: () => { focusWindow(); if (jobNumber) navigateToJob(jobNumber); },
+  });
+});
+
+// LLM processing batch finished — only shown when there are failures that need attention.
+process.on('jobhunt:ai-processing-complete', ({ processed = 0, failed = 0 } = {}) => {
+  if (!processed || !failed) return;
+  showMacNotification({
+    title: 'Jobhunt — AI processing errors',
+    body: `${failed} of ${processed} ${pluralize(processed, 'item')} failed. Open LLM Queue to review.`,
+    onClick: () => { focusWindow(); navigateToHash('#/llm-queue'); },
+  });
 });
 
 // Fired by extract.js when 2 consecutive LLM failures auto-pause the queue.
+// Bounces the dock icon once (critical) so it's unmissable. When the user
+// clicks the dock icon the app navigates directly to the LLM Queue page.
 process.on('jobhunt:queue-auto-paused', () => {
+  pendingCriticalRoute = '#/llm-queue';
+  app.dock?.bounce('critical');
   showMacNotification({
     title: 'Jobhunt — AI extraction paused',
-    body: '2 consecutive failures stopped the queue. Open LLM Queue to review errors and resume.',
+    body: 'Consecutive failures stopped the queue. Click to open LLM Queue.',
     critical: true,
+    onClick: () => {
+      pendingCriticalRoute = null;
+      focusWindow();
+      navigateToHash('#/llm-queue');
+    },
   });
 });
 
@@ -84,6 +141,23 @@ function focusWindow() {
   if (!mainWindow) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.focus();
+}
+
+function navigateToHash(hash) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const hashJson = JSON.stringify(hash);
+  const script = `(async () => {
+    await window.JH_REFRESH_UI_DATA?.();
+    history.pushState(null, '', ${hashJson});
+    window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
+  })()`;
+  if (mainWindow.webContents.isLoading()) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      mainWindow.webContents.executeJavaScript(script).catch(() => {});
+    });
+  } else {
+    mainWindow.webContents.executeJavaScript(script).catch(() => {});
+  }
 }
 
 function navigateToJob(jobNumber) {
@@ -193,6 +267,7 @@ async function createWindow() {
 
   await mainWindow.loadURL(`http://127.0.0.1:${serverPort}`);
 
+  mainWindow.on('focus', handleWindowFocus);
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 

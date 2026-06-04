@@ -8,6 +8,7 @@ import {
   getLlmRequestAttempts, resetLlmRequestsForManualRun, getOutstandingLlmRequests,
   markExtractionSucceeded, markDataQualityReviewed, clearDataQualityReviewed, queueBulkLlmJobs,
   decideDuplicateGroup, detectDomainDuplicateJobs, decideDuplicateLinks,
+  markJobRead, countUnreadJobs, markFitSucceeded,
 } from '../../server/db.js';
 import { runExtractionForSelected } from '../../server/extract.js';
 import { tempDbPath, cleanupDb, CAPTURE, CAPTURE2 } from '../helpers.js';
@@ -72,10 +73,11 @@ describe('insertCapture', () => {
     }
   });
 
-  it('returns duplicate:true for the same raw content', () => {
+  it('returns duplicate:false when re-capturing the same URL (existing job, not a new duplicate)', () => {
     const result = insertCapture(CAPTURE, dbPath);
-    assert.equal(result.duplicate, true);
+    assert.equal(result.duplicate, false);
     assert.equal(result.created, false);
+    assert.equal(result.job_number, 1);
   });
 
   it('treats different URLs with different content as separate jobs', () => {
@@ -778,5 +780,44 @@ describe('LLM queue retry limit', () => {
     assert.equal(fit.fit_status, 'succeeded');
     assert.equal(fit.fit_score, 91);
     assert.equal(db.prepare("SELECT status FROM llm_requests WHERE id=?").get(fitRequestId).status, 'succeeded');
+  });
+});
+
+describe('unread badge tracking', () => {
+  let dbPath;
+  before(() => { dbPath = tempDbPath(); initDb(dbPath); });
+  after(() => cleanupDb(dbPath));
+
+  it('starts at 0 unread for a fresh DB', () => {
+    assert.equal(countUnreadJobs(dbPath), 0);
+  });
+
+  it('markFitSucceeded sets unread=1 and countUnreadJobs reflects it', () => {
+    const { job_id } = insertCapture(CAPTURE, dbPath);
+    markFitSucceeded(job_id, {
+      overall_score: 75, summary: 'Good fit.', dimensions: [],
+      requirements_met: [], requirements_not_met: [],
+    }, dbPath, null, 'test-model');
+
+    assert.equal(countUnreadJobs(dbPath), 1);
+    const db = initDb(dbPath);
+    assert.equal(db.prepare('SELECT unread FROM jobs WHERE id=?').get(job_id).unread, 1);
+  });
+
+  it('markJobRead clears unread and countUnreadJobs decrements', () => {
+    const db = initDb(dbPath);
+    const jobs = db.prepare('SELECT id FROM jobs WHERE unread=1').all();
+    assert.ok(jobs.length > 0);
+    markJobRead(jobs[0].id, dbPath);
+    assert.equal(db.prepare('SELECT unread FROM jobs WHERE id=?').get(jobs[0].id).unread, 0);
+    assert.equal(countUnreadJobs(dbPath), 0);
+  });
+
+  it('markJobRead on already-read job is a no-op', () => {
+    const db = initDb(dbPath);
+    const { job_id } = insertCapture(CAPTURE2, dbPath);
+    markJobRead(job_id, dbPath);
+    assert.equal(db.prepare('SELECT unread FROM jobs WHERE id=?').get(job_id).unread, 0);
+    assert.equal(countUnreadJobs(dbPath), 0);
   });
 });

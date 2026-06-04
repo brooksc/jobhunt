@@ -335,6 +335,7 @@
         sourceUrl: j.source_url,
         capturedAt: j.captured_at,
         lastOpenedAt: j.last_opened_at || null,
+        unread: !!j.unread,
         extraction: {
           status: mapExtractionStatus(j.extraction_status),
           at: j.extracted_at || null,

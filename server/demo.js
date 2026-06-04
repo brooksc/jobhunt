@@ -1,9 +1,11 @@
 // Demo database seeding — creates a representative dataset for first-run exploration.
-import os from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { initDb } from './db.js';
 
-export const DEMO_DB_PATH = join(os.homedir(), '.config', 'jobhunt', 'demo.db');
+const __dirname = dirname(fileURLToPath(import.meta.url));
+// Bundled pre-seeded demo DB checked into the repo alongside this file.
+export const DEMO_DB_PATH = join(__dirname, 'demo.db');
 
 function daysAgo(n) {
   return new Date(Date.now() - n * 24 * 3600 * 1000).toISOString();
@@ -256,8 +258,8 @@ export function reseedDemoDb(dbPath = DEMO_DB_PATH) {
 
 function seedDemoDb(db) {
 
-  // Reset job_number sequence
-  db.exec(`DELETE FROM sqlite_sequence WHERE name='jobs'`);
+  // Reset job_number sequence (sqlite_sequence only exists if AUTOINCREMENT is used; safe to skip)
+  try { db.exec(`DELETE FROM sqlite_sequence WHERE name='jobs'`); } catch { /* no autoincrement table */ }
 
   const insertCapture = db.prepare(`
     INSERT INTO captures (id, url, canonical_url, page_title, visible_text, cleaned_description,
@@ -283,8 +285,9 @@ function seedDemoDb(db) {
     VALUES (?, ?, ?, ?, 'active', ?, '', ?, ?, ?)
   `);
 
-  db.transaction(() => {
-    for (const j of SEED.jobs) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+  for (const j of SEED.jobs) {
       const visibleText = `${j.title || ''}\n${j.company || ''}\n${j.location || ''}\n${j.summary || ''}\n${j.requirements || ''}`;
       const rawHash = `demo_hash_${j.capId}`;
       const cleanedHash = j.duplicate_of_job_id ? `demo_dhash_dup` : `demo_chash_${j.capId}`;
@@ -355,5 +358,9 @@ function seedDemoDb(db) {
     for (const s of SEED.sites) {
       insertSite.run(s.id, s.url, s.origin, s.title, s.interval, reviewedAt, reviewedAt, nextReview);
     }
-  })();
+  db.exec('COMMIT');
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch { /* ignore */ }
+    throw e;
+  }
 }

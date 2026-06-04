@@ -399,6 +399,11 @@
           note: e.note || undefined,
           body: e.event_type === "note_added" ? e.note : undefined,
         })),
+        lastStatusChangedAt: (j.events || [])
+          .filter(e => e.event_type === "status_changed")
+          .map(e => e.occurred_at)
+          .sort()
+          .at(-1) || null,
         raw: j.raw_text || "",
       };
     });

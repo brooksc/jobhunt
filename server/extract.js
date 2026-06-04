@@ -472,8 +472,15 @@ function selectSalaryBand(bands, preferredLocations, note) {
   for (const band of bands) {
     if (terms.some(term => termMatches(band.label, term))) return band;
   }
+  const allOtherUSRe = /\bacross the U\.?S\.?\b|\ball (?:other )?U\.?S\.? locations\b|\bUnited States\b/i;
+  // When user has location preferences but none matched a specific band,
+  // use the "All Other US" band rather than the global min/max across all bands
+  if (terms.length > 0) {
+    const allOtherUS = bands.find(band => allOtherUSRe.test(band.label));
+    if (allOtherUS) return allOtherUS;
+  }
   if (/different range applicable to specific work locations/i.test(note)) {
-    return bands.find(band => /\bacross the U\.?S\.?\b|\ball (?:other )?U\.?S\.? locations\b|\bUnited States\b/i.test(band.label)) || null;
+    return bands.find(band => allOtherUSRe.test(band.label)) || null;
   }
   return null;
 }

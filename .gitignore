@@ -4,6 +4,7 @@ node_modules/
 .worktrees/
 .claude/
 *.db
+!server/demo.db
 *.lock
 
 # Electron build output

@@ -575,6 +575,7 @@ function migrateSchema(db) {
     ['fit_score', 'INTEGER'],
     ['fit_status', "TEXT NOT NULL DEFAULT 'none'"],
     ['fit_score_json', 'TEXT'],
+    ['unread', 'INTEGER NOT NULL DEFAULT 0'],
   ];
   for (const [col, def] of jobColsToAdd) {
     if (!jobColumns.has(col)) {
@@ -776,7 +777,14 @@ export function insertCapture(capture, dbPath) {
       }
     }
 
-    // Hash dedup — look up job_number so the extension can navigate to the existing job
+    // Same URL, same content — existing job revisited, not a new duplicate.
+    if (exactMatch) {
+      recordRecaptureEvent(db, exactMatch.job_id, capturedAt, now);
+      recordDuplicateNote(db, exactMatch.id, capture.user_note, capturedAt, now);
+      return { capture_id: exactMatch.id, job_number: exactMatch.job_number, duplicate: false, duplicate_of_job_id: null, created: false };
+    }
+
+    // Hash dedup — same raw content at a different URL → true duplicate
     const existing = db.prepare(`SELECT captures.id, jobs.job_number FROM captures
       JOIN jobs ON jobs.capture_id=captures.id WHERE captures.raw_hash=?`).get(rHash);
     if (existing) {
@@ -1255,7 +1263,7 @@ export function markFitSucceeded(jobId, fit, dbPath, requestId, model) {
   const now = nowIso();
   const payload = { ...fit, model: model ?? null, scored_at: now };
   withTransaction(db, () => {
-    db.prepare("UPDATE jobs SET fit_score=?, fit_status='succeeded', fit_score_json=?, updated_at=? WHERE id=?").run(fit.overall_score, JSON.stringify(payload), now, jobId);
+    db.prepare("UPDATE jobs SET fit_score=?, fit_status='succeeded', fit_score_json=?, unread=1, updated_at=? WHERE id=?").run(fit.overall_score, JSON.stringify(payload), now, jobId);
     if (requestId) {
       db.prepare("UPDATE llm_requests SET status='succeeded', model=?, error=NULL, finished_at=? WHERE id=? AND status='running'").run(model ?? null, now, requestId);
     }
@@ -1316,11 +1324,22 @@ export function updateJobStatuses(jobIds, status, dbPath) {
   });
 }
 
+export function markJobRead(jobId, dbPath) {
+  const db = connect(dbPath);
+  db.prepare("UPDATE jobs SET unread=0, updated_at=? WHERE id=?").run(nowIso(), jobId);
+}
+
+export function countUnreadJobs(dbPath) {
+  const db = initDb(dbPath);
+  const row = db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE unread=1").get();
+  return row ? Number(row.n) : 0;
+}
+
 export function markJobOpened(jobId, dbPath) {
   const db = connect(dbPath);
   const now = nowIso();
   return withTransaction(db, () => {
-    const result = db.prepare("UPDATE jobs SET last_opened_at=?, updated_at=? WHERE id=?").run(now, now, jobId);
+    const result = db.prepare("UPDATE jobs SET last_opened_at=?, unread=0, updated_at=? WHERE id=?").run(now, now, jobId);
     if (result.changes === 0) throw new Error(`job not found: ${jobId}`);
     db.prepare("INSERT INTO events (id, job_id, event_type, note, occurred_at, created_at) VALUES (?, ?, 'source_opened', NULL, ?, ?)")
       .run(makeId('evt'), jobId, now, now);

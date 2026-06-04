@@ -196,6 +196,7 @@ function JobhuntApp({ initialRoute = "jobs", initialJobId = null, initialTheme =
     setSelectedJobId(id);
     setNotFound(null);
     if (route !== "jobs") setRoute("jobs");
+    if (id) window.JH_API.api(`/api/jobs/${id}/read`, { method: "POST" }).catch(() => {});
   }
   function selectJobs(ids) {
     window.JH_PENDING_SELECTED_JOB_IDS = ids;

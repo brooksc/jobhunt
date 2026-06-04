@@ -3,6 +3,7 @@ import { app, BrowserWindow, shell, globalShortcut, Notification } from 'electro
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
+import { countUnreadJobs } from '../server/db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appIconPath = path.join(__dirname, '../static/icons/icon-512.png');
@@ -10,26 +11,26 @@ const appIconPath = path.join(__dirname, '../static/icons/icon-512.png');
 let mainWindow = null;
 let serverPort = null;
 let pendingDeepLink = null;
-
-// Badge count: increments as jobs become ready, clears when the window is focused.
-let badgeCount = 0;
+let appDbPath = null;
 
 // When the LLM queue auto-pauses we record why so the window can navigate
 // to the right page the moment the user clicks the dock icon.
 let pendingCriticalRoute = null;
 
-function incrementBadge() {
-  badgeCount++;
-  app.dock?.setBadge(String(badgeCount));
-}
-
-function clearBadge() {
-  badgeCount = 0;
-  app.dock?.setBadge('');
+function refreshBadge() {
+  if (!appDbPath) return 0;
+  try {
+    const count = countUnreadJobs(appDbPath);
+    app.dock?.setBadge(count > 0 ? String(count) : '');
+    return count;
+  } catch {
+    // ignore — DB may not be ready yet
+    return 0;
+  }
 }
 
 function handleWindowFocus() {
-  clearBadge();
+  refreshBadge();
   if (pendingCriticalRoute) {
     navigateToHash(pendingCriticalRoute);
     pendingCriticalRoute = null;
@@ -76,11 +77,11 @@ function showMacNotification({ title, body, critical = false, onClick = null }) 
 // Job ready for review: both extraction and fit scoring completed.
 // Fires once per job from processFitScoreRequest in extract.js.
 process.on('jobhunt:job-ready', ({ jobNumber, title, fitScore } = {}) => {
-  incrementBadge();
+  const unreadCount = refreshBadge();
   const isHighFit = typeof fitScore === 'number' && fitScore >= 80;
   // Always notify for high-fit jobs; skip notification (just badge) for normal ones
   // so capturing a large batch doesn't flood the notification center.
-  if (!isHighFit && badgeCount > 1) return;
+  if (!isHighFit && unreadCount > 1) return;
   const notifTitle = isHighFit
     ? `Jobhunt — High fit job ready`
     : `Jobhunt — Job ready`;
@@ -129,6 +130,9 @@ process.on('jobhunt:queue-auto-paused', () => {
     },
   });
 });
+
+// Fired when a job row is selected in the UI (marks it as read in the DB).
+process.on('jobhunt:job-read', () => { refreshBadge(); });
 
 // Called by the server API bridge (/api/app/focus) and open-url handler.
 process.on('jobhunt:open-job', ({ jobNumber } = {}) => {
@@ -193,6 +197,7 @@ async function startServer() {
   const dbPath = process.env.JOBHUNT_DB_PATH
     || path.join(os.homedir(), '.config', 'jobhunt', 'jobhunt.db');
   process.env.JOBHUNT_DB_PATH = dbPath;
+  appDbPath = dbPath;
 
   const { initDb, requeueRunningRequests } = await import('../server/db.js');
   initDb(dbPath);

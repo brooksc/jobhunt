@@ -972,7 +972,10 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
                     onChange={(e) => toggle(j.id, e.target.checked, e.nativeEvent.shiftKey)}
                   />
                 </td>
-                <td className="col-mono">#{j.jobNumber}</td>
+                <td className="col-mono" style={{ position: "relative" }}>
+                  {j.unread && <span style={{ position: "absolute", left: 2, top: "50%", transform: "translateY(-50%)", width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", display: "inline-block" }} title="New" />}
+                  #{j.jobNumber}
+                </td>
                 {col("status") && <td><StatusChip value={j.status} /></td>}
                 {col("rating") && <td><StarRating value={j.rating} readonly={true} size={12} /></td>}
                 {col("fit") && (

@@ -46,6 +46,7 @@ function SettingsPage() {
     llmDebugLevel: s.llm_debug_level || "errors",
     llmPriceInput: s.llm_price_input || "0",
     llmPriceOutput: s.llm_price_output || "0",
+    llmOpenrouterFreeRotate: s.llm_openrouter_free_rotate === "true",
     availabilityAutoCheck: parseBool(s.availability_auto_check_enabled, true),
     availabilityIntervalDays: String(s.availability_auto_check_interval_days || 1),
     availabilityStaleDays: String(s.availability_stale_days || 21),
@@ -66,6 +67,7 @@ function SettingsPage() {
   const [llmDebugLevel, setLlmDebugLevel] = React.useState(defaults.llmDebugLevel);
   const [llmPriceInput, setLlmPriceInput] = React.useState(defaults.llmPriceInput);
   const [llmPriceOutput, setLlmPriceOutput] = React.useState(defaults.llmPriceOutput);
+  const [llmOpenrouterFreeRotate, setLlmOpenrouterFreeRotate] = React.useState(defaults.llmOpenrouterFreeRotate);
   const [availabilityAutoCheck, setAvailabilityAutoCheck] = React.useState(defaults.availabilityAutoCheck);
   const [availabilityIntervalDays, setAvailabilityIntervalDays] = React.useState(defaults.availabilityIntervalDays);
   const [availabilityStaleDays, setAvailabilityStaleDays] = React.useState(defaults.availabilityStaleDays);
@@ -105,6 +107,7 @@ function SettingsPage() {
     llmDebugLevel !== savedValues.llmDebugLevel ||
     llmPriceInput !== savedValues.llmPriceInput ||
     llmPriceOutput !== savedValues.llmPriceOutput ||
+    llmOpenrouterFreeRotate !== savedValues.llmOpenrouterFreeRotate ||
     availabilityAutoCheck !== savedValues.availabilityAutoCheck ||
     availabilityIntervalDays !== savedValues.availabilityIntervalDays ||
     availabilityStaleDays !== savedValues.availabilityStaleDays
@@ -133,6 +136,7 @@ function SettingsPage() {
           llm_debug_level: next.llmDebugLevel,
           llm_price_input: next.llmPriceInput,
           llm_price_output: next.llmPriceOutput,
+          llm_openrouter_free_rotate: String(next.llmOpenrouterFreeRotate),
           availability_auto_check_enabled: next.availabilityAutoCheck,
           availability_auto_check_interval_days: Number(next.availabilityIntervalDays),
           availability_stale_days: Number(next.availabilityStaleDays),
@@ -155,6 +159,7 @@ function SettingsPage() {
           llm_debug_level: next.llmDebugLevel,
           llm_price_input: next.llmPriceInput,
           llm_price_output: next.llmPriceOutput,
+          llm_openrouter_free_rotate: String(next.llmOpenrouterFreeRotate),
           availability_auto_check_enabled: String(next.availabilityAutoCheck),
           availability_auto_check_interval_days: Number(next.availabilityIntervalDays),
           availability_stale_days: Number(next.availabilityStaleDays),
@@ -190,6 +195,7 @@ function SettingsPage() {
       llmDebugLevel,
       llmPriceInput,
       llmPriceOutput,
+      llmOpenrouterFreeRotate,
       availabilityAutoCheck,
       availabilityIntervalDays,
       availabilityStaleDays,
@@ -198,7 +204,7 @@ function SettingsPage() {
       saveSettings(next);
     }, 700);
     return () => clearTimeout(timer);
-  }, [llmProvider, llmBaseUrl, llmApiKey, llmModel, siteInterval, followupDays, preferredLocations, allowRemote, allowHybrid, allowOnsite, preferredMetros, filterEnabled, llmDebugLevel, llmPriceInput, llmPriceOutput, availabilityAutoCheck, availabilityIntervalDays, availabilityStaleDays]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [llmProvider, llmBaseUrl, llmApiKey, llmModel, siteInterval, followupDays, preferredLocations, allowRemote, allowHybrid, allowOnsite, preferredMetros, filterEnabled, llmDebugLevel, llmPriceInput, llmPriceOutput, llmOpenrouterFreeRotate, availabilityAutoCheck, availabilityIntervalDays, availabilityStaleDays]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function _callTestLlm(quick = false) {
     const res = await fetch("/api/settings/test-llm", {
@@ -502,6 +508,25 @@ function SettingsPage() {
               </span>
             )}
           </Row>
+          {llmProvider === "openrouter" && (
+            <div style={{ border: "1px solid var(--border)", borderRadius: "var(--r-2)", padding: "10px 12px", background: "var(--bg-elev)" }}>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer" }}>
+                <input type="checkbox" checked={llmOpenrouterFreeRotate} onChange={e => setLlmOpenrouterFreeRotate(e.target.checked)} style={{ marginTop: 2 }} />
+                <span>
+                  <span style={{ color: "var(--fg-strong)", fontWeight: 600, fontSize: 13 }}>Use free models (rotate)</span>
+                  <span style={{ display: "block", fontSize: 11.5, color: "var(--fg-mute)", marginTop: 3, lineHeight: 1.5 }}>
+                    Round-robins requests across OpenRouter's free models that support structured output, with automatic failover. Ignores the model picked above and costs $0.
+                  </span>
+                </span>
+              </label>
+              {llmOpenrouterFreeRotate && (
+                <div style={{ fontSize: 11, color: "var(--st-screening)", marginTop: 8, lineHeight: 1.5, display: "flex", gap: 6, alignItems: "flex-start" }}>
+                  <span style={{ flexShrink: 0, fontWeight: "bold" }}>⚠</span>
+                  <span>This sends your job descriptions and resumes to a wide range of third-party hosting providers and models based in various countries (e.g. US, China). Only enable if you're comfortable with that.</span>
+                </div>
+              )}
+            </div>
+          )}
           <div>
             <div className="jh-label">Debug logging</div>
             <select

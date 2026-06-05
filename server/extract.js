@@ -931,12 +931,13 @@ export function promptOverheadChars(locationOpts = {}) {
 // ------------------------------------------------------------------
 
 export class LMStudioExtractor {
-  /** @param {{ provider?: string, baseUrl?: string, apiKey?: string, model?: string, timeout?: number, preferredLocations?: string|null, allowRemote?: boolean, allowHybrid?: boolean, allowOnsite?: boolean, filterEnabled?: boolean }} [opts] */
-  constructor({ provider, baseUrl, apiKey, model, timeout = 120, preferredLocations, allowRemote = true, allowHybrid = true, allowOnsite = true, filterEnabled = true } = {}) {
+  /** @param {{ provider?: string, baseUrl?: string, apiKey?: string, model?: string, timeout?: number, modelPool?: string[], preferredLocations?: string|null, allowRemote?: boolean, allowHybrid?: boolean, allowOnsite?: boolean, filterEnabled?: boolean }} [opts] */
+  constructor({ provider, baseUrl, apiKey, model, timeout = 120, modelPool, preferredLocations, allowRemote = true, allowHybrid = true, allowOnsite = true, filterEnabled = true } = {}) {
     this.provider = provider || 'lmstudio';
     this.baseUrl = resolveProviderBaseUrl(this.provider, baseUrl);
     this.apiKey = apiKey || '';
     this.model = model || process.env.JOBHUNT_LLM_MODEL || DEFAULT_LLM_MODEL;
+    this.modelPool = modelPool || [];
     this.timeout = timeout;
     this.preferredLocations = preferredLocations;
     this.allowRemote = allowRemote;
@@ -946,28 +947,26 @@ export class LMStudioExtractor {
   }
 
   async extract(pending) {
-    const { content, modelName, responseFormatType } = await postChatCompletion({
-      provider: this.provider,
-      baseUrl: this.baseUrl,
-      apiKey: this.apiKey,
-      model: this.model,
-      timeout: this.timeout,
-      messages: [
-        { role: 'system', content: systemPrompt() },
-        { role: 'user', content: userPrompt(pending, { preferredLocations: this.preferredLocations, allowRemote: this.allowRemote, allowHybrid: this.allowHybrid, allowOnsite: this.allowOnsite }) },
-      ],
-      schemaFormat: { type: 'json_schema', json_schema: { name: 'extracted_job', strict: true, schema: extractedJobSchema() } },
+    const messages = [
+      { role: 'system', content: systemPrompt() },
+      { role: 'user', content: userPrompt(pending, { preferredLocations: this.preferredLocations, allowRemote: this.allowRemote, allowHybrid: this.allowHybrid, allowOnsite: this.allowOnsite }) },
+    ];
+    const schemaFormat = { type: 'json_schema', json_schema: { name: 'extracted_job', strict: true, schema: extractedJobSchema() } };
+    // Parse inside the rotation attempt so a model returning bad JSON fails over.
+    const { extracted: raw, modelName, responseFormatType } = await runWithModelRotation(this.modelPool, this.model, async (model) => {
+      const { content, modelName, responseFormatType } = await postChatCompletion({
+        provider: this.provider, baseUrl: this.baseUrl, apiKey: this.apiKey, model, timeout: this.timeout, messages, schemaFormat,
+      });
+      try {
+        return { extracted: parseExtractedJob(content), modelName, responseFormatType };
+      } catch (err) {
+        err.llmContent = content;
+        err.modelName = modelName;
+        err.responseFormatType = responseFormatType;
+        throw err;
+      }
     });
-    let extracted;
-    try {
-      extracted = parseExtractedJob(content);
-    } catch (err) {
-      err.llmContent = content;
-      err.modelName = modelName;
-      err.responseFormatType = responseFormatType;
-      throw err;
-    }
-    extracted = normalizeSalaryFromSource(extracted, {
+    let extracted = normalizeSalaryFromSource(raw, {
       preferredLocations: this.preferredLocations,
       sourceText: pending.source_text || pending.description,
     });
@@ -1014,36 +1013,35 @@ function extractedJobSchema() {
 // ------------------------------------------------------------------
 
 export class FitScorer {
-  /** @param {{ provider?: string, baseUrl?: string, apiKey?: string, model?: string, timeout?: number }} [opts] */
-  constructor({ provider, baseUrl, apiKey, model, timeout = 120 } = {}) {
+  /** @param {{ provider?: string, baseUrl?: string, apiKey?: string, model?: string, timeout?: number, modelPool?: string[] }} [opts] */
+  constructor({ provider, baseUrl, apiKey, model, timeout = 120, modelPool } = {}) {
     this.provider = provider || 'lmstudio';
     this.baseUrl = resolveProviderBaseUrl(this.provider, baseUrl);
     this.apiKey = apiKey || '';
     this.model = model || process.env.JOBHUNT_LLM_MODEL || DEFAULT_LLM_MODEL;
+    this.modelPool = modelPool || [];
     this.timeout = timeout;
   }
 
   async score(context, resume) {
-    const { content, modelName, responseFormatType } = await postChatCompletion({
-      provider: this.provider,
-      baseUrl: this.baseUrl,
-      apiKey: this.apiKey,
-      model: this.model,
-      timeout: this.timeout,
-      messages: [
-        { role: 'system', content: fitSystemPrompt() },
-        { role: 'user', content: fitUserPrompt(context, resume) },
-      ],
-      schemaFormat: { type: 'json_schema', json_schema: { name: 'fit_score', strict: true, schema: fitScoreSchema() } },
+    const messages = [
+      { role: 'system', content: fitSystemPrompt() },
+      { role: 'user', content: fitUserPrompt(context, resume) },
+    ];
+    const schemaFormat = { type: 'json_schema', json_schema: { name: 'fit_score', strict: true, schema: fitScoreSchema() } };
+    return runWithModelRotation(this.modelPool, this.model, async (model) => {
+      const { content, modelName, responseFormatType } = await postChatCompletion({
+        provider: this.provider, baseUrl: this.baseUrl, apiKey: this.apiKey, model, timeout: this.timeout, messages, schemaFormat,
+      });
+      try {
+        return { fit: parseFitScore(content), modelName, responseFormatType };
+      } catch (err) {
+        err.llmContent = content;
+        err.modelName = modelName;
+        err.responseFormatType = responseFormatType;
+        throw err;
+      }
     });
-    try {
-      return { fit: parseFitScore(content), modelName, responseFormatType };
-    } catch (err) {
-      err.llmContent = content;
-      err.modelName = modelName;
-      err.responseFormatType = responseFormatType;
-      throw err;
-    }
   }
 }
 
@@ -1091,6 +1089,90 @@ export function providerConcurrency(provider) {
   return HOSTED_PROVIDERS.has(provider) ? HOSTED_CONCURRENCY : 1;
 }
 
+// ------------------------------------------------------------------
+// OpenRouter free-model rotation
+// ------------------------------------------------------------------
+// When enabled, spread requests round-robin across OpenRouter's free models
+// that advertise structured-output support, with failover so one flaky model
+// doesn't fail the request. The pool is fetched from OpenRouter and cached.
+
+const ROTATION_TTL_MS = 60 * 60 * 1000;
+const ROTATE_FAILOVER_TRIES = 4;
+let _rotationCache = { ids: [], fetchedAt: 0 };
+let _rotateCounter = 0;
+
+function rotationEnabled(settings) {
+  return (settings.llm_provider || 'lmstudio') === 'openrouter'
+    && String(settings.llm_openrouter_free_rotate) === 'true';
+}
+
+// Filters an OpenRouter /models payload to free models that support structured
+// output (JSON schema / response_format). Exported for testing.
+export function selectFreeStructuredModels(data) {
+  return (data?.data || []).filter(m => {
+    const free = Number(m.pricing?.prompt) === 0 && Number(m.pricing?.completion) === 0;
+    const sp = m.supported_parameters || [];
+    const structured = sp.includes('structured_outputs') || sp.includes('response_format');
+    // Text-only output — excludes free image/audio models (e.g. Lyria, whose
+    // output is ['text','audio']) that also advertise structured output but
+    // aren't usable as chat extractors. Multimodal input is fine; we send text.
+    const arch = m.architecture || {};
+    const outputs = arch.output_modalities || (typeof arch.modality === 'string' ? arch.modality.split('->')[1]?.split('+') : null);
+    const textOut = !outputs || (outputs.includes('text') && outputs.every(x => x === 'text'));
+    return free && structured && textOut;
+  }).map(m => m.id);
+}
+
+// Refreshes (when stale) and returns the free-model rotation pool, or [] when
+// rotation is off / provider isn't OpenRouter. Network failures keep the last
+// good pool. Call before building extractors/scorers for a run.
+export async function refreshRotationPool(settings, { force = false } = {}) {
+  if (!rotationEnabled(settings)) return [];
+  const now = Date.now();
+  if (!force && _rotationCache.ids.length && now - _rotationCache.fetchedAt < ROTATION_TTL_MS) return _rotationCache.ids;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    let data;
+    try {
+      const r = await fetch('https://openrouter.ai/api/v1/models', { signal: controller.signal });
+      if (!r.ok) throw new Error(`OpenRouter HTTP ${r.status}`);
+      data = await r.json();
+    } finally {
+      clearTimeout(timer);
+    }
+    const ids = selectFreeStructuredModels(data);
+    if (ids.length) _rotationCache = { ids, fetchedAt: now };
+    return _rotationCache.ids;
+  } catch {
+    return _rotationCache.ids;
+  }
+}
+
+// The current (cached) rotation pool for these settings, read synchronously
+// when building an extractor/scorer.
+export function rotationPoolFor(settings) {
+  return rotationEnabled(settings) ? _rotationCache.ids : [];
+}
+
+// Runs attemptFn(model) against a model pool with round-robin start and
+// failover (up to ROTATE_FAILOVER_TRIES models). Falls back to the single
+// configured model when the pool is empty. Exported for testing.
+export async function runWithModelRotation(modelPool, model, attemptFn) {
+  if (!modelPool || !modelPool.length) return attemptFn(model);
+  const tries = Math.min(ROTATE_FAILOVER_TRIES, modelPool.length);
+  let lastErr;
+  for (let i = 0; i < tries; i++) {
+    const m = modelPool[(_rotateCounter++) % modelPool.length];
+    try {
+      return await attemptFn(m);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr;
+}
+
 export async function runExtraction({ dbPath, extractor, limit = 10, scorer }) {
   if (_extractionRunning) return { processed: 0, succeeded: 0, failed: 0 };
   _extractionRunning = true;
@@ -1128,6 +1210,9 @@ async function _runExtractionInner({ dbPath, extractor, limit = 10, scorer }) {
   if (isQueuePaused(dbPath)) return { processed: 0, succeeded: 0, failed: 0 };
 
   const concurrency = providerConcurrency((extractor || scorer)?.provider);
+  // When rotating across free models, individual models are expected to fail
+  // (rate limits / overload) — failover handles it, so don't pause the queue.
+  const rotating = !!((extractor || scorer)?.modelPool?.length);
   let failureStreak = 0, processed = 0, succeeded = 0, failed = 0;
   const handledIds = new Set();
   let paused = false;
@@ -1154,7 +1239,7 @@ async function _runExtractionInner({ dbPath, extractor, limit = 10, scorer }) {
         failed++;
         failureStreak++;
         // Two failures in a row → the endpoint is likely misconfigured; stop.
-        if (failureStreak >= 2) { pauseLlmQueueForErrors(dbPath); paused = true; }
+        if (!rotating && failureStreak >= 2) { pauseLlmQueueForErrors(dbPath); paused = true; }
       }
     }
   }
@@ -1286,6 +1371,7 @@ export function makeExtractorFromSettings(settings) {
     baseUrl: settings.llm_base_url,
     apiKey: settings.llm_api_key || '',
     model: settings.llm_model,
+    modelPool: rotationPoolFor(settings),
     timeout: parseFloat(settings.llm_timeout || '60'),
     preferredLocations: filterEnabled ? (combinedLocations || null) : null,
     allowRemote: parseBoolSetting(settings.location_allow_remote, true),
@@ -1301,6 +1387,7 @@ export function makeScorerFromSettings(settings) {
     baseUrl: settings.llm_base_url,
     apiKey: settings.llm_api_key || '',
     model: settings.llm_model,
+    modelPool: rotationPoolFor(settings),
     timeout: parseFloat(settings.llm_timeout || '60'),
   });
 }

@@ -206,16 +206,17 @@ function fmtSalary(j) {
 function fmtCaptured(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
-  const now = new Date();
-  const ms = now - d;
+  const ms = new Date() - d;
   const min = Math.floor(ms / 60000);
   const h = Math.floor(min / 60);
   const days = Math.floor(h / 24);
   if (min < 1) return "just now";
   if (min < 60) return `${min}m ago`;
   if (h < 24) return `${h}h ago`;
-  if (days <= 7) return `${days}d ago`;
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  if (days < 7) return `${days}d ago`;
+  if (days < 30) return `${Math.floor(days / 7)}w ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
 }
 
 function fmtDate(iso) {
@@ -403,7 +404,8 @@ function ToastContainer() {
 
 function StarRating({ value, onChange, size = 14, readonly = false }) {
   const [hovered, setHovered] = React.useState(null);
-  const display = hovered ?? value ?? 0;
+  const isUnset = value == null || value === 0;
+  const display = hovered ?? (isUnset ? 0 : value);
   return (
     <span className="jh-stars" style={{ display: "inline-flex", gap: 1 }}
       onMouseLeave={readonly ? undefined : () => setHovered(null)}>
@@ -419,10 +421,10 @@ function StarRating({ value, onChange, size = 14, readonly = false }) {
           disabled={readonly}
           style={{
             background: "none", border: "none", padding: 0, cursor: readonly ? "default" : "pointer",
-            color: display >= n ? "var(--accent, #f59e0b)" : "var(--fg-faint)",
+            color: display >= n ? "var(--accent, #f59e0b)" : isUnset && !hovered ? "var(--border)" : "var(--fg-faint)",
             fontSize: size,
           }}
-        >★</button>
+        >{display >= n ? "★" : "☆"}</button>
       ))}
     </span>
   );

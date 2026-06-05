@@ -132,6 +132,27 @@ describe('cleanDescription', () => {
     assert.ok(result.includes('Page content'));
   });
 
+  it('prepends Work arrangement: Remote when jobLocationType is TELECOMMUTE', () => {
+    const result = cleanDescription({
+      visibleText: 'Some visible content',
+      structuredData: [{
+        '@type': 'JobPosting',
+        jobLocationType: 'TELECOMMUTE',
+        description: 'Job details here.',
+      }],
+    });
+    assert.ok(result.includes('Work arrangement: Remote'), 'remote line present');
+    assert.ok(result.includes('Job details here'), 'description still included');
+  });
+
+  it('includes jobLocationType remote line even when no description is present', () => {
+    const result = cleanDescription({
+      visibleText: 'Some visible content',
+      structuredData: [{ '@type': 'JobPosting', jobLocationType: 'TELECOMMUTE' }],
+    });
+    assert.ok(result.includes('Work arrangement: Remote'));
+  });
+
   it('includes JobPosting description even when visible text already has job content', () => {
     // Both sources are included — accuracy over deduplication
     const result = cleanDescription({

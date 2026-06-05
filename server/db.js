@@ -334,6 +334,16 @@ function companyDomainScore(company, url) {
 
   const companyTokens = companyText.split(/\s+/).filter(t => t.length >= 3);
   if (companyTokens.length && companyTokens.some(token => labels.includes(token))) return 50;
+
+  // Known ATS platforms are preferred over job aggregators when the company domain isn't matched.
+  // Greenhouse, Lever, Workday, etc. are the source of truth; aggregators are just mirrors.
+  const ATS_REGISTRABLES = new Set([
+    'greenhouse', 'lever', 'workday', 'myworkdayjobs', 'ashbyhq', 'smartrecruiters',
+    'taleo', 'icims', 'bamboohr', 'jobvite', 'recruitee', 'workable', 'rippling',
+    'pinpointhq', 'dover', 'jazhr', 'breezy', 'jobscore', 'applytojob',
+  ]);
+  if (ATS_REGISTRABLES.has(registrable)) return 45;
+
   return 0;
 }
 
@@ -1760,7 +1770,7 @@ export function detectDomainDuplicateJobs(dbPath) {
 
       let groupMarked = 0;
       for (const job of sorted.slice(1)) {
-        if (job.status !== 'saved' && job.status !== 'duplicate') continue;
+        if (job.status !== 'saved' && job.status !== 'duplicate' && job.status !== 'applied') continue;
         const evidence = duplicateEvidenceMatch(keep, job);
         if (!evidence) continue;
 

@@ -36,4 +36,4 @@ All data is stored locally on your device. You can delete it at any time by clea
 
 ## Contact
 
-Questions? Open an issue at https://github.com/brooksc/jobhunt
+Questions? Visit [jobhunt-app.com](https://jobhunt-app.com) or open an issue at https://github.com/brooksc/jobhunt

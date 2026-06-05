@@ -8,9 +8,9 @@ function persistSavedViews(views) {
 }
 
 const DEFAULT_COLUMNS = ["company", "title", "status", "rating", "fit", "salaryMin", "salaryMax", "lastOpened"];
-const ALL_COLUMNS = ["company", "title", "status", "rating", "fit", "salaryMin", "salaryMax", "remote", "location", "source", "seniority", "employment", "captured", "lastOpened", "lastStatusChanged", "processed", "extraction"];
+const ALL_COLUMNS = ["jobNumber", "company", "title", "status", "rating", "fit", "salaryMin", "salaryMax", "remote", "location", "source", "seniority", "employment", "captured", "lastOpened", "lastStatusChanged", "processed", "extraction"];
 const COLUMN_LABELS = {
-  company: "Company", title: "Title", status: "Status", rating: "Rating", fit: "Fit", salaryMin: "Salary min", salaryMax: "Salary max",
+  jobNumber: "ID", company: "Company", title: "Title", status: "Status", rating: "Rating", fit: "Fit", salaryMin: "Salary min", salaryMax: "Salary max",
   remote: "Meets criteria", location: "Location", source: "Source", seniority: "Seniority",
   employment: "Employment", captured: "Last captured", lastOpened: "Last opened", lastStatusChanged: "Last status change", processed: "Last processed", extraction: "Extraction",
 };
@@ -876,7 +876,7 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
         <table className="jh-table" style={{ tableLayout: "fixed" }}>
           <colgroup>
             <col style={{ width: 28 }} />
-            <col style={{ width: 58 }} />
+            {col("jobNumber") && <col style={{ width: 58 }} />}
             {col("status") && <col style={{ width: 100 }} />}
             {col("rating") && <col style={{ width: 80 }} />}
             {col("fit") && <col style={{ width: 54 }} />}
@@ -906,7 +906,7 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
                   aria-label="Select all jobs"
                 />
               </th>
-              <SortH k="jobNumber">ID</SortH>
+              {col("jobNumber") && <SortH k="jobNumber">ID</SortH>}
               {col("status") && <SortH k="status">Status</SortH>}
               {col("rating") && <SortH k="rating">Rating</SortH>}
               {col("fit") && <SortH k="fitScore" right>Fit</SortH>}
@@ -964,7 +964,8 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
                   if (e.key === "Enter") { e.preventDefault(); onSelectJob(j.id); }
                 }}
               >
-                <td onClick={(e) => e.stopPropagation()} className="col-shrink">
+                <td onClick={(e) => e.stopPropagation()} className="col-shrink" style={{ position: "relative" }}>
+                  {j.unread && <span style={{ position: "absolute", left: 2, top: "50%", transform: "translateY(-50%)", width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", display: "inline-block", pointerEvents: "none" }} title="New" />}
                   <input
                     type="checkbox"
                     className="jh-checkbox"
@@ -972,10 +973,9 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
                     onChange={(e) => toggle(j.id, e.target.checked, e.nativeEvent.shiftKey)}
                   />
                 </td>
-                <td className="col-mono" style={{ position: "relative" }}>
-                  {j.unread && <span style={{ position: "absolute", left: 2, top: "50%", transform: "translateY(-50%)", width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", display: "inline-block" }} title="New" />}
-                  #{j.jobNumber}
-                </td>
+                {col("jobNumber") && (
+                  <td className="col-mono">#{j.jobNumber}</td>
+                )}
                 {col("status") && <td><StatusChip value={j.status} /></td>}
                 {col("rating") && <td><StarRating value={j.rating} readonly={true} size={12} /></td>}
                 {col("fit") && (

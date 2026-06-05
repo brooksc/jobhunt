@@ -1,5 +1,7 @@
 # Jobhunt
 
+**[jobhunt-app.com](https://jobhunt-app.com)** · [Issues](https://github.com/brooksc/jobhunt/issues)
+
 Local-first job tracking for captured job descriptions. A Chrome extension sends job pages to a local Node service, SQLite stores the data, LM Studio extracts structured fields, and the bundled React UI runs at `http://127.0.0.1:8765`.
 
 ## Requirements

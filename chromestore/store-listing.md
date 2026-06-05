@@ -62,7 +62,7 @@ These are entered in the "Permissions" step of the submission form.
 
 ## Privacy policy
 
-Privacy policy URL: **https://brooksc.github.io/jobhunt/PRIVACY**
+Privacy policy URL: **https://jobhunt-app.com/privacy**
 
 Suggested copy:
 

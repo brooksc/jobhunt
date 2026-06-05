@@ -46,14 +46,21 @@ if [ "$SKIP_TESTS" = "0" ]; then
 fi
 
 # ------------------------------------------------------------------
-# 4. Build Electron app
+# 4. Bump patch version
+# ------------------------------------------------------------------
+echo ""
+NEW_VERSION=$(./scripts/bump-version.sh patch)
+echo "Version: ${NEW_VERSION}"
+
+# ------------------------------------------------------------------
+# 5. Build Electron app
 # ------------------------------------------------------------------
 echo ""
 echo "Building Electron app..."
 nice ./node_modules/.bin/electron-builder --dir --mac
 
 # ------------------------------------------------------------------
-# 5. Launch
+# 6. Launch
 # ------------------------------------------------------------------
 echo ""
 echo "Launching Jobhunt..."

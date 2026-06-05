@@ -514,7 +514,15 @@ function OnboardingWizard({ onClose }) {
             if (!res.ok) { alert(`Failed to switch to demo: ${(await res.json().catch(() => ({}))).error || res.status}`); return; }
             localStorage.setItem(window.WELCOME_KEY || 'jh.welcome_dismissed', '1');
             localStorage.removeItem('jobhunt.force_first_run');
-            window.location.replace('#/jobs');
+            const curCols = localStorage.getItem('jobhunt.columns');
+            if (curCols) localStorage.setItem('jobhunt.columns.pre-demo', curCols);
+            else localStorage.removeItem('jobhunt.columns.pre-demo');
+            localStorage.setItem('jobhunt.columns', JSON.stringify(["status", "company", "title", "fit", "location", "salaryMin", "salaryMax"]));
+            const curSort = localStorage.getItem('jobhunt.sort');
+            if (curSort) localStorage.setItem('jobhunt.sort.pre-demo', curSort);
+            else localStorage.removeItem('jobhunt.sort.pre-demo');
+            localStorage.setItem('jobhunt.sort', JSON.stringify({ key: "fitScore", dir: "desc" }));
+            window.location.replace('#/dashboard');
             window.location.reload();
           }} />}
           {step === 1 && <StepExtension onNext={next} onBack={back} />}

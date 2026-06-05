@@ -21,9 +21,12 @@ function extractJsonLdDescription(structuredData) {
   for (const item of (structuredData || [])) {
     const posting = findJobPosting(item);
     if (!posting) continue;
+    const parts = [];
+    // Promote top-level JobPosting fields that don't appear in visible text
+    if (posting.jobLocationType === 'TELECOMMUTE') parts.push('Work arrangement: Remote');
     const desc = posting.description;
-    if (typeof desc !== 'string' || !desc.trim()) continue;
-    return stripHtml(desc);
+    if (typeof desc === 'string' && desc.trim()) parts.push(stripHtml(desc));
+    if (parts.length) return parts.join('\n');
   }
   return '';
 }

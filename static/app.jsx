@@ -367,7 +367,6 @@ function RouteActions({ route, onProcessExtractions, processingExtractions, selC
         <Btn size="sm" icon={<Icon.Plus size={12} />} onClick={() => setAddJobDialog(true)}>Add Job URL</Btn>
         {addJobDialog && <AddJobUrlDialog onClose={() => setAddJobDialog(false)} />}
         <Btn size="sm" kind="ghost" icon={<Icon.Search size={12} />} onClick={checkAvailability} disabled={checkingAvailability} title="Check all active jobs for availability">Check availability</Btn>
-        <Btn size="sm" kind="ghost" icon={<Icon.Refresh size={12} />} onClick={() => window.location.reload()}>Reload</Btn>
         <Btn size="sm" icon={<Icon.External size={12} />} onClick={() => window.open("/exports/jobs.csv", "_blank")}>Export</Btn>
       </>
     );

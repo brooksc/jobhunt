@@ -1,6 +1,6 @@
 {
   "name": "jobhunt",
-  "version": "0.0.1",
+  "version": "0.2.0",
   "description": "Local-first job tracking tool",
   "type": "module",
   "main": "electron/main.js",

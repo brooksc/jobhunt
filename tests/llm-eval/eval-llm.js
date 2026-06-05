@@ -1,10 +1,22 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { defaultDbPath, getSettings, initDb } from '../../server/db.js';
 import { computeOverallFitScore, LMStudioExtractor, FitScorer } from '../../server/extract.js';
 
 const DEFAULT_TIMEOUT_SECONDS = 300;
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+// Real-world JD captured into a fixture; the `expect` below is hand-verified
+// ground truth (adjudicated against the source text), not any model's output.
+const PINTEREST_JD = (() => {
+  const md = readFileSync(join(HERE, '../fixtures/resumes/reference_jd_pinterest_tpm.md'), 'utf8');
+  const i = md.indexOf('\n---\n\n');
+  return i >= 0 ? md.slice(i + 5).trim() : md;
+})();
 
 const extractionFixtures = [
   {
@@ -261,6 +273,38 @@ Required qualifications:
       salaryNoteIncludes: ['$200,700', '$250,900', 'CAD 189,700'],
     },
   },
+  {
+    // Real captured posting (Pinterest). Ground truth adjudicated by reading the
+    // source JD — both gemma-4 (local) and gemini-3.1 were checked against THIS,
+    // not against each other. The JD's "What we're looking for" has 10 bullets and
+    // no explicit required/preferred split, so requirement/skill selection is
+    // lenient (any-of) and the real signal is groundedness (no invented items).
+    name: 'Pinterest Staff TPM ML/AI Platform (real capture, adjudicated truth)',
+    pending: {
+      url: 'https://www.pinterestcareers.com/jobs/7494634/staff-technical-program-manager-mlai-platform/',
+      canonical_url: 'https://www.pinterestcareers.com/jobs/7494634/staff-technical-program-manager-mlai-platform/',
+      page_title: 'Staff Technical Program Manager ML/AI Platform | Pinterest Careers',
+      description: PINTEREST_JD,
+    },
+    expect: {
+      company: 'Pinterest',
+      titleIncludes: 'Staff Technical Program Manager',
+      remote_type: 'remote',
+      salary_min: 145747,
+      salary_max: 300067,
+      salary_currency: 'USD',
+      seniorityIncludes: ['Staff'],
+      // All grounded in the JD; any subset is acceptable (both models picked
+      // different valid subsets — neither is "more correct").
+      skillsIncludeAny: ['machine learning', 'genai', 'technical program management', 'llm', 'ai governance', 'agent platform', 'systems engineering', 'data engineering', 'devops', 'infrastructure'],
+      requirementsIncludeAny: ['8+', 'bachelor', 'technical program management', 'machine learning', 'executive', 'scalable', 'communication', 'genai', 'multi-year'],
+      niceToHavesIncludeAny: ['helix', 'mlp', 'vibe coding', 'ai coding', 'cloud budget', 'agent', 'devops'],
+      // Anti-hallucination: every extracted skill/requirement must be supported
+      // by the JD text. This is the real correctness signal for extraction.
+      groundedSkills: true,
+      groundedRequirements: true,
+    },
+  },
 ];
 
 const fitFixture = {
@@ -302,6 +346,9 @@ distributed systems, or technical program management.
 
 function parseArgs(argv) {
   const args = {
+    provider: null,
+    apiKey: null,
+    apiKeyFile: null,
     baseUrl: null,
     model: null,
     timeout: null,
@@ -312,6 +359,9 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--json') args.json = true;
+    else if (arg === '--provider') args.provider = argv[++i];
+    else if (arg === '--api-key') args.apiKey = argv[++i];
+    else if (arg === '--api-key-file') args.apiKeyFile = argv[++i];
     else if (arg === '--base-url') args.baseUrl = argv[++i];
     else if (arg === '--model') args.model = argv[++i];
     else if (arg === '--timeout') args.timeout = Number(argv[++i]);
@@ -333,7 +383,10 @@ function printHelp() {
 Runs live LM Studio model evaluations for extraction and fit scoring.
 
 Options:
+  --provider <name>              lmstudio | openai | anthropic | google | openrouter | custom. Defaults to app settings.
   --model <name>                 Model identifier to test. Defaults to app settings.
+  --api-key <key>                API key for hosted providers. Defaults to app settings.
+  --api-key-file <path>          Read the API key from a file (keeps it out of shell history).
   --base-url <url>               LM Studio base URL. Defaults to app settings.
   --timeout <seconds>            Request timeout. Defaults to app settings or ${DEFAULT_TIMEOUT_SECONDS}.
   --preferred-locations <list>   Location preference context for extraction fixtures.
@@ -374,6 +427,24 @@ function includesText(value, needles) {
   return needles.every(needle => haystack.includes(normalize(needle)));
 }
 
+const GROUND_STOP = new Set(['and', 'or', 'the', 'with', 'for', 'into', 'using', 'use', 'able', 'ability', 'strong', 'experience', 'proven', 'demonstrated', 'working', 'understanding', 'knowledge', 'skills', 'years', 'track', 'record', 'across', 'within', 'their', 'that', 'this', 'from']);
+
+// Fraction of extracted items whose content words actually appear in the source
+// JD — i.e. the model didn't invent them. Returns the ungrounded items too.
+function groundedFraction(items, sourceText) {
+  const src = normalize(sourceText);
+  if (!Array.isArray(items) || items.length === 0) return { grounded: 0, total: 0, ungrounded: [] };
+  let grounded = 0;
+  const ungrounded = [];
+  for (const item of items) {
+    const tokens = normalize(item).split(/[^a-z0-9+]+/).filter(t => t.length > 3 && !GROUND_STOP.has(t));
+    if (tokens.length === 0) { grounded++; continue; }
+    const hits = tokens.filter(t => src.includes(t)).length;
+    if (hits / tokens.length >= 0.5) grounded++; else ungrounded.push(item);
+  }
+  return { grounded, total: items.length, ungrounded };
+}
+
 function scoreCheck(condition, label, actual, expected, weight = 1) {
   return {
     label,
@@ -384,11 +455,11 @@ function scoreCheck(condition, label, actual, expected, weight = 1) {
   };
 }
 
-function scoreExtraction(extracted, expected) {
+function scoreExtraction(extracted, expected, sourceText = '') {
   const checks = [
     scoreCheck(normalize(extracted.company).includes(normalize(expected.company)), 'company', extracted.company, expected.company, 2),
     scoreCheck(normalize(extracted.title).includes(normalize(expected.titleIncludes)), 'title', extracted.title, expected.titleIncludes, 2),
-    scoreCheck(includesAll(extracted.location, expected.locationIncludes), 'location', extracted.location, expected.locationIncludes.join(' + '), 2),
+    scoreCheck(!expected.locationIncludes || includesAll(extracted.location, expected.locationIncludes), 'location', extracted.location, expected.locationIncludes?.join(' + ') || '(not asserted)', 2),
     scoreCheck(extracted.remote_type === expected.remote_type, 'remote_type', extracted.remote_type, expected.remote_type, 2),
     scoreCheck(extracted.salary_min === expected.salary_min, 'salary_min', extracted.salary_min, expected.salary_min, 2),
     scoreCheck(extracted.salary_max === expected.salary_max, 'salary_max', extracted.salary_max, expected.salary_max, 2),
@@ -396,7 +467,7 @@ function scoreExtraction(extracted, expected) {
     scoreCheck(expected.salary_hourly_max == null || extracted.salary_hourly_max === expected.salary_hourly_max, 'salary_hourly_max', extracted.salary_hourly_max, expected.salary_hourly_max),
     scoreCheck(normalize(extracted.salary_currency) === normalize(expected.salary_currency), 'salary_currency', extracted.salary_currency, expected.salary_currency),
     scoreCheck(!expected.salaryNoteIncludes || includesText(extracted.salary_note, expected.salaryNoteIncludes), 'salary_note', extracted.salary_note, expected.salaryNoteIncludes?.join(' + ') || '(not asserted)', 2),
-    scoreCheck(extracted.employment_type === expected.employment_type, 'employment_type', extracted.employment_type, expected.employment_type),
+    scoreCheck(!expected.employment_type || extracted.employment_type === expected.employment_type, 'employment_type', extracted.employment_type, expected.employment_type || '(not asserted)'),
     scoreCheck(!expected.seniorityIncludes || expected.seniorityIncludes.some(v => normalize(extracted.seniority).includes(normalize(v))), 'seniority', extracted.seniority, expected.seniorityIncludes?.join(' or ') || '(not asserted)'),
     scoreCheck(!expected.application_url || extracted.application_url === expected.application_url, 'application_url', extracted.application_url, expected.application_url),
     scoreCheck(includesAny(extracted.skills, expected.skillsIncludeAny), 'skills', extracted.skills, expected.skillsIncludeAny.join(' or ')),
@@ -404,6 +475,17 @@ function scoreExtraction(extracted, expected) {
     scoreCheck(includesAny(extracted.nice_to_haves, expected.niceToHavesIncludeAny), 'nice_to_haves', extracted.nice_to_haves, expected.niceToHavesIncludeAny.join(' or ')),
     scoreCheck(!expected.benefitsIncludeAny || includesAny(extracted.benefits, expected.benefitsIncludeAny), 'benefits', extracted.benefits, expected.benefitsIncludeAny?.join(' or ') || '(not asserted)'),
   ];
+  // Tolerate one borderline item (abbreviation/paraphrase, e.g. "Generative AI"
+  // for the JD's "GenAI") while still failing on real hallucination. Ungrounded
+  // items are always reported for human review.
+  if (expected.groundedSkills) {
+    const g = groundedFraction(extracted.skills, sourceText);
+    checks.push(scoreCheck(g.total === 0 || g.grounded / g.total >= 0.8, 'skills grounded in JD', `${g.grounded}/${g.total} grounded${g.ungrounded.length ? ` · flagged: ${g.ungrounded.join('; ')}` : ''}`, '>=80% grounded', 2));
+  }
+  if (expected.groundedRequirements) {
+    const g = groundedFraction(extracted.requirements, sourceText);
+    checks.push(scoreCheck(g.total === 0 || g.grounded / g.total >= 0.8, 'requirements grounded in JD', `${g.grounded}/${g.total} grounded${g.ungrounded.length ? ` · flagged: ${g.ungrounded.join('; ')}` : ''}`, '>=80% grounded', 2));
+  }
   const possible = checks.reduce((sum, check) => sum + check.weight, 0);
   const earned = checks.reduce((sum, check) => sum + (check.passed ? check.weight : 0), 0);
   return { score: Math.round((earned / possible) * 100), checks };
@@ -420,8 +502,9 @@ function scoreFit(strongFit, weakFit) {
   const checks = [
     scoreCheck(hasDimensionScores(strongFit), 'strong fit has complete dimensions', strongFit.dimensions, '5 dimension scores', 2),
     scoreCheck(hasDimensionScores(weakFit), 'weak fit has complete dimensions', weakFit.dimensions, '5 dimension scores', 2),
-    scoreCheck(strongFit.overall_score === strongOverall, 'strong overall uses weighted dimensions', strongFit.overall_score, strongOverall),
-    scoreCheck(weakFit.overall_score === weakOverall, 'weak overall uses weighted dimensions', weakFit.overall_score, weakOverall),
+    // overall = weighted dimensions minus the missing-requirements penalty (0-50).
+    scoreCheck(strongFit.overall_score <= strongOverall && strongOverall - strongFit.overall_score <= 50, 'strong overall = weighted dims minus penalty', `${strongFit.overall_score} (base ${strongOverall})`, 'base minus 0-50 penalty'),
+    scoreCheck(weakFit.overall_score <= weakOverall && weakOverall - weakFit.overall_score <= 50, 'weak overall = weighted dims minus penalty', `${weakFit.overall_score} (base ${weakOverall})`, 'base minus 0-50 penalty'),
     scoreCheck(strongFit.overall_score >= 85, 'strong resume scores high', strongFit.overall_score, '>= 85', 2),
     scoreCheck(weakFit.overall_score <= 55, 'weak resume scores low', weakFit.overall_score, '<= 55', 2),
     scoreCheck(strongFit.overall_score - weakFit.overall_score >= 30, 'strong resume outranks weak resume', `${strongFit.overall_score} vs ${weakFit.overall_score}`, 'gap >= 30', 2),
@@ -433,8 +516,10 @@ function scoreFit(strongFit, weakFit) {
   return { score: Math.round((earned / possible) * 100), checks };
 }
 
-async function evaluateModel({ baseUrl, model, timeout, preferredLocations }) {
+async function evaluateModel({ provider, apiKey, baseUrl, model, timeout, preferredLocations }) {
   const extractor = new LMStudioExtractor({
+    provider,
+    apiKey,
     baseUrl,
     model,
     timeout,
@@ -443,14 +528,14 @@ async function evaluateModel({ baseUrl, model, timeout, preferredLocations }) {
     allowHybrid: true,
     allowOnsite: true,
   });
-  const scorer = new FitScorer({ baseUrl, model, timeout });
+  const scorer = new FitScorer({ provider, apiKey, baseUrl, model, timeout });
   const extractionResults = [];
 
   for (const fixture of extractionFixtures) {
     const started = Date.now();
     try {
       const { extracted, modelName, responseFormatType } = await extractor.extract(fixture.pending);
-      const scored = scoreExtraction(extracted, fixture.expect);
+      const scored = scoreExtraction(extracted, fixture.expect, fixture.pending.description);
       extractionResults.push({
         name: fixture.name,
         ok: scored.score >= 85,
@@ -502,6 +587,7 @@ async function evaluateModel({ baseUrl, model, timeout, preferredLocations }) {
   const allScores = [...extractionResults.map(r => r.score), fitResult.score];
   const overall = Math.round(allScores.reduce((sum, score) => sum + score, 0) / allScores.length);
   return {
+    provider,
     model,
     base_url: baseUrl,
     timeout_seconds: timeout,
@@ -514,7 +600,7 @@ async function evaluateModel({ baseUrl, model, timeout, preferredLocations }) {
 
 function printResult(result) {
   const status = result.ok ? 'PASS' : 'FAIL';
-  console.log(`${status} ${result.model} overall=${result.overall_score}/100`);
+  console.log(`${status} ${result.provider}/${result.model} overall=${result.overall_score}/100`);
   console.log(`Base URL: ${result.base_url}`);
   console.log('');
 
@@ -542,13 +628,17 @@ function printFailedChecks(checks = []) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const settings = readRuntimeSettings(args.dbPath);
+  const provider = args.provider || settings.llm_provider || 'lmstudio';
   const baseUrl = (args.baseUrl || settings.llm_base_url || 'http://127.0.0.1:1234').replace(/\/$/, '');
   const model = args.model || settings.llm_model;
   const timeout = args.timeout || Number(settings.llm_timeout || DEFAULT_TIMEOUT_SECONDS);
+  const apiKey = args.apiKey || (args.apiKeyFile ? readFileSync(args.apiKeyFile, 'utf8').trim() : (settings.llm_api_key || ''));
 
   assert.ok(model, 'No model configured. Pass --model or set one in Settings.');
 
   const result = await evaluateModel({
+    provider,
+    apiKey,
     baseUrl,
     model,
     timeout,

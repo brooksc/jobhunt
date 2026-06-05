@@ -44,6 +44,8 @@ function SettingsPage() {
     preferredMetros: s.preferred_metros || '',
     filterEnabled: parseBool(s.location_filter_enabled, true),
     llmDebugLevel: s.llm_debug_level || "errors",
+    llmPriceInput: s.llm_price_input || "0",
+    llmPriceOutput: s.llm_price_output || "0",
     availabilityAutoCheck: parseBool(s.availability_auto_check_enabled, true),
     availabilityIntervalDays: String(s.availability_auto_check_interval_days || 1),
     availabilityStaleDays: String(s.availability_stale_days || 21),
@@ -62,6 +64,8 @@ function SettingsPage() {
   const [preferredMetros, setPreferredMetros] = React.useState(defaults.preferredMetros);
   const [filterEnabled, setFilterEnabled] = React.useState(defaults.filterEnabled);
   const [llmDebugLevel, setLlmDebugLevel] = React.useState(defaults.llmDebugLevel);
+  const [llmPriceInput, setLlmPriceInput] = React.useState(defaults.llmPriceInput);
+  const [llmPriceOutput, setLlmPriceOutput] = React.useState(defaults.llmPriceOutput);
   const [availabilityAutoCheck, setAvailabilityAutoCheck] = React.useState(defaults.availabilityAutoCheck);
   const [availabilityIntervalDays, setAvailabilityIntervalDays] = React.useState(defaults.availabilityIntervalDays);
   const [availabilityStaleDays, setAvailabilityStaleDays] = React.useState(defaults.availabilityStaleDays);
@@ -99,6 +103,8 @@ function SettingsPage() {
     preferredMetros !== savedValues.preferredMetros ||
     filterEnabled !== savedValues.filterEnabled ||
     llmDebugLevel !== savedValues.llmDebugLevel ||
+    llmPriceInput !== savedValues.llmPriceInput ||
+    llmPriceOutput !== savedValues.llmPriceOutput ||
     availabilityAutoCheck !== savedValues.availabilityAutoCheck ||
     availabilityIntervalDays !== savedValues.availabilityIntervalDays ||
     availabilityStaleDays !== savedValues.availabilityStaleDays
@@ -125,6 +131,8 @@ function SettingsPage() {
           preferred_metros: next.preferredMetros,
           location_filter_enabled: String(next.filterEnabled),
           llm_debug_level: next.llmDebugLevel,
+          llm_price_input: next.llmPriceInput,
+          llm_price_output: next.llmPriceOutput,
           availability_auto_check_enabled: next.availabilityAutoCheck,
           availability_auto_check_interval_days: Number(next.availabilityIntervalDays),
           availability_stale_days: Number(next.availabilityStaleDays),
@@ -145,6 +153,8 @@ function SettingsPage() {
           location_allow_hybrid: String(next.allowHybrid),
           location_allow_onsite: String(next.allowOnsite),
           llm_debug_level: next.llmDebugLevel,
+          llm_price_input: next.llmPriceInput,
+          llm_price_output: next.llmPriceOutput,
           availability_auto_check_enabled: String(next.availabilityAutoCheck),
           availability_auto_check_interval_days: Number(next.availabilityIntervalDays),
           availability_stale_days: Number(next.availabilityStaleDays),
@@ -178,6 +188,8 @@ function SettingsPage() {
       preferredMetros,
       filterEnabled,
       llmDebugLevel,
+      llmPriceInput,
+      llmPriceOutput,
       availabilityAutoCheck,
       availabilityIntervalDays,
       availabilityStaleDays,
@@ -186,7 +198,7 @@ function SettingsPage() {
       saveSettings(next);
     }, 700);
     return () => clearTimeout(timer);
-  }, [llmProvider, llmBaseUrl, llmApiKey, llmModel, siteInterval, followupDays, preferredLocations, allowRemote, allowHybrid, allowOnsite, preferredMetros, filterEnabled, llmDebugLevel, availabilityAutoCheck, availabilityIntervalDays, availabilityStaleDays]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [llmProvider, llmBaseUrl, llmApiKey, llmModel, siteInterval, followupDays, preferredLocations, allowRemote, allowHybrid, allowOnsite, preferredMetros, filterEnabled, llmDebugLevel, llmPriceInput, llmPriceOutput, availabilityAutoCheck, availabilityIntervalDays, availabilityStaleDays]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function _callTestLlm(quick = false) {
     const res = await fetch("/api/settings/test-llm", {
@@ -252,7 +264,7 @@ function SettingsPage() {
     return !latest || j.capturedAt > latest ? j.capturedAt : latest;
   }, null);
 
-  const tabs = debugEnabled ? ['Settings', 'Debug'] : [];
+  const tabs = ['Settings', 'LLM', ...(debugEnabled ? ['Debug'] : [])];
 
   return (
     <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
@@ -282,6 +294,7 @@ function SettingsPage() {
         <div style={{ display: "flex", justifyContent: "flex-end", minHeight: 18, fontSize: 12, color: saveMsg?.kind === "error" ? "var(--st-rejected)" : saving || saveMsg?.kind === "saving" ? "var(--fg-mute)" : "var(--st-offer)" }}>
           {saving ? "Saving changes…" : saveMsg?.text || "All changes saved"}
         </div>
+        {activeTab !== 'llm' && (<>
         <Section title="Local service" desc="The local Jobhunt daemon that the Chrome extension talks to.">
           <Row>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
@@ -330,7 +343,9 @@ function SettingsPage() {
             </div>
           </div>
         </Section>
+        </>)}
 
+        {activeTab === 'llm' && (<>
         <Section title="LLM provider" desc="Model used for structured extraction from captured job pages.">
           <div>
             <div className="jh-label">Provider</div>
@@ -509,6 +524,12 @@ function SettingsPage() {
           </div>
         </Section>
 
+        <Section title="Cost estimate" desc="Estimate what processing all your jobs would cost on a paid provider. Local LLMs are free — set both prices to 0.">
+          <CostEstimate priceInput={llmPriceInput} setPriceInput={setLlmPriceInput} priceOutput={llmPriceOutput} setPriceOutput={setLlmPriceOutput} />
+        </Section>
+        </>)}
+
+        {activeTab !== 'llm' && (<>
         <Section title="Resumes" desc="Upload one or more resume PDFs (or paste text). Each job is scored 0-100 against every active resume so you can see which resume fits best.">
           <ResumeManager />
         </Section>
@@ -579,6 +600,7 @@ function SettingsPage() {
           <DKV k="Version" v={s.version || "unknown"} onDoubleClick={toggleDebug} title={debugEnabled ? "Double-click to disable debug mode" : "Double-click to enable debug mode"} />
           <DKV k="Build" v="local development" />
         </Section>
+        </>)}
       </div>
       )}
     </div>
@@ -901,6 +923,129 @@ function ResumeManager() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------
+// LLM cost estimate
+// ------------------------------------------------------------------
+
+function fmtUSD(n) {
+  if (!isFinite(n) || n === 0) return "$0.00";
+  if (n < 0.01) return "$" + n.toFixed(4);
+  if (n < 1) return "$" + n.toFixed(3);
+  return "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtNum(n) { return (Math.round(n) || 0).toLocaleString(); }
+
+function CostEstimate({ priceInput, setPriceInput, priceOutput, setPriceOutput }) {
+  const [cost, setCost] = React.useState(null);
+  const [costErr, setCostErr] = React.useState(false);
+  const [models, setModels] = React.useState(null); // null=unloaded, []=loaded/empty
+  const [loadingModels, setLoadingModels] = React.useState(false);
+
+  React.useEffect(() => {
+    fetch("/api/llm-cost").then(r => r.json()).then(setCost).catch(() => setCostErr(true));
+  }, []);
+
+  async function loadModels() {
+    if (models || loadingModels) return;
+    setLoadingModels(true);
+    try {
+      const r = await fetch("/api/llm-pricing");
+      const j = await r.json();
+      setModels(j.models || []);
+    } catch {
+      setModels([]);
+    } finally {
+      setLoadingModels(false);
+    }
+  }
+
+  function onPickModel(e) {
+    const id = e.target.value;
+    const m = (models || []).find(x => x.id === id);
+    if (m) {
+      setPriceInput(String(m.input_per_1m));
+      setPriceOutput(String(m.output_per_1m));
+    }
+  }
+
+  const pin = parseFloat(priceInput) || 0;
+  const pout = parseFloat(priceOutput) || 0;
+  const costOf = (g) => g ? (g.input_tokens / 1e6) * pin + (g.output_tokens / 1e6) * pout : 0;
+
+  const priceField = (label, value, set) => (
+    <div style={{ flex: 1 }}>
+      <div className="jh-label">{label}</div>
+      <div className="jh-input" style={{ paddingRight: 8 }}>
+        <span style={{ color: "var(--fg-mute)" }}>$</span>
+        <input type="number" min="0" step="0.01" value={value} onChange={e => set(e.target.value)}
+          style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "inherit", fontFamily: "var(--font-mono)" }} />
+        <span style={{ color: "var(--fg-mute)", fontSize: 11 }}>/ 1M tokens</span>
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      <div className="jh-row" style={{ gap: 16 }}>
+        {priceField("Input price", priceInput, setPriceInput)}
+        {priceField("Output price", priceOutput, setPriceOutput)}
+      </div>
+
+      <div style={{ marginTop: 8 }}>
+        <div className="jh-label">Look up a provider's price</div>
+        <input list="jh-or-models" placeholder="Search a model, e.g. google/gemini-2.5-flash" onFocus={loadModels} onChange={onPickModel}
+          style={{ width: "100%", height: 30, padding: "0 8px", background: "var(--bg-elev)", border: "1px solid var(--border)", borderRadius: "var(--r-2)", color: "var(--fg)", fontFamily: "var(--font-mono)", fontSize: 12 }} />
+        <datalist id="jh-or-models">
+          {(models || []).map(m => <option key={m.id} value={m.id}>{m.name} — ${m.input_per_1m}/${m.output_per_1m} per 1M</option>)}
+        </datalist>
+        <div style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 4 }}>
+          {loadingModels ? "Loading prices from OpenRouter…"
+            : models && models.length ? `${models.length} models from OpenRouter — picking one fills the prices above (edit freely; buying direct may differ).`
+            : models && !models.length ? "Couldn't reach OpenRouter — enter prices manually from the provider's pricing page."
+            : "Live prices via OpenRouter; or type prices in manually."}
+        </div>
+      </div>
+
+      {costErr && <div style={{ marginTop: 12, fontSize: 12, color: "var(--st-rejected)" }}>Couldn't load cost data.</div>}
+      {cost && !cost.has_data && (
+        <div style={{ marginTop: 12, fontSize: 12.5, color: "var(--fg-mute)" }}>
+          No jobs captured yet. Set prices here to estimate future cost — and revisit this to gauge your savings vs. running locally as you add jobs.
+        </div>
+      )}
+
+      {cost && cost.has_data && (() => {
+        const allExt = costOf(cost.all.extraction);
+        const allFit = costOf(cost.all.fit);
+        const allTotal = allExt + allFit;
+        const remTotal = costOf(cost.remaining.extraction) + costOf(cost.remaining.fit);
+        const perJob = costOf(cost.per_job.extraction) + costOf(cost.per_job.fit);
+        const allTokens = cost.all.extraction.input_tokens + cost.all.extraction.output_tokens + cost.all.fit.input_tokens + cost.all.fit.output_tokens;
+        const row = (label, value, opts = {}) => (
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderTop: opts.divider ? "1px solid var(--border)" : "none", fontSize: opts.strong ? 13 : 12.5 }}>
+            <span style={{ color: opts.strong ? "var(--fg-strong)" : "var(--fg-mute)", fontWeight: opts.strong ? 600 : 400 }}>{label}</span>
+            <span style={{ color: opts.strong ? "var(--fg)" : "var(--fg-mute)", fontWeight: opts.strong ? 700 : 400, fontFamily: "var(--font-mono)" }}>{value}</span>
+          </div>
+        );
+        return (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 11.5, color: "var(--fg-faint)", marginBottom: 6 }}>
+              {fmtNum(cost.jobs_total)} jobs · {cost.resumes_active} active resume{cost.resumes_active !== 1 ? "s" : ""} · {fmtNum(cost.fit_pairs_total)} fit evaluations · ~{fmtNum(allTokens)} tokens total
+            </div>
+            {row("Extraction — all jobs", fmtUSD(allExt))}
+            {row("Fit scoring — all jobs", fmtUSD(allFit))}
+            {row("Process everything (upfront)", fmtUSD(allTotal), { strong: true, divider: true })}
+            {row(`Still to do (${fmtNum(cost.jobs_total - cost.jobs_extracted)} jobs, ${fmtNum(cost.fit_pairs_total - cost.fit_pairs_done)} pairs)`, fmtUSD(remTotal), { divider: true })}
+            {row("Average per job", fmtUSD(perJob), { divider: true })}
+            <div style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 8, lineHeight: 1.5 }}>
+              Rough estimate: ~{cost.chars_per_token} chars/token, prompt overhead included, output sizes from your stored results. Local LLMs cost $0. Actual provider billing will vary.
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

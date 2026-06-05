@@ -45,6 +45,8 @@ export const SETTINGS_DEFAULTS = {
   availability_auto_check_interval_days: '1',
   availability_stale_days: '21',
   availability_last_auto_check_at: '',
+  llm_price_input: '0',
+  llm_price_output: '0',
 };
 
 const SCHEMA = `

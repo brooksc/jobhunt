@@ -16,7 +16,7 @@ import {
   runExtraction, runExtractionForSelected,
   parseBoolSetting, makeExtractorFromSettings, makeScorerFromSettings,
   resolveProviderBaseUrl, ANTHROPIC_MODELS, GOOGLE_MODELS,
-  MAX_DESCRIPTION_CHARS, MAX_RESUME_CHARS,
+  MAX_DESCRIPTION_CHARS, MAX_RESUME_CHARS, promptOverheadChars,
 } from './extract.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1170,6 +1170,120 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
     }
   });
 
+  // Estimated input/output token totals to process all jobs (extraction + fit
+  // scoring against active resumes). Cost is applied client-side from prices.
+  app.get('/api/llm-cost', (req, res) => {
+    try {
+      const d = db.initDb(dbPath);
+      const settings = db.getSettings(d);
+      const CPT = 4;
+      const { extractChars, fitChars } = promptOverheadChars({
+        preferredLocations: settings.preferred_locations,
+        allowRemote: settings.location_allow_remote !== 'false',
+        allowHybrid: settings.location_allow_hybrid !== 'false',
+        allowOnsite: settings.location_allow_onsite !== 'false',
+      });
+
+      const jobRows = d.prepare(`
+        SELECT jobs.extraction_status AS status,
+          LENGTH(COALESCE(NULLIF(captures.cleaned_description,''), NULLIF(captures.selected_text,''), captures.visible_text)) AS jd_chars,
+          LENGTH(jobs.extracted_json) AS extracted_chars
+        FROM jobs JOIN captures ON captures.id = jobs.capture_id`).all();
+      const jobsTotal = jobRows.length;
+      const resumes = d.prepare("SELECT char_count FROM resumes WHERE active=1").all();
+      const resumesActive = resumes.length;
+
+      // Output-size proxies from real stored data, with fallbacks when empty.
+      const avgExtractedChars = Math.round(d.prepare("SELECT AVG(LENGTH(extracted_json)) AS a FROM jobs WHERE extraction_status='succeeded' AND extracted_json IS NOT NULL").get().a || 1200);
+      const avgFitOutputChars = Math.round(d.prepare("SELECT AVG(LENGTH(fit_score_json)) AS a FROM job_fit_scores WHERE fit_status='succeeded' AND fit_score_json IS NOT NULL").get().a || 900);
+      const doneFitPairs = d.prepare("SELECT COUNT(*) AS c FROM job_fit_scores WHERE fit_status='succeeded'").get().c;
+
+      const clamp = (n, max) => Math.min(n || 0, max);
+      let allExtIn = 0, allExtOut = 0, remExtIn = 0, remExtOut = 0, jdCharsSum = 0;
+      for (const j of jobRows) {
+        const inChars = extractChars + clamp(j.jd_chars, MAX_DESCRIPTION_CHARS);
+        allExtIn += inChars / CPT;
+        allExtOut += (j.extracted_chars || avgExtractedChars) / CPT;
+        jdCharsSum += (j.jd_chars || 0);
+        if (j.status !== 'succeeded') {
+          remExtIn += inChars / CPT;
+          remExtOut += avgExtractedChars / CPT; // not yet extracted → use avg output size
+        }
+      }
+
+      let allFitIn = 0, allFitOut = 0, resumeCharsSum = 0;
+      for (const r of resumes) resumeCharsSum += (r.char_count || 0);
+      for (const j of jobRows) {
+        const fields = j.extracted_chars || avgExtractedChars;
+        for (const r of resumes) {
+          allFitIn += (fitChars + fields + clamp(r.char_count, MAX_RESUME_CHARS)) / CPT;
+          allFitOut += avgFitOutputChars / CPT;
+        }
+      }
+      const fitPairsTotal = jobsTotal * resumesActive;
+      const remFitPairs = Math.max(0, fitPairsTotal - doneFitPairs);
+      const remFitIn = fitPairsTotal ? (allFitIn / fitPairsTotal) * remFitPairs : 0;
+      const remFitOut = fitPairsTotal ? (allFitOut / fitPairsTotal) * remFitPairs : 0;
+
+      const r0 = Math.round;
+      const perJob = (n) => (jobsTotal ? r0(n / jobsTotal) : 0);
+      res.json({
+        has_data: jobsTotal > 0,
+        jobs_total: jobsTotal,
+        jobs_extracted: jobRows.filter(j => j.status === 'succeeded').length,
+        resumes_active: resumesActive,
+        fit_pairs_total: fitPairsTotal,
+        fit_pairs_done: doneFitPairs,
+        chars_per_token: CPT,
+        avg_jd_chars: jobsTotal ? Math.round(jdCharsSum / jobsTotal) : 0,
+        avg_resume_chars: resumesActive ? Math.round(resumeCharsSum / resumesActive) : 0,
+        all: {
+          extraction: { input_tokens: r0(allExtIn), output_tokens: r0(allExtOut) },
+          fit: { input_tokens: r0(allFitIn), output_tokens: r0(allFitOut) },
+        },
+        remaining: {
+          extraction: { input_tokens: r0(remExtIn), output_tokens: r0(remExtOut) },
+          fit: { input_tokens: r0(remFitIn), output_tokens: r0(remFitOut) },
+        },
+        per_job: {
+          extraction: { input_tokens: perJob(allExtIn), output_tokens: perJob(allExtOut) },
+          fit: { input_tokens: perJob(allFitIn), output_tokens: perJob(allFitOut) },
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ error: String(err.message) });
+    }
+  });
+
+  // Live model prices from OpenRouter (USD per 1M tokens). Proxied to avoid
+  // browser CORS; degrades to an empty list so the UI falls back to manual entry.
+  app.get('/api/llm-pricing', async (req, res) => {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6000);
+      let data;
+      try {
+        const r = await fetch('https://openrouter.ai/api/v1/models', { signal: controller.signal });
+        if (!r.ok) throw new Error(`OpenRouter HTTP ${r.status}`);
+        data = /** @type {any} */ (await r.json());
+      } finally {
+        clearTimeout(timer);
+      }
+      const models = (data.data || [])
+        .map(m => {
+          const inP = Number(m.pricing?.prompt);
+          const outP = Number(m.pricing?.completion);
+          if (!Number.isFinite(inP) || !Number.isFinite(outP)) return null;
+          return { id: m.id, name: m.name || m.id, input_per_1m: +(inP * 1e6).toFixed(4), output_per_1m: +(outP * 1e6).toFixed(4) };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.id.localeCompare(b.id));
+      res.json({ models });
+    } catch (err) {
+      res.json({ models: [], error: String(err.message) });
+    }
+  });
+
   return app;
 }
 
@@ -1496,6 +1610,8 @@ function buildUiData(dbPath) {
       site_review_interval_days: parseInt(settingsData.site_review_interval_days || '14'),
       followup_default_days: parseInt(settingsData.followup_default_days || '7'),
       job_description_markdown: settingsData.job_description_markdown || '',
+      llm_price_input: settingsData.llm_price_input || '0',
+      llm_price_output: settingsData.llm_price_output || '0',
       llm_queue_paused: settingsData.llm_queue_paused || 'false',
       llm_debug_level: settingsData.llm_debug_level || 'errors',
       preferred_locations: settingsData.preferred_locations || '',

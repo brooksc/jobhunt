@@ -12,7 +12,13 @@ Local-first job tracking. A Chrome extension captures job postings from any site
 
 1. Download `Jobhunt-0.2.0.dmg` from the [latest release](https://github.com/brooksc/jobhunt/releases/latest).
 2. Open the DMG and drag **Jobhunt** to Applications.
-3. First launch: right-click the app → **Open** to bypass Gatekeeper (the app is unsigned).
+3. First launch: right-click the app → **Open** to bypass Gatekeeper.
+
+> **The app is not yet signed by Apple.** macOS may show a "damaged" or "cannot be opened" error. If that happens, run this once in Terminal:
+> ```bash
+> xattr -cr /Applications/Jobhunt.app
+> ```
+> Then launch normally.
 
 ### Chrome Extension
 

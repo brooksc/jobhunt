@@ -1418,9 +1418,9 @@ function buildUiData(dbPath) {
   };
 }
 
-const DB_STATUS_TO_UI = { interested: 'saved', interviewing: 'interview', closed: 'archived', ignored: 'archived' };
+export const DB_STATUS_TO_UI = { interested: 'saved', interviewing: 'interview', closed: 'archived', ignored: 'archived' };
 
-function buildMetrics(jobs, sites, dupes, needsActionCount) {
+export function buildMetrics(jobs, sites, dupes, needsActionCount) {
   const counts = { saved: 0, applied: 0, interview: 0, offers: 0, rejected: 0, archived: 0, duplicates: 0, pendingExtraction: 0, failedExtraction: 0 };
   for (const job of jobs) {
     const status = DB_STATUS_TO_UI[job.status] || job.status;

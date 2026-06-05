@@ -3,37 +3,36 @@ layout: default
 title: Privacy Policy
 ---
 
-# Privacy Policy — Jobhunt Capture
+# Privacy Policy — Jobhunt
 
-**Last updated: June 2, 2026**
+**Last updated: June 2026**
 
 ## Overview
 
-Jobhunt Capture is a Chrome extension that saves job posting pages to a locally-running job tracker app on your own machine. It does not collect, transmit, or store any data on remote servers.
+Jobhunt is a local-first application. It does not collect, transmit, or store any personal data on remote servers. Everything stays on your machine.
 
-## Data collected
+## What the app collects
 
-When you click the toolbar button or use the right-click menu, the extension reads the following from the current browser tab:
+Jobhunt stores data you explicitly provide: job posting content captured via the Chrome extension, your resume text (pasted during onboarding), and your location preferences and settings. All of this is stored in a local SQLite database on your Mac under `~/.config/jobhunt/`.
 
-- Page title and URL
-- Visible page text and structured data (JSON-LD)
-- Any text you have selected
-- Any note you choose to type before saving
+## What the Chrome extension collects
 
-## How data is used
-
-All captured data is sent exclusively to a companion app running on your own machine via localhost (`http://127.0.0.1`). It is stored in a local database under your control. No data is sent to any external server, third party, or cloud service.
+When you click the toolbar button, the extension reads the current tab's URL, page title, visible text, and any structured data (JSON-LD) on the page. This content is sent only to the Jobhunt app running locally on your machine via `http://127.0.0.1`. Nothing is sent to any external server.
 
 If the local app is not running, captures are held temporarily in Chrome's local extension storage (`chrome.storage.local`) on your device until you sync or clear them.
 
+## AI processing
+
+Jobhunt sends job description text to an AI model for extraction and fit scoring. By default this is a local model via LM Studio or Ollama — no data leaves your machine. If you configure a cloud provider (OpenAI, Anthropic, Google, OpenRouter), job description text is sent to that provider under their own privacy policy. Your resume is included in fit-scoring prompts.
+
 ## Data sharing
 
-We do not sell, share, or transfer any user data to third parties for any purpose.
+We do not sell, share, or transfer any user data to third parties for any purpose. The app has no analytics, no telemetry, and no crash reporting.
 
 ## Data retention
 
-All data is stored locally on your device. You can delete it at any time by clearing the extension's capture queue or removing the local database.
+All data is stored locally on your device. You can delete it at any time by removing the database file or uninstalling the app.
 
 ## Contact
 
-Questions? Open an issue at https://github.com/brooksc/jobhunt
+Questions? Open an issue at [github.com/brooksc/jobhunt/issues](https://github.com/brooksc/jobhunt/issues) or visit [jobhunt-app.com](https://jobhunt-app.com).

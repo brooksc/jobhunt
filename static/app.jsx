@@ -376,7 +376,7 @@ function RouteActions({ route, onProcessExtractions, processingExtractions, selC
     const needsExtraction = jobs.filter(j => j.extraction?.status === 'pending' || j.extraction?.status === 'fail').length;
     const needsFit = jobs.filter(j => j.extraction?.status === 'ok' && j.fit?.score == null).length;
     const total = needsExtraction + needsFit;
-    const hasResume = Boolean((window.JH_SETTINGS || {}).resume_text);
+    const hasResume = (window.JH_RESUMES || []).some(r => r.active);
     const disabled = processingExtractions || total === 0 || (!hasResume && needsExtraction === 0);
 
     const parts = [];

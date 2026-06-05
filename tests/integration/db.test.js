@@ -8,7 +8,10 @@ import {
   getLlmRequestAttempts, resetLlmRequestsForManualRun, getOutstandingLlmRequests,
   markExtractionSucceeded, markDataQualityReviewed, clearDataQualityReviewed, queueBulkLlmJobs,
   decideDuplicateGroup, detectDomainDuplicateJobs, decideDuplicateLinks,
-  markJobRead, countUnreadJobs, markFitSucceeded,
+  markJobRead, countUnreadJobs, markFitSucceeded, markFitFailed,
+  addResume, listResumes, getActiveResumes, getResume, renameResume,
+  updateResumeText, setResumeActive, deleteResume,
+  queueFitScoreForJob, queueFitScoresForAllResumes, getLlmRequestsByIds,
 } from '../../server/db.js';
 import { runExtractionForSelected } from '../../server/extract.js';
 import { tempDbPath, cleanupDb, CAPTURE, CAPTURE2 } from '../helpers.js';
@@ -590,17 +593,19 @@ describe('bulk LLM queueing', () => {
     assert.equal(request.attempt, 1);
   });
 
-  it('queues fit scoring only for extracted jobs', () => {
+  it('queues fit scoring only for extracted jobs, one request per active resume', () => {
+    addResume(dbPath, { name: 'R1', text: 'resume one text' });
+    addResume(dbPath, { name: 'R2', text: 'resume two text' });
     const result = queueBulkLlmJobs([completeJobId, missingJobId], 'fit_score', dbPath);
     assert.equal(result.requested, 2);
-    assert.equal(result.queued, 1);
+    assert.equal(result.queued, 1);   // only the extracted job
     assert.equal(result.skipped, 1);
+    assert.equal(result.request_ids.length, 2); // fanned out across 2 resumes
 
     const db = initDb(dbPath);
-    const request = db.prepare("SELECT request_type, status, attempt FROM llm_requests WHERE job_id=? AND request_type='fit_score'").get(completeJobId);
-    assert.equal(request.request_type, 'fit_score');
-    assert.equal(request.status, 'queued');
-    assert.equal(request.attempt, 1);
+    const requests = db.prepare("SELECT resume_id, status, attempt FROM llm_requests WHERE job_id=? AND request_type='fit_score'").all(completeJobId);
+    assert.equal(requests.length, 2);
+    assert.ok(requests.every(r => r.resume_id && r.status === 'queued' && r.attempt === 1));
   });
 });
 
@@ -710,7 +715,6 @@ describe('LLM queue retry limit', () => {
     const extractSummary = await runExtractionForSelected({
       dbPath,
       requestIds: [extractRequestId],
-      resume: '',
       extractor: {
         baseUrl: 'http://127.0.0.1:1234',
         model: 'fake-extractor',
@@ -749,12 +753,12 @@ describe('LLM queue retry limit', () => {
     assert.equal(extracted.location, 'Remote');
     assert.equal(db.prepare("SELECT status FROM llm_requests WHERE id=?").get(extractRequestId).status, 'succeeded');
 
+    addResume(dbPath, { name: 'TPM resume', text: 'Principal technical program manager resume' });
     const fitQueue = queueBulkLlmJobs([selectedJobId], 'fit_score', dbPath);
     const fitRequestId = fitQueue.request_ids[0];
     const fitSummary = await runExtractionForSelected({
       dbPath,
       requestIds: [fitRequestId],
-      resume: 'Principal technical program manager resume',
       extractor: null,
       scorer: {
         baseUrl: 'http://127.0.0.1:1234',
@@ -794,7 +798,8 @@ describe('unread badge tracking', () => {
 
   it('markFitSucceeded sets unread=1 and countUnreadJobs reflects it', () => {
     const { job_id } = insertCapture(CAPTURE, dbPath);
-    markFitSucceeded(job_id, {
+    const resume = addResume(dbPath, { name: 'R', text: 'resume text' });
+    markFitSucceeded(job_id, resume.id, {
       overall_score: 75, summary: 'Good fit.', dimensions: [],
       requirements_met: [], requirements_not_met: [],
     }, dbPath, null, 'test-model');
@@ -802,6 +807,7 @@ describe('unread badge tracking', () => {
     assert.equal(countUnreadJobs(dbPath), 1);
     const db = initDb(dbPath);
     assert.equal(db.prepare('SELECT unread FROM jobs WHERE id=?').get(job_id).unread, 1);
+    assert.equal(db.prepare('SELECT fit_score FROM jobs WHERE id=?').get(job_id).fit_score, 75);
   });
 
   it('markJobRead clears unread and countUnreadJobs decrements', () => {

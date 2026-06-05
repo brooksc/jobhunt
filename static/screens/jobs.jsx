@@ -981,7 +981,7 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
                 {col("fit") && (
                   <td className="col-mono" style={{ textAlign: "right" }}>
                     {j.fit?.status === "succeeded" && j.fit?.score != null ? (
-                      <span style={{ color: jobFitColor(j.fit.score), fontWeight: 600 }} title={j.fit.summary || undefined}>{j.fit.score}</span>
+                      <span style={{ color: jobFitColor(j.fit.score), fontWeight: 600 }} title={j.fit.bestResumeName ? `Best: ${j.fit.bestResumeName}${j.fit.summary ? ` — ${j.fit.summary}` : ""}` : (j.fit.summary || undefined)}>{j.fit.score}</span>
                     ) : j.fit?.status === "pending" && j.fit?.score != null ? (
                       <span style={{ color: jobFitColor(j.fit.score), fontWeight: 600, opacity: 0.65 }} title="Previous fit score; re-scoring queued">{j.fit.score}</span>
                     ) : j.fit?.status === "pending" ? (

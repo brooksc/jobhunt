@@ -10,6 +10,7 @@ import {
   markLlmRequestRunning,
   resetJobExtraction,
   startLlmRequestAttempt,
+  addResume,
 } from '../../server/db.js';
 import { tempDbPath, cleanupDb, CAPTURE, CAPTURE2 } from '../helpers.js';
 
@@ -392,7 +393,8 @@ describe('extraction provenance API serialization', () => {
     const db = initDb(dbPath);
     const jobId = db.prepare('SELECT id FROM jobs WHERE capture_id=?').get((await created.json()).capture_id).id;
 
-    markFitSucceeded(jobId, {
+    const resume = addResume(dbPath, { name: 'Platform resume', text: 'platform program manager' });
+    markFitSucceeded(jobId, resume.id, {
       overall_score: 82,
       summary: 'Strong platform program fit.',
       dimensions: [
@@ -411,8 +413,16 @@ describe('extraction provenance API serialization', () => {
     assert.equal(job.fit_status, 'succeeded');
     assert.equal(job.fit_score_json.summary, 'Strong platform program fit.');
     assert.equal(job.fit_score_json.model, 'fit-model');
+    assert.equal(job.fit_score_json.best_resume_name, 'Platform resume');
     assert.deepEqual(job.fit_score_json.requirements_met, ['Program leadership']);
     assert.deepEqual(job.fit_score_json.requirements_not_met, ['Domain-specific compliance']);
+
+    // Per-resume breakdown is exposed for the detail panel.
+    assert.equal(job.fit_scores.length, 1);
+    assert.equal(job.fit_scores[0].resume_id, resume.id);
+    assert.equal(job.fit_scores[0].resume_name, 'Platform resume');
+    assert.equal(job.fit_scores[0].score, 82);
+    assert.equal(job.fit_scores[0].status, 'succeeded');
   });
 
   it('exposes failed attempt provenance through the attempts endpoint', async () => {
@@ -526,10 +536,11 @@ describe('bulk LLM API', () => {
     assert.equal(body.queued, 1);
     assert.equal(body.skipped, 1);
 
+    addResume(dbPath, { name: 'Bulk resume', text: 'program manager resume' });
     res = await post('/api/jobs/bulk/llm', { job_ids: [completeJobId, missingJobId], mode: 'fit_score' });
     assert.equal(res.status, 200);
     body = await res.json();
-    assert.equal(body.queued, 1);
+    assert.equal(body.queued, 1);   // only the extracted job
     assert.equal(body.skipped, 1);
 
     res = await post('/api/jobs/bulk/llm', { job_ids: [completeJobId], mode: 'unknown' });

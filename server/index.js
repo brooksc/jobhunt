@@ -70,7 +70,7 @@ program.command('extract')
     const limit = parseInt(opts.limit || '10');
 
     console.log(`Extracting up to ${limit} jobs...`);
-    const summary = await runExtraction({ dbPath, extractor, limit, scorer, resume: settings.resume_text || '' });
+    const summary = await runExtraction({ dbPath, extractor, limit, scorer });
     console.log(`Done: ${summary.processed} processed, ${summary.succeeded} succeeded, ${summary.failed} failed`);
   });
 
@@ -137,7 +137,7 @@ jobsCmd.command('queue-ai <jobNumbers>')
       const extractor = makeExtractorFromSettings(settings);
       const scorer = makeScorerFromSettings(settings);
       const limit = parseInt(opts.limit || '100');
-      const summary = await runExtraction({ dbPath, extractor, limit, scorer, resume: settings.resume_text || '' });
+      const summary = await runExtraction({ dbPath, extractor, limit, scorer });
       console.log(`Processed: ${summary.processed} processed, ${summary.succeeded} succeeded, ${summary.failed} failed`);
     }
   });

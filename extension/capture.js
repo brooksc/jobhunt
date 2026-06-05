@@ -38,7 +38,7 @@
   }
 
   function collectStructuredData(doc) {
-    return Array.from(doc.querySelectorAll('script[type="application/ld+json"]'))
+    const fromDoc = Array.from(doc.querySelectorAll('script[type="application/ld+json"]'))
       .map((script) => script.textContent || "")
       .map((text) => text.trim())
       .filter(Boolean)
@@ -49,6 +49,38 @@
           return [];
         }
       });
+
+    // Also collect JSON-LD from same-origin iframes (e.g. iCIMS custom career pages).
+    const fromIframes = [];
+    for (const iframe of doc.querySelectorAll('iframe')) {
+      try {
+        const iDoc = iframe.contentDocument;
+        if (!iDoc) continue;
+        const items = Array.from(iDoc.querySelectorAll('script[type="application/ld+json"]'))
+          .map((s) => (s.textContent || "").trim())
+          .filter(Boolean)
+          .flatMap((t) => { try { return [JSON.parse(t)]; } catch (_) { return []; } });
+        fromIframes.push(...items);
+      } catch (_) {}
+    }
+
+    return [...fromDoc, ...fromIframes];
+  }
+
+  function collectIframeText(doc) {
+    // Extract visible text from same-origin iframes. Some job boards (e.g. iCIMS custom
+    // career portals) render the actual job content inside an iframe while the outer page
+    // only contains navigation/branding, causing body.innerText to miss all job details.
+    const parts = [];
+    for (const iframe of doc.querySelectorAll('iframe')) {
+      try {
+        const iDoc = iframe.contentDocument;
+        if (!iDoc || !iDoc.body) continue;
+        const text = (iDoc.body.innerText || "").trim();
+        if (text.length > 300) parts.push(text);
+      } catch (_) {}
+    }
+    return parts.join('\n\n');
   }
 
   function collectVisibleText(doc, win) {
@@ -86,6 +118,16 @@
       return combined.length > 200
         ? `${combined}\n\n---\n\n${nextjsText}`
         : nextjsText;
+    }
+
+    // Supplement with same-origin iframe content. Some job boards (e.g. iCIMS custom
+    // career portals) embed the entire job description in a same-origin iframe while
+    // the outer page contains only navigation/branding.
+    const iframeText = collectIframeText(doc);
+    if (iframeText) {
+      return combined.length > 300
+        ? `${combined}\n\n---\n\n${iframeText}`
+        : iframeText;
     }
 
     return combined;
@@ -180,14 +222,34 @@
     const structuredData = Array.isArray(payload.structured_data) ? payload.structured_data : [];
     const structuredText = extractStructuredDescriptions(structuredData);
     const text = `${payload.page_title || ""}\n${visibleText}\n${selectedText}\n${structuredText}`;
+
+    const titleVal = (payload.page_title || "").trim() || null;
+
+    const locMatch = text.match(
+      /\b(Remote(?:\s*[-–]\s*(?:United States|USA|US|Canada))?|Hybrid|Onsite|On-site|Hiring Remotely|[A-Z][a-zA-Z\s]{1,20},\s*(?:[A-Z]{2}|[A-Z][a-z]{3,}))\b/
+    );
+    const locationVal = locMatch ? locMatch[1].trim() : null;
+
+    const salaryMatch = text.match(
+      /\$[\d,]+(?:\.?\d+)?[kK]?(?:\/(?:yr|year))?\s*(?:[-–—]|to)\s*\$[\d,]+(?:\.?\d+)?[kK]?(?:\/(?:yr|year))?(?:\s*(?:USD|annually))?|\$[\d,]+[kK]|\b\d{2,3}[kK]\s*[-–—]\s*\d{2,3}[kK]\b|\b\d{2,3},\d{3}\s*[-–—]\s*\d{2,3},\d{3}\s*USD/i
+    );
+    const salaryVal = salaryMatch ? salaryMatch[0].trim() : null;
+
+    let remoteVal = null;
+    if (/\b(fully\s+remote|work\s+from\s+home|WFH|telecommute|hiring\s+remotely|0\s+days?\s*\/\s*week)\b/i.test(text)) remoteVal = "Remote";
+    else if (/\bhybrid\b/i.test(text)) remoteVal = "Hybrid";
+    else if (/\b(onsite|on-site|in-office)\b/i.test(text)) remoteVal = "Onsite";
+    else if (/\bremote\b/i.test(text)) remoteVal = "Remote";
+
     return {
-      title: Boolean((payload.page_title || "").trim()) || /\b(program|manager|engineer|developer|director|principal|staff)\b/i.test(text),
-      location: /\b(remote|hybrid|onsite|on-site|united states|hiring remotely|[A-Z][a-z]+,\s*[A-Z]{2})\b/i.test(text),
-      salary: /(?:\$|USD|base salary|pay range|compensation|salary|[0-9]{2,3}k)/i.test(text),
-      remote: /\b(remote|hybrid|work from home|telecommute|days?\s*\/\s*week\s+in-office|hiring remotely)\b/i.test(text),
+      titleVal,
+      locationVal,
+      salaryVal,
+      remoteVal,
       structuredData: structuredData.length,
       selectedText: Boolean(selectedText.trim()),
       visibleChars: visibleText.length,
+      url: payload.url || "",
     };
   }
 
@@ -207,25 +269,44 @@
       ].join(";");
 
       const checks = [
-        ["Title", preflight.title],
-        ["Location", preflight.location],
-        ["Salary", preflight.salary],
-        ["Remote/work mode", preflight.remote],
+        ["Title", preflight.titleVal],
+        ["Location", preflight.locationVal],
+        ["Salary", preflight.salaryVal],
+        ["Remote/work mode", preflight.remoteVal],
       ];
-      const rows = checks.map(([label, ok]) => `
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 0;">
-          <span>${label}</span>
-          <strong style="color:${ok ? "#86efac" : "#fca5a5"}">${ok ? "visible" : "missing"}</strong>
+      function truncate(s, n) { return s.length > n ? s.slice(0, n - 1) + "…" : s; }
+      const rows = checks.map(([label, val]) => `
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:3px 0;">
+          <span style="white-space:nowrap;color:#cbd5e1;font-size:12px;line-height:1.4;">${label}</span>
+          <span style="color:${val ? "#4ade80" : "#f87171"};font-size:12px;line-height:1.4;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;">${val ? truncate(val, 38) : "missing"}</span>
         </div>
       `).join("");
+      const issueTitle = encodeURIComponent(`Capture issue: ${preflight.titleVal || preflight.url}`);
+      const issueBody = encodeURIComponent([
+        `**Job URL:** ${preflight.url}`,
+        ``,
+        `**Preflight results:**`,
+        `- Title: ${preflight.titleVal || "(missing)"}`,
+        `- Location: ${preflight.locationVal || "(missing)"}`,
+        `- Salary: ${preflight.salaryVal || "(missing)"}`,
+        `- Remote: ${preflight.remoteVal || "(missing)"}`,
+        ``,
+        `**Capture stats:** ${preflight.visibleChars.toLocaleString()} visible chars · ${preflight.structuredData} structured item${preflight.structuredData === 1 ? "" : "s"}`,
+        ``,
+        `**What was wrong:**`,
+        `<!-- Describe what was missing or incorrect -->`,
+      ].join("\n"));
+      const issueUrl = `https://github.com/brooksc/jobhunt/issues/new?title=${issueTitle}&body=${issueBody}`;
+
       root.innerHTML = `
         <div style="font-weight:700;font-size:14px;margin-bottom:8px;">Jobhunt capture preflight</div>
         ${rows}
         <div style="margin-top:8px;color:#9ca3af;font-size:12px;line-height:1.35;">
           ${preflight.visibleChars.toLocaleString()} visible chars · ${preflight.structuredData} structured item${preflight.structuredData === 1 ? "" : "s"}${preflight.selectedText ? " · selected text" : ""}
+          · <a href="${issueUrl}" target="_blank" rel="noopener" style="color:#6b7280;text-decoration:underline;cursor:pointer;">Wrong data?</a>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;">
-          <span data-jh-countdown style="font-size:13px;color:#86efac;font-weight:600;">Saving in 5…</span>
+          <span data-jh-countdown style="font-size:13px;color:#86efac;font-weight:600;line-height:1.4;">Saving in 5…</span>
           <div style="display:flex;gap:8px;">
             <button data-jh-cancel style="background:transparent;color:#d1d5db;border:1px solid #4b5563;border-radius:6px;padding:6px 10px;cursor:pointer;">Cancel</button>
             <button data-jh-open style="background:transparent;color:#93c5fd;border:1px solid #3b82f6;border-radius:6px;padding:6px 10px;cursor:pointer;">Open in app</button>

@@ -142,7 +142,7 @@ function Sidebar({ route, setRoute, setSavedViewName, savedViewName, theme, them
     { id: "needs", label: "Needs Action", icon: "Bell", count: metrics.needsAction || 0 },
     { id: "llm-queue", label: "LLM Queue", icon: "Inbox", count: queueCount || undefined, warn: queuePaused },
     { id: "sites", label: "Sites", icon: "Globe", count: metrics.sites || window.JH_SITES.length },
-    { id: "duplicates", label: "Duplicates", icon: "Copy", count: metrics.duplicateGroups || window.JH_DUPES.length },
+    { id: "duplicates", label: "Duplicate review", icon: "Copy", count: metrics.duplicateGroups || window.JH_DUPES.length },
   ];
   return (
     <aside className="jh-side">
@@ -286,16 +286,39 @@ function Sidebar({ route, setRoute, setSavedViewName, savedViewName, theme, them
   );
 }
 
+const DEMO_COLUMNS = ["status", "company", "title", "fit", "location", "salaryMin", "salaryMax"];
+const DEMO_SORT = JSON.stringify({ key: "fitScore", dir: "desc" });
+
 async function switchDb(mode) {
   await fetch('/api/db/switch', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ mode }),
   });
-  if (mode === 'user' && !localStorage.getItem(window.WELCOME_KEY || 'jh.welcome_dismissed')) {
-    localStorage.setItem('jobhunt.force_first_run', '1');
+  if (mode === 'demo') {
+    const curCols = localStorage.getItem('jobhunt.columns');
+    if (curCols) localStorage.setItem('jobhunt.columns.pre-demo', curCols);
+    else localStorage.removeItem('jobhunt.columns.pre-demo');
+    localStorage.setItem('jobhunt.columns', JSON.stringify(DEMO_COLUMNS));
+    const curSort = localStorage.getItem('jobhunt.sort');
+    if (curSort) localStorage.setItem('jobhunt.sort.pre-demo', curSort);
+    else localStorage.removeItem('jobhunt.sort.pre-demo');
+    localStorage.setItem('jobhunt.sort', DEMO_SORT);
+    window.location.replace('#/dashboard');
+  } else if (mode === 'user') {
+    const savedCols = localStorage.getItem('jobhunt.columns.pre-demo');
+    if (savedCols) { localStorage.setItem('jobhunt.columns', savedCols); }
+    else { localStorage.removeItem('jobhunt.columns'); }
+    localStorage.removeItem('jobhunt.columns.pre-demo');
+    const savedSort = localStorage.getItem('jobhunt.sort.pre-demo');
+    if (savedSort) { localStorage.setItem('jobhunt.sort', savedSort); }
+    else { localStorage.removeItem('jobhunt.sort'); }
+    localStorage.removeItem('jobhunt.sort.pre-demo');
+    if (!localStorage.getItem(window.WELCOME_KEY || 'jh.welcome_dismissed')) {
+      localStorage.setItem('jobhunt.force_first_run', '1');
+    }
+    window.location.replace('#/jobs');
   }
-  window.location.replace('#/jobs');
   window.location.reload();
 }
 
@@ -311,20 +334,22 @@ function DemoBanner() {
 
   return (
     <div style={{
-      background: 'var(--accent)', color: '#fff',
-      fontSize: 12, fontWeight: 500,
-      padding: '6px 16px',
+      background: 'var(--bg-elev)', color: 'var(--fg-mute)',
+      borderBottom: '1px solid var(--border)',
+      fontSize: 11.5, fontWeight: 400,
+      padding: '4px 16px',
       display: 'flex', alignItems: 'center', gap: 12,
       flexShrink: 0,
     }}>
-      <span>🎮 Demo mode — explore the app with sample data</span>
+      <span style={{ color: 'var(--accent)', fontWeight: 500 }}>Demo</span>
+      <span>Explore the app with sample data</span>
       <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
         <button onClick={reseed} disabled={reseeding}
-          style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 4, padding: '2px 8px', fontSize: 11, cursor: 'pointer' }}>
+          style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--fg-mute)', borderRadius: 4, padding: '2px 8px', fontSize: 11, cursor: 'pointer' }}>
           {reseeding ? 'Resetting…' : 'Reset demo'}
         </button>
         <button onClick={() => switchDb('user')}
-          style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: 4, padding: '2px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
+          style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--fg)', borderRadius: 4, padding: '2px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 500 }}>
           Switch to my data →
         </button>
       </span>
@@ -338,7 +363,7 @@ const ROUTE_LABELS = {
   quality: "Data Quality",
   needs: "Needs Action",
   sites: "Sites",
-  duplicates: "Duplicates",
+  duplicates: "Duplicate review",
   "llm-queue": "LLM Queue",
   settings: "Settings",
   help: "Help",

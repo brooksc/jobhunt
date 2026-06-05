@@ -1,9 +1,16 @@
 {
   "manifest_version": 3,
   "name": "Jobhunt Capture",
-  "version": "0.2.0",
+  "version": "0.0.1",
   "description": "Capture job postings into the local jobhunt tracker.",
-  "permissions": ["activeTab", "scripting", "storage", "contextMenus", "downloads"],
+  "homepage_url": "https://jobhunt-app.com",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "contextMenus",
+    "downloads"
+  ],
   "host_permissions": [
     "http://127.0.0.1:8765/*",
     "http://127.0.0.1:8766/*",

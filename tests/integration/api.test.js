@@ -133,7 +133,7 @@ describe('POST /captures', () => {
     assert.equal(jobAddedEvents[0].pageTitle, CAPTURE.page_title);
   });
 
-  it('returns duplicate:true for same content', async () => {
+  it('returns duplicate:false when re-capturing the same URL (not a new duplicate)', async () => {
     const jobAddedEvents = [];
     const onJobAdded = payload => jobAddedEvents.push(payload);
     process.on('jobhunt:job-added', onJobAdded);
@@ -141,7 +141,8 @@ describe('POST /captures', () => {
     process.off('jobhunt:job-added', onJobAdded);
     assert.equal(res.status, 200);
     const body = await res.json();
-    assert.equal(body.duplicate, true);
+    assert.equal(body.duplicate, false);
+    assert.ok(body.job_number);
     assert.equal(jobAddedEvents.length, 0);
   });
 });

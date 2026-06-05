@@ -448,6 +448,11 @@ function HelpPage() {
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 28 }}>
+            <a href="https://jobhunt-app.com" target="_blank" rel="noopener noreferrer"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elev)', color: 'var(--fg)', textDecoration: 'none', fontSize: 13, width: 'fit-content' }}>
+              <Icon.External size={14} />
+              jobhunt-app.com
+            </a>
             <a href="https://github.com/brooksc/jobhunt" target="_blank" rel="noopener noreferrer"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elev)', color: 'var(--fg)', textDecoration: 'none', fontSize: 13, width: 'fit-content' }}>
               <Icon.External size={14} />

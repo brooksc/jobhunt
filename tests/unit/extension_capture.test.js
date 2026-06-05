@@ -47,7 +47,23 @@ function makeFixture({
   nextF = null,               // window.__next_f array
   expandButtons = [],         // fakeElement[] with aria-expanded=false
   showMoreButtons = [],       // fakeElement[] matching "button, [role='button'], a"
+  iframes = [],               // [{ domText, ldJson }] — fake same-origin iframes
 } = {}) {
+  function makeFakeDoc(text, ld) {
+    return {
+      body: { innerText: text },
+      querySelectorAll(selector) {
+        if (selector === 'script[type="application/ld+json"]') {
+          return ld ? [{ textContent: JSON.stringify(ld) }] : [];
+        }
+        return [];
+      },
+    };
+  }
+  const fakeIframes = iframes.map(({ domText: iText = '', ldJson: iLd = null }) => ({
+    contentDocument: makeFakeDoc(iText, iLd),
+  }));
+
   const doc = {
     title: pageTitle,
     body: { innerText: domText },
@@ -64,6 +80,7 @@ function makeFixture({
       if (selector === 'script[type="application/ld+json"]') {
         return ldJson ? [{ textContent: JSON.stringify(ldJson) }] : [];
       }
+      if (selector === 'iframe') return fakeIframes;
       return [];
     },
     cloneNode() { return this; },
@@ -125,10 +142,10 @@ describe('extension capture expansion', () => {
       structured_data: [{ '@type': 'JobPosting' }],
     });
 
-    assert.equal(preflight.title, true);
-    assert.equal(preflight.location, true);
-    assert.equal(preflight.salary, true);
-    assert.equal(preflight.remote, true);
+    assert.ok(preflight.titleVal, 'title extracted');
+    assert.ok(preflight.locationVal, 'location extracted');
+    assert.ok(preflight.salaryVal, 'salary extracted');
+    assert.ok(preflight.remoteVal, 'remote extracted');
     assert.equal(preflight.structuredData, 1);
     assert.equal(preflight.selectedText, true);
     assert.equal(preflight.visibleChars > 0, true);
@@ -144,10 +161,10 @@ describe('extension capture expansion', () => {
       structured_data: [],
     });
 
-    assert.equal(preflight.title, false);
-    assert.equal(preflight.location, false);
-    assert.equal(preflight.salary, false);
-    assert.equal(preflight.remote, false);
+    assert.equal(preflight.titleVal, null, 'title missing');
+    assert.equal(preflight.locationVal, null, 'location missing');
+    assert.equal(preflight.salaryVal, null, 'salary missing');
+    assert.equal(preflight.remoteVal, null, 'remote missing');
     assert.equal(preflight.structuredData, 0);
     assert.equal(preflight.selectedText, false);
     delete globalThis.jobhuntCapture;
@@ -277,8 +294,8 @@ describe('job board fixtures — Greenhouse', () => {
     assert.ok(payload.visible_text.includes('Senior Software Engineer'), 'title present');
     assert.ok(payload.visible_text.includes('$160,000'), 'salary present');
     assert.ok(payload.visible_text.includes('distributed systems'), 'requirements present');
-    assert.equal(payload.preflight.salary, true);
-    assert.equal(payload.preflight.location, true);
+    assert.ok(payload.preflight.salaryVal, 'salary extracted');
+    assert.ok(payload.preflight.locationVal, 'location extracted');
   });
 });
 
@@ -319,8 +336,8 @@ describe('job board fixtures — Lever', () => {
     assert.ok(payload.visible_text.includes('Principal Product Manager'), 'title present');
     assert.ok(payload.visible_text.includes('$180,000'), 'salary present');
     assert.ok(payload.visible_text.includes('roadmap'), 'responsibilities present');
-    assert.equal(payload.preflight.salary, true);
-    assert.equal(payload.preflight.remote, true);
+    assert.ok(payload.preflight.salaryVal, 'salary extracted');
+    assert.ok(payload.preflight.remoteVal, 'remote extracted');
   });
 });
 
@@ -360,8 +377,8 @@ describe('job board fixtures — Workday', () => {
     assert.ok(payload.visible_text.length >= MIN_CHARS, `too short: ${payload.visible_text.length}`);
     assert.ok(payload.visible_text.includes('Staff Technical Program Manager'), 'title present');
     assert.ok(payload.visible_text.includes('$170,000'), 'salary present');
-    assert.equal(payload.preflight.salary, true);
-    assert.equal(payload.preflight.remote, true);
+    assert.ok(payload.preflight.salaryVal);
+    assert.ok(payload.preflight.remoteVal);
   });
 
   it('handles Workday page with no salary disclosure', async () => {
@@ -388,8 +405,8 @@ describe('job board fixtures — Workday', () => {
 
     const payload = await runCapture(fixture);
     assert.ok(payload.visible_text.length >= MIN_CHARS, `too short: ${payload.visible_text.length}`);
-    assert.equal(payload.preflight.salary, false, 'salary absent as expected');
-    assert.equal(payload.preflight.location, true);
+    assert.equal(payload.preflight.salaryVal, null, 'salary absent as expected');
+    assert.ok(payload.preflight.locationVal);
   });
 });
 
@@ -441,8 +458,8 @@ describe('job board fixtures — Cribl (cribl.io, verified against live page)', 
     assert.ok(payload.visible_text.includes('$210,000'), 'salary max in visible_text');
     assert.ok(payload.visible_text.includes('Technical Program Manager'), 'role in visible_text');
     assert.ok(payload.visible_text.includes('data pipelines'), 'requirements in visible_text');
-    assert.equal(payload.preflight.salary, true, 'preflight detects salary');
-    assert.equal(payload.preflight.remote, false, 'remote not in this chunk (location in DOM)');
+    assert.ok(payload.preflight.salaryVal, 'preflight detects salary');
+    assert.equal(payload.preflight.remoteVal, null, 'remote not in this chunk (location in DOM)');
   });
 
   it('preflight shows salary:missing when __next_f inaccessible (isolated world bug)', async () => {
@@ -456,7 +473,7 @@ describe('job board fixtures — Cribl (cribl.io, verified against live page)', 
     });
 
     const payload = await runCapture(fixture);
-    assert.equal(payload.preflight.salary, false, 'salary missing without __next_f access');
+    assert.equal(payload.preflight.salaryVal, null, 'salary missing without __next_f access');
     assert.ok(payload.visible_text.length < 300, 'only sparse DOM captured');
   });
 });
@@ -482,7 +499,7 @@ describe('job board fixtures — Next.js CSR (Cribl pattern)', () => {
     assert.ok(payload.visible_text.includes('$134,000'), 'salary min present');
     assert.ok(payload.visible_text.includes('$210,000'), 'salary max present');
     assert.ok(payload.visible_text.includes('leadership experience'), 'requirements present');
-    assert.equal(payload.preflight.salary, true);
+    assert.ok(payload.preflight.salaryVal);
   });
 
   it('extracts JD from __NEXT_DATA__ page props when __next_f is absent', async () => {
@@ -511,8 +528,8 @@ describe('job board fixtures — Next.js CSR (Cribl pattern)', () => {
     assert.ok(payload.visible_text.includes('distributed systems'), 'description present');
     assert.ok(payload.visible_text.includes('$150,000'), 'salary present');
     assert.ok(payload.visible_text.includes('next generation'), 'description content present');
-    assert.equal(payload.preflight.salary, true);
-    assert.equal(payload.preflight.remote, true);
+    assert.ok(payload.preflight.salaryVal);
+    assert.ok(payload.preflight.remoteVal);
   });
 });
 
@@ -552,8 +569,8 @@ describe('job board fixtures — LinkedIn', () => {
     assert.ok(payload.visible_text.includes('Director of Engineering'), 'title present');
     assert.ok(payload.visible_text.includes('$220,000'), 'salary present');
     assert.ok(payload.visible_text.includes('roadmap'), 'responsibilities present');
-    assert.equal(payload.preflight.salary, true);
-    assert.equal(payload.preflight.location, true);
+    assert.ok(payload.preflight.salaryVal);
+    assert.ok(payload.preflight.locationVal);
   });
 });
 
@@ -593,8 +610,8 @@ describe('job board fixtures — Indeed', () => {
     assert.ok(payload.visible_text.includes('Principal Data Engineer'), 'title present');
     assert.ok(payload.visible_text.includes('$160,000'), 'salary present');
     assert.ok(payload.visible_text.includes('data lakehouse'), 'description present');
-    assert.equal(payload.preflight.salary, true);
-    assert.equal(payload.preflight.remote, true);
+    assert.ok(payload.preflight.salaryVal);
+    assert.ok(payload.preflight.remoteVal);
   });
 });
 
@@ -625,8 +642,8 @@ describe('job board fixtures — Ashby', () => {
     assert.ok(payload.visible_text.includes('enterprise product line'), 'description present');
     assert.ok(payload.visible_text.includes('$155,000'), 'salary present');
     assert.ok(payload.visible_text.includes('complex stakeholder'), 'description content present');
-    assert.equal(payload.preflight.salary, true);
-    assert.equal(payload.preflight.remote, true);
+    assert.ok(payload.preflight.salaryVal);
+    assert.ok(payload.preflight.remoteVal);
   });
 });
 
@@ -649,8 +666,8 @@ describe('job board fixtures — BuiltIn', () => {
     assert.ok(payload.visible_text.includes('Technical Program Manager'), 'title present');
     assert.ok(payload.visible_text.includes('$160,000'), 'salary present');
     assert.ok(payload.visible_text.includes('cross-functional'), 'description present');
-    assert.equal(payload.preflight.salary, true);
-    assert.equal(payload.preflight.remote, true);
+    assert.ok(payload.preflight.salaryVal);
+    assert.ok(payload.preflight.remoteVal);
   });
 });
 
@@ -708,8 +725,8 @@ describe('job board fixtures — Meta Careers (metacareers.com)', () => {
     assert.ok(payload.visible_text.includes('$205,000'), 'salary min present');
     assert.ok(payload.visible_text.includes('$277,000'), 'salary max present');
     assert.ok(payload.visible_text.includes('Product Manager'), 'title present');
-    assert.equal(payload.preflight.salary, true, 'preflight salary detected');
-    assert.equal(payload.preflight.location, true, 'preflight location detected');
+    assert.ok(payload.preflight.salaryVal, 'preflight salary detected');
+    assert.ok(payload.preflight.locationVal, 'preflight location detected');
     assert.equal(payload.structured_data.length, 1, 'JSON-LD captured');
   });
 });
@@ -748,8 +765,8 @@ describe('job board fixtures — Akamai (jobs.akamai.com)', () => {
     assert.ok(payload.visible_text.includes('$119,600'), 'salary min present');
     assert.ok(payload.visible_text.includes('$215,400'), 'salary max present');
     assert.ok(payload.visible_text.includes('Akamai Inference Cloud'), 'title present');
-    assert.equal(payload.preflight.salary, true, 'preflight salary detected');
-    assert.equal(payload.preflight.remote, true, 'preflight remote detected');
+    assert.ok(payload.preflight.salaryVal, 'preflight salary detected');
+    assert.ok(payload.preflight.remoteVal, 'preflight remote detected');
   });
 });
 
@@ -781,6 +798,54 @@ describe('job board fixtures — JSON-LD structured data', () => {
     assert.ok(payload.structured_data.length > 0, 'structured data captured');
     assert.equal(payload.structured_data[0]['@type'], 'JobPosting');
     assert.equal(payload.preflight.structuredData, 1);
-    assert.equal(payload.preflight.salary, true);
+    assert.ok(payload.preflight.salaryVal);
+  });
+});
+
+describe('job board fixtures — iCIMS iframe', () => {
+  // iCIMS custom career portals (e.g. careers-steampunk.icims.com) wrap the actual
+  // job content in a same-origin iframe (#icims_content_iframe). The outer page has
+  // only branding/nav (~700 chars). Capture must extract iframe text and JSON-LD.
+  it('extracts job content from same-origin iframe when outer page has minimal text', async () => {
+    const iframeLd = {
+      '@type': 'JobPosting',
+      jobLocation: [{ '@type': 'Place', address: { addressLocality: 'McLean', addressRegion: 'VA', '@type': 'PostalAddress' } }],
+      employmentType: 'OTHER',
+      description: 'Steampunk is seeking Program Managers who are technical, creative experts. Requirements: 5+ years managing technical teams. Secret clearance preferred.',
+    };
+    const fixture = makeFixture({
+      url: 'https://careers-steampunk.icims.com/jobs/7800/program-manager/job',
+      pageTitle: 'Program Manager in McLean, Virginia',
+      domText: 'Skip Branding\nSkip to content\nOpen Positions\nDesign. Disrupt. Repeat.',
+      iframes: [{
+        domText: 'Program Manager\nJob Location\nUS-VA-McLean\nJob ID 7800 Clearance Requirement Public Trust\nOverview\nSteampunk is seeking Program Managers who are technical, creative, hands-on experts with delivering innovative technology solutions. Ideal candidates will thrive working with clients in a consultative capacity and will have experience managing teams of technical personnel to build systems anchored around our core technologies offerings. Requirements: 5+ years managing technical teams. Experience with government clients. Active Public Trust clearance preferred.',
+        ldJson: iframeLd,
+      }],
+    });
+
+    const payload = await runCapture(fixture);
+    assert.ok(payload.visible_text.includes('Program Manager'), 'job title present');
+    assert.ok(payload.visible_text.includes('McLean') || payload.visible_text.includes('US-VA'), 'location present');
+    assert.ok(payload.visible_text.includes('technical'), 'description present');
+    assert.ok(payload.structured_data.length > 0, 'iframe JSON-LD captured');
+    assert.equal(payload.structured_data[0]['@type'], 'JobPosting');
+    assert.ok(payload.preflight.locationVal, 'preflight location detected');
+  });
+});
+
+describe('preflight location regex — full state names', () => {
+  // Databricks and similar sites list location as "City, StateName" (full name, not abbrev).
+  // The regex must match "Bellevue, Washington" not just "Bellevue, WA".
+  it('detects location with full state name', () => {
+    const capture = loadCaptureScript();
+    const payload = {
+      page_title: 'Sr. Staff Technical Program Manager - Reliability - Databricks',
+      visible_text: 'Bellevue, Washington; Seattle, Washington\nApply now\nAbout Databricks...',
+      selected_text: '',
+      structured_data: [],
+    };
+    const preflight = capture.capturePreflight(payload);
+    assert.ok(preflight.locationVal, 'location detected');
+    assert.ok(preflight.locationVal.includes('Washington'), 'full state name captured');
   });
 });

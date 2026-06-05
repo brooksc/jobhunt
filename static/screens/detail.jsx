@@ -176,7 +176,7 @@ function JobDetail({ jobId, onClose, initialTab = "overview", jobIds = [], onNav
         <div className="jh-panel__sub">
           <span>{job.location}</span>
           <span className="sep">·</span>
-          <span>{job.remote}</span>
+          <span>{job.workMode}</span>
           <span className="sep">·</span>
           <span data-mono>{fmtSalary(job)}</span>
           <span className="sep">·</span>
@@ -487,12 +487,15 @@ function FieldProvenance({ job, field }) {
   const source = job.fieldProvenance?.[field] || "unknown";
   const confidenceKey = field === "workMode" ? "remote_type" : field === "salary" ? "salary" : field === "meetsCriteria" ? "meets_criteria" : field;
   const confidence = job.extraction?.fieldConfidence?.[confidenceKey];
-  const confidenceText = confidence != null ? ` · ${Math.round(Number(confidence) * 100)}%` : "";
+  const confidenceText = confidence != null ? ` · ${Math.round(Number(confidence) * 100)}% conf` : "";
   const color = source === "not set" ? "var(--fg-faint)" : source === "manual override" ? "var(--st-offer)" : "var(--fg-mute)";
+  const tooltip = source === "LLM"
+    ? `Extracted by the local AI model from the job description${confidence != null ? ` · confidence ${Math.round(Number(confidence) * 100)}%` : ""}`
+    : `Source: ${source}${confidenceText}`;
   return (
     <span
       className="jh-tag"
-      title={`Source: ${source}${confidenceText}`}
+      title={tooltip}
       style={{ marginLeft: 6, color, borderColor: "var(--border)", fontSize: 10.5 }}
     >
       {source}{confidenceText}

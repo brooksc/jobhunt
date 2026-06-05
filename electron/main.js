@@ -144,6 +144,7 @@ process.on('jobhunt:open-job', ({ jobNumber } = {}) => {
 function focusWindow() {
   if (!mainWindow) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
+  app.focus({ steal: true });
   mainWindow.focus();
 }
 

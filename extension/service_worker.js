@@ -228,23 +228,35 @@ async function captureTabPayload(tabId, userNote = "") {
     files: ["capture.js"]
   });
 
-  const [injection] = await chrome.scripting.executeScript({
+  // Step 1: collect page data and return it to the service worker immediately.
+  // This ensures we have the payload even if the tab is closed during the preflight countdown.
+  const [dataInjection] = await chrome.scripting.executeScript({
     target: { tabId },
     world: "MAIN",
-    func: async () => {
-      const payload = await globalThis.jobhuntCapture.capturePage(window, document);
-      const action = await globalThis.jobhuntCapture.showCapturePreflight(payload.preflight);
-      return action ? { payload, action } : null;
-    }
+    func: () => globalThis.jobhuntCapture.capturePage(window, document),
   });
-  if (!injection.result) {
-    throw new Error("Capture canceled");
+  const payload = { ...dataInjection.result, user_note: userNote };
+
+  // Step 2: show the preflight dialog in the tab. If the tab closes during the countdown
+  // the executeScript call will throw — we catch that and default to saving the capture.
+  let action = "save";
+  try {
+    const [preflightInjection] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: "MAIN",
+      func: (preflight) => globalThis.jobhuntCapture.showCapturePreflight(preflight),
+      args: [payload.preflight],
+    });
+    if (!preflightInjection.result) {
+      throw new Error("Capture canceled");
+    }
+    action = preflightInjection.result;
+  } catch (err) {
+    // Re-throw explicit user cancellation; swallow tab-closed / other errors and save.
+    if (String(err?.message).includes("canceled")) throw err;
   }
-  const { payload, action } = injection.result;
-  return {
-    payload: { ...payload, user_note: userNote },
-    action,
-  };
+
+  return { payload, action };
 }
 
 async function submitOrQueue(payload) {

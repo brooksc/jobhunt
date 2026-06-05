@@ -1082,6 +1082,15 @@ function fitScoreSchema() {
 // Simple in-process lock — Electron runs as a single process
 let _extractionRunning = false;
 
+// Cloud providers handle many requests at once; local servers (LM Studio, or a
+// custom OpenAI-compatible endpoint that's usually a single local instance)
+// process one at a time. Concurrency is the number of LLM calls run in parallel.
+const HOSTED_PROVIDERS = new Set(['openai', 'anthropic', 'google', 'openrouter']);
+const HOSTED_CONCURRENCY = 5;
+export function providerConcurrency(provider) {
+  return HOSTED_PROVIDERS.has(provider) ? HOSTED_CONCURRENCY : 1;
+}
+
 export async function runExtraction({ dbPath, extractor, limit = 10, scorer }) {
   if (_extractionRunning) return { processed: 0, succeeded: 0, failed: 0 };
   _extractionRunning = true;
@@ -1096,14 +1105,17 @@ export async function runExtractionForSelected({ dbPath, extractor, requestIds, 
   if (_extractionRunning) return { processed: 0, succeeded: 0, failed: 0 };
   _extractionRunning = true;
   try {
-    const items = getLlmRequestsByIds(requestIds, dbPath);
+    const items = getLlmRequestsByIds(requestIds, dbPath).filter(item => item.status === 'queued' || item.status === 'failed');
+    const concurrency = providerConcurrency((extractor || scorer)?.provider);
     let processed = 0, succeeded = 0, failed = 0;
-    for (const item of items) {
-      if (item.status !== 'queued' && item.status !== 'failed') continue;
-      const { wasProcessed, didSucceed } = await processSingleQueueRequest({ dbPath, extractor, item, scorer });
-      if (wasProcessed) {
-        processed++;
-        if (didSucceed) succeeded++; else failed++;
+    for (let i = 0; i < items.length; i += concurrency) {
+      const batch = items.slice(i, i + concurrency);
+      const results = await Promise.all(batch.map(item => processSingleQueueRequest({ dbPath, extractor, item, scorer })));
+      for (const { wasProcessed, didSucceed } of results) {
+        if (wasProcessed) {
+          processed++;
+          if (didSucceed) succeeded++; else failed++;
+        }
       }
     }
     return { processed, succeeded, failed };
@@ -1115,32 +1127,36 @@ export async function runExtractionForSelected({ dbPath, extractor, requestIds, 
 async function _runExtractionInner({ dbPath, extractor, limit = 10, scorer }) {
   if (isQueuePaused(dbPath)) return { processed: 0, succeeded: 0, failed: 0 };
 
+  const concurrency = providerConcurrency((extractor || scorer)?.provider);
   let failureStreak = 0, processed = 0, succeeded = 0, failed = 0;
   const handledIds = new Set();
   let paused = false;
 
-  while (processed < limit) {
+  while (processed < limit && !paused) {
     if (isQueuePaused(dbPath)) break;
-    const batch = getLlmQueueForProcessing(dbPath, limit - processed).filter(item => !handledIds.has(item.id));
+    const want = Math.min(concurrency, limit - processed);
+    const batch = getLlmQueueForProcessing(dbPath, want).filter(item => !handledIds.has(item.id));
     if (!batch.length) break;
+    batch.forEach(item => handledIds.add(item.id));
 
-    for (const item of batch) {
-      if (isQueuePaused(dbPath)) { paused = true; break; }
-      handledIds.add(item.id);
-      const { wasProcessed, didSucceed } = await processSingleQueueRequest({ dbPath, extractor, item, scorer });
-      if (wasProcessed) {
-        processed++;
-        if (didSucceed) {
-          succeeded++;
-          failureStreak = 0;
-        } else {
-          failed++;
-          failureStreak++;
-          if (failureStreak >= 2) { pauseLlmQueueForErrors(dbPath); paused = true; break; }
-        }
+    // Fire the batch concurrently (1 for local, HOSTED_CONCURRENCY for cloud).
+    const results = await Promise.all(
+      batch.map(item => processSingleQueueRequest({ dbPath, extractor, item, scorer }))
+    );
+
+    for (const { wasProcessed, didSucceed } of results) {
+      if (!wasProcessed) continue;
+      processed++;
+      if (didSucceed) {
+        succeeded++;
+        failureStreak = 0;
+      } else {
+        failed++;
+        failureStreak++;
+        // Two failures in a row → the endpoint is likely misconfigured; stop.
+        if (failureStreak >= 2) { pauseLlmQueueForErrors(dbPath); paused = true; }
       }
     }
-    if (paused) break;
   }
   return { processed, succeeded, failed };
 }

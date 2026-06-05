@@ -915,6 +915,17 @@ Candidate resume:
 ${resume.slice(0, MAX_RESUME_CHARS)}`.trim();
 }
 
+// Fixed prompt "scaffolding" sizes (chars) for extraction and fit, measured by
+// building each prompt with empty variable content. Used by the cost estimator
+// to account for per-request prompt overhead beyond the JD / resume text.
+export function promptOverheadChars(locationOpts = {}) {
+  const extractChars = systemPrompt().length +
+    userPrompt({ url: '', canonical_url: '', page_title: '', description: '' }, locationOpts).length;
+  const fitChars = fitSystemPrompt().length +
+    fitUserPrompt({ title: '', company: '', extracted: {} }, '').length;
+  return { extractChars, fitChars };
+}
+
 // ------------------------------------------------------------------
 // LMStudioExtractor
 // ------------------------------------------------------------------

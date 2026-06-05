@@ -16,7 +16,7 @@ import {
   runExtraction, runExtractionForSelected,
   parseBoolSetting, makeExtractorFromSettings, makeScorerFromSettings,
   resolveProviderBaseUrl, ANTHROPIC_MODELS, GOOGLE_MODELS,
-  MAX_DESCRIPTION_CHARS, MAX_RESUME_CHARS, promptOverheadChars,
+  MAX_DESCRIPTION_CHARS, MAX_RESUME_CHARS, promptOverheadChars, refreshRotationPool,
 } from './extract.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -129,6 +129,7 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
 
   async function runExtractionForApp(limit) {
     const settings = getDbSettings();
+    await refreshRotationPool(settings);
     const extractor = buildExtractor(settings);
     const scorer = buildScorer(settings);
     const summary = await runExtraction({ dbPath, extractor, limit, scorer });
@@ -396,6 +397,7 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
       } else {
         db.resetLlmRequestsForManualRun(dbPath, requestIds);
         const settings = getDbSettings();
+        await refreshRotationPool(settings);
         const extractor = buildExtractor(settings);
         const scorer = buildScorer(settings);
         summary = await runExtractionForSelected({ dbPath, extractor, requestIds, scorer });
@@ -479,6 +481,7 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
       const requestId = req.params.requestId;
       db.resetLlmRequestsForManualRun(dbPath, [requestId]);
       const settings = getDbSettings();
+      await refreshRotationPool(settings);
       const extractor = buildExtractor(settings);
       const scorer = buildScorer(settings);
       const summary = await runExtractionForSelected({
@@ -570,6 +573,7 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
       db.setSetting(d, 'llm_queue_paused', 'false');
       if (result.request_ids?.length) {
         const settings = getDbSettings();
+        await refreshRotationPool(settings);
         runExtractionForSelected({ dbPath, extractor: buildExtractor(settings), requestIds: result.request_ids, scorer: buildScorer(settings) }).then(emitAiRunComplete).catch(() => {});
       } else if (autoExtract) {
         runExtractionForApp(100).catch(() => {});
@@ -587,6 +591,7 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
       db.setSetting(d, 'llm_queue_paused', 'false');
       if (result.request_ids?.length) {
         const settings = getDbSettings();
+        await refreshRotationPool(settings);
         runExtractionForSelected({ dbPath, extractor: buildExtractor(settings), requestIds: result.request_ids, scorer: buildScorer(settings) }).then(emitAiRunComplete).catch(() => {});
       } else if (autoExtract) {
         runExtractionForApp(100).catch(() => {});
@@ -1612,6 +1617,7 @@ function buildUiData(dbPath) {
       job_description_markdown: settingsData.job_description_markdown || '',
       llm_price_input: settingsData.llm_price_input || '0',
       llm_price_output: settingsData.llm_price_output || '0',
+      llm_openrouter_free_rotate: settingsData.llm_openrouter_free_rotate || 'false',
       llm_queue_paused: settingsData.llm_queue_paused || 'false',
       llm_debug_level: settingsData.llm_debug_level || 'errors',
       preferred_locations: settingsData.preferred_locations || '',

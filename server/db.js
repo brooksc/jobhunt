@@ -47,6 +47,7 @@ export const SETTINGS_DEFAULTS = {
   availability_last_auto_check_at: '',
   llm_price_input: '0',
   llm_price_output: '0',
+  llm_openrouter_free_rotate: 'false',
 };
 
 const SCHEMA = `

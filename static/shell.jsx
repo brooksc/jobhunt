@@ -279,7 +279,6 @@ function Sidebar({ route, setRoute, setSavedViewName, savedViewName, theme, them
             {theme === "dark" ? <Icon.Sun size={12} /> : <Icon.Moon size={12} />}
             <span style={{ fontSize: 11 }}>{themeMode === "auto" ? "Auto" : theme === "dark" ? "Light" : "Auto"}</span>
           </button>
-          <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--fg-faint)", fontFamily: "var(--font-mono)" }}>{window.JH_SETTINGS.db_path || "local db"}</span>
         </div>
       </div>
     </aside>

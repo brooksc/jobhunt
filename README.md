@@ -132,11 +132,15 @@ Modes: `extract`, `fit_score`, `missing_fields`.
 
 ### MCP Server
 
+`server/mcp.js` is a Model Context Protocol server that exposes your job database as tools for AI assistants. Tools include: list/get/update jobs, add captures, trigger re-extraction, manage prospecting sites, and a workflow snapshot for triage.
+
+**Claude Code (CLI):**
+
 ```bash
-node server/mcp.js  # exposes job DB tools for Claude Desktop and compatible clients
+claude mcp add jobhunt node /path/to/jobhunt/server/mcp.js
 ```
 
-Add to `claude_desktop_config.json`:
+**Claude Desktop** — add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {

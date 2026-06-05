@@ -2,142 +2,143 @@
 
 **[jobhunt-app.com](https://jobhunt-app.com)** · [Issues](https://github.com/brooksc/jobhunt/issues)
 
-Local-first job tracking for captured job descriptions. A Chrome extension sends job pages to a local Node service, SQLite stores the data, LM Studio extracts structured fields, and the bundled React UI runs at `http://127.0.0.1:8765`.
+Local-first job tracking. A Chrome extension captures job postings from any site; a Mac app stores them in SQLite, runs AI extraction via LM Studio, and shows a full tracking UI — all on your own machine, no cloud required.
+
+![Jobs view](marketing/screenshots/jobs-detail.png)
+
+## Installation
+
+### Mac App
+
+1. Download `Jobhunt-0.2.0.dmg` from the [latest release](https://github.com/brooksc/jobhunt/releases/latest).
+2. Open the DMG and drag **Jobhunt** to Applications.
+3. First launch: right-click the app → **Open** to bypass Gatekeeper (the app is unsigned).
+
+### Chrome Extension
+
+Install from the [Chrome Web Store](https://chromewebstore.google.com/detail/jobhunt-capture/hfidoakacpbhopmcpikckjhibfnobjjb) or load it unpacked:
+
+1. Open `chrome://extensions`.
+2. Enable **Developer mode**.
+3. Click **Load unpacked** and select the `extension/` directory from this repo.
 
 ## Requirements
 
-- Node.js 26 or newer. The server uses Node's built-in `node:sqlite` module.
-- npm.
-- Chrome or Chromium for the unpacked extension.
-- LM Studio for AI extraction and resume-fit scoring.
+- **LM Studio** — provides the local LLM for AI extraction and resume-fit scoring. Start LM Studio's local server on `http://127.0.0.1:1234` and load a model (Gemma 3, Qwen 3, or similar instruction-tuned model recommended).
 
-Install dependencies:
+## Getting Started
+
+1. Launch the Jobhunt Mac app.
+2. On first run, the onboarding wizard walks you through: setting your job preferences, connecting to LM Studio, and pasting your resume for fit scoring.
+3. Browse to any job posting and click the Jobhunt extension icon to capture it.
+4. The app extracts structured fields (title, company, location, salary, requirements) and scores your fit against your resume automatically.
+
+## Features
+
+- **Capture from anywhere** — works on LinkedIn, Greenhouse, Lever, Ashby, iCIMS, Workday, and most job boards
+- **AI extraction** — pulls salary, requirements, work mode, and more from unstructured job descriptions
+- **Resume fit scoring** — ranks each job against your resume with dimension-level explanations
+- **Duplicate detection** — groups identical or near-identical postings across different sources
+- **Dashboard** — daily activity view showing pipeline progress over time
+- **Offline queue** — captures are queued in the extension if the Mac app isn't running
+- **Export** — download CSV from the UI or via `node server/index.js export csv`
+- **MCP server** — expose your job database as an MCP tool for Claude and other AI assistants
+
+---
+
+## Developer Guide
+
+### Stack
+
+- **Server**: Node.js 26, Express, `node:sqlite` (no external ORM)
+- **Frontend**: React (runtime Babel, no build step), served from the Node server
+- **Extension**: Chrome Manifest V3, service worker with offline retry queue
+- **Desktop**: Electron 42, electron-builder for DMG packaging
+- **AI**: OpenAI-compatible chat completions via LM Studio (or any compatible endpoint)
+
+### Setup
+
+Requires Node.js 26 or newer.
 
 ```bash
 npm install
 ```
 
-## Run
-
-Use the supervised local server during normal development:
+### Run (development)
 
 ```bash
-npm start
+npm start          # supervised server loop — restarts on crash
+npm run serve:once # one-shot server
 ```
 
-`npm start` runs `scripts/run-server-loop.sh`. It runs the verification commands, starts `node server/index.js serve`, and restarts the child server if it exits. If server code changes while this loop is running, kill the `node server/index.js serve` child process and the loop will bring it back.
+The UI is at `http://127.0.0.1:8765`.
 
-Other useful commands:
+### Runtime Data
 
-```bash
-npm run serve:once       # one-shot server without restart supervision
-node server/index.js serve --port 8765 --auto-extract
-curl http://127.0.0.1:8765/health
+```
+~/.config/jobhunt/jobhunt.db             # SQLite database
+~/.config/jobhunt/jobhunt-llm-debug.log  # LLM request/response log
 ```
 
-The UI is served from `http://127.0.0.1:8765`. On first launch, the app guides the user through an onboarding workflow to configure preferences, LM Studio endpoints, and paste their resume. The interface also supports tracking job details, resolving duplicate entries, queuing bulk AI extractions, reviewing data quality, and viewing local metrics.
-
-## Runtime Data
-
-Runtime files live under `~/.config/jobhunt` by default:
-
-- Database: `~/.config/jobhunt/jobhunt.db`
-- LLM debug log: `~/.config/jobhunt/jobhunt-llm-debug.log`
-
-Overrides:
+Override with env vars:
 
 ```bash
 JOBHUNT_CONFIG_DIR=/path/to/config npm start
 JOBHUNT_DB_PATH=/path/to/jobhunt.db npm start
-JOBHUNT_LLM_DEBUG_LOG_PATH=/path/to/debug.log npm start
 ```
 
-The app still migrates old `.data/` files into the config directory when no explicit DB path is set.
+### Build
 
-## Chrome Extension
+```bash
+./scripts/rebuild-and-launch.sh          # build + launch (auto-bumps patch version)
+./scripts/build-electron.sh              # unpacked build only
+./scripts/build-electron.sh --dist       # build distributable DMG
+./scripts/package-extension.sh           # zip extension for Chrome Web Store
+./scripts/release.sh                     # bump minor, commit, tag, build both artifacts
+```
 
-1. Open `chrome://extensions`.
-2. Enable Developer mode.
-3. Click Load unpacked.
-4. Select this repo's `extension/` directory.
-5. Start the local server and capture a job page with the extension button.
+### Versioning
 
-The extension posts captures to `/captures`. If the local service is unavailable, the service worker keeps a retry queue and reports extension status in the UI sidebar.
+`x.y.z` — patch auto-increments on dev builds, minor on releases, major for milestones.
 
-The extension can discover the app on `127.0.0.1` ports `8765` through `8769`. When the Mac app is not running, the extension can still read the current page after the preflight confirmation, queue the capture in Chrome local extension storage, and export queued captures as CSV for Google Sheets or another tracker. Open the extension action context menu and choose Open capture queue to sync, export, or clear saved captures. Writing to SQLite, marking sites reviewed, extraction, fit scoring, availability checks, and the Jobhunt UI all require the Mac app.
+```bash
+./scripts/bump-version.sh patch   # z++
+./scripts/bump-version.sh minor   # y++, z=0
+./scripts/bump-version.sh major   # x++, y=0, z=0
+```
 
-Chrome Web Store submission notes live in `docs/chrome-web-store-review.md`.
+### Verify
 
-## Queue AI Processing
+```bash
+npm test
+npm run lint
+npm run typecheck
+npm run eval:llm   # live LLM extraction quality check (requires LM Studio running)
+```
 
-Queue extraction or fit scoring for visible job numbers:
+### Queue AI Processing
 
 ```bash
 node server/index.js jobs queue-ai 19,74,#90 --mode extract --process
 ```
 
-Modes are `extract`, `fit_score`, and `missing_fields`. Without `--process`, the command only enqueues the work.
+Modes: `extract`, `fit_score`, `missing_fields`.
 
-The same operation is available over HTTP:
+### MCP Server
 
 ```bash
-curl http://127.0.0.1:8765/api/jobs/bulk/llm-by-number \
-  -H "Content-Type: application/json" \
-  -d '{"job_numbers":[19,74,90],"mode":"extract"}'
+node server/mcp.js  # exposes job DB tools for Claude Desktop and compatible clients
 ```
 
-## LM Studio
-
-Start LM Studio's local server on `http://127.0.0.1:1234` and load the model configured in Settings. The app uses OpenAI-compatible chat completions and requests structured output with:
+Add to `claude_desktop_config.json`:
 
 ```json
 {
-  "response_format": {
-    "type": "json_schema",
-    "json_schema": {
-      "strict": true
+  "mcpServers": {
+    "jobhunt": {
+      "command": "node",
+      "args": ["/path/to/jobhunt/server/mcp.js"]
     }
   }
 }
 ```
-
-If structured output fails, the server records durable LLM attempt history in SQLite. Failed attempts are also appended to the debug log when debug logging is enabled in Settings.
-
-### Model evaluation
-
-Use the live LLM evaluation when deciding whether the loaded model is strong enough for Jobhunt's extraction and fit-scoring tasks:
-
-```bash
-npm run eval:llm
-```
-
-The evaluation uses the same LM Studio structured-output path as the app. It checks known-answer job postings for fields such as company, title, location, work mode, salary bands, skills, requirements, benefits, and application URL. It also scores a strong resume and a weak resume against the same test job to verify that the model ranks the strong fit higher and explains missing requirements for the weak fit.
-
-Override the configured model or endpoint with:
-
-```bash
-npm run eval:llm -- --model gemma-4-e2b-it-mlx --base-url http://127.0.0.1:1234
-```
-
-## Export
-
-Download CSV from the UI or use:
-
-```bash
-node server/index.js export csv --output jobs.csv
-```
-
-The served endpoint is `/exports/jobs.csv`.
-
-## Verification
-
-Run the standard checks before calling work done:
-
-```bash
-npm test
-npm run test:ui
-npm run lint
-npm run typecheck
-```
-
-`npm run lint` currently covers server code. The frontend is runtime-loaded JSX through Babel with no build step, so UI regressions are covered by `npm run test:ui`. Pre-commit hooks are intentionally not installed yet; keep the workflow explicit until the frontend build/lint story is settled.

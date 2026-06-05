@@ -4,6 +4,8 @@ node_modules/
 .worktrees/
 .claude/
 *.db
+*.db-shm
+*.db-wal
 !server/demo.db
 *.lock
 

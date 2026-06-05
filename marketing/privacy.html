@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — Jobhunt</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --bg: #0f1117; --bg-card: #1a1d27; --border: rgba(255,255,255,.1); --fg: #f0f2f8; --fg-mute: #9ca3af; --accent: #3b82f6; }
+    body { background: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.7; -webkit-font-smoothing: antialiased; }
+    nav { display: flex; align-items: center; justify-content: space-between; padding: 18px 40px; border-bottom: 1px solid var(--border); }
+    .nav-logo { font-size: 17px; font-weight: 700; color: var(--fg); text-decoration: none; }
+    .main { max-width: 680px; margin: 0 auto; padding: 64px 24px; }
+    h1 { font-size: 32px; font-weight: 800; letter-spacing: -.02em; margin-bottom: 8px; }
+    .date { color: var(--fg-mute); font-size: 14px; margin-bottom: 48px; }
+    h2 { font-size: 18px; font-weight: 700; margin: 36px 0 12px; }
+    p { color: var(--fg-mute); margin-bottom: 16px; }
+    code { background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 13px; color: var(--fg); }
+    a { color: var(--accent); }
+    footer { border-top: 1px solid var(--border); padding: 28px 40px; font-size: 13px; color: var(--fg-mute); }
+    footer a { color: var(--fg-mute); }
+  </style>
+</head>
+<body>
+  <nav>
+    <a class="nav-logo" href="/">Jobhunt</a>
+  </nav>
+  <div class="main">
+    <h1>Privacy Policy</h1>
+    <div class="date">Last updated: June 2026</div>
+
+    <h2>Overview</h2>
+    <p>Jobhunt is a local-first application. It does not collect, transmit, or store any personal data on remote servers. Everything stays on your machine.</p>
+
+    <h2>What the app collects</h2>
+    <p>Jobhunt stores data you explicitly provide: job posting content captured via the Chrome extension, your resume text (pasted during onboarding), and your location preferences and settings. All of this is stored in a local SQLite database on your Mac under <code>~/.config/jobhunt/</code>.</p>
+
+    <h2>What the Chrome extension collects</h2>
+    <p>When you click the toolbar button, the extension reads the current tab's URL, page title, visible text, and any structured data (JSON-LD) on the page. This content is sent only to the Jobhunt app running locally on your machine via <code>http://127.0.0.1</code>. Nothing is sent to any external server.</p>
+    <p>If the local app is not running, captures are held temporarily in Chrome's local extension storage (<code>chrome.storage.local</code>) on your device until you sync or clear them.</p>
+
+    <h2>AI processing</h2>
+    <p>Jobhunt sends job description text to an AI model for extraction and fit scoring. By default this is a local model via LM Studio or Ollama — no data leaves your machine. If you configure a cloud provider (OpenAI, Anthropic, Google, OpenRouter), job description text is sent to that provider under their own privacy policy. Your resume is included in fit-scoring prompts.</p>
+
+    <h2>Data sharing</h2>
+    <p>We do not sell, share, or transfer any user data to third parties for any purpose. The app has no analytics, no telemetry, and no crash reporting.</p>
+
+    <h2>Data retention</h2>
+    <p>All data is stored locally on your device. You can delete it at any time by removing the database file or uninstalling the app.</p>
+
+    <h2>Contact</h2>
+    <p>Questions? Open an issue at <a href="https://github.com/brooksc/jobhunt/issues" target="_blank" rel="noopener">github.com/brooksc/jobhunt/issues</a> or visit <a href="https://jobhunt-app.com">jobhunt-app.com</a>.</p>
+  </div>
+  <footer>
+    <a href="/">← Back to Jobhunt</a>
+  </footer>
+</body>
+</html>

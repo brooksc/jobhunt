@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jobhunt — Local-first job tracker</title>
+  <meta name="description" content="Capture job postings, let AI extract the details, and track your pipeline — all on your Mac. No subscriptions. No cloud. Your data stays yours." />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --bg-card: #1a1d27;
+      --border: rgba(255,255,255,.1);
+      --fg: #f0f2f8;
+      --fg-mute: #9ca3af;
+      --accent: #3b82f6;
+      --accent-soft: rgba(59,130,246,.15);
+      --accent-subtle-border: rgba(59,130,246,.3);
+      --badge-fg: #93c5fd;
+      --green: #86efac;
+      --r: 12px;
+      --nav-bg: rgba(15,17,23,.9);
+      --carousel-btn-bg: rgba(15,17,23,.7);
+      --carousel-btn-hover: rgba(15,17,23,.95);
+      --shadow-hero: 0 32px 80px rgba(0,0,0,.5);
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f8fafc;
+        --bg-card: #ffffff;
+        --border: rgba(0,0,0,.1);
+        --fg: #0f172a;
+        --fg-mute: #64748b;
+        --accent: #2563eb;
+        --accent-soft: rgba(37,99,235,.08);
+        --accent-subtle-border: rgba(37,99,235,.25);
+        --badge-fg: #1d4ed8;
+        --green: #15803d;
+        --nav-bg: rgba(248,250,252,.9);
+        --carousel-btn-bg: rgba(255,255,255,.8);
+        --carousel-btn-hover: rgba(255,255,255,.97);
+        --shadow-hero: 0 32px 80px rgba(0,0,0,.12);
+      }
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* NAV */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 40px;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: var(--nav-bg);
+      backdrop-filter: blur(12px);
+      z-index: 100;
+    }
+    .nav-logo {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--fg);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .nav-logo img { width: 24px; height: 24px; border-radius: 6px; }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      font-size: 14px;
+      color: var(--fg-mute);
+    }
+    .nav-links a { color: var(--fg-mute); }
+    .nav-links a:hover { color: var(--fg); text-decoration: none; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 9px 18px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .btn:hover { opacity: .85; text-decoration: none; }
+    .btn-primary { background: var(--accent); color: #fff !important; }
+    .btn-ghost { border: 1px solid var(--border); color: var(--fg); background: transparent; }
+
+    /* HERO */
+    .hero {
+      text-align: center;
+      padding: 96px 24px 72px;
+      max-width: 760px;
+      margin: 0 auto;
+    }
+    .hero-badge {
+      display: inline-block;
+      background: var(--accent-soft);
+      border: 1px solid var(--accent-subtle-border);
+      color: var(--badge-fg);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 99px;
+      margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-size: clamp(36px, 6vw, 58px);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -.02em;
+      margin-bottom: 20px;
+    }
+    .hero h1 span { color: var(--accent); }
+    .hero p {
+      font-size: 18px;
+      color: var(--fg-mute);
+      max-width: 540px;
+      margin: 0 auto 36px;
+      line-height: 1.7;
+    }
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    /* CAROUSEL */
+    .carousel-wrap {
+      max-width: 1100px;
+      margin: 0 auto 80px;
+      padding: 0 24px;
+    }
+    .carousel {
+      position: relative;
+      border-radius: var(--r);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-hero);
+      overflow: hidden;
+      background: var(--bg-card);
+    }
+    .carousel-track {
+      display: flex;
+      transition: transform .4s cubic-bezier(.4,0,.2,1);
+    }
+    .carousel-track img {
+      width: 100%;
+      flex-shrink: 0;
+      display: block;
+    }
+    .carousel-btn {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      background: var(--carousel-btn-bg);
+      border: 1px solid var(--border);
+      color: var(--fg);
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(8px);
+      transition: background .15s;
+      z-index: 10;
+    }
+    .carousel-btn:hover { background: var(--carousel-btn-hover); }
+    .carousel-btn.prev { left: 14px; }
+    .carousel-btn.next { right: 14px; }
+    .carousel-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px 12px;
+      background: var(--bg-card);
+      border-top: 1px solid var(--border);
+    }
+    .carousel-caption strong {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--fg);
+    }
+    .carousel-caption span {
+      font-size: 12.5px;
+      color: var(--fg);
+      margin-left: 8px;
+    }
+    .carousel-dots {
+      display: flex;
+      gap: 6px;
+    }
+    .carousel-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--border);
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      transition: background .2s, transform .2s;
+    }
+    .carousel-dot.active {
+      background: var(--accent);
+      transform: scale(1.3);
+    }
+
+    /* HOW IT WORKS */
+    .section { padding: 72px 24px; max-width: 900px; margin: 0 auto; }
+    .section-label {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+    .section h2 {
+      font-size: clamp(26px, 4vw, 38px);
+      font-weight: 800;
+      letter-spacing: -.02em;
+      margin-bottom: 48px;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 24px;
+    }
+    .step {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 28px;
+    }
+    .step-num {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 800;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    .step h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+    .step p { font-size: 14px; color: var(--fg-mute); line-height: 1.6; }
+
+    /* FEATURES */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+    }
+    .feature {
+      padding: 24px;
+      border-radius: var(--r);
+      border: 1px solid var(--border);
+    }
+    .feature-icon {
+      font-size: 22px;
+      margin-bottom: 12px;
+    }
+    .feature h3 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+    .feature p { font-size: 13.5px; color: var(--fg-mute); line-height: 1.6; }
+
+    /* DIVIDER */
+    .divider { border: none; border-top: 1px solid var(--border); margin: 0; }
+
+    /* CTA */
+    .cta {
+      text-align: center;
+      padding: 96px 24px;
+    }
+    .cta h2 {
+      font-size: clamp(28px, 4vw, 42px);
+      font-weight: 800;
+      letter-spacing: -.02em;
+      margin-bottom: 16px;
+    }
+    .cta p {
+      color: var(--fg-mute);
+      font-size: 17px;
+      margin-bottom: 36px;
+    }
+
+    /* FOOTER */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+      color: var(--fg-mute);
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    footer a { color: var(--fg-mute); }
+    footer a:hover { color: var(--fg); text-decoration: none; }
+    .footer-links { display: flex; gap: 20px; }
+
+    /* PILL TAG */
+    .pill {
+      display: inline-block;
+      background: var(--accent-soft);
+      border: 1px solid var(--accent-subtle-border);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 99px;
+      vertical-align: middle;
+    }
+
+    @media (max-width: 600px) {
+      nav { padding: 14px 20px; }
+      .nav-links { gap: 16px; }
+      footer { padding: 24px 20px; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="nav-logo">
+      Jobhunt
+    </div>
+    <div class="nav-links">
+      <a href="#how-it-works">How it works</a>
+      <a href="#features">Features</a>
+      <a href="https://github.com/brooksc/jobhunt" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://chromewebstore.google.com/detail/jobhunt-capture/jekcbebhfeidkpapienoflbcaeeknlch"
+         target="_blank" rel="noopener" class="btn btn-primary">
+        Get the extension
+      </a>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="hero-badge">Free &amp; Open Source</div>
+    <h1>Your job search,<br><span>without the spreadsheet</span></h1>
+    <p>Capture job postings with one click, let a local AI extract the details, and track your pipeline — all on your Mac. No subscriptions. No cloud. Your data stays yours.</p>
+    <div class="hero-actions">
+      <a href="https://github.com/brooksc/jobhunt/releases" target="_blank" rel="noopener" class="btn btn-primary">
+        Download for Mac
+      </a>
+      <a href="https://chromewebstore.google.com/detail/jobhunt-capture/jekcbebhfeidkpapienoflbcaeeknlch"
+         target="_blank" rel="noopener" class="btn btn-ghost">
+        Chrome Extension
+      </a>
+    </div>
+  </section>
+
+  <div class="carousel-wrap">
+    <div class="carousel" id="carousel">
+      <div class="carousel-track" id="carouselTrack">
+        <img src="screenshots/jobs-detail.png" alt="Jobs table with detail panel open" />
+        <img src="screenshots/dashboard.png" alt="Dashboard with pipeline and top opportunities" />
+        <img src="screenshots/duplicates.png" alt="Duplicate review screen" />
+        <img src="screenshots/sites.png" alt="Sites tracking screen" />
+      </div>
+      <button class="carousel-btn prev" id="carouselPrev" aria-label="Previous">&#8249;</button>
+      <button class="carousel-btn next" id="carouselNext" aria-label="Next">&#8250;</button>
+    </div>
+    <div class="carousel-footer">
+      <div class="carousel-caption" id="carouselCaption">
+        <strong>Jobs</strong>
+        <span>Filter, sort, and open any job for a full detail view with fit score, salary, and extracted fields.</span>
+      </div>
+      <div class="carousel-dots" id="carouselDots">
+        <button class="carousel-dot active" data-index="0" aria-label="Slide 1"></button>
+        <button class="carousel-dot" data-index="1" aria-label="Slide 2"></button>
+        <button class="carousel-dot" data-index="2" aria-label="Slide 3"></button>
+        <button class="carousel-dot" data-index="3" aria-label="Slide 4"></button>
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider" />
+
+  <section class="section" id="how-it-works">
+    <div class="section-label">How it works</div>
+    <h2>From job posting to decision in seconds</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3>Capture</h3>
+        <p>Click the Chrome extension on any job posting. A preflight check confirms title, location, salary, and remote status were found before saving.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3>Extract</h3>
+        <p>A local AI model reads the job description and pulls out structured fields — salary bands, seniority, work mode, requirements — automatically.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3>Score</h3>
+        <p>Paste your resume once. Jobhunt scores every job against it and explains what's missing, so you know where to focus your applications.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <h3>Track</h3>
+        <p>Move jobs through your pipeline — Saved → Applied → Interview → Offer. Set follow-up reminders and log notes on every interaction.</p>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <section class="section" id="features">
+    <div class="section-label">Features</div>
+    <h2>Everything you need, nothing you don't</h2>
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">🔒</div>
+        <h3>Fully local <span class="pill">Privacy first</span></h3>
+        <p>All data lives in a SQLite database on your machine. Nothing is sent to any server except the AI model you configure — and you can run that locally too.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🤖</div>
+        <h3>AI extraction</h3>
+        <p>Works with LM Studio, Ollama, OpenAI, Anthropic, or any OpenAI-compatible endpoint. Run a free local model or use a cloud API — your choice.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">⚡</div>
+        <h3>One-click capture</h3>
+        <p>The Chrome extension captures any job posting page. Works on LinkedIn, Indeed, Greenhouse, Lever, Workday, Ashby, and more. Queues offline if the app isn't running.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">📊</div>
+        <h3>Fit scoring</h3>
+        <p>Every job is scored against your resume with a 0–100 fit score and a plain-English explanation of gaps. See at a glance which roles are worth pursuing.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🔍</div>
+        <h3>Smart filtering</h3>
+        <p>Filter by status, salary, location, remote eligibility, fit score, or any combination. Sort by any column. Save views for your most common queries.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🧹</div>
+        <h3>Duplicate detection</h3>
+        <p>Automatically groups the same job posted across multiple boards so you don't apply twice. Heuristic matching handles slight title and description variations.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">📬</div>
+        <h3>Availability checks</h3>
+        <p>Periodically checks saved jobs to see if the posting has been taken down. Get notified when a role you saved goes offline.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🗂️</div>
+        <h3>MCP server</h3>
+        <p>A built-in Model Context Protocol server lets AI assistants like Claude read and update your job pipeline directly.</p>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <section class="cta">
+    <h2>Start tracking smarter</h2>
+    <p>Free, open source, and runs entirely on your Mac.</p>
+    <div class="hero-actions">
+      <a href="https://github.com/brooksc/jobhunt/releases" target="_blank" rel="noopener" class="btn btn-primary">
+        Download for Mac
+      </a>
+      <a href="https://github.com/brooksc/jobhunt" target="_blank" rel="noopener" class="btn btn-ghost">
+        View source on GitHub
+      </a>
+    </div>
+  </section>
+
+  <footer>
+    <div>© 2026 Jobhunt · Free &amp; open source</div>
+    <div class="footer-links">
+      <a href="/privacy">Privacy</a>
+      <a href="https://github.com/brooksc/jobhunt" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/brooksc/jobhunt/issues" target="_blank" rel="noopener">Issues</a>
+      <a href="https://chromewebstore.google.com/detail/jobhunt-capture/jekcbebhfeidkpapienoflbcaeeknlch" target="_blank" rel="noopener">Chrome Extension</a>
+    </div>
+  </footer>
+
+  <script>
+    const SLIDES = [
+      { title: "Jobs", desc: "Filter, sort, and open any job for a full detail view with fit score, salary, and extracted fields." },
+      { title: "Dashboard", desc: "Your pipeline at a glance — top-scored opportunities, stage counts, recent captures, and daily activity." },
+      { title: "Duplicate review", desc: "Automatically surfaces jobs posted across multiple boards. Compare side-by-side and merge with one click." },
+      { title: "Sites", desc: "Track which job boards you're monitoring and schedule periodic reviews so no board goes stale." },
+    ];
+
+    const track = document.getElementById('carouselTrack');
+    const dots = document.querySelectorAll('.carousel-dot');
+    const caption = document.getElementById('carouselCaption');
+    const carousel = document.getElementById('carousel');
+    let current = 0;
+    let timer;
+
+    function goTo(n) {
+      current = (n + SLIDES.length) % SLIDES.length;
+      track.style.transform = `translateX(-${current * 100}%)`;
+      dots.forEach((d, i) => d.classList.toggle('active', i === current));
+      const s = SLIDES[current];
+      caption.innerHTML = `<strong>${s.title}</strong><span>${s.desc}</span>`;
+    }
+
+    function startAuto() {
+      clearInterval(timer);
+      timer = setInterval(() => goTo(current + 1), 4000);
+    }
+
+    document.getElementById('carouselPrev').addEventListener('click', () => { goTo(current - 1); startAuto(); });
+    document.getElementById('carouselNext').addEventListener('click', () => { goTo(current + 1); startAuto(); });
+    dots.forEach(d => d.addEventListener('click', () => { goTo(+d.dataset.index); startAuto(); }));
+    carousel.addEventListener('mouseenter', () => clearInterval(timer));
+    carousel.addEventListener('mouseleave', startAuto);
+
+    startAuto();
+  </script>
+</body>
+</html>

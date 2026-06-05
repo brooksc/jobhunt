@@ -142,7 +142,7 @@ function Sidebar({ route, setRoute, setSavedViewName, savedViewName, theme, them
     { id: "needs", label: "Needs Action", icon: "Bell", count: metrics.needsAction || 0 },
     { id: "llm-queue", label: "LLM Queue", icon: "Inbox", count: queueCount || undefined, warn: queuePaused },
     { id: "sites", label: "Sites", icon: "Globe", count: metrics.sites || window.JH_SITES.length },
-    { id: "duplicates", label: "Duplicate review", icon: "Copy", count: metrics.duplicateGroups || window.JH_DUPES.length },
+    { id: "duplicates", label: "Duplicate review", icon: "Copy", count: (window.JH_DUPES || []).reduce((n, g) => n + Math.max(0, (g.jobIds || []).length - 1), 0) || undefined },
   ];
   return (
     <aside className="jh-side">

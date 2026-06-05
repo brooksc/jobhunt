@@ -264,33 +264,7 @@ function OperationsStrip({ jobs, metrics, queueStats, onSelectJob, onProcessExtr
 
 // ── Zone 4: Daily activity table ─────────────────────────────────────────────
 
-function buildDailyActivity(jobs) {
-  const byDate = {};
-
-  function bump(iso, key) {
-    if (!iso) return;
-    const dt = new Date(iso);
-    const d = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-    if (!byDate[d]) byDate[d] = { saved: 0, applied: 0, interview: 0, offer: 0, rejected: 0 };
-    byDate[d][key]++;
-  }
-
-  for (const job of jobs) {
-    bump(job.capturedAt, 'saved');
-    for (const ev of (job.events || [])) {
-      if (ev.kind === 'status' && ev.note) {
-        const s = ev.note;
-        if (s === 'applied' || s === 'interview' || s === 'offer' || s === 'rejected') {
-          bump(ev.at, s);
-        }
-      }
-    }
-  }
-
-  return Object.entries(byDate)
-    .sort(([a], [b]) => b.localeCompare(a))
-    .map(([date, counts]) => ({ date, ...counts }));
-}
+const buildDailyActivity = (jobs) => window._JHC.buildDailyActivity(jobs);
 
 const ACTIVITY_COLS = [
   { key: 'saved',     label: 'Saved',     color: 'var(--st-saved)' },

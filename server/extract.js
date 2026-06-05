@@ -9,7 +9,7 @@ import {
   getPendingExtractionForJob, getJobFitContext,
   markExtractionSucceeded, markExtractionFailed, resetJobExtraction,
   markFitSucceeded, markFitFailed,
-  markLlmRequestRunning, queueFitScoreForJob,
+  markLlmRequestRunning, queueFitScoresForAllResumes, getResume,
   getLlmRequestState, startLlmRequestAttempt, finishLlmRequestAttempt,
 } from './db.js';
 
@@ -1071,17 +1071,17 @@ function fitScoreSchema() {
 // Simple in-process lock — Electron runs as a single process
 let _extractionRunning = false;
 
-export async function runExtraction({ dbPath, extractor, limit = 10, scorer, resume = '' }) {
+export async function runExtraction({ dbPath, extractor, limit = 10, scorer }) {
   if (_extractionRunning) return { processed: 0, succeeded: 0, failed: 0 };
   _extractionRunning = true;
   try {
-    return await _runExtractionInner({ dbPath, extractor, limit, scorer, resume });
+    return await _runExtractionInner({ dbPath, extractor, limit, scorer });
   } finally {
     _extractionRunning = false;
   }
 }
 
-export async function runExtractionForSelected({ dbPath, extractor, requestIds, scorer, resume = '' }) {
+export async function runExtractionForSelected({ dbPath, extractor, requestIds, scorer }) {
   if (_extractionRunning) return { processed: 0, succeeded: 0, failed: 0 };
   _extractionRunning = true;
   try {
@@ -1089,7 +1089,7 @@ export async function runExtractionForSelected({ dbPath, extractor, requestIds, 
     let processed = 0, succeeded = 0, failed = 0;
     for (const item of items) {
       if (item.status !== 'queued' && item.status !== 'failed') continue;
-      const { wasProcessed, didSucceed } = await processSingleQueueRequest({ dbPath, extractor, item, scorer, resume });
+      const { wasProcessed, didSucceed } = await processSingleQueueRequest({ dbPath, extractor, item, scorer });
       if (wasProcessed) {
         processed++;
         if (didSucceed) succeeded++; else failed++;
@@ -1101,7 +1101,7 @@ export async function runExtractionForSelected({ dbPath, extractor, requestIds, 
   }
 }
 
-async function _runExtractionInner({ dbPath, extractor, limit = 10, scorer, resume = '' }) {
+async function _runExtractionInner({ dbPath, extractor, limit = 10, scorer }) {
   if (isQueuePaused(dbPath)) return { processed: 0, succeeded: 0, failed: 0 };
 
   let failureStreak = 0, processed = 0, succeeded = 0, failed = 0;
@@ -1116,7 +1116,7 @@ async function _runExtractionInner({ dbPath, extractor, limit = 10, scorer, resu
     for (const item of batch) {
       if (isQueuePaused(dbPath)) { paused = true; break; }
       handledIds.add(item.id);
-      const { wasProcessed, didSucceed } = await processSingleQueueRequest({ dbPath, extractor, item, scorer, resume });
+      const { wasProcessed, didSucceed } = await processSingleQueueRequest({ dbPath, extractor, item, scorer });
       if (wasProcessed) {
         processed++;
         if (didSucceed) {
@@ -1134,9 +1134,9 @@ async function _runExtractionInner({ dbPath, extractor, limit = 10, scorer, resu
   return { processed, succeeded, failed };
 }
 
-async function processSingleQueueRequest({ dbPath, extractor, item, scorer, resume }) {
+async function processSingleQueueRequest({ dbPath, extractor, item, scorer }) {
   if (item.request_type === 'fit_score') {
-    return processFitScoreRequest({ dbPath, scorer, resume, item });
+    return processFitScoreRequest({ dbPath, scorer, item });
   }
 
   const pending = getPendingExtractionForJob(dbPath, item.job_id);
@@ -1155,7 +1155,7 @@ async function processSingleQueueRequest({ dbPath, extractor, item, scorer, resu
     const confidence = confidenceValues.length ? confidenceValues.reduce((a, b) => a + b, 0) / confidenceValues.length : null;
     markExtractionSucceeded(pending.job_id, extracted, dbPath, item.id, modelName, confidence);
     finishLlmRequestAttempt(dbPath, attemptId, { status: 'succeeded', modelReturned: modelName, responseFormat: responseFormatType });
-    if (resume && resume.trim()) queueFitScoreForJob(dbPath, pending.job_id);
+    queueFitScoresForAllResumes(dbPath, pending.job_id);
     return { wasProcessed: true, didSucceed: true };
   } catch (err) {
     markExtractionFailed(pending.job_id, String(err), dbPath, item.id);
@@ -1171,9 +1171,20 @@ async function processSingleQueueRequest({ dbPath, extractor, item, scorer, resu
   }
 }
 
-async function processFitScoreRequest({ dbPath, scorer, resume, item }) {
-  if (!scorer || !resume || !resume.trim()) {
-    markFitFailed(item.job_id, 'No resume configured — add one in Settings to enable fit scoring.', dbPath, item.id);
+async function processFitScoreRequest({ dbPath, scorer, item }) {
+  const resumeId = item.resume_id;
+  if (!resumeId) {
+    // Legacy fit request with no resume — nothing to score against; cancel it.
+    initDb(dbPath).prepare("UPDATE llm_requests SET status='canceled', finished_at=? WHERE id=?").run(new Date().toISOString(), item.id);
+    return { wasProcessed: false, didSucceed: false };
+  }
+  const resume = getResume(dbPath, resumeId);
+  if (!resume || !String(resume.text || '').trim()) {
+    markFitFailed(item.job_id, resumeId, resume ? 'Resume has no text to score against.' : 'Resume no longer exists.', dbPath, item.id);
+    return { wasProcessed: true, didSucceed: false };
+  }
+  if (!scorer) {
+    markFitFailed(item.job_id, resumeId, 'No LLM scorer configured.', dbPath, item.id);
     return { wasProcessed: true, didSucceed: false };
   }
 
@@ -1197,21 +1208,22 @@ async function processFitScoreRequest({ dbPath, scorer, resume, item }) {
   const attemptId = startLlmRequestAttempt(dbPath, item.id, {
     baseUrl: scorer?.baseUrl,
     modelRequested: scorer?.model,
-    promptChars: JSON.stringify(context.extracted || {}).length + String(resume || '').length,
+    promptChars: JSON.stringify(context.extracted || {}).length + String(resume.text || '').length,
   });
 
   try {
-    const { fit, modelName, responseFormatType } = await scorer.score(context, resume);
-    markFitSucceeded(item.job_id, fit, dbPath, item.id, modelName);
+    const { fit, modelName, responseFormatType } = await scorer.score(context, resume.text);
+    markFitSucceeded(item.job_id, resumeId, fit, dbPath, item.id, modelName);
     finishLlmRequestAttempt(dbPath, attemptId, { status: 'succeeded', modelReturned: modelName, responseFormat: responseFormatType });
     process.emit('jobhunt:job-ready', {
       jobNumber: item.job_number,
       title: item.title,
+      resumeName: resume.name,
       fitScore: typeof fit?.overall_score === 'number' ? fit.overall_score : null,
     });
     return { wasProcessed: true, didSucceed: true };
   } catch (err) {
-    markFitFailed(item.job_id, String(err), dbPath, item.id);
+    markFitFailed(item.job_id, resumeId, String(err), dbPath, item.id);
     finishLlmRequestAttempt(dbPath, attemptId, {
       status: 'failed',
       modelReturned: err.modelName || running?.model || null,

@@ -37,7 +37,6 @@ function SettingsPage() {
     llmModel: s.llm_model || "",
     siteInterval: String(s.site_review_interval_days || 14),
     followupDays: String(s.followup_default_days || 7),
-    resumeText: s.resume_text || "",
     preferredLocations: s.preferred_locations !== undefined ? s.preferred_locations : "WA, Washington, Seattle, Bellevue, Redmond, Kirkland, Bothell, Renton",
     allowRemote: parseBool(s.location_allow_remote, true),
     allowHybrid: parseBool(s.location_allow_hybrid, true),
@@ -56,7 +55,6 @@ function SettingsPage() {
   const [llmModel, setLlmModel] = React.useState(defaults.llmModel);
   const [siteInterval, setSiteInterval] = React.useState(defaults.siteInterval);
   const [followupDays, setFollowupDays] = React.useState(defaults.followupDays);
-  const [resumeText, setResumeText] = React.useState(defaults.resumeText);
   const [preferredLocations, setPreferredLocations] = React.useState(defaults.preferredLocations);
   const [allowRemote, setAllowRemote] = React.useState(defaults.allowRemote);
   const [allowHybrid, setAllowHybrid] = React.useState(defaults.allowHybrid);
@@ -94,7 +92,6 @@ function SettingsPage() {
     llmModel !== savedValues.llmModel ||
     siteInterval !== savedValues.siteInterval ||
     followupDays !== savedValues.followupDays ||
-    resumeText !== savedValues.resumeText ||
     preferredLocations !== savedValues.preferredLocations ||
     allowRemote !== savedValues.allowRemote ||
     allowHybrid !== savedValues.allowHybrid ||
@@ -121,7 +118,6 @@ function SettingsPage() {
           llm_model: next.llmModel,
           site_review_interval_days: Number(next.siteInterval),
           followup_default_days: Number(next.followupDays),
-          resume_text: next.resumeText,
           preferred_locations: next.preferredLocations,
           location_allow_remote: next.allowRemote,
           location_allow_hybrid: next.allowHybrid,
@@ -144,7 +140,6 @@ function SettingsPage() {
           llm_model: next.llmModel,
           site_review_interval_days: Number(next.siteInterval),
           followup_default_days: Number(next.followupDays),
-          resume_text: next.resumeText,
           preferred_locations: next.preferredLocations,
           location_allow_remote: String(next.allowRemote),
           location_allow_hybrid: String(next.allowHybrid),
@@ -176,7 +171,6 @@ function SettingsPage() {
       llmModel,
       siteInterval,
       followupDays,
-      resumeText,
       preferredLocations,
       allowRemote,
       allowHybrid,
@@ -192,7 +186,7 @@ function SettingsPage() {
       saveSettings(next);
     }, 700);
     return () => clearTimeout(timer);
-  }, [llmProvider, llmBaseUrl, llmApiKey, llmModel, siteInterval, followupDays, resumeText, preferredLocations, allowRemote, allowHybrid, allowOnsite, preferredMetros, filterEnabled, llmDebugLevel, availabilityAutoCheck, availabilityIntervalDays, availabilityStaleDays]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [llmProvider, llmBaseUrl, llmApiKey, llmModel, siteInterval, followupDays, preferredLocations, allowRemote, allowHybrid, allowOnsite, preferredMetros, filterEnabled, llmDebugLevel, availabilityAutoCheck, availabilityIntervalDays, availabilityStaleDays]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function _callTestLlm(quick = false) {
     const res = await fetch("/api/settings/test-llm", {
@@ -515,36 +509,8 @@ function SettingsPage() {
           </div>
         </Section>
 
-        <Section title="Resume" desc="Paste your resume as plain text. Jobs are scored 0-100 for fit against it automatically after extraction.">
-          <div>
-            <div className="jh-label">Resume text</div>
-            <div className="jh-input" style={{ alignItems: "stretch", padding: 0, height: "auto" }}>
-              <textarea
-                value={resumeText}
-                onChange={e => setResumeText(e.target.value)}
-                placeholder="Paste your full resume here as plain text…"
-                rows={14}
-                style={{
-                  width: "100%",
-                  minHeight: 200,
-                  padding: "8px 10px",
-                  background: "transparent",
-                  border: "none",
-                  outline: "none",
-                  color: "inherit",
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 12,
-                  resize: "vertical",
-                  lineHeight: 1.45,
-                }}
-              />
-            </div>
-            <div style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 4 }}>
-              {resumeText.trim()
-                ? "Saved jobs will be re-scored when re-extracted, or score them now from a job's detail view."
-                : "Add a resume to enable fit scoring."}
-            </div>
-          </div>
+        <Section title="Resumes" desc="Upload one or more resume PDFs (or paste text). Each job is scored 0-100 against every active resume so you can see which resume fits best.">
+          <ResumeManager />
         </Section>
 
         <Section title="Location filter" desc="Comma-separated city/state/region names. Extraction filters job locations to these — only matching locations are stored and used to set remote/onsite status. Changing this requires re-running extraction on existing jobs.">
@@ -745,6 +711,196 @@ function DKV({ k, v, onDoubleClick, title }) {
     <div onDoubleClick={onDoubleClick} title={title} style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 12, cursor: onDoubleClick ? "default" : undefined }}>
       <span style={{ color: "var(--fg-mute)", width: 110 }}>{k}</span>
       <span data-mono style={{ color: "var(--fg)" }}>{v}</span>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------
+// Resume manager (multiple resumes, client-side PDF text extraction)
+// ------------------------------------------------------------------
+
+let _pdfjsPromise = null;
+function loadPdfJs() {
+  if (window.pdfjsLib) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/static/vendor/pdfjs/pdf.worker.min.js";
+    return Promise.resolve(window.pdfjsLib);
+  }
+  if (_pdfjsPromise) return _pdfjsPromise;
+  _pdfjsPromise = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "/static/vendor/pdfjs/pdf.min.js";
+    s.onload = () => {
+      if (window.pdfjsLib) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/static/vendor/pdfjs/pdf.worker.min.js";
+        resolve(window.pdfjsLib);
+      } else {
+        reject(new Error("pdf.js failed to load"));
+      }
+    };
+    s.onerror = () => reject(new Error("pdf.js failed to load"));
+    document.head.appendChild(s);
+  });
+  return _pdfjsPromise;
+}
+
+async function extractPdfText(file) {
+  const pdfjsLib = await loadPdfJs();
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    pages.push(content.items.map(it => it.str).join(" "));
+  }
+  return pages.join("\n").replace(/[ \t]+/g, " ").trim();
+}
+
+function ResumeManager() {
+  const [resumes, setResumes] = React.useState(() => window.JH_RESUMES || []);
+  const [busy, setBusy] = React.useState(false);
+  const [status, setStatus] = React.useState(null);
+  const [editing, setEditing] = React.useState(null); // resume id whose text box is open
+  const [draftText, setDraftText] = React.useState("");
+  const [pasteOpen, setPasteOpen] = React.useState(false);
+  const [pasteName, setPasteName] = React.useState("");
+  const [pasteText, setPasteText] = React.useState("");
+  const fileRef = React.useRef(null);
+
+  async function loadResumes() {
+    try {
+      const res = await window.JH_API.listResumes();
+      setResumes(res.resumes || []);
+    } catch (e) {
+      setStatus({ kind: "error", text: e.message });
+    }
+  }
+
+  async function onFiles(e) {
+    const files = Array.from(e.target.files || []);
+    if (fileRef.current) fileRef.current.value = "";
+    if (!files.length) return;
+    setBusy(true);
+    let added = 0, queued = 0, warned = 0;
+    for (const file of files) {
+      try {
+        setStatus({ kind: "saving", text: `Reading ${file.name}…` });
+        const text = await extractPdfText(file);
+        if (!text.trim()) {
+          warned++;
+          setStatus({ kind: "error", text: `${file.name}: no text found (scanned/image PDF). Use "Paste text" instead.` });
+          continue;
+        }
+        const name = file.name.replace(/\.pdf$/i, "");
+        const res = await window.JH_API.addResume({ name, filename: file.name, text });
+        added++;
+        queued += res?.queued_jobs || 0;
+      } catch (err) {
+        setStatus({ kind: "error", text: `${file.name}: ${err.message}` });
+      }
+    }
+    await loadResumes();
+    setBusy(false);
+    if (added) {
+      setStatus({ kind: "success", text: `Added ${added} resume${added > 1 ? "s" : ""}${queued ? ` · scoring ${queued} job${queued > 1 ? "s" : ""}` : ""}${warned ? ` · ${warned} skipped` : ""}` });
+    }
+  }
+
+  async function savePasted() {
+    if (!pasteText.trim()) return;
+    setBusy(true);
+    try {
+      const res = await window.JH_API.addResume({ name: pasteName.trim() || "Pasted resume", text: pasteText });
+      await loadResumes();
+      setPasteOpen(false); setPasteName(""); setPasteText("");
+      setStatus({ kind: "success", text: `Added resume${res?.queued_jobs ? ` · scoring ${res.queued_jobs} jobs` : ""}` });
+    } catch (e) {
+      setStatus({ kind: "error", text: e.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rename(id, name) {
+    try { await window.JH_API.updateResume(id, { name }); await loadResumes(); }
+    catch (e) { setStatus({ kind: "error", text: e.message }); }
+  }
+  async function toggleActive(id, active) {
+    try { await window.JH_API.updateResume(id, { active }); await loadResumes(); }
+    catch (e) { setStatus({ kind: "error", text: e.message }); }
+  }
+  async function saveText(id) {
+    setBusy(true);
+    try { await window.JH_API.updateResume(id, { text: draftText }); setEditing(null); await loadResumes(); }
+    catch (e) { setStatus({ kind: "error", text: e.message }); }
+    finally { setBusy(false); }
+  }
+  async function openEditor(id) {
+    const full = await window.JH_API.api(`/api/resumes/${id}`);
+    setDraftText(full?.text || "");
+    setEditing(id);
+  }
+  async function remove(id, name) {
+    if (!window.confirm(`Delete resume "${name}"? Its fit scores will be removed.`)) return;
+    try { await window.JH_API.deleteResume(id); await loadResumes(); setStatus({ kind: "success", text: "Resume deleted" }); }
+    catch (e) { setStatus({ kind: "error", text: e.message }); }
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <input ref={fileRef} type="file" accept=".pdf" multiple onChange={onFiles} style={{ display: "none" }} />
+        <Btn size="sm" kind="accent" disabled={busy} icon={<Icon.Plus size={12} />} onClick={() => fileRef.current?.click()}>
+          {busy ? "Working…" : "Upload PDFs"}
+        </Btn>
+        <Btn size="sm" disabled={busy} onClick={() => setPasteOpen(v => !v)}>Paste text</Btn>
+        {status && (
+          <span style={{ fontSize: 11.5, color: status.kind === "error" ? "var(--st-rejected)" : status.kind === "success" ? "var(--st-offer)" : "var(--fg-mute)" }}>
+            {status.text}
+          </span>
+        )}
+      </div>
+
+      {pasteOpen && (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+          <input className="jh-input" style={{ padding: "0 8px", height: 30 }} placeholder="Resume name" value={pasteName} onChange={e => setPasteName(e.target.value)} />
+          <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} placeholder="Paste resume text…" rows={8}
+            style={{ width: "100%", padding: "8px 10px", background: "var(--bg-elev)", border: "1px solid var(--border)", borderRadius: "var(--r-2)", color: "var(--fg)", fontFamily: "var(--font-mono)", fontSize: 12, resize: "vertical" }} />
+          <div><Btn size="sm" kind="accent" disabled={busy || !pasteText.trim()} onClick={savePasted}>Save resume</Btn></div>
+        </div>
+      )}
+
+      <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+        {resumes.length === 0 && (
+          <div style={{ fontSize: 12, color: "var(--fg-faint)" }}>No resumes yet. Upload a PDF to enable fit scoring.</div>
+        )}
+        {resumes.map(r => (
+          <div key={r.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--r-2)", padding: "8px 10px", background: "var(--bg-elev)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                defaultValue={r.name}
+                onBlur={e => { const v = e.target.value.trim(); if (v && v !== r.name) rename(r.id, v); }}
+                style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "var(--fg)", fontSize: 13, fontWeight: 600 }}
+              />
+              <label style={{ fontSize: 11, color: "var(--fg-mute)", display: "inline-flex", alignItems: "center", gap: 4 }} title="Score new jobs against this resume">
+                <input type="checkbox" checked={!!r.active} onChange={e => toggleActive(r.id, e.target.checked)} /> active
+              </label>
+              <Btn size="sm" onClick={() => (editing === r.id ? setEditing(null) : openEditor(r.id))}>{editing === r.id ? "Close" : "Edit text"}</Btn>
+              <Btn size="sm" kind="ghost" icon={<Icon.Trash size={12} />} onClick={() => remove(r.id, r.name)} />
+            </div>
+            <div style={{ fontSize: 11, color: "var(--fg-faint)", fontFamily: "var(--font-mono)", marginTop: 2 }}>
+              {r.filename ? `${r.filename} · ` : ""}{r.char_count} chars
+            </div>
+            {editing === r.id && (
+              <div style={{ marginTop: 8 }}>
+                <textarea value={draftText} onChange={e => setDraftText(e.target.value)} rows={12}
+                  style={{ width: "100%", padding: "8px 10px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "var(--r-2)", color: "var(--fg)", fontFamily: "var(--font-mono)", fontSize: 12, resize: "vertical", lineHeight: 1.45 }} />
+                <div style={{ marginTop: 6 }}><Btn size="sm" kind="accent" disabled={busy} onClick={() => saveText(r.id)}>Save text</Btn></div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

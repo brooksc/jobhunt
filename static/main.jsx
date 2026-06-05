@@ -266,7 +266,23 @@
           model: j.fit_score_json?.model || null,
           scoredAt: j.fit_score_json?.scored_at || null,
           error: j.fit_score_json?.error || null,
+          bestResumeName: j.fit_score_json?.best_resume_name || null,
+          bestResumeId: j.fit_score_json?.best_resume_id || null,
         },
+        fitScores: (j.fit_scores || []).map(f => ({
+          resumeId: f.resume_id,
+          resumeName: f.resume_name,
+          resumeActive: !!f.resume_active,
+          score: (f.score != null ? f.score : null),
+          status: f.status || "none",
+          summary: f.summary || null,
+          requirements_met: f.requirements_met || [],
+          requirements_not_met: f.requirements_not_met || [],
+          dimensions: f.dimensions || [],
+          model: f.model || null,
+          scoredAt: f.scored_at || null,
+          error: f.error || null,
+        })),
         nextAction: j.next_action ? {
           id: j.next_action.id,
           note: j.next_action.note,
@@ -396,6 +412,7 @@
       meta,
       settings: raw.settings || {},
       metros: raw.metros || {},
+      resumes: raw.resumes || [],
       isDemo: raw.isDemo || false,
     };
   }
@@ -412,6 +429,7 @@
       JH_METRICS: mapped.metrics,
       JH_META: mapped.meta,
       JH_SETTINGS: mapped.settings,
+      JH_RESUMES: mapped.resumes,
       JH_METROS: mapped.metros,
       JH_IS_DEMO: mapped.isDemo || false,
       JH_QUEUE_STATS: {
@@ -504,7 +522,11 @@
           .then(refreshUiDataOrReload)
           .catch((e) => window.JH_TOAST?.show(e.message, "error"));
       },
-      scoreFit: (jobId) => mutate(`/api/jobs/${jobId}/fit-score`, { method: "POST" }),
+      scoreFit: (jobId, resumeId) => mutate(`/api/jobs/${jobId}/fit-score`, { method: "POST", body: JSON.stringify(resumeId ? { resume_id: resumeId } : {}) }),
+      listResumes: () => api("/api/resumes"),
+      addResume: (body) => mutate("/api/resumes", { method: "POST", body: JSON.stringify(body) }),
+      updateResume: (id, body) => mutate(`/api/resumes/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+      deleteResume: (id) => mutate(`/api/resumes/${id}`, { method: "DELETE" }),
       processExtractions: () => api("/api/extractions/run", { method: "POST" }),
       checkAvailability: () => api("/api/jobs/check-availability", { method: "POST" }),
       enqueueAllPending: () => api("/api/llm-queue/enqueue-all", { method: "POST" }),

@@ -862,19 +862,103 @@ function fitColor(score) {
   return "var(--st-rejected)";
 }
 
-function FitScorePanel({ job }) {
-  const fit = job.fit || {};
-  const status = fit.status || "none";
-  const [busy, setBusy] = React.useState(false);
-  const hasStoredFitScore = fit.score != null;
+function FitResumeDetail({ fit }) {
+  return (
+    <>
+      {fit.summary && (
+        <p style={{ fontSize: 12.5, color: "var(--fg)", marginTop: 0, lineHeight: 1.5 }}>{fit.summary}</p>
+      )}
+      {((fit.requirements_met || []).length > 0 || (fit.requirements_not_met || []).length > 0) && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 10, marginBottom: 10 }}>
+          {(fit.requirements_met || []).length > 0 && (
+            <div>
+              <div style={{ fontSize: 12, color: "var(--fg-strong)", fontWeight: 600, marginBottom: 4 }}>Requirements met</div>
+              <ul style={{ margin: 0, paddingLeft: 18, color: "var(--fg-mute)", fontSize: 11.5, lineHeight: 1.45 }}>
+                {fit.requirements_met.map((item, i) => <li key={i}>{item}</li>)}
+              </ul>
+            </div>
+          )}
+          {(fit.requirements_not_met || []).length > 0 && (
+            <div>
+              <div style={{ fontSize: 12, color: "var(--fg-strong)", fontWeight: 600, marginBottom: 4 }}>Requirements not met</div>
+              <ul style={{ margin: 0, paddingLeft: 18, color: "var(--fg-mute)", fontSize: 11.5, lineHeight: 1.45 }}>
+                {fit.requirements_not_met.map((item, i) => <li key={i}>{item}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+        {(fit.dimensions || []).map((d) => (
+          <div key={d.name}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: 12 }}>
+              <span style={{ color: "var(--fg-strong)", minWidth: 120 }}>{FIT_DIMENSION_LABELS[d.name] || d.name}</span>
+              <span style={{ color: fitColor(d.score), fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{d.score}</span>
+            </div>
+            <div style={{ height: 5, borderRadius: 3, background: "var(--bg-elev-2)", overflow: "hidden", margin: "3px 0" }}>
+              <div style={{ width: `${Math.max(0, Math.min(100, d.score))}%`, height: "100%", background: fitColor(d.score) }}></div>
+            </div>
+            {d.rationale && <div style={{ fontSize: 11.5, color: "var(--fg-mute)", lineHeight: 1.4 }}>{d.rationale}</div>}
+          </div>
+        ))}
+      </div>
+      {fit.model && (
+        <div style={{ marginTop: 8, fontSize: 11, color: "var(--fg-faint)", fontFamily: "var(--font-mono)" }}>
+          {fit.model}{fit.scoredAt ? ` · ${fmtDateTime(fit.scoredAt)}` : ""}
+        </div>
+      )}
+    </>
+  );
+}
 
-  const hasResume = !!String(window.JH_SETTINGS?.resume_text || "").trim();
+function FitResumeCard({ fit, isBest, defaultOpen, onRescore, busy, extracted }) {
+  const [open, setOpen] = React.useState(!!defaultOpen);
+  const st = fit.status || "none";
+  const scoreLabel = st === "succeeded" && fit.score != null ? String(fit.score)
+    : st === "pending" ? "…" : st === "failed" ? "!" : "—";
+  const scoreColor = st === "succeeded" ? fitColor(fit.score) : st === "failed" ? "var(--st-rejected)" : "var(--fg-faint)";
+  return (
+    <div style={{ border: `1px solid ${isBest ? "var(--accent-border, var(--border))" : "var(--border)"}`, borderRadius: "var(--r-2)", padding: "8px 10px", marginBottom: 8, background: isBest ? "var(--accent-bg, var(--bg-elev))" : "var(--bg-elev)" }}>
+      <div onClick={() => setOpen(o => !o)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+        <span style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .12s", display: "inline-flex" }}><Icon.ChevronRight size={12} /></span>
+        <span style={{ fontWeight: 600, fontSize: 12.5, color: "var(--fg)" }}>{fit.resumeName}</span>
+        {isBest && <span style={{ fontSize: 10, fontWeight: 700, color: "var(--st-offer)", border: "1px solid var(--st-offer)", borderRadius: 4, padding: "0 5px" }}>BEST</span>}
+        {!fit.resumeActive && <span style={{ fontSize: 10.5, color: "var(--fg-faint)" }}>(inactive)</span>}
+        {st === "pending" && <span style={{ fontSize: 11, color: "var(--fg-mute)", display: "inline-flex", alignItems: "center", gap: 4 }}><Icon.Clock size={11} /> queued</span>}
+        <span style={{ marginLeft: "auto", fontSize: 18, fontWeight: 700, color: scoreColor, fontVariantNumeric: "tabular-nums" }} title={st === "failed" ? (fit.error || "Failed") : undefined}>{scoreLabel}</span>
+      </div>
+      {open && (
+        <div style={{ marginTop: 8 }}>
+          {st === "succeeded" && <FitResumeDetail fit={fit} />}
+          {st === "failed" && (
+            <div style={{ color: "var(--st-rejected)", fontSize: 12, fontFamily: "var(--font-mono)" }}>{fit.error || "Fit scoring failed."}</div>
+          )}
+          {st === "pending" && (
+            <div style={{ color: "var(--fg-mute)", fontSize: 12 }}>Scoring queued — check the LLM Queue.</div>
+          )}
+          <div style={{ marginTop: 8 }}>
+            <Btn size="sm" icon={<Icon.Sparkles size={11} />} disabled={busy || !extracted} onClick={onRescore}>
+              {st === "succeeded" || st === "failed" ? "Re-score this resume" : "Score this resume"}
+            </Btn>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FitScorePanel({ job }) {
+  const fitScores = job.fitScores || [];
+  const status = job.fit?.status || "none";
+  const [busy, setBusy] = React.useState(false);
+  const resumes = window.JH_RESUMES || [];
+  const hasResume = resumes.some(r => r.active) || fitScores.length > 0;
   const extracted = job.extraction?.status === "ok";
 
-  function trigger() {
+  function trigger(resumeId) {
     setBusy(true);
-    window.JH_API.scoreFit(job.id)
-      .then(() => window.JH_TOAST.show("Fit scoring queued"))
+    window.JH_API.scoreFit(job.id, resumeId)
+      .then(() => window.JH_TOAST.show(resumeId ? "Re-scoring queued" : "Fit scoring queued"))
       .catch((e) => window.JH_TOAST.show(e.message, "error"))
       .finally(() => setBusy(false));
   }
@@ -885,22 +969,26 @@ function FitScorePanel({ job }) {
       kind="accent"
       icon={<Icon.Sparkles size={11} />}
       disabled={busy || !hasResume || !extracted}
-      title={!hasResume ? "Add your resume in Settings first" : !extracted ? "Extract this job first" : undefined}
-      onClick={trigger}
+      title={!hasResume ? "Add a resume in Settings first" : !extracted ? "Extract this job first" : undefined}
+      onClick={() => trigger()}
     >
       {busy ? "Queuing…" : label}
     </Btn>
   );
+
+  const succeeded = fitScores.filter(f => f.status === "succeeded" && f.score != null);
+  const bestId = succeeded.length ? succeeded.reduce((a, b) => (b.score > a.score ? b : a)).resumeId : null;
+  const sorted = [...fitScores].sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || String(a.resumeName || "").localeCompare(String(b.resumeName || "")));
 
   return (
     <div className="jh-section">
       <h3>Resume fit</h3>
       {!hasResume && (
         <p style={{ color: "var(--fg-mute)", fontSize: 12.5 }}>
-          Add your resume in Settings to score how well you fit this job.
+          Add a resume in Settings to score how well you fit this job.
         </p>
       )}
-      {hasResume && status === "none" && (
+      {hasResume && fitScores.length === 0 && (
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ color: "var(--fg-mute)", fontSize: 12.5 }}>
             {extracted ? "Not scored yet." : "Extract this job first, then score fit."}
@@ -908,74 +996,31 @@ function FitScorePanel({ job }) {
           {scoreBtn("Score fit")}
         </div>
       )}
-      {hasResume && status === "pending" && !hasStoredFitScore && (
-        <p style={{ color: "var(--fg-mute)", fontSize: 12.5, display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <Icon.Clock size={12} /> Scoring queued — check the LLM Queue.
-        </p>
-      )}
-      {hasResume && status === "failed" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}>
-          <span style={{ color: "var(--st-rejected)", fontSize: 12, fontFamily: "var(--font-mono)" }}>
-            {fit.error || "Fit scoring failed."}
-          </span>
-          {scoreBtn("Retry scoring")}
-        </div>
-      )}
-      {(status === "succeeded" || (status === "pending" && hasStoredFitScore)) && (
+      {fitScores.length > 0 && (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-            <span style={{ fontSize: 28, fontWeight: 700, color: fitColor(fit.score), fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
-              {fit.score}
+            <span style={{ fontSize: 12, color: "var(--fg-mute)" }}>
+              {succeeded.length} of {fitScores.length} resume{fitScores.length > 1 ? "s" : ""} scored
             </span>
-            <span style={{ color: "var(--fg-faint)", fontSize: 12 }}>/ 100 overall fit</span>
-            <span style={{ marginLeft: "auto" }}>{status === "pending" ? (
-              <span style={{ color: "var(--fg-mute)", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <Icon.Clock size={12} /> Re-scoring queued
-              </span>
-            ) : scoreBtn("Re-score")}</span>
+            <span style={{ marginLeft: "auto" }}>
+              {status === "pending" ? (
+                <span style={{ color: "var(--fg-mute)", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <Icon.Clock size={12} /> Scoring queued
+                </span>
+              ) : scoreBtn("Re-score all")}
+            </span>
           </div>
-          {fit.summary && (
-            <p style={{ fontSize: 12.5, color: "var(--fg)", marginTop: 0, lineHeight: 1.5 }}>{fit.summary}</p>
-          )}
-          {((fit.requirements_met || []).length > 0 || (fit.requirements_not_met || []).length > 0) && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 10, marginBottom: 10 }}>
-              {(fit.requirements_met || []).length > 0 && (
-                <div>
-                  <div style={{ fontSize: 12, color: "var(--fg-strong)", fontWeight: 600, marginBottom: 4 }}>Requirements met</div>
-                  <ul style={{ margin: 0, paddingLeft: 18, color: "var(--fg-mute)", fontSize: 11.5, lineHeight: 1.45 }}>
-                    {fit.requirements_met.map((item, i) => <li key={i}>{item}</li>)}
-                  </ul>
-                </div>
-              )}
-              {(fit.requirements_not_met || []).length > 0 && (
-                <div>
-                  <div style={{ fontSize: 12, color: "var(--fg-strong)", fontWeight: 600, marginBottom: 4 }}>Requirements not met</div>
-                  <ul style={{ margin: 0, paddingLeft: 18, color: "var(--fg-mute)", fontSize: 11.5, lineHeight: 1.45 }}>
-                    {fit.requirements_not_met.map((item, i) => <li key={i}>{item}</li>)}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
-            {(fit.dimensions || []).map((d) => (
-              <div key={d.name}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: 12 }}>
-                  <span style={{ color: "var(--fg-strong)", minWidth: 120 }}>{FIT_DIMENSION_LABELS[d.name] || d.name}</span>
-                  <span style={{ color: fitColor(d.score), fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{d.score}</span>
-                </div>
-                <div style={{ height: 5, borderRadius: 3, background: "var(--bg-elev-2)", overflow: "hidden", margin: "3px 0" }}>
-                  <div style={{ width: `${Math.max(0, Math.min(100, d.score))}%`, height: "100%", background: fitColor(d.score) }}></div>
-                </div>
-                {d.rationale && <div style={{ fontSize: 11.5, color: "var(--fg-mute)", lineHeight: 1.4 }}>{d.rationale}</div>}
-              </div>
-            ))}
-          </div>
-          {fit.model && (
-            <div style={{ marginTop: 8, fontSize: 11, color: "var(--fg-faint)", fontFamily: "var(--font-mono)" }}>
-              {fit.model}{fit.scoredAt ? ` · ${fmtDateTime(fit.scoredAt)}` : ""}
-            </div>
-          )}
+          {sorted.map(f => (
+            <FitResumeCard
+              key={f.resumeId}
+              fit={f}
+              isBest={f.resumeId === bestId}
+              defaultOpen={f.resumeId === bestId || fitScores.length === 1}
+              onRescore={() => trigger(f.resumeId)}
+              busy={busy}
+              extracted={extracted}
+            />
+          ))}
         </>
       )}
     </div>

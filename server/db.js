@@ -45,7 +45,6 @@ export const SETTINGS_DEFAULTS = {
   availability_auto_check_interval_days: '1',
   availability_stale_days: '21',
   availability_last_auto_check_at: '',
-  resume_text: '',
 };
 
 const SCHEMA = `
@@ -173,18 +172,46 @@ CREATE TABLE IF NOT EXISTS sites (
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
 );
 
+CREATE TABLE IF NOT EXISTS resumes (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  filename TEXT,
+  text TEXT NOT NULL DEFAULT '',
+  char_count INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS job_fit_scores (
+  job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  resume_id TEXT NOT NULL REFERENCES resumes(id) ON DELETE CASCADE,
+  fit_score INTEGER,
+  fit_status TEXT NOT NULL DEFAULT 'none',
+  fit_score_json TEXT,
+  model TEXT,
+  scored_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (job_id, resume_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_job_fit_scores_job ON job_fit_scores (job_id);
+CREATE INDEX IF NOT EXISTS idx_job_fit_scores_resume ON job_fit_scores (resume_id);
+
 CREATE TABLE IF NOT EXISTS llm_requests (
   id TEXT PRIMARY KEY,
   job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
   request_type TEXT NOT NULL DEFAULT 'extract',
+  resume_id TEXT REFERENCES resumes(id) ON DELETE CASCADE,
   status TEXT NOT NULL DEFAULT 'queued',
   attempt INTEGER NOT NULL DEFAULT 1,
   model TEXT,
   error TEXT,
   created_at TEXT NOT NULL,
   started_at TEXT,
-  finished_at TEXT,
-  UNIQUE(job_id, request_type)
+  finished_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_llm_requests_status_created
@@ -601,6 +628,84 @@ function migrateSchema(db) {
   if (!attemptColumns.has('response_format')) {
     db.exec('ALTER TABLE llm_request_attempts ADD COLUMN response_format TEXT');
   }
+  if (!attemptColumns.has('resume_id')) {
+    db.exec('ALTER TABLE llm_request_attempts ADD COLUMN resume_id TEXT');
+  }
+
+  migrateLlmRequestsResumeId(db);
+  migrateResumeData(db);
+}
+
+// Adds the resume_id column to llm_requests and replaces the legacy inline
+// UNIQUE(job_id, request_type) with two partial unique indexes (fit rows are
+// unique per (job, resume); other rows unique per (job, type)). SQLite can't
+// ALTER a constraint, so rebuild the table when resume_id is missing.
+function migrateLlmRequestsResumeId(db) {
+  const cols = tableColumns(db, 'llm_requests');
+  if (!cols.has('resume_id')) {
+    db.exec('PRAGMA foreign_keys = OFF');
+    try {
+      withTransaction(db, () => {
+        db.exec('ALTER TABLE llm_requests RENAME TO llm_requests_old');
+        db.exec(`CREATE TABLE llm_requests (
+          id TEXT PRIMARY KEY,
+          job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+          request_type TEXT NOT NULL DEFAULT 'extract',
+          resume_id TEXT REFERENCES resumes(id) ON DELETE CASCADE,
+          status TEXT NOT NULL DEFAULT 'queued',
+          attempt INTEGER NOT NULL DEFAULT 1,
+          model TEXT,
+          error TEXT,
+          created_at TEXT NOT NULL,
+          started_at TEXT,
+          finished_at TEXT
+        )`);
+        db.exec(`INSERT INTO llm_requests
+          (id, job_id, request_type, resume_id, status, attempt, model, error, created_at, started_at, finished_at)
+          SELECT id, job_id, request_type, NULL, status, attempt, model, error, created_at, started_at, finished_at
+          FROM llm_requests_old`);
+        // Legacy fit_score requests have no resume; drop them — they are re-queued per resume by the new flow.
+        db.exec("DELETE FROM llm_requests WHERE request_type='fit_score'");
+        db.exec('DROP TABLE llm_requests_old');
+      });
+      db.exec('PRAGMA foreign_key_check');
+    } finally {
+      db.exec('PRAGMA foreign_keys = ON');
+    }
+  }
+  // Recreate indexes (dropped with the old table during a rebuild; harmless otherwise).
+  db.exec('CREATE INDEX IF NOT EXISTS idx_llm_requests_status_created ON llm_requests (status, created_at)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_llm_requests_job ON llm_requests (job_id)');
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_llm_requests_fit ON llm_requests (job_id, request_type, resume_id) WHERE request_type = 'fit_score'");
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_llm_requests_nonfit ON llm_requests (job_id, request_type) WHERE request_type <> 'fit_score'");
+}
+
+// One-time migration: import the legacy single settings.resume_text into the
+// resumes table, and copy any existing succeeded job fit scores into
+// job_fit_scores under that imported resume so nothing is lost.
+function migrateResumeData(db) {
+  const resumeCount = db.prepare('SELECT COUNT(*) AS c FROM resumes').get().c;
+  if (resumeCount > 0) return;
+  const setting = db.prepare("SELECT value FROM settings WHERE key='resume_text'").get();
+  const text = setting?.value || '';
+  if (!text.trim()) return;
+
+  const now = nowIso();
+  const resumeId = makeId('res');
+  db.prepare(`INSERT INTO resumes (id, name, filename, text, char_count, active, sort_order, created_at, updated_at)
+    VALUES (?, ?, NULL, ?, ?, 1, 0, ?, ?)`).run(resumeId, 'Imported resume', text, text.length, now, now);
+
+  const jobs = db.prepare("SELECT id, fit_score, fit_score_json FROM jobs WHERE fit_status='succeeded' AND fit_score_json IS NOT NULL").all();
+  const ins = db.prepare(`INSERT INTO job_fit_scores
+    (job_id, resume_id, fit_score, fit_status, fit_score_json, model, scored_at, created_at, updated_at)
+    VALUES (?, ?, ?, 'succeeded', ?, ?, ?, ?, ?)`);
+  for (const j of jobs) {
+    let model = null, scoredAt = now;
+    try { const p = JSON.parse(j.fit_score_json); model = p.model || null; scoredAt = p.scored_at || now; } catch { /* keep defaults */ }
+    ins.run(j.id, resumeId, j.fit_score, j.fit_score_json, model, scoredAt, now, now);
+  }
+  // Stop the legacy setting from re-importing on a later init.
+  db.prepare("DELETE FROM settings WHERE key='resume_text'").run();
 }
 
 function backfillSitesMetadata(db, columns) {
@@ -848,7 +953,7 @@ const RETRY_LIMIT_ERROR = `Retry limit reached (${MAX_LLM_ATTEMPTS} attempts).`;
 
 function failRetryExhaustedRequests(db, dbPath = null) {
   const now = nowIso();
-  const exhausted = db.prepare(`SELECT id, job_id, request_type FROM llm_requests
+  const exhausted = db.prepare(`SELECT id, job_id, request_type, resume_id FROM llm_requests
     WHERE (status='queued' AND attempt > ?) OR (status='failed' AND attempt >= ?)`).all(MAX_LLM_ATTEMPTS, MAX_LLM_ATTEMPTS);
   if (!exhausted.length) return 0;
   const requestIds = exhausted.map(r => r.id);
@@ -861,8 +966,13 @@ function failRetryExhaustedRequests(db, dbPath = null) {
       finishLlmRequestAttempt(dbPath, attemptId, { status: 'retry_exhausted', error: RETRY_LIMIT_ERROR });
     }
     if (row.request_type === 'fit_score') {
-      db.prepare("UPDATE jobs SET fit_status='failed', fit_score_json=?, updated_at=? WHERE id=?")
-        .run(JSON.stringify({ error: RETRY_LIMIT_ERROR }), now, row.job_id);
+      if (row.resume_id) {
+        setJobFitScoreRow(db, row.job_id, row.resume_id, { fit_status: 'failed', fit_score_json: JSON.stringify({ error: RETRY_LIMIT_ERROR }) });
+        recomputeJobFitSummary(db, row.job_id);
+      } else {
+        db.prepare("UPDATE jobs SET fit_status='failed', fit_score_json=?, updated_at=? WHERE id=?")
+          .run(JSON.stringify({ error: RETRY_LIMIT_ERROR }), now, row.job_id);
+      }
     } else {
       db.prepare("UPDATE jobs SET extraction_status='failed', extraction_error=?, updated_at=? WHERE id=?")
         .run(RETRY_LIMIT_ERROR, now, row.job_id);
@@ -884,7 +994,7 @@ function fetchLlmRequests(db, statuses, limit, { processableOnly = false, runnin
   const params = [...statuses];
   if (limit != null) params.push(limit);
   return db.prepare(`
-    SELECT r.id, r.job_id, jobs.job_number, r.status, r.request_type,
+    SELECT r.id, r.job_id, jobs.job_number, r.status, r.request_type, r.resume_id,
       r.created_at, r.started_at, r.finished_at, r.error, r.attempt, r.model,
       jobs.company, jobs.title,
       COALESCE(captures.canonical_url, captures.url) AS source_url,
@@ -912,7 +1022,7 @@ function fetchLlmRequests(db, statuses, limit, { processableOnly = false, runnin
 
 export function getLlmRequestState(requestId, dbPath) {
   const db = initDb(dbPath);
-  return db.prepare(`SELECT lr.id, lr.job_id, lr.request_type, lr.status, lr.attempt,
+  return db.prepare(`SELECT lr.id, lr.job_id, lr.request_type, lr.resume_id, lr.status, lr.attempt,
     lr.started_at, lr.finished_at, lr.error, lr.model,
     j.job_number, j.company, j.title
     FROM llm_requests lr JOIN jobs j ON j.id = lr.job_id
@@ -944,14 +1054,14 @@ export function startLlmRequestAttempt(dbPath, requestId, details = {}) {
   const { baseUrl, modelRequested, promptChars } = details;
   const db = initDb(dbPath);
   if (!debugLevelEnabled(db, 'errors')) return null;
-  const request = db.prepare("SELECT id, job_id, request_type, attempt FROM llm_requests WHERE id=?").get(requestId);
+  const request = db.prepare("SELECT id, job_id, request_type, resume_id, attempt FROM llm_requests WHERE id=?").get(requestId);
   if (!request) return null;
   const id = makeId('llma');
   const now = nowIso();
   db.prepare(`INSERT INTO llm_request_attempts
-    (id, request_id, job_id, request_type, attempt, status, model_requested, base_url, started_at, prompt_chars)
-    VALUES (?, ?, ?, ?, ?, 'started', ?, ?, ?, ?)`)
-    .run(id, request.id, request.job_id, request.request_type, request.attempt, modelRequested || null, baseUrl || null, now, promptChars ?? null);
+    (id, request_id, job_id, request_type, resume_id, attempt, status, model_requested, base_url, started_at, prompt_chars)
+    VALUES (?, ?, ?, ?, ?, ?, 'started', ?, ?, ?, ?)`)
+    .run(id, request.id, request.job_id, request.request_type, request.resume_id, request.attempt, modelRequested || null, baseUrl || null, now, promptChars ?? null);
   return id;
 }
 
@@ -986,12 +1096,14 @@ export function finishLlmRequestAttempt(dbPath, attemptId, details) {
   }
 }
 
-function upsertLlmRequest(db, jobId, requestType = 'extract', { resetAttempts = false } = {}) {
+function upsertLlmRequest(db, jobId, requestType = 'extract', { resetAttempts = false, resumeId = null } = {}) {
   const now = nowIso();
-  const existing = db.prepare("SELECT id, status, attempt FROM llm_requests WHERE job_id = ? AND request_type = ?").get(jobId, requestType);
+  const existing = resumeId == null
+    ? db.prepare("SELECT id, status, attempt FROM llm_requests WHERE job_id = ? AND request_type = ? AND resume_id IS NULL").get(jobId, requestType)
+    : db.prepare("SELECT id, status, attempt FROM llm_requests WHERE job_id = ? AND request_type = ? AND resume_id = ?").get(jobId, requestType, resumeId);
   if (!existing) {
     const requestId = makeId('llm');
-    db.prepare("INSERT INTO llm_requests (id, job_id, request_type, status, attempt, created_at) VALUES (?, ?, ?, 'queued', 1, ?)").run(requestId, jobId, requestType, now);
+    db.prepare("INSERT INTO llm_requests (id, job_id, request_type, resume_id, status, attempt, created_at) VALUES (?, ?, ?, ?, 'queued', 1, ?)").run(requestId, jobId, requestType, resumeId, now);
     return requestId;
   }
   if (existing.status === 'running') return existing.id;
@@ -1066,7 +1178,7 @@ export function getLlmRequestsByIds(requestIds, dbPath) {
   if (!requestIds.length) return [];
   const db = initDb(dbPath);
   const placeholders = requestIds.map(() => '?').join(',');
-  const rows = db.prepare(`SELECT lr.id, lr.job_id, lr.request_type, lr.status, lr.attempt,
+  const rows = db.prepare(`SELECT lr.id, lr.job_id, lr.request_type, lr.resume_id, lr.status, lr.attempt,
     lr.created_at, lr.started_at, lr.finished_at, lr.error, lr.model,
     j.company, j.title, j.job_number, c.canonical_url AS source_url
     FROM llm_requests lr JOIN jobs j ON j.id = lr.job_id JOIN captures c ON c.id = j.capture_id
@@ -1244,16 +1356,156 @@ export function resetJobExtraction(jobId, dbPath) {
 }
 
 // ------------------------------------------------------------------
+// Resumes
+// ------------------------------------------------------------------
+
+export function listResumes(dbPath) {
+  const db = initDb(dbPath);
+  return db.prepare(`SELECT id, name, filename, char_count, active, sort_order, created_at, updated_at
+    FROM resumes ORDER BY sort_order, created_at`).all();
+}
+
+export function getActiveResumes(dbPath) {
+  const db = initDb(dbPath);
+  return db.prepare("SELECT id, name, text, char_count FROM resumes WHERE active=1 ORDER BY sort_order, created_at").all();
+}
+
+export function getResume(dbPath, resumeId) {
+  const db = initDb(dbPath);
+  return db.prepare(`SELECT id, name, filename, text, char_count, active, sort_order, created_at, updated_at
+    FROM resumes WHERE id=?`).get(resumeId) || null;
+}
+
+/** @param {{ name: string, filename?: string|null, text?: string }} input */
+export function addResume(dbPath, input) {
+  const { name, filename = null, text = '' } = input;
+  const db = initDb(dbPath);
+  const now = nowIso();
+  const id = makeId('res');
+  const cleanText = String(text || '');
+  const maxOrder = db.prepare("SELECT COALESCE(MAX(sort_order), -1) AS m FROM resumes").get().m;
+  db.prepare(`INSERT INTO resumes (id, name, filename, text, char_count, active, sort_order, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)`)
+    .run(id, String(name || 'Resume').slice(0, 200), filename, cleanText, cleanText.length, maxOrder + 1, now, now);
+  return getResume(dbPath, id);
+}
+
+export function renameResume(dbPath, resumeId, name) {
+  const db = initDb(dbPath);
+  db.prepare("UPDATE resumes SET name=?, updated_at=? WHERE id=?").run(String(name || '').slice(0, 200), nowIso(), resumeId);
+  return getResume(dbPath, resumeId);
+}
+
+export function updateResumeText(dbPath, resumeId, text) {
+  const db = initDb(dbPath);
+  const cleanText = String(text || '');
+  db.prepare("UPDATE resumes SET text=?, char_count=?, updated_at=? WHERE id=?").run(cleanText, cleanText.length, nowIso(), resumeId);
+  return getResume(dbPath, resumeId);
+}
+
+export function setResumeActive(dbPath, resumeId, active) {
+  const db = initDb(dbPath);
+  db.prepare("UPDATE resumes SET active=?, updated_at=? WHERE id=?").run(active ? 1 : 0, nowIso(), resumeId);
+  return getResume(dbPath, resumeId);
+}
+
+export function deleteResume(dbPath, resumeId) {
+  const db = initDb(dbPath);
+  const affected = db.prepare("SELECT DISTINCT job_id FROM job_fit_scores WHERE resume_id=?").all(resumeId).map(r => r.job_id);
+  withTransaction(db, () => {
+    // FK cascade removes job_fit_scores + fit llm_requests for this resume.
+    db.prepare("DELETE FROM resumes WHERE id=?").run(resumeId);
+    for (const jobId of affected) recomputeJobFitSummary(db, jobId);
+  });
+  return affected.length;
+}
+
+// ------------------------------------------------------------------
 // Fit scoring
 // ------------------------------------------------------------------
 
-export function queueFitScoreForJob(dbPath, jobId, { resetAttempts = false } = {}) {
-  const db = initDb(dbPath);
+function markJobFitPending(db, jobId, resumeId) {
   const now = nowIso();
-  const existing = db.prepare("SELECT id FROM jobs WHERE id=?").get(jobId);
-  if (!existing) throw new Error(`job not found: ${jobId}`);
-  db.prepare("UPDATE jobs SET fit_status='pending', updated_at=? WHERE id=?").run(now, jobId);
-  return upsertLlmRequest(db, jobId, 'fit_score', { resetAttempts });
+  const existing = db.prepare("SELECT job_id FROM job_fit_scores WHERE job_id=? AND resume_id=?").get(jobId, resumeId);
+  if (existing) {
+    db.prepare("UPDATE job_fit_scores SET fit_status='pending', updated_at=? WHERE job_id=? AND resume_id=?").run(now, jobId, resumeId);
+  } else {
+    db.prepare("INSERT INTO job_fit_scores (job_id, resume_id, fit_status, created_at, updated_at) VALUES (?, ?, 'pending', ?, ?)").run(jobId, resumeId, now, now);
+  }
+}
+
+/** @param {{ fit_score?: number|null, fit_status: string, fit_score_json?: string|null, model?: string|null, scored_at?: string|null }} fields */
+function setJobFitScoreRow(db, jobId, resumeId, fields) {
+  const { fit_score = null, fit_status, fit_score_json = null, model = null, scored_at = null } = fields;
+  const now = nowIso();
+  db.prepare(`INSERT INTO job_fit_scores (job_id, resume_id, fit_score, fit_status, fit_score_json, model, scored_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(job_id, resume_id) DO UPDATE SET
+      fit_score=excluded.fit_score, fit_status=excluded.fit_status, fit_score_json=excluded.fit_score_json,
+      model=excluded.model, scored_at=excluded.scored_at, updated_at=excluded.updated_at`)
+    .run(jobId, resumeId, fit_score, fit_status, fit_score_json, model, scored_at, now, now);
+}
+
+// Rolls the per-resume job_fit_scores rows up into the denormalized jobs.fit_*
+// summary columns: fit_score = best (max) score, fit_status = succeeded if any
+// succeeded else pending/failed/none, fit_score_json = winning resume's payload
+// plus best_resume_id/best_resume_name markers. Sets unread only when the just-
+// scored resume becomes the new best (avoids per-resume notification spam).
+function recomputeJobFitSummary(db, jobId, { newlyScoredResumeId = null } = {}) {
+  const now = nowIso();
+  const rows = db.prepare(`SELECT jfs.resume_id, jfs.fit_score, jfs.fit_status, jfs.fit_score_json, r.name AS resume_name
+    FROM job_fit_scores jfs JOIN resumes r ON r.id = jfs.resume_id WHERE jfs.job_id=?`).all(jobId);
+  if (!rows.length) {
+    db.prepare("UPDATE jobs SET fit_score=NULL, fit_status='none', fit_score_json=NULL, updated_at=? WHERE id=?").run(now, jobId);
+    return;
+  }
+
+  let status;
+  if (rows.some(r => r.fit_status === 'succeeded')) status = 'succeeded';
+  else if (rows.some(r => r.fit_status === 'pending')) status = 'pending';
+  else if (rows.some(r => r.fit_status === 'failed')) status = 'failed';
+  else status = 'none';
+
+  const scored = rows.filter(r => r.fit_score != null);
+  let fitScore = null, summaryJson = null, bestResumeId = null;
+  if (scored.length) {
+    const best = scored.reduce((a, b) => (b.fit_score > a.fit_score ? b : a));
+    bestResumeId = best.resume_id;
+    fitScore = best.fit_score;
+    let payload;
+    try { payload = JSON.parse(best.fit_score_json) || {}; } catch { payload = {}; }
+    payload.best_resume_id = best.resume_id;
+    payload.best_resume_name = best.resume_name;
+    summaryJson = JSON.stringify(payload);
+  } else if (status === 'failed') {
+    const failed = rows.find(r => r.fit_status === 'failed' && r.fit_score_json);
+    summaryJson = failed?.fit_score_json || JSON.stringify({ error: 'Fit scoring failed.' });
+  }
+
+  const unread = newlyScoredResumeId != null && bestResumeId === newlyScoredResumeId ? 1 : null;
+  if (unread) {
+    db.prepare("UPDATE jobs SET fit_score=?, fit_status=?, fit_score_json=?, unread=1, updated_at=? WHERE id=?").run(fitScore, status, summaryJson, now, jobId);
+  } else {
+    db.prepare("UPDATE jobs SET fit_score=?, fit_status=?, fit_score_json=?, updated_at=? WHERE id=?").run(fitScore, status, summaryJson, now, jobId);
+  }
+}
+
+export function queueFitScoreForJob(dbPath, jobId, resumeId, { resetAttempts = false } = {}) {
+  const db = initDb(dbPath);
+  const job = db.prepare("SELECT id FROM jobs WHERE id=?").get(jobId);
+  if (!job) throw new Error(`job not found: ${jobId}`);
+  const resume = db.prepare("SELECT id FROM resumes WHERE id=?").get(resumeId);
+  if (!resume) throw new Error(`resume not found: ${resumeId}`);
+  markJobFitPending(db, jobId, resumeId);
+  recomputeJobFitSummary(db, jobId);
+  return upsertLlmRequest(db, jobId, 'fit_score', { resetAttempts, resumeId });
+}
+
+export function queueFitScoresForAllResumes(dbPath, jobId, opts = {}) {
+  const resumes = getActiveResumes(dbPath);
+  const requestIds = [];
+  for (const r of resumes) requestIds.push(queueFitScoreForJob(dbPath, jobId, r.id, opts));
+  return requestIds;
 }
 
 export function getJobFitContext(dbPath, jobId) {
@@ -1268,26 +1520,29 @@ export function getJobFitContext(dbPath, jobId) {
   }
 }
 
-export function markFitSucceeded(jobId, fit, dbPath, requestId, model) {
+export function markFitSucceeded(jobId, resumeId, fit, dbPath, requestId, model) {
   const db = connect(dbPath);
   const now = nowIso();
   const payload = { ...fit, model: model ?? null, scored_at: now };
   withTransaction(db, () => {
-    db.prepare("UPDATE jobs SET fit_score=?, fit_status='succeeded', fit_score_json=?, unread=1, updated_at=? WHERE id=?").run(fit.overall_score, JSON.stringify(payload), now, jobId);
+    setJobFitScoreRow(db, jobId, resumeId, { fit_score: fit.overall_score, fit_status: 'succeeded', fit_score_json: JSON.stringify(payload), model: model ?? null, scored_at: now });
     if (requestId) {
       db.prepare("UPDATE llm_requests SET status='succeeded', model=?, error=NULL, finished_at=? WHERE id=? AND status='running'").run(model ?? null, now, requestId);
     }
+    recomputeJobFitSummary(db, jobId, { newlyScoredResumeId: resumeId });
   });
 }
 
-export function markFitFailed(jobId, error, dbPath, requestId) {
+export function markFitFailed(jobId, resumeId, error, dbPath, requestId) {
   const db = connect(dbPath);
   const now = nowIso();
+  const msg = String(error).slice(0, 2000);
   withTransaction(db, () => {
-    db.prepare("UPDATE jobs SET fit_status='failed', fit_score_json=?, updated_at=? WHERE id=?").run(JSON.stringify({ error: String(error).slice(0, 2000) }), now, jobId);
+    setJobFitScoreRow(db, jobId, resumeId, { fit_status: 'failed', fit_score_json: JSON.stringify({ error: msg }) });
     if (requestId) {
-      db.prepare("UPDATE llm_requests SET status='failed', error=?, finished_at=? WHERE id=? AND status!='succeeded'").run(String(error).slice(0, 2000), now, requestId);
+      db.prepare("UPDATE llm_requests SET status='failed', error=?, finished_at=? WHERE id=? AND status!='succeeded'").run(msg, now, requestId);
     }
+    recomputeJobFitSummary(db, jobId);
   });
 }
 
@@ -1438,8 +1693,16 @@ export function queueBulkLlmJobs(jobIds, mode, dbPath) {
           skipped++;
           continue;
         }
-        db.prepare("UPDATE jobs SET fit_status='pending', updated_at=? WHERE id=?").run(now, id);
-        requestIds.push(upsertLlmRequest(db, id, 'fit_score', { resetAttempts: true }));
+        const resumes = db.prepare("SELECT id FROM resumes WHERE active=1 ORDER BY sort_order, created_at").all();
+        if (!resumes.length) {
+          skipped++;
+          continue;
+        }
+        for (const r of resumes) {
+          markJobFitPending(db, id, r.id);
+          requestIds.push(upsertLlmRequest(db, id, 'fit_score', { resetAttempts: true, resumeId: r.id }));
+        }
+        recomputeJobFitSummary(db, id);
         insertEvent.run(makeId('evt'), id, 'fit_score_queued', 'bulk', now, now);
       } else {
         updateExtraction.run(now, id);

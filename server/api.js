@@ -131,7 +131,7 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
     const settings = getDbSettings();
     const extractor = buildExtractor(settings);
     const scorer = buildScorer(settings);
-    const summary = await runExtraction({ dbPath, extractor, limit, scorer, resume: settings.resume_text || '' });
+    const summary = await runExtraction({ dbPath, extractor, limit, scorer });
     emitAiRunComplete(summary);
     return summary;
   }
@@ -398,7 +398,7 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
         const settings = getDbSettings();
         const extractor = buildExtractor(settings);
         const scorer = buildScorer(settings);
-        summary = await runExtractionForSelected({ dbPath, extractor, requestIds, scorer, resume: settings.resume_text || '' });
+        summary = await runExtractionForSelected({ dbPath, extractor, requestIds, scorer });
         emitAiRunComplete(summary);
       }
       res.json({ ok: true, ...summary });
@@ -486,7 +486,6 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
         extractor,
         requestIds: [requestId],
         scorer,
-        resume: settings.resume_text || '',
       });
       res.json({ ok: true, ...summary });
     } catch (err) {
@@ -571,7 +570,7 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
       db.setSetting(d, 'llm_queue_paused', 'false');
       if (result.request_ids?.length) {
         const settings = getDbSettings();
-        runExtractionForSelected({ dbPath, extractor: buildExtractor(settings), requestIds: result.request_ids, scorer: buildScorer(settings), resume: settings.resume_text || '' }).then(emitAiRunComplete).catch(() => {});
+        runExtractionForSelected({ dbPath, extractor: buildExtractor(settings), requestIds: result.request_ids, scorer: buildScorer(settings) }).then(emitAiRunComplete).catch(() => {});
       } else if (autoExtract) {
         runExtractionForApp(100).catch(() => {});
       }
@@ -588,7 +587,7 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
       db.setSetting(d, 'llm_queue_paused', 'false');
       if (result.request_ids?.length) {
         const settings = getDbSettings();
-        runExtractionForSelected({ dbPath, extractor: buildExtractor(settings), requestIds: result.request_ids, scorer: buildScorer(settings), resume: settings.resume_text || '' }).then(emitAiRunComplete).catch(() => {});
+        runExtractionForSelected({ dbPath, extractor: buildExtractor(settings), requestIds: result.request_ids, scorer: buildScorer(settings) }).then(emitAiRunComplete).catch(() => {});
       } else if (autoExtract) {
         runExtractionForApp(100).catch(() => {});
       }
@@ -696,18 +695,77 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
   app.post('/api/jobs/:jobId/fit-score', async (req, res) => {
     try {
       const d = db.initDb(dbPath);
-      const settings = db.getSettings(d);
       const row = d.prepare("SELECT extraction_status FROM jobs WHERE id=?").get(req.params.jobId);
       if (!row) return res.status(400).json({ error: 'job not found' });
-      if (!String(settings.resume_text || '').trim()) {
-        return res.status(400).json({ error: 'Add your resume in Settings before scoring fit.' });
-      }
       if (row.extraction_status !== 'succeeded') {
         return res.status(400).json({ error: 'Extract this job before scoring fit.' });
       }
-      db.queueFitScoreForJob(dbPath, req.params.jobId, { resetAttempts: true });
+      const resumeId = req.body?.resume_id;
+      if (resumeId) {
+        db.queueFitScoreForJob(dbPath, req.params.jobId, String(resumeId), { resetAttempts: true });
+      } else {
+        if (!db.getActiveResumes(dbPath).length) {
+          return res.status(400).json({ error: 'Add a resume in Settings before scoring fit.' });
+        }
+        db.queueFitScoresForAllResumes(dbPath, req.params.jobId, { resetAttempts: true });
+      }
       if (autoExtract) runExtractionForApp(100).catch(() => {});
       res.json({ ok: true });
+    } catch (err) {
+      res.status(400).json({ error: String(err.message) });
+    }
+  });
+
+  // ------------------------------------------------------------------
+  // Resumes
+  // ------------------------------------------------------------------
+
+  app.get('/api/resumes', (req, res) => {
+    res.json({ resumes: db.listResumes(dbPath) });
+  });
+
+  app.get('/api/resumes/:id', (req, res) => {
+    const resume = db.getResume(dbPath, req.params.id);
+    if (!resume) return res.status(404).json({ error: 'resume not found' });
+    res.json(resume);
+  });
+
+  app.post('/api/resumes', (req, res) => {
+    try {
+      const text = String(req.body?.text || '');
+      if (!text.trim()) {
+        return res.status(400).json({ error: 'Resume text is empty. If this was a scanned/image PDF, paste the text manually.' });
+      }
+      const name = String(req.body?.name || '').trim() || 'Resume';
+      const filename = req.body?.filename ? String(req.body.filename) : null;
+      const resume = db.addResume(dbPath, { name, filename, text });
+      // Backfill: score every already-extracted job against the new resume.
+      const d = db.initDb(dbPath);
+      const jobs = d.prepare("SELECT id FROM jobs WHERE extraction_status='succeeded'").all();
+      for (const job of jobs) db.queueFitScoreForJob(dbPath, job.id, resume.id, { resetAttempts: true });
+      if (autoExtract && jobs.length) runExtractionForApp(100).catch(() => {});
+      res.json({ ok: true, resume, queued_jobs: jobs.length });
+    } catch (err) {
+      res.status(400).json({ error: String(err.message) });
+    }
+  });
+
+  app.patch('/api/resumes/:id', (req, res) => {
+    try {
+      if (!db.getResume(dbPath, req.params.id)) return res.status(404).json({ error: 'resume not found' });
+      if (req.body?.name != null) db.renameResume(dbPath, req.params.id, String(req.body.name));
+      if (req.body?.text != null) db.updateResumeText(dbPath, req.params.id, String(req.body.text));
+      if (req.body?.active != null) db.setResumeActive(dbPath, req.params.id, !!req.body.active);
+      res.json({ ok: true, resume: db.getResume(dbPath, req.params.id) });
+    } catch (err) {
+      res.status(400).json({ error: String(err.message) });
+    }
+  });
+
+  app.delete('/api/resumes/:id', (req, res) => {
+    try {
+      const affected = db.deleteResume(dbPath, req.params.id);
+      res.json({ ok: true, recomputed_jobs: affected });
     } catch (err) {
       res.status(400).json({ error: String(err.message) });
     }
@@ -1288,6 +1346,37 @@ function buildUiData(dbPath) {
     }
   }
 
+  const fitScoresByJob = Object.fromEntries(jobIds.map(id => [id, []]));
+  if (jobIds.length) {
+    const placeholders = jobIds.map(() => '?').join(',');
+    const fitRows = d.prepare(`SELECT jfs.job_id, jfs.resume_id, r.name AS resume_name, r.active AS resume_active,
+      jfs.fit_score, jfs.fit_status, jfs.fit_score_json, jfs.model, jfs.scored_at
+      FROM job_fit_scores jfs JOIN resumes r ON r.id = jfs.resume_id
+      WHERE jfs.job_id IN (${placeholders})
+      ORDER BY r.sort_order, r.created_at`).all(...jobIds);
+    for (const fr of fitRows) {
+      if (!fitScoresByJob[fr.job_id]) continue;
+      let json = fr.fit_score_json;
+      if (json && typeof json === 'string') {
+        try { json = JSON.parse(json); } catch { json = null; }
+      }
+      fitScoresByJob[fr.job_id].push({
+        resume_id: fr.resume_id,
+        resume_name: fr.resume_name,
+        resume_active: fr.resume_active ? 1 : 0,
+        score: fr.fit_score,
+        status: fr.fit_status,
+        summary: json?.summary || null,
+        requirements_met: json?.requirements_met || [],
+        requirements_not_met: json?.requirements_not_met || [],
+        dimensions: json?.dimensions || [],
+        model: json?.model || fr.model || null,
+        scored_at: json?.scored_at || fr.scored_at || null,
+        error: json?.error || null,
+      });
+    }
+  }
+
   const siteRows = db.getSites(d);
   const activeActionsRows = d.prepare("SELECT * FROM job_actions WHERE completed_at IS NULL").all();
   const actionsByJob = {};
@@ -1369,6 +1458,7 @@ function buildUiData(dbPath) {
       salary_min: r.salary_min, salary_max: r.salary_max, salary_currency: r.salary_currency,
       salary_note: r.salary_note, extracted_json: extractedJson, extracted_at: r.extracted_at,
       fit_score: r.fit_score, fit_status: r.fit_status, fit_score_json: fitScoreJson,
+      fit_scores: fitScoresByJob[r.job_id] || [],
       rating: r.rating, duplicate_of_job_id: r.duplicate_of_job_id,
       extraction_model: r.extraction_model, application_url: r.application_url,
       extraction_confidence: r.extraction_confidence, cleaned_description: r.cleaned_description,
@@ -1391,6 +1481,7 @@ function buildUiData(dbPath) {
 
   return {
     jobs, sites: siteRows, dupes, metrics, metros: METRO_DATA,
+    resumes: db.listResumes(dbPath),
     meta: { total_jobs: jobs.length, loaded_jobs: jobs.length, total_sites: siteRows.length, loaded_sites: siteRows.length },
     settings: {
       version: VERSION,
@@ -1405,7 +1496,6 @@ function buildUiData(dbPath) {
       site_review_interval_days: parseInt(settingsData.site_review_interval_days || '14'),
       followup_default_days: parseInt(settingsData.followup_default_days || '7'),
       job_description_markdown: settingsData.job_description_markdown || '',
-      resume_text: settingsData.resume_text || '',
       llm_queue_paused: settingsData.llm_queue_paused || 'false',
       llm_debug_level: settingsData.llm_debug_level || 'errors',
       preferred_locations: settingsData.preferred_locations || '',

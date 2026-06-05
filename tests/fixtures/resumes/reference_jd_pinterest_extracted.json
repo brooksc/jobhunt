@@ -1,0 +1,63 @@
+{
+  "company": "Pinterest",
+  "title": "Staff Technical Program Manager ML/AI Platform",
+  "location": "San Francisco / Remote",
+  "remote_type": "remote",
+  "salary_min": 145747,
+  "salary_max": 300067,
+  "salary_hourly_min": null,
+  "salary_hourly_max": null,
+  "salary_currency": "USD",
+  "salary_note": "US based applicants only $145,747—$300,067 USD",
+  "employment_type": "unknown",
+  "seniority": "Staff",
+  "skills": [
+    "Technical Program Management",
+    "GenAI infrastructure",
+    "Agent Platform",
+    "Machine Learning",
+    "LLM serving and inference",
+    "DevOps",
+    "Systems engineering principles",
+    "Risk assessment",
+    "Data analysis",
+    "Cross-functional alignment"
+  ],
+  "summary": "As a Staff Technical Program Manager focusing on cross-engineering special projects, you will identify, scope, champion, and land key strategic projects important to advancing Pinterest’s platform and underpinning. You will lead high-impact initiatives for ML/AI Platform, GenAI infrastructure, and Agent Platforms while operating with an AI-First Execution Mindset.",
+  "requirements": [
+    "8+ years of TPM or related experience",
+    "Bachelor's degree in Computer Science or equivalent",
+    "Proven track record of leading complex, multi-year initiatives spanning multiple engineering teams",
+    "Demonstrated ability to use GenAI to accelerate program planning and operations",
+    "Experience turning repeatable program work into durable, low-toil mechanisms",
+    "Working understanding of Machine Learning, GenAI, LLM serving, AI Agent architectures, DevOps, and systems engineering principles",
+    "Strong analytical and decision-making skills with a track record of using data to navigate complexity",
+    "Outstanding written, verbal, and interpersonal communication skills"
+  ],
+  "nice_to_haves": [
+    "Vibe coding lightweight scripts and tools",
+    "Experience with AI coding assistants",
+    "Knowledge of MLP, Agent Platform (Helix), Core Infra, and Ads domains",
+    "Experience in high-toil workflow modernization (intake triage, status synthesis, risk tracking)"
+  ],
+  "benefits": [
+    "Equity",
+    "PinFlex working model"
+  ],
+  "application_url": null,
+  "confidence": {
+    "company": 1,
+    "title": 1,
+    "location": 0.9,
+    "remote_type": 1,
+    "salary_min": 1,
+    "salary_max": 1,
+    "salary_currency": 1,
+    "employment_type": 0.9,
+    "seniority": 1,
+    "skills": 0.9,
+    "requirements": 0.9,
+    "nice_to_haves": 0.8
+  },
+  "meets_criteria": true
+}

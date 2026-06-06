@@ -302,9 +302,12 @@ app.whenReady().then(async () => {
   });
 
   // Auto-update: GitHub Releases only. MAS builds are updated by the App Store.
-  if (!process.mas) {
+  // Skip in dev mode (unpackaged) — no latest.yml is served from GitHub yet.
+  if (!process.mas && app.isPackaged) {
     const { autoUpdater } = await import('electron-updater');
-    autoUpdater.checkForUpdatesAndNotify();
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {
+      // Silently ignore — network unavailable or no release published yet.
+    });
   }
 
   // macOS: re-open window when clicking dock icon with no windows open

@@ -1,6 +1,6 @@
 node_modules/
 .data/
-.backlog/
+# .backlog/ — intentionally tracked (project task management)
 .worktrees/
 .claude/
 *.db

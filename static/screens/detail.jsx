@@ -537,6 +537,7 @@ function OverviewTab({ job, onPatch, onClose }) {
 
       <FitScorePanel job={job} />
       <ContactsSection jobId={job.id} />
+      <CoverLetterPanel job={job} />
       <CaptureDiagnostics job={job} onClose={onClose} />
 
       <div className="jh-section">
@@ -1105,6 +1106,135 @@ function FitScorePanel({ job }) {
               extracted={extracted}
             />
           ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+function CoverLetterPanel({ job }) {
+  const [expanded, setExpanded] = React.useState(false);
+  const [resumeId, setResumeId] = React.useState("");
+  const [instructions, setInstructions] = React.useState("");
+  const [generating, setGenerating] = React.useState(false);
+  const [coverLetters, setCoverLetters] = React.useState(null);
+
+  const resumes = window.JH_RESUMES || [];
+  const activeResumes = resumes.filter(r => r.active);
+
+  React.useEffect(() => {
+    fetch(`/api/jobs/${job.id}/cover-letters`)
+      .then(r => r.json())
+      .then(data => setCoverLetters(data.coverLetters || []))
+      .catch(() => setCoverLetters([]));
+  }, [job.id]);
+
+  function generate() {
+    setGenerating(true);
+    window.JH_API.api(`/api/jobs/${job.id}/generate-cover-letter`, {
+      method: "POST",
+      body: JSON.stringify({ resumeId: resumeId || undefined, instructions: instructions || undefined }),
+    })
+      .then(data => {
+        setCoverLetters(prev => [data.coverLetter, ...(prev || [])]);
+        window.JH_TOAST.show("Cover letter generated");
+      })
+      .catch(e => window.JH_TOAST.show(e.message, "error"))
+      .finally(() => setGenerating(false));
+  }
+
+  function deleteLetter(id) {
+    window.JH_API.api(`/api/cover-letters/${id}`, { method: "DELETE" })
+      .then(() => {
+        setCoverLetters(prev => (prev || []).filter(cl => cl.id !== id));
+        window.JH_TOAST.show("Cover letter deleted");
+      })
+      .catch(e => window.JH_TOAST.show(e.message, "error"));
+  }
+
+  async function copyText(text) {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        ta.remove();
+      }
+      window.JH_TOAST?.show("Copied to clipboard");
+    } catch (e) {
+      window.JH_TOAST?.show(e.message || "Copy failed", "error");
+    }
+  }
+
+  return (
+    <div className="jh-section">
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: expanded ? 10 : 0 }}>
+        <h3 style={{ margin: 0, cursor: "pointer" }} onClick={() => setExpanded(v => !v)}>
+          <span style={{ marginRight: 6, display: "inline-flex", transform: expanded ? "rotate(90deg)" : "none", transition: "transform .12s" }}>
+            <Icon.ChevronRight size={12} />
+          </span>
+          Cover Letter
+          {coverLetters && coverLetters.length > 0 && (
+            <span className="jh-tab__badge" style={{ marginLeft: 6 }}>{coverLetters.length}</span>
+          )}
+        </h3>
+      </div>
+
+      {expanded && (
+        <>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+            {activeResumes.length > 0 && (
+              <select
+                className="jh-input"
+                style={{ fontSize: 12.5 }}
+                value={resumeId}
+                onChange={e => setResumeId(e.target.value)}
+              >
+                <option value="">Default resume ({activeResumes[0]?.name || "first active"})</option>
+                {activeResumes.map(r => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
+            )}
+            <textarea
+              className="jh-input"
+              style={{ fontSize: 12.5, minHeight: 56, resize: "vertical" }}
+              placeholder="e.g. Keep it under 300 words, emphasize distributed systems experience"
+              value={instructions}
+              onChange={e => setInstructions(e.target.value)}
+            />
+            <div>
+              <Btn size="sm" kind="accent" icon={<Icon.Sparkles size={11} />} disabled={generating} onClick={generate}>
+                {generating ? "Generating…" : "Generate Cover Letter"}
+              </Btn>
+            </div>
+          </div>
+
+          {(coverLetters || []).map(cl => (
+            <div key={cl.id} style={{ border: "1px solid var(--border)", borderRadius: "var(--r-2)", padding: "10px 12px", marginBottom: 8, background: "var(--bg-elev)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 11, color: "var(--fg-faint)", fontFamily: "var(--font-mono)" }}>
+                  {new Date(cl.created_at).toLocaleString()}
+                  {cl.model && ` · ${cl.model}`}
+                </span>
+                <span style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+                  <Btn size="sm" kind="ghost" icon={<Icon.Copy size={11} />} onClick={() => copyText(cl.content)}>Copy</Btn>
+                  <Btn size="sm" kind="ghost" icon={<Icon.Trash size={11} />} onClick={() => deleteLetter(cl.id)}>Delete</Btn>
+                </span>
+              </div>
+              <pre style={{ margin: 0, fontSize: 12.5, lineHeight: 1.6, whiteSpace: "pre-wrap", color: "var(--fg)", fontFamily: "inherit" }}>{cl.content}</pre>
+            </div>
+          ))}
+
+          {coverLetters && coverLetters.length === 0 && (
+            <p style={{ color: "var(--fg-mute)", fontSize: 12.5 }}>No cover letters generated yet.</p>
+          )}
         </>
       )}
     </div>

@@ -270,6 +270,19 @@ CREATE TABLE IF NOT EXISTS contacts (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS cover_letters (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  resume_id TEXT,
+  content TEXT NOT NULL,
+  instructions TEXT,
+  model TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_cover_letters_job
+  ON cover_letters (job_id, created_at);
 `;
 
 // ------------------------------------------------------------------
@@ -2273,7 +2286,6 @@ export function listDashboardJobs(dbPath, limit = 50) {
     ORDER BY captures.created_at DESC LIMIT ?`).all(limit);
 }
 
-// ------------------------------------------------------------------
 // Contacts
 // ------------------------------------------------------------------
 
@@ -2313,4 +2325,30 @@ export function deleteContact(dbPath, contactId) {
   const db = initDb(dbPath);
   const result = db.prepare('DELETE FROM contacts WHERE id=?').run(contactId);
   return result.changes > 0 ? { deleted: true } : { deleted: false };
+}
+
+// ------------------------------------------------------------------
+// Cover letters
+// ------------------------------------------------------------------
+
+export function listCoverLetters(dbPath, jobId) {
+  const db = initDb(dbPath);
+  return db.prepare(`SELECT id, job_id, resume_id, content, instructions, model, created_at
+    FROM cover_letters WHERE job_id=? ORDER BY created_at DESC`).all(jobId);
+}
+
+export function saveCoverLetter(dbPath, { jobId, resumeId, content, instructions, model }) {
+  const db = initDb(dbPath);
+  const now = nowIso();
+  const id = makeId('cl');
+  db.prepare(`INSERT INTO cover_letters (id, job_id, resume_id, content, instructions, model, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .run(id, jobId, resumeId || null, content, instructions || null, model || null, now);
+  return db.prepare("SELECT id, job_id, resume_id, content, instructions, model, created_at FROM cover_letters WHERE id=?").get(id);
+}
+
+export function deleteCoverLetter(dbPath, coverId) {
+  const db = initDb(dbPath);
+  const result = db.prepare("DELETE FROM cover_letters WHERE id=?").run(coverId);
+  return { deleted: result.changes > 0 };
 }

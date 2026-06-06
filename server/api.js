@@ -17,6 +17,7 @@ import {
   parseBoolSetting, makeExtractorFromSettings, makeScorerFromSettings,
   resolveProviderBaseUrl, resolveApiKey,
   MAX_DESCRIPTION_CHARS, MAX_RESUME_CHARS, promptOverheadChars, refreshRotationPool, fetchFreeModelIds,
+  generateCoverLetter,
 } from './extract.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -813,6 +814,80 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
     try {
       const result = db.deleteContact(dbPath, req.params.contactId);
       if (!result.deleted) return res.status(404).json({ error: 'contact not found' });
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: String(err.message) });
+    }
+  });
+
+  // ------------------------------------------------------------------
+  // Cover letters
+  // ------------------------------------------------------------------
+
+  app.get('/api/jobs/:jobId/cover-letters', (req, res) => {
+    try {
+      const coverLetters = db.listCoverLetters(dbPath, req.params.jobId);
+      res.json({ coverLetters });
+    } catch (err) {
+      res.status(500).json({ error: String(err.message) });
+    }
+  });
+
+  app.post('/api/jobs/:jobId/generate-cover-letter', async (req, res) => {
+    try {
+      const d = db.initDb(dbPath);
+      const job = d.prepare(`SELECT jobs.id, jobs.company, jobs.title, jobs.extracted_json,
+        captures.cleaned_description
+        FROM jobs JOIN captures ON captures.id=jobs.capture_id
+        WHERE jobs.id=?`).get(req.params.jobId);
+      if (!job) return res.status(404).json({ error: 'job not found' });
+
+      const { resumeId, instructions } = req.body || {};
+      let resume = null;
+      if (resumeId) {
+        resume = db.getResume(dbPath, resumeId);
+        if (!resume) return res.status(400).json({ error: 'resume not found' });
+      } else {
+        const active = db.getActiveResumes(dbPath);
+        if (!active.length) return res.status(400).json({ error: 'No resume available. Add a resume in Settings.' });
+        resume = active[0];
+      }
+
+      if (!String(resume.text || '').trim()) {
+        return res.status(400).json({ error: 'Resume has no text.' });
+      }
+
+      const settings = getDbSettings();
+      let result;
+      try {
+        result = await generateCoverLetter({
+          job,
+          resumeText: resume.text,
+          instructions: instructions || '',
+          settings,
+        });
+      } catch (err) {
+        return res.status(500).json({ error: `LLM error: ${String(err.message)}` });
+      }
+
+      const saved = db.saveCoverLetter(dbPath, {
+        jobId: req.params.jobId,
+        resumeId: resume.id,
+        content: result.content,
+        instructions: instructions || null,
+        model: result.modelName || null,
+      });
+
+      res.json({ coverLetter: saved });
+    } catch (err) {
+      res.status(500).json({ error: String(err.message) });
+    }
+  });
+
+  app.delete('/api/cover-letters/:coverId', (req, res) => {
+    try {
+      const result = db.deleteCoverLetter(dbPath, req.params.coverId);
+      if (!result.deleted) return res.status(404).json({ error: 'cover letter not found' });
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: String(err.message) });

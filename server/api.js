@@ -777,6 +777,49 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
   });
 
   // ------------------------------------------------------------------
+  // Contacts
+  // ------------------------------------------------------------------
+
+  app.get('/api/jobs/:jobId/contacts', (req, res) => {
+    try {
+      const contacts = db.listContacts(dbPath, req.params.jobId);
+      res.json({ contacts });
+    } catch (err) {
+      res.status(500).json({ error: String(err.message) });
+    }
+  });
+
+  app.post('/api/jobs/:jobId/contacts', (req, res) => {
+    try {
+      if (!req.body?.name?.trim()) return res.status(400).json({ error: 'name is required' });
+      const contact = db.addContact(dbPath, req.params.jobId, req.body);
+      res.status(201).json({ contact });
+    } catch (err) {
+      res.status(500).json({ error: String(err.message) });
+    }
+  });
+
+  app.patch('/api/contacts/:contactId', (req, res) => {
+    try {
+      const contact = db.updateContact(dbPath, req.params.contactId, req.body);
+      if (!contact) return res.status(404).json({ error: 'contact not found' });
+      res.json({ contact });
+    } catch (err) {
+      res.status(500).json({ error: String(err.message) });
+    }
+  });
+
+  app.delete('/api/contacts/:contactId', (req, res) => {
+    try {
+      const result = db.deleteContact(dbPath, req.params.contactId);
+      if (!result.deleted) return res.status(404).json({ error: 'contact not found' });
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: String(err.message) });
+    }
+  });
+
+  // ------------------------------------------------------------------
   // Actions
   // ------------------------------------------------------------------
 

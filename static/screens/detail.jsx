@@ -300,6 +300,89 @@ function StatusDropdown({ value, onChange }) {
   );
 }
 
+function ContactsSection({ jobId }) {
+  const [contacts, setContacts] = React.useState([]);
+  const [form, setForm] = React.useState({ name: "", role: "", email: "", linkedin_url: "", phone: "", notes: "" });
+  const [showForm, setShowForm] = React.useState(false);
+
+  React.useEffect(() => {
+    fetch(`/api/jobs/${jobId}/contacts`)
+      .then(r => r.json())
+      .then(d => setContacts(d.contacts || []))
+      .catch(() => {});
+  }, [jobId]);
+
+  function submit(e) {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    fetch(`/api/jobs/${jobId}/contacts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.contact) {
+          setContacts(prev => [...prev, d.contact]);
+          setForm({ name: "", role: "", email: "", linkedin_url: "", phone: "", notes: "" });
+          setShowForm(false);
+        }
+      })
+      .catch(() => {});
+  }
+
+  function remove(contactId) {
+    fetch(`/api/contacts/${contactId}`, { method: "DELETE" })
+      .then(() => setContacts(prev => prev.filter(c => c.id !== contactId)))
+      .catch(() => {});
+  }
+
+  return (
+    <div className="jh-section">
+      <h3>Contacts</h3>
+      {contacts.map(c => (
+        <div key={c.id} style={{ marginBottom: 8, paddingBottom: 8, borderBottom: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <strong>{c.name}</strong>
+              {c.role && <span style={{ color: "var(--fg-mute)", fontSize: 12, marginLeft: 6 }}>{c.role}</span>}
+              <div style={{ fontSize: 12, color: "var(--fg-mute)", marginTop: 2 }}>
+                {c.email && <span><a href={`mailto:${c.email}`} style={{ color: "var(--accent)" }}>{c.email}</a>{" "}</span>}
+                {c.linkedin_url && <span><a href={c.linkedin_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>LinkedIn</a>{" "}</span>}
+                {c.phone && <span>{c.phone}{" "}</span>}
+              </div>
+              {c.notes && <div style={{ fontSize: 12, color: "var(--fg-mute)", marginTop: 2 }}>{c.notes}</div>}
+            </div>
+            <button
+              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--fg-faint)", padding: 2 }}
+              onClick={() => remove(c.id)}
+              title="Delete contact"
+            >
+              <Icon.X size={12} />
+            </button>
+          </div>
+        </div>
+      ))}
+      {showForm ? (
+        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <input className="jh-input" placeholder="Name *" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} required />
+          <input className="jh-input" placeholder="Role (recruiter, hiring manager…)" value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value }))} />
+          <input className="jh-input" placeholder="Email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} />
+          <input className="jh-input" placeholder="LinkedIn URL" value={form.linkedin_url} onChange={e => setForm(p => ({ ...p, linkedin_url: e.target.value }))} />
+          <input className="jh-input" placeholder="Phone" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} />
+          <input className="jh-input" placeholder="Notes" value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
+          <div style={{ display: "flex", gap: 6 }}>
+            <Btn size="sm" kind="accent" type="submit">Add</Btn>
+            <Btn size="sm" kind="ghost" type="button" onClick={() => setShowForm(false)}>Cancel</Btn>
+          </div>
+        </form>
+      ) : (
+        <Btn size="sm" kind="ghost" onClick={() => setShowForm(true)}>+ Add contact</Btn>
+      )}
+    </div>
+  );
+}
+
 function OverviewTab({ job, onPatch, onClose }) {
   const [localSkills, setLocalSkills] = React.useState(job.skills || []);
   const [skillsDirty, setSkillsDirty] = React.useState(false);
@@ -453,6 +536,7 @@ function OverviewTab({ job, onPatch, onClose }) {
       )}
 
       <FitScorePanel job={job} />
+      <ContactsSection jobId={job.id} />
       <CaptureDiagnostics job={job} onClose={onClose} />
 
       <div className="jh-section">

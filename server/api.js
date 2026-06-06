@@ -15,7 +15,7 @@ import { METRO_DATA } from './metros.js';
 import {
   runExtraction, runExtractionForSelected,
   parseBoolSetting, makeExtractorFromSettings, makeScorerFromSettings,
-  resolveProviderBaseUrl, ANTHROPIC_MODELS, GOOGLE_MODELS,
+  resolveProviderBaseUrl, resolveApiKey,
   MAX_DESCRIPTION_CHARS, MAX_RESUME_CHARS, promptOverheadChars, refreshRotationPool, fetchFreeModelIds,
 } from './extract.js';
 
@@ -48,7 +48,7 @@ function validateFetchableCaptureUrl(value) {
   if (host === 'localhost' || host.endsWith('.localhost')) {
     throw new Error('localhost URLs cannot be captured from the server');
   }
-  if (host === '0.0.0.0' || host === '::' || host === '::1') {
+  if (host === '0.0.0.0' || host === '::' || host === '::1' || host === '[::1]' || host === '[::0]') {
     throw new Error('local URLs cannot be captured from the server');
   }
   if (isIP(host) === 4) {
@@ -1016,25 +1016,45 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
     try {
       const settings = getDbSettings();
       const provider = req.body?.provider || settings.llm_provider || 'lmstudio';
-      const apiKey = req.body?.api_key || settings.llm_api_key || '';
+      const apiKey = req.body?.api_key || resolveApiKey({ ...settings, llm_provider: provider });
       const model = req.body?.model || settings.llm_model || '';
       const rawBaseUrl = req.body?.base_url || settings.llm_base_url || 'http://127.0.0.1:1234';
 
-      // Providers with hardcoded model lists — no connectivity needed for quick mode
       if (provider === 'anthropic') {
-        if (req.body?.quick) return res.json({ ok: true, models: ANTHROPIC_MODELS });
-        // Full test: skip OpenAI-specific capability tests; just verify connectivity
-        return res.json({
-          ok: true, models: ANTHROPIC_MODELS,
-          modelTests: [{ name: 'Provider', status: 'pass', message: 'Anthropic — uses native Messages API' }],
-        });
+        if (!apiKey) return res.json({ ok: true, models: [] });
+        const ac = new AbortController();
+        const at = setTimeout(() => ac.abort(), 6000);
+        try {
+          const ar = await fetch('https://api.anthropic.com/v1/models?limit=100', {
+            headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+            signal: ac.signal,
+          });
+          if (!ar.ok) return res.json({ ok: false, error: `HTTP ${ar.status}` });
+          const ad = await ar.json();
+          const models = (ad.data || []).map(m => m.id || '').filter(Boolean);
+          if (req.body?.quick) return res.json({ ok: true, models });
+          return res.json({ ok: true, models, modelTests: [{ name: 'Provider', status: 'pass', message: 'Anthropic — uses native Messages API' }] });
+        } catch (e) {
+          return res.json({ ok: false, error: e.name === 'AbortError' ? 'Connection timed out' : String(e.message) });
+        } finally { clearTimeout(at); }
       }
       if (provider === 'google') {
-        if (req.body?.quick) return res.json({ ok: true, models: GOOGLE_MODELS });
-        return res.json({
-          ok: true, models: GOOGLE_MODELS,
-          modelTests: [{ name: 'Provider', status: 'pass', message: 'Google Gemini — uses native generateContent API' }],
-        });
+        if (!apiKey) return res.json({ ok: true, models: [] });
+        const gc = new AbortController();
+        const gt = setTimeout(() => gc.abort(), 6000);
+        try {
+          const gr = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}&pageSize=100`, { signal: gc.signal });
+          if (!gr.ok) return res.json({ ok: false, error: `HTTP ${gr.status}` });
+          const gd = await gr.json();
+          const models = (gd.models || [])
+            .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+            .map(m => (m.name || '').replace(/^models\//, ''))
+            .filter(id => id.startsWith('gemini'));
+          if (req.body?.quick) return res.json({ ok: true, models });
+          return res.json({ ok: true, models, modelTests: [{ name: 'Provider', status: 'pass', message: 'Google Gemini — uses native generateContent API' }] });
+        } catch (e) {
+          return res.json({ ok: false, error: e.name === 'AbortError' ? 'Connection timed out' : String(e.message) });
+        } finally { clearTimeout(gt); }
       }
 
       // OpenAI-compatible providers (lmstudio, openai, openrouter, custom)
@@ -1048,9 +1068,16 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
       const connTimer = setTimeout(() => connController.abort(), 5000);
       try {
         const response = await fetch(`${baseUrl}/v1/models`, { headers: connHeaders, signal: connController.signal });
-        if (!response.ok) return res.json({ ok: false, error: `HTTP ${response.status}` });
-        const data = /** @type {any} */ (await response.json());
-        modelIds = (data.data || []).map(m => m.id || '').filter(Boolean);
+        if (!response.ok) {
+          return res.json({ ok: false, error: `HTTP ${response.status}` });
+        } else {
+          const data = /** @type {any} */ (await response.json());
+          const allIds = (data.data || []).map(m => m.id || '').filter(Boolean);
+          // For OpenAI, drop embeddings/audio/image/legacy models — keep only chat/reasoning models
+          modelIds = provider === 'openai'
+            ? allIds.filter(id => /^(gpt-|o[0-9])/.test(id) && !id.includes('instruct') && !id.includes('realtime') && !id.includes('audio') && !id.includes('tts') && !id.includes('whisper') && !id.includes('search'))
+            : allIds;
+        }
       } catch (e) {
         return res.json({ ok: false, error: e.name === 'AbortError' ? 'Connection timed out' : String(e.message) });
       } finally {
@@ -1078,7 +1105,8 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
   // Returns the filtered list of free OpenRouter models that support structured output.
   app.get('/api/settings/free-models', async (req, res) => {
     try {
-      const apiKey = getDbSettings().llm_api_key || '';
+      const s = getDbSettings();
+      const apiKey = resolveApiKey({ ...s, llm_provider: 'openrouter' });
       const models = await fetchFreeModelIds(apiKey);
       res.json({ ok: true, models });
     } catch (e) {
@@ -1102,7 +1130,7 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
     try {
       const settings = getDbSettings();
       const provider = settings.llm_provider || 'lmstudio';
-      const apiKey = settings.llm_api_key || '';
+      const apiKey = resolveApiKey(settings);
       const model = settings.llm_model || '';
       const rawBaseUrl = settings.llm_base_url || 'http://127.0.0.1:1234';
 
@@ -1622,6 +1650,11 @@ function buildUiData(dbPath) {
       llm_provider: settingsData.llm_provider || 'lmstudio',
       llm_base_url: settingsData.llm_base_url,
       llm_api_key: settingsData.llm_api_key || '',
+      llm_api_key_openai: settingsData.llm_api_key_openai || '',
+      llm_api_key_anthropic: settingsData.llm_api_key_anthropic || '',
+      llm_api_key_google: settingsData.llm_api_key_google || '',
+      llm_api_key_openrouter: settingsData.llm_api_key_openrouter || '',
+      llm_api_key_custom: settingsData.llm_api_key_custom || '',
       llm_model: settingsData.llm_model,
       site_review_interval_days: parseInt(settingsData.site_review_interval_days || '14'),
       followup_default_days: parseInt(settingsData.followup_default_days || '7'),

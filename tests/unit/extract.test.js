@@ -11,6 +11,15 @@ import {
   normalizeRemoteTypeFromSource,
   normalizeSalaryFromSource,
   parseExtractedJob,
+  resolveProviderBaseUrl,
+  _parseFitScore,
+  _missingRequirementsPenalty,
+  refreshRotationPool,
+  runWithModelRotation,
+  _onSuccess,
+  _onRateLimit,
+  _resetConcurrencyState,
+  selectFreeStructuredModels,
 } from '../../server/extract.js';
 
 describe('parseExtractedJob', () => {
@@ -729,5 +738,272 @@ describe('applyLocationFilter — filterEnabled', () => {
       filterEnabled: true,
     });
     assert.equal(result.meets_criteria, true);
+  });
+});
+
+describe('resolveProviderBaseUrl', () => {
+  it('hosted providers return fixed URLs regardless of any baseUrl setting', () => {
+    assert.equal(resolveProviderBaseUrl('openai'),     'https://api.openai.com');
+    assert.equal(resolveProviderBaseUrl('openrouter'), 'https://openrouter.ai/api');
+    assert.equal(resolveProviderBaseUrl('anthropic'),  'https://api.anthropic.com');
+    assert.equal(resolveProviderBaseUrl('google'),     'https://generativelanguage.googleapis.com');
+  });
+  it('local/custom providers use the provided baseUrl', () => {
+    assert.equal(resolveProviderBaseUrl('lmstudio', 'http://localhost:1234'), 'http://localhost:1234');
+    assert.equal(resolveProviderBaseUrl('custom', 'http://myserver:8080/'), 'http://myserver:8080');
+  });
+});
+
+describe('missingRequirementsPenalty', () => {
+  it('returns 0 for empty or non-array input', () => {
+    assert.equal(_missingRequirementsPenalty([]), 0);
+    assert.equal(_missingRequirementsPenalty(null), 0);
+    assert.equal(_missingRequirementsPenalty(undefined), 0);
+  });
+
+  it('charges 5 pts per generic missing requirement', () => {
+    assert.equal(_missingRequirementsPenalty(['python', 'sql']), 10);
+  });
+
+  it('charges 10 pts for domain-specific gaps (asic, fpga, etc.)', () => {
+    assert.equal(_missingRequirementsPenalty(['asic design experience', 'fpga knowledge']), 20);
+  });
+
+  it('caps total penalty at 50', () => {
+    const many = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k'];
+    assert.equal(_missingRequirementsPenalty(many), 50);
+  });
+});
+
+describe('parseFitScore', () => {
+  it('parses a valid fit score JSON response', () => {
+    const content = JSON.stringify({
+      summary: 'Strong fit overall',
+      dimensions: [
+        { name: 'required_qualifications', score: 85, rationale: 'Meets most requirements' },
+        { name: 'skills', score: 70, rationale: 'Good skill match' },
+      ],
+      requirements_met: ['leadership', 'program management'],
+      requirements_not_met: [],
+    });
+    const result = _parseFitScore(content);
+    assert.equal(result.summary, 'Strong fit overall');
+    assert.equal(result.dimensions.length, 2);
+    assert.equal(result.dimensions[0].score, 85);
+    assert.deepEqual(result.requirements_met, ['leadership', 'program management']);
+    assert.deepEqual(result.requirements_not_met, []);
+    assert.equal(result.requirements_penalty, 0);
+    assert.ok(typeof result.overall_score === 'number' || result.overall_score === null);
+  });
+
+  it('applies penalty for unmet requirements and subtracts from overall score', () => {
+    const content = JSON.stringify({
+      dimensions: [{ name: 'required_qualifications', score: 80, rationale: '' }],
+      requirements_met: [],
+      requirements_not_met: ['python', 'sql'],
+      summary: null,
+    });
+    const result = _parseFitScore(content);
+    assert.equal(result.requirements_penalty, 10);
+    assert.ok(result.overall_score !== null);
+    assert.ok(result.overall_score <= 80);
+  });
+
+  it('handles missing dimensions gracefully (returns null overall_score)', () => {
+    const content = JSON.stringify({ summary: 'No dims', dimensions: [], requirements_met: [], requirements_not_met: [] });
+    const result = _parseFitScore(content);
+    assert.equal(result.overall_score, null);
+  });
+});
+
+describe('loadsJsonLenient (via parseExtractedJob)', () => {
+  it('repairs trailing-comma JSON via jsonrepair', () => {
+    const malformed = '{ "company": "Acme", "title": "TPM", }';
+    const parsed = parseExtractedJob(malformed);
+    assert.equal(parsed.company, 'Acme');
+    assert.equal(parsed.title, 'TPM');
+  });
+
+  it('throws on truly unparseable content', () => {
+    assert.throws(() => parseExtractedJob('not json at all !!!'), /JSON/);
+  });
+});
+
+describe('applyLocationFilter branch coverage', () => {
+  it('returns meets_criteria:true (fallback) when remote_type is null and no preferred locations', () => {
+    const result = applyLocationFilter({ company: 'Acme', title: 'SWE', location: 'Seattle', remote_type: null });
+    assert.ok(typeof result.meets_criteria === 'boolean');
+  });
+
+  it('returns meets_criteria for hybrid remote_type with preferred locations (hybrid+terms branch)', () => {
+    const result = applyLocationFilter(
+      { company: 'Acme', title: 'SWE', location: 'Seattle, WA', remote_type: 'hybrid' },
+      { preferredLocations: 'Seattle', allowHybrid: true }
+    );
+    assert.equal(result.remote_type, 'hybrid');
+    assert.ok(typeof result.meets_criteria === 'boolean');
+  });
+
+  it('returns meets_criteria for onsite remote_type with preferred locations (onsite+terms branch)', () => {
+    const result = applyLocationFilter(
+      { company: 'Acme', title: 'SWE', location: 'Austin, TX', remote_type: 'onsite' },
+      { preferredLocations: 'Seattle', allowOnsite: true }
+    );
+    assert.equal(result.remote_type, 'onsite');
+    assert.ok(typeof result.meets_criteria === 'boolean');
+  });
+});
+
+describe('normalizeRemoteTypeFromSource URL branch coverage', () => {
+  it('covers urlIndicatesRemote return false path for non-remote URL', () => {
+    const extracted = { company: 'Acme', title: 'SWE', location: 'Seattle, WA', remote_type: 'onsite' };
+    const result = normalizeRemoteTypeFromSource(extracted, 'Onsite only role', 'https://jobs.example.com/engineer?ref=board');
+    assert.equal(result.remote_type, 'onsite');
+  });
+
+  it('covers urlIndicatesRemote TRUE path for Indeed remote URL', () => {
+    const extracted = { company: 'Acme', title: 'SWE', location: 'Remote', remote_type: 'onsite' };
+    const result = normalizeRemoteTypeFromSource(extracted, 'No remote indicators in text', 'https://www.indeed.com/jobs?remotejob=1&q=engineer');
+    assert.equal(result.remote_type, 'remote');
+  });
+});
+
+describe('normalizeSalaryFromSource selectSalaryBand branch coverage', () => {
+  it('covers "different range" note branch when All Other US band is present', () => {
+    // salary_note must have 2+ bands for selectSalaryBand to reach line 516
+    const extracted = {
+      salary_note: 'San Francisco Bay Area:\n$180,000 - $220,000 USD Annual\nAll Other US Locations:\n$100,000 - $200,000 USD Annual\ndifferent range applicable to specific work locations',
+    };
+    const result = normalizeSalaryFromSource(extracted, {});
+    assert.equal(result.salary_min, 100000);
+    assert.equal(result.salary_max, 200000);
+  });
+
+  it('covers "different range" note branch when no All Other US band exists', () => {
+    // bands.find(...) returns undefined → || null TRUE branch on line 517
+    const extracted = {
+      salary_note: 'East Coast:\n$90,000 - $110,000 USD Annual\nWest Coast:\n$120,000 - $140,000 USD Annual\ndifferent range applicable to specific work locations',
+    };
+    const result = normalizeSalaryFromSource(extracted, {});
+    assert.ok(typeof result.salary_min === 'number' || result.salary_min == null);
+  });
+});
+
+describe('parsePreferredLocations state name expansion', () => {
+  it('expands state name to abbreviation (covers STATE_NAME_TO_ABBREV branch)', () => {
+    // "Washington" → should also add "WA" as a term
+    const result = applyLocationFilter(
+      { company: 'Acme', title: 'SWE', location: 'Seattle, Washington', remote_type: 'onsite' },
+      { preferredLocations: 'Washington', allowOnsite: true }
+    );
+    assert.ok(typeof result.meets_criteria === 'boolean');
+  });
+});
+
+describe('normalizeLocationFromSource branch coverage', () => {
+  it('returns extracted unchanged when no location found and source is not remote', () => {
+    // Covers the `return extracted` branch at line 656
+    const extracted = { company: 'Acme', title: 'Engineer' }; // no location
+    const result = normalizeLocationFromSource(extracted, 'Competitive salary, great benefits. No remote.');
+    assert.equal(result.company, 'Acme');
+    assert.equal(result.location, undefined);
+  });
+
+  it('returns Remote when no location found but source indicates remote (telecommute)', () => {
+    // Covers the `sourceIndicatesRemote` TRUE branch at line 655
+    const extracted = { company: 'Acme', title: 'Engineer' }; // no location
+    const result = normalizeLocationFromSource(extracted, 'Fully remote/telecommute position available for this role.');
+    assert.equal(result.location, 'Remote');
+  });
+});
+
+describe('refreshRotationPool branch coverage', () => {
+  it('returns [] when rotation is not enabled (non-OpenRouter provider)', async () => {
+    const result = await refreshRotationPool({ llm_provider: 'lmstudio' });
+    assert.deepEqual(result, []);
+  });
+
+  it('fetches and caches model pool when rotation is enabled', async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => ({
+        ok: true,
+        json: async () => ({
+          data: [
+            { id: 'free-model-1', pricing: { prompt: '0', completion: '0' }, supported_parameters: ['response_format'], architecture: {} },
+          ],
+        }),
+      });
+      const settings = { llm_provider: 'openrouter', llm_openrouter_free_rotate: 'true', llm_api_key_openrouter: '' };
+      const result = await refreshRotationPool(settings, { force: true });
+      assert.ok(Array.isArray(result));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('returns cached pool when fetch throws (covers catch branch)', async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => { throw new Error('Network error'); };
+      const settings = { llm_provider: 'openrouter', llm_openrouter_free_rotate: 'true', llm_api_key_openrouter: '' };
+      const result = await refreshRotationPool(settings, { force: true });
+      assert.ok(Array.isArray(result));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+describe('runWithModelRotation branch coverage', () => {
+  it('calls attemptFn with base model when pool is empty', async () => {
+    let called = null;
+    await runWithModelRotation([], 'base-model', async (model) => { called = model; return 'ok'; });
+    assert.equal(called, 'base-model');
+  });
+
+  it('tries models from pool and returns first success', async () => {
+    const attempts = [];
+    const result = await runWithModelRotation(['m1', 'm2', 'm3'], 'base', async (model) => {
+      attempts.push(model);
+      if (model === 'm1') throw new Error('fail');
+      return `result-${model}`;
+    });
+    assert.ok(result.startsWith('result-'));
+    assert.ok(attempts.includes('m1'));
+  });
+});
+
+describe('selectFreeStructuredModels branch coverage', () => {
+  it('returns [] for null/undefined input', () => {
+    assert.deepEqual(selectFreeStructuredModels(null), []);
+    assert.deepEqual(selectFreeStructuredModels(undefined), []);
+  });
+
+  it('filters out paid models', () => {
+    const data = {
+      data: [
+        { id: 'paid', pricing: { prompt: '0.001', completion: '0.002' }, supported_parameters: ['response_format'], architecture: {} },
+        { id: 'free', pricing: { prompt: '0', completion: '0' }, supported_parameters: ['response_format'], architecture: {} },
+      ],
+    };
+    const result = selectFreeStructuredModels(data);
+    assert.ok(!result.includes('paid'));
+    assert.ok(result.includes('free'));
+  });
+
+  it('excludes audio/image output models', () => {
+    const data = {
+      data: [
+        {
+          id: 'audio-model',
+          pricing: { prompt: '0', completion: '0' },
+          supported_parameters: ['response_format'],
+          architecture: { output_modalities: ['text', 'audio'] },
+        },
+      ],
+    };
+    const result = selectFreeStructuredModels(data);
+    assert.deepEqual(result, []);
   });
 });

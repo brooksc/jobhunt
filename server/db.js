@@ -28,6 +28,11 @@ export const SETTINGS_DEFAULTS = {
   llm_provider: 'lmstudio',
   llm_base_url: 'http://127.0.0.1:1234',
   llm_api_key: '',
+  llm_api_key_openai: '',
+  llm_api_key_anthropic: '',
+  llm_api_key_google: '',
+  llm_api_key_openrouter: '',
+  llm_api_key_custom: '',
   llm_model: 'gemma-4-e4b-it-mlx',
   llm_timeout: '300',
   site_review_interval_days: '14',
@@ -532,6 +537,7 @@ function withTransaction(db, fn) {
 // ------------------------------------------------------------------
 
 const _connections = new Map();
+const _initialized = new Set(); // tracks which paths have had SCHEMA+migrateSchema run
 
 export function connect(dbPath) {
   const resolved = resolve(dbPath || defaultDbPath());
@@ -572,9 +578,12 @@ function migrateLegacyRuntimeFiles(resolvedDbPath) {
 
 export function initDb(dbPath) {
   const db = connect(dbPath);
-  // Run each statement separately since node:sqlite exec doesn't support multiple statements well with some pragmas
-  db.exec(SCHEMA);
-  migrateSchema(db);
+  const resolved = resolve(dbPath || defaultDbPath());
+  if (!_initialized.has(resolved)) {
+    _initialized.add(resolved);
+    db.exec(SCHEMA);
+    migrateSchema(db);
+  }
   return db;
 }
 
@@ -636,6 +645,7 @@ function migrateSchema(db) {
   }
 
   migrateLlmRequestsResumeId(db);
+  migrateAttemptsForeignKey(db);
   migrateResumeData(db);
 }
 
@@ -681,6 +691,47 @@ function migrateLlmRequestsResumeId(db) {
   db.exec('CREATE INDEX IF NOT EXISTS idx_llm_requests_job ON llm_requests (job_id)');
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_llm_requests_fit ON llm_requests (job_id, request_type, resume_id) WHERE request_type = 'fit_score'");
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_llm_requests_nonfit ON llm_requests (job_id, request_type) WHERE request_type <> 'fit_score'");
+}
+
+// Fixes a broken DB state where llm_request_attempts was created mid-migration
+// and has a FK referencing "llm_requests_old" instead of "llm_requests".
+function migrateAttemptsForeignKey(db) {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='llm_request_attempts'").get();
+  if (!row || !row.sql.includes('llm_requests_old')) return;
+  const oldCols = tableColumns(db, 'llm_request_attempts');
+  const colList = [...oldCols].join(', ');
+  db.exec('PRAGMA foreign_keys = OFF');
+  try {
+    withTransaction(db, () => {
+      db.exec('ALTER TABLE llm_request_attempts RENAME TO llm_request_attempts_old');
+      db.exec(`CREATE TABLE llm_request_attempts (
+        id TEXT PRIMARY KEY,
+        request_id TEXT NOT NULL REFERENCES llm_requests(id) ON DELETE CASCADE,
+        job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+        request_type TEXT NOT NULL,
+        attempt INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        model_requested TEXT,
+        model_returned TEXT,
+        response_format TEXT,
+        base_url TEXT,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        duration_ms INTEGER,
+        error TEXT,
+        response_preview TEXT,
+        prompt_chars INTEGER,
+        response_chars INTEGER,
+        resume_id TEXT
+      )`);
+      db.exec(`INSERT INTO llm_request_attempts (${colList}) SELECT ${colList} FROM llm_request_attempts_old`);
+      db.exec('DROP TABLE llm_request_attempts_old');
+    });
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_llm_request_attempts_request ON llm_request_attempts (request_id, started_at)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_llm_request_attempts_job ON llm_request_attempts (job_id, started_at)');
 }
 
 // One-time migration: import the legacy single settings.resume_text into the
@@ -1758,7 +1809,7 @@ export function updateJobFields(db, jobId, fields) {
   const allowed = new Set(['company', 'title', 'location', 'salary_min', 'salary_max', 'salary_note']);
   const toUpdate = {};
   for (const [k, v] of Object.entries(fields)) {
-    if (allowed.has(k)) toUpdate[k] = v;
+    if (allowed.has(k) && v !== undefined) toUpdate[k] = v;
   }
   if (!Object.keys(toUpdate).length) return;
   const row = db.prepare("SELECT manual_overrides FROM jobs WHERE id=?").get(jobId);

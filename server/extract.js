@@ -48,9 +48,18 @@ export const OPENROUTER_DEFAULT_MODELS = [
 ];
 
 // Returns the effective API base URL for a given provider.
+export function resolveApiKey(settings) {
+  const provider = settings.llm_provider || 'lmstudio';
+  const perProvider = settings[`llm_api_key_${provider}`];
+  // Fall back to legacy llm_api_key for migration (e.g. user had a key before per-provider keys existed)
+  return perProvider || settings.llm_api_key || '';
+}
+
 export function resolveProviderBaseUrl(provider, baseUrl) {
   if (provider === 'openai') return 'https://api.openai.com';
   if (provider === 'openrouter') return 'https://openrouter.ai/api';
+  if (provider === 'anthropic') return 'https://api.anthropic.com';
+  if (provider === 'google') return 'https://generativelanguage.googleapis.com';
   return (baseUrl || process.env.JOBHUNT_LLM_BASE_URL || DEFAULT_LLM_BASE_URL).replace(/\/$/, '');
 }
 
@@ -138,6 +147,15 @@ async function postOpenAICompatibleCompletion({ baseUrl, apiKey, model, messages
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
+      if (res.status === 429) {
+        const text = await res.text();
+        const provider = baseUrl?.includes('openrouter') ? 'openrouter' : 'custom';
+        onRateLimit(provider);
+        const match = text.match(/retry.{0,20}?(\d+)\s*s/i);
+        const delayMs = match ? (parseInt(match[1], 10) + 1) * 1000 : 60000;
+        await new Promise(r => setTimeout(r, delayMs));
+        throw new Error(`LLM HTTP 429: ${text.slice(0, 500)}`);
+      }
       if (res.status === 400) {
         lastBadResponse = res;
         continue;
@@ -216,32 +234,48 @@ async function postGoogleCompletion({ apiKey, model, messages, timeout }) {
   });
   if (systemMsg) payload.systemInstruction = { parts: [{ text: systemMsg.content }] };
   const resolvedModel = model || 'gemini-2.5-flash';
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeout * 1000);
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent?key=${encodeURIComponent(apiKey || '')}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
+  const MAX_RATE_LIMIT_RETRIES = 4;
+  for (let rlAttempt = 0; rlAttempt <= MAX_RATE_LIMIT_RETRIES; rlAttempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout * 1000);
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModel}:generateContent?key=${encodeURIComponent(apiKey || '')}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        }
+      );
+      if (res.status === 429) {
+        const text = await res.text();
+        onRateLimit('google');
+        if (rlAttempt < MAX_RATE_LIMIT_RETRIES) {
+          const match = text.match(/retry in ([\d.]+)s/i);
+          const delayMs = match ? Math.ceil(parseFloat(match[1]) * 1000) + 1000 : 60000;
+          await new Promise(r => setTimeout(r, delayMs));
+          continue;
+        }
+        throw new Error(`Google HTTP 429: ${text.slice(0, 500)}`);
       }
-    );
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Google HTTP ${res.status}: ${text.slice(0, 500)}`);
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Google HTTP ${res.status}: ${text.slice(0, 500)}`);
+      }
+      const data = /** @type {any} */ (await res.json());
+      const content = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+      const modelName = data.modelVersion || resolvedModel;
+      onSuccess('google');
+      return { content, modelName, responseFormatType: 'none' };
+    } catch (e) {
+      if (e.name === 'AbortError') throw new Error(`LLM request timed out after ${timeout}s`, { cause: e });
+      throw e;
+    } finally {
+      clearTimeout(timer);
     }
-    const data = /** @type {any} */ (await res.json());
-    const content = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    const modelName = data.modelVersion || resolvedModel;
-    return { content, modelName, responseFormatType: 'none' };
-  } catch (e) {
-    if (e.name === 'AbortError') throw new Error(`LLM request timed out after ${timeout}s`, { cause: e });
-    throw e;
-  } finally {
-    clearTimeout(timer);
   }
+  throw new Error('Google: exceeded rate-limit retry budget');
 }
 
 async function postChatCompletion({ provider, baseUrl, apiKey, model, messages, timeout, schemaFormat }) {
@@ -656,6 +690,8 @@ export function normalizeCompanyFromSource(extracted, description) {
   return { ...extracted, company };
 }
 
+export function _parseFitScore(content) { return parseFitScore(content); }
+export function _missingRequirementsPenalty(req) { return missingRequirementsPenalty(req); }
 function parseFitScore(content) {
   const data = loadsJsonLenient(extractJsonObject(content));
   const dimensions = Array.isArray(data.dimensions)
@@ -1085,8 +1121,35 @@ let _extractionRunning = false;
 // process one at a time. Concurrency is the number of LLM calls run in parallel.
 const HOSTED_PROVIDERS = new Set(['openai', 'anthropic', 'google', 'openrouter']);
 const HOSTED_CONCURRENCY = 5;
+// Google free tier is 15 RPM — start conservative; promote after a success streak.
+const PROVIDER_CONCURRENCY = { google: 1 };
+const CONCURRENCY_PROMOTE_AFTER = 10; // consecutive successes before bumping
+const _runtimeConcurrency = {};
+const _successStreak = {};
 export function providerConcurrency(provider) {
+  if (_runtimeConcurrency[provider] != null) return _runtimeConcurrency[provider];
+  if (PROVIDER_CONCURRENCY[provider] != null) return PROVIDER_CONCURRENCY[provider];
   return HOSTED_PROVIDERS.has(provider) ? HOSTED_CONCURRENCY : 1;
+}
+export function _onRateLimit(provider) {
+  _runtimeConcurrency[provider] = 1;
+  _successStreak[provider] = 0;
+}
+function onRateLimit(provider) { _onRateLimit(provider); }
+export function _onSuccess(provider) {
+  const ceiling = HOSTED_PROVIDERS.has(provider) ? HOSTED_CONCURRENCY : 1;
+  const current = providerConcurrency(provider);
+  if (current >= ceiling) return;
+  _successStreak[provider] = (_successStreak[provider] || 0) + 1;
+  if (_successStreak[provider] >= CONCURRENCY_PROMOTE_AFTER) {
+    _runtimeConcurrency[provider] = Math.min(ceiling, current + 1);
+    _successStreak[provider] = 0;
+  }
+}
+function onSuccess(provider) { _onSuccess(provider); }
+export function _resetConcurrencyState() {
+  for (const k of Object.keys(_runtimeConcurrency)) delete _runtimeConcurrency[k];
+  for (const k of Object.keys(_successStreak)) delete _successStreak[k];
 }
 
 // ------------------------------------------------------------------
@@ -1153,7 +1216,7 @@ export async function refreshRotationPool(settings, { force = false } = {}) {
   const now = Date.now();
   if (!force && _rotationCache.ids.length && now - _rotationCache.fetchedAt < ROTATION_TTL_MS) return _rotationCache.ids;
   try {
-    const data = await fetchOpenRouterModels(settings.llm_api_key || '');
+    const data = await fetchOpenRouterModels(resolveApiKey(settings));
     const ids = selectFreeStructuredModels(data);
     if (ids.length) _rotationCache = { ids, fetchedAt: now };
     return _rotationCache.ids;
@@ -1222,7 +1285,7 @@ export async function runExtractionForSelected({ dbPath, extractor, requestIds, 
 async function _runExtractionInner({ dbPath, extractor, limit = 10, scorer }) {
   if (isQueuePaused(dbPath)) return { processed: 0, succeeded: 0, failed: 0 };
 
-  const concurrency = providerConcurrency((extractor || scorer)?.provider);
+  let concurrency = providerConcurrency((extractor || scorer)?.provider);
   // When rotating across free models, individual models are expected to fail
   // (rate limits / overload) — failover handles it, so don't pause the queue.
   const rotating = !!((extractor || scorer)?.modelPool?.length);
@@ -1242,12 +1305,14 @@ async function _runExtractionInner({ dbPath, extractor, limit = 10, scorer }) {
       batch.map(item => processSingleQueueRequest({ dbPath, extractor, item, scorer }))
     );
 
+    const provider = (extractor || scorer)?.provider;
     for (const { wasProcessed, didSucceed } of results) {
       if (!wasProcessed) continue;
       processed++;
       if (didSucceed) {
         succeeded++;
         failureStreak = 0;
+        if (provider) onSuccess(provider);
       } else {
         failed++;
         failureStreak++;
@@ -1255,6 +1320,8 @@ async function _runExtractionInner({ dbPath, extractor, limit = 10, scorer }) {
         if (!rotating && failureStreak >= 2) { pauseLlmQueueForErrors(dbPath); paused = true; }
       }
     }
+    // Re-read concurrency each batch — it may have changed due to rate-limit feedback.
+    concurrency = providerConcurrency(provider);
   }
   return { processed, succeeded, failed };
 }
@@ -1382,7 +1449,7 @@ export function makeExtractorFromSettings(settings) {
   return new LMStudioExtractor({
     provider: settings.llm_provider || 'lmstudio',
     baseUrl: settings.llm_base_url,
-    apiKey: settings.llm_api_key || '',
+    apiKey: resolveApiKey(settings),
     model: settings.llm_model,
     modelPool: rotationPoolFor(settings),
     timeout: parseFloat(settings.llm_timeout || '60'),
@@ -1398,7 +1465,7 @@ export function makeScorerFromSettings(settings) {
   return new FitScorer({
     provider: settings.llm_provider || 'lmstudio',
     baseUrl: settings.llm_base_url,
-    apiKey: settings.llm_api_key || '',
+    apiKey: resolveApiKey(settings),
     model: settings.llm_model,
     modelPool: rotationPoolFor(settings),
     timeout: parseFloat(settings.llm_timeout || '60'),

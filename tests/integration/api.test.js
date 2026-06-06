@@ -106,6 +106,77 @@ describe('PATCH /api/settings', () => {
   });
 });
 
+describe('GET /api/settings/free-models', () => {
+  let originalFetch;
+
+  before(() => { originalFetch = globalThis.fetch; });
+  after(() => { globalThis.fetch = originalFetch; });
+
+  it('returns ok:true with filtered model list when OpenRouter responds', async () => {
+    globalThis.fetch = async (url, opts) => {
+      if (String(url).includes('openrouter.ai')) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [
+              { id: 'free/model-a', pricing: { prompt: '0', completion: '0' }, supported_parameters: ['structured_outputs'], architecture: { output_modalities: ['text'] } },
+              { id: 'paid/model-b', pricing: { prompt: '0.001', completion: '0.002' }, supported_parameters: ['structured_outputs'], architecture: { output_modalities: ['text'] } },
+              { id: 'free/model-c', pricing: { prompt: '0', completion: '0' }, supported_parameters: ['response_format'], architecture: { modality: 'text->text' } },
+            ],
+          }),
+        };
+      }
+      return originalFetch(url, opts);
+    };
+    const res = await fetch(`${base}/api/settings/free-models`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.ok, true);
+    assert.deepEqual(body.models.sort(), ['free/model-a', 'free/model-c']);
+  });
+
+  it('sends the saved API key as Authorization header', async () => {
+    await patch('/api/settings', { llm_api_key: 'sk-test-integration-key' });
+    let capturedAuth;
+    globalThis.fetch = async (url, opts) => {
+      if (String(url).includes('openrouter.ai')) {
+        capturedAuth = opts?.headers?.Authorization;
+        return { ok: true, json: async () => ({ data: [] }) };
+      }
+      return originalFetch(url, opts);
+    };
+    const res = await fetch(`${base}/api/settings/free-models`);
+    assert.equal(res.status, 200);
+    assert.equal(capturedAuth, 'Bearer sk-test-integration-key');
+    // restore
+    await patch('/api/settings', { llm_api_key: '' });
+  });
+
+  it('returns ok:false when OpenRouter returns a non-2xx status', async () => {
+    globalThis.fetch = async (url, opts) => {
+      if (String(url).includes('openrouter.ai')) return { ok: false, status: 503 };
+      return originalFetch(url, opts);
+    };
+    const res = await fetch(`${base}/api/settings/free-models`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.ok, false);
+    assert.match(body.error, /503/);
+  });
+
+  it('returns ok:false on network error', async () => {
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('openrouter.ai')) throw new Error('ECONNREFUSED');
+      return originalFetch(url);
+    };
+    const res = await fetch(`${base}/api/settings/free-models`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.ok, false);
+    assert.match(body.error, /ECONNREFUSED/);
+  });
+});
+
 describe('POST /captures', () => {
   it('returns 400 when url is missing', async () => {
     const res = await post('/captures', { page_title: 'x', visible_text: 'hello' });

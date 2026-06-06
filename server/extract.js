@@ -1123,6 +1123,28 @@ export function selectFreeStructuredModels(data) {
   }).map(m => m.id);
 }
 
+// Fetches the OpenRouter /v1/models endpoint with optional auth and returns the
+// raw JSON response. Propagates errors — callers decide whether to swallow them.
+async function fetchOpenRouterModels(apiKey) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+  try {
+    const headers = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+    const r = await fetch('https://openrouter.ai/api/v1/models', { headers, signal: controller.signal });
+    if (!r.ok) throw new Error(`OpenRouter HTTP ${r.status}`);
+    return await r.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Fetches and filters to the free structured-output model list. Propagates
+// network errors — use this where you want to surface failures to the caller.
+export async function fetchFreeModelIds(apiKey) {
+  const data = await fetchOpenRouterModels(apiKey);
+  return selectFreeStructuredModels(data);
+}
+
 // Refreshes (when stale) and returns the free-model rotation pool, or [] when
 // rotation is off / provider isn't OpenRouter. Network failures keep the last
 // good pool. Call before building extractors/scorers for a run.
@@ -1131,16 +1153,7 @@ export async function refreshRotationPool(settings, { force = false } = {}) {
   const now = Date.now();
   if (!force && _rotationCache.ids.length && now - _rotationCache.fetchedAt < ROTATION_TTL_MS) return _rotationCache.ids;
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 6000);
-    let data;
-    try {
-      const r = await fetch('https://openrouter.ai/api/v1/models', { signal: controller.signal });
-      if (!r.ok) throw new Error(`OpenRouter HTTP ${r.status}`);
-      data = await r.json();
-    } finally {
-      clearTimeout(timer);
-    }
+    const data = await fetchOpenRouterModels(settings.llm_api_key || '');
     const ids = selectFreeStructuredModels(data);
     if (ids.length) _rotationCache = { ids, fetchedAt: now };
     return _rotationCache.ids;

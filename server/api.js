@@ -16,7 +16,7 @@ import {
   runExtraction, runExtractionForSelected,
   parseBoolSetting, makeExtractorFromSettings, makeScorerFromSettings,
   resolveProviderBaseUrl, ANTHROPIC_MODELS, GOOGLE_MODELS,
-  MAX_DESCRIPTION_CHARS, MAX_RESUME_CHARS, promptOverheadChars, refreshRotationPool, selectFreeStructuredModels,
+  MAX_DESCRIPTION_CHARS, MAX_RESUME_CHARS, promptOverheadChars, refreshRotationPool, fetchFreeModelIds,
 } from './extract.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1079,18 +1079,7 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
   app.get('/api/settings/free-models', async (req, res) => {
     try {
       const apiKey = getDbSettings().llm_api_key || '';
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 8000);
-      let data;
-      try {
-        const headers = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
-        const r = await fetch('https://openrouter.ai/api/v1/models', { headers, signal: controller.signal });
-        if (!r.ok) return res.json({ ok: false, error: `OpenRouter HTTP ${r.status}` });
-        data = await r.json();
-      } finally {
-        clearTimeout(timer);
-      }
-      const models = selectFreeStructuredModels(data);
+      const models = await fetchFreeModelIds(apiKey);
       res.json({ ok: true, models });
     } catch (e) {
       res.json({ ok: false, error: e.name === 'AbortError' ? 'Connection timed out' : String(e.message) });

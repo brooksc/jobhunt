@@ -13,7 +13,7 @@ const PROVIDER_HARDCODED_MODELS = {
   anthropic: ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
   google: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
   openai: ["gpt-4o", "gpt-4o-mini", "o3", "o3-mini"],
-  openrouter: ["openai/gpt-4o", "openai/gpt-4o-mini", "anthropic/claude-sonnet-4-6", "google/gemini-2.5-flash-preview-05-20"],
+  // openrouter: fetched dynamically (full catalog or free-only list depending on settings)
 };
 
 // Providers that use the local/custom base URL input
@@ -215,23 +215,23 @@ function SettingsPage() {
     return res.json();
   }
 
-  // Populate model list when provider or free-rotate setting changes
+  // Populate model list when provider or free-rotate setting changes.
+  // The cancelled flag prevents a slow in-flight response from overwriting
+  // a newer fetch that already resolved.
   React.useEffect(() => {
     const hardcoded = PROVIDER_HARDCODED_MODELS[llmProvider];
     if (hardcoded) {
       setModels(hardcoded);
       return;
     }
-    if (llmProvider === 'openrouter' && llmOpenrouterFreeRotate) {
-      fetch('/api/settings/free-models')
-        .then(r => r.json())
-        .then(data => { if (data.ok && data.models?.length > 0) setModels(data.models); })
-        .catch(() => {});
-      return;
-    }
-    _callTestLlm(true)
-      .then(data => { if (data.ok && data.models?.length > 0) setModels(data.models); })
+    let cancelled = false;
+    const promise = (llmProvider === 'openrouter' && llmOpenrouterFreeRotate)
+      ? _fetchFreeModels()
+      : _callTestLlm(true);
+    promise
+      .then(data => { if (!cancelled && data.ok && data.models?.length > 0) setModels(data.models); })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, [llmProvider, llmOpenrouterFreeRotate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch context window info when model or provider changes
@@ -252,15 +252,9 @@ function SettingsPage() {
     setTesting(true);
     setTestResult(null);
     try {
-      if (llmProvider === 'openrouter' && llmOpenrouterFreeRotate) {
-        const data = await _fetchFreeModels();
-        setTestResult(data);
-        if (data.ok && data.models?.length > 0) setModels(data.models);
-      } else {
-        const data = await _callTestLlm();
-        setTestResult(data);
-        if (data.ok && data.models?.length > 0) setModels(data.models);
-      }
+      const data = await ((llmProvider === 'openrouter' && llmOpenrouterFreeRotate) ? _fetchFreeModels() : _callTestLlm());
+      setTestResult(data);
+      if (data.ok && data.models?.length > 0) setModels(data.models);
     } catch (e) {
       setTestResult({ ok: false, error: e.message });
     } finally {
@@ -427,11 +421,12 @@ function SettingsPage() {
               onChange={e => setLlmModel(e.target.value)}
               size={models.length > 5 ? Math.min(models.length, 8) : 1}
               style={{
-                width: "100%", padding: "4px 8px",
+                width: "100%",
+                height: models.length > 5 ? undefined : 30,
+                padding: models.length > 5 ? "4px 8px" : "0 8px",
                 background: "var(--bg-elev)", border: "1px solid var(--border)",
                 borderRadius: "var(--r-2)", color: "var(--fg)",
                 fontFamily: "var(--font-mono)", fontSize: 12,
-                ...(models.length <= 5 ? { height: 30, padding: "0 8px" } : {}),
               }}
             >
               {models.length === 0 && (

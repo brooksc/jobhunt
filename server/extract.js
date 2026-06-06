@@ -1471,3 +1471,57 @@ export function makeScorerFromSettings(settings) {
     timeout: parseFloat(settings.llm_timeout || '60'),
   });
 }
+
+// ------------------------------------------------------------------
+// Cover letter generation
+// ------------------------------------------------------------------
+
+export async function generateCoverLetter({ job, resumeText, instructions, settings }) {
+  const provider = settings.llm_provider || 'lmstudio';
+  const baseUrl = resolveProviderBaseUrl(provider, settings.llm_base_url);
+  const apiKey = resolveApiKey(settings);
+  const model = settings.llm_model || DEFAULT_LLM_MODEL;
+  const timeout = parseFloat(settings.llm_timeout || '60');
+
+  const extracted = job.extracted_json && typeof job.extracted_json === 'object'
+    ? job.extracted_json
+    : (() => { try { return JSON.parse(job.extracted_json || '{}'); } catch { return {}; } })();
+
+  const jobTitle = extracted.title || job.title || '(unknown title)';
+  const company = extracted.company || job.company || '(unknown company)';
+
+  const requirementLines = [];
+  if ((extracted.requirements || []).length > 0) {
+    for (const r of extracted.requirements.slice(0, 10)) requirementLines.push(`- ${r}`);
+  } else if (job.description || job.cleaned_description) {
+    requirementLines.push((job.description || job.cleaned_description || '').slice(0, 2000));
+  }
+
+  const systemContent = 'You write professional, tailored cover letters. Return only the cover letter text — no preamble, no explanation, no subject line, no "Dear Hiring Manager" unless it fits naturally. Write in first person.';
+
+  const userParts = [
+    `Write a cover letter for the following job and resume.`,
+    ``,
+    `Job: ${jobTitle} at ${company}`,
+  ];
+  if (requirementLines.length > 0) {
+    userParts.push(`Key requirements:`);
+    userParts.push(...requirementLines);
+  }
+  userParts.push(``, `Resume:`, resumeText.slice(0, MAX_RESUME_CHARS));
+  if (instructions && instructions.trim()) {
+    userParts.push(``, `Additional instructions: ${instructions.trim()}`);
+  }
+  userParts.push(``, `Return only the cover letter text.`);
+
+  const messages = [
+    { role: 'system', content: systemContent },
+    { role: 'user', content: userParts.join('\n') },
+  ];
+
+  const { content, modelName } = await postChatCompletion({
+    provider, baseUrl, apiKey, model, messages, timeout,
+  });
+
+  return { content: String(content || '').trim(), modelName };
+}

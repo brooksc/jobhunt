@@ -1,9 +1,10 @@
 ---
 id: TASK-029
 title: Configure electron-builder for dual MAS + DMG targets
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-06 22:41'
+updated_date: '2026-06-06 23:07'
 labels:
   - electron
   - mas
@@ -11,6 +12,8 @@ labels:
 milestone: m-0
 dependencies:
   - TASK-027
+modified_files:
+  - package.json
 priority: high
 ordinal: 3000
 ---
@@ -102,12 +105,18 @@ Requires task-027 (entitlement plist files) to be merged first so `build/entitle
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 package.json build section has separate mac and mas config blocks with correct entitlement file references
-- [ ] #2 protocols field declares jobhunt:// scheme — verified in built Info.plist CFBundleURLTypes
-- [ ] #3 npm run electron:build (unpacked/unsigned) succeeds
-- [ ] #4 npm run electron:build:dmg produces a dmg artifact
-- [ ] #5 npm run electron:build:mas produces a mas/pkg artifact
-- [ ] #6 identity field is NOT hardcoded in package.json
-- [ ] #7 Legacy identity:null and sign:false fields are removed from dmg block
-- [ ] #8 npm test passes
+- [x] #1 package.json build section has separate mac and mas config blocks with correct entitlement file references
+- [x] #2 protocols field declares jobhunt:// scheme — verified in built Info.plist CFBundleURLTypes
+- [x] #3 npm run electron:build (unpacked/unsigned) succeeds
+- [x] #4 npm run electron:build:dmg produces a dmg artifact
+- [x] #5 npm run electron:build:mas produces a mas/pkg artifact
+- [x] #6 identity field is NOT hardcoded in package.json
+- [x] #7 Legacy identity:null and sign:false fields are removed from dmg block
+- [x] #8 npm test passes
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added protocols field (jobhunt:// scheme → CFBundleURLTypes in Info.plist), afterSign hook reference, electron:build:dmg and electron:build:mas scripts, and electron:dist. Removed legacy dmg.sign:false block. identity not hardcoded. 459 tests pass.
+<!-- SECTION:FINAL_SUMMARY:END -->

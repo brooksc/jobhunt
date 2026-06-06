@@ -44,9 +44,7 @@
   "build": {
     "appId": "com.jobhunt-app.jobhunt",
     "productName": "Jobhunt",
-    "directories": {
-      "output": "dist"
-    },
+    "directories": { "output": "dist" },
     "files": [
       "electron/**/*",
       "server/**/*",
@@ -57,16 +55,20 @@
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "build/icons/icon.icns",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.dmg.plist",
+      "entitlementsInherit": "build/entitlements.dmg.plist",
       "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        }
-      ],
-      "identity": null
+        { "target": "dmg", "arch": ["arm64", "x64"] }
+      ]
+    },
+    "mas": {
+      "entitlements": "build/entitlements.mas.plist",
+      "entitlementsInherit": "build/entitlements.mas.inherit.plist",
+      "hardenedRuntime": false,
+      "target": [
+        { "target": "mas", "arch": ["arm64", "x64"] }
+      ]
     },
     "dmg": {
       "sign": false

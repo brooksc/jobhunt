@@ -385,6 +385,9 @@ function SettingsPage() {
             >
               {Object.entries(PROVIDER_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
+            <div style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 4 }}>
+              Not sure? From our benchmarks, <strong style={{ color: "var(--fg-mute)" }}>Gemini 3.1 Flash</strong> is a good balance of cost and accuracy to start with. See Help → Choosing a model.
+            </div>
           </div>
 
           {SHOWS_BASE_URL.has(llmProvider) && (

@@ -45,6 +45,19 @@ const HELP_SECTIONS = [
     ],
   },
   {
+    title: "Choosing a model",
+    body: [
+      "Not sure where to start? From our experience benchmarking models on real job postings, Gemini 3.1 Flash is the best balance of cost and accuracy — fast, reliable, and pennies to process an entire pipeline. (The cheaper Flash-Lite variant scored 99/100 on our extraction + fit benchmark.) It's a good default if you don't want to fiddle.",
+    ],
+    items: [
+      "Local models (LM Studio) are free and fully private, but slower and memory-hungry. A well-tuned small model like Gemma 3/4 is a surprisingly strong extractor — for this structured task, instruction-following matters more than raw size.",
+      "Bigger isn't always better: for copy-the-fields extraction, a small instruction-tuned model often matches or beats a much larger reasoning model (which can over-think and drop fields).",
+      "OpenRouter free models are tempting but unreliable in practice — frequent rate-limit/overload errors and uneven quality, and several large free models did worse than a small one. Only use them with the 'Use free models (rotate)' toggle, which spreads load across models and fails over.",
+      "Run your own benchmark: from the project directory, `node tests/llm-eval/eval-llm.js --provider google --model gemini-3.1-flash-lite --api-key-file <path-to-key>` (or `--model <name>` for the local LM Studio default). It scores extraction and fit against hand-verified postings so you can compare models on real data before committing.",
+      "Use Settings → LLM → Cost estimate to see what processing all your jobs would cost on a paid model before switching.",
+    ],
+  },
+  {
     title: "Fit scoring",
     items: [
       "Fit scoring rates each job 0–100 against your resume and breaks the score down by dimension (skills match, seniority, location, etc.).",
@@ -340,6 +353,9 @@ function HelpPage() {
       {/* Extract tab */}
       {helpPage === 'extract' && (
         <div>
+          <section className="jh-help__section--wide" style={{ marginBottom: 28 }}>
+            <HelpSection section={S['Choosing a model']} />
+          </section>
           <div className="jh-help__grid" style={{ marginBottom: 28 }}>
             <HelpSection section={S['AI extraction']} />
             <HelpSection section={S['Fit scoring']} />

@@ -108,6 +108,67 @@ describe('PATCH /api/settings', () => {
   });
 });
 
+describe('GET /api/settings/llm-consent/:provider', () => {
+  it('returns consented:false for a new provider', async () => {
+    const res = await fetch(`${base}/api/settings/llm-consent/anthropic`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.provider, 'anthropic');
+    assert.equal(body.consented, false);
+  });
+
+  it('returns 400 for an invalid provider', async () => {
+    const res = await fetch(`${base}/api/settings/llm-consent/invalid`);
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.ok(body.error);
+  });
+});
+
+describe('POST /api/settings/llm-consent/:provider', () => {
+  it('saves consent and GET reflects it', async () => {
+    const post = await fetch(`${base}/api/settings/llm-consent/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ consented: true }),
+    });
+    assert.equal(post.status, 200);
+    const postBody = await post.json();
+    assert.equal(postBody.ok, true);
+
+    const get = await fetch(`${base}/api/settings/llm-consent/google`);
+    const getBody = await get.json();
+    assert.equal(getBody.consented, true);
+  });
+
+  it('can revoke consent', async () => {
+    // First grant
+    await fetch(`${base}/api/settings/llm-consent/openai`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ consented: true }),
+    });
+    // Then revoke
+    await fetch(`${base}/api/settings/llm-consent/openai`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ consented: false }),
+    });
+    const get = await fetch(`${base}/api/settings/llm-consent/openai`);
+    const getBody = await get.json();
+    assert.equal(getBody.consented, false);
+  });
+
+  it('returns 400 for an invalid provider', async () => {
+    const res = await fetch(`${base}/api/settings/llm-consent/badprovider`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ consented: true }),
+    });
+    assert.equal(res.status, 400);
+  });
+});
+
 describe('GET /api/settings/free-models', () => {
   let originalFetch;
 

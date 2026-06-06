@@ -27,6 +27,10 @@ Provide reviewers with a built macOS app artifact or a download link before subm
 13. Reopen the Mac app.
 14. Use Sync to Jobhunt from the capture queue and verify the queued capture is written to the app.
 
+## Privacy Policy
+
+Privacy policy URL: **https://jobhunt-app.com/privacy**
+
 ## Required Disclosure
 
 The store listing should state:

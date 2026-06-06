@@ -53,6 +53,10 @@ export const SETTINGS_DEFAULTS = {
   llm_price_input: '0',
   llm_price_output: '0',
   llm_openrouter_free_rotate: 'false',
+  llm_consent_anthropic: '0',
+  llm_consent_google: '0',
+  llm_consent_openrouter: '0',
+  llm_consent_openai: '0',
 };
 
 const SCHEMA = `

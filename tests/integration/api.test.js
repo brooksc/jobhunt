@@ -1949,4 +1949,125 @@ describe('route catch blocks with broken DB path', () => {
     });
     assert.equal(res.status, 500);
   });
+
+  it('GET /api/jobs/:jobId/cover-letters returns 500 on DB error', async () => {
+    const res = await fetch(`${brokenBase}/api/jobs/fake-job-id/cover-letters`);
+    assert.equal(res.status, 500);
+  });
+
+  it('POST /api/jobs/:jobId/generate-cover-letter returns 500 on DB error', async () => {
+    const res = await bpost('/api/jobs/fake-job-id/generate-cover-letter', {});
+    assert.ok(res.status === 404 || res.status === 500);
+  });
+
+  it('DELETE /api/cover-letters/:coverId returns 500 on DB error', async () => {
+    const res = await fetch(`${brokenBase}/api/cover-letters/fake-cl-id`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    assert.ok(res.status === 404 || res.status === 500);
+  });
+});
+
+describe('Cover letter API', () => {
+  let clJobId;
+  let clResumeId;
+  let originalFetch;
+
+  before(async () => {
+    originalFetch = globalThis.fetch;
+    // Use a fresh capture URL unique to this suite
+    const result = insertCapture({
+      url: 'https://cover-letter-test.example.com/job/cl-test',
+      page_title: 'Cover Letter Test Job',
+      visible_text: 'We need a software engineer who loves writing cover letters.',
+    }, dbPath);
+    clJobId = result.job_id;
+    // Add a resume specifically for cover letter tests
+    const resume = addResume(dbPath, { name: 'CL Test Resume', text: 'Experienced software engineer with 8 years in distributed systems and Python.' });
+    clResumeId = resume.id;
+  });
+
+  after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('GET /api/jobs/:jobId/cover-letters returns empty array for new job', async () => {
+    const res = await fetch(`${base}/api/jobs/${clJobId}/cover-letters`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(Array.isArray(body.coverLetters));
+    assert.equal(body.coverLetters.length, 0);
+  });
+
+  it('POST /api/jobs/:jobId/generate-cover-letter returns 400 when specified resumeId not found', async () => {
+    const res = await post(`/api/jobs/${clJobId}/generate-cover-letter`, { resumeId: 'nonexistent-resume-id' });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.ok(body.error);
+  });
+
+  it('POST /api/jobs/:jobId/generate-cover-letter returns 404 for unknown job', async () => {
+    const res = await post('/api/jobs/nonexistent-job-id/generate-cover-letter', {});
+    assert.equal(res.status, 404);
+    const body = await res.json();
+    assert.ok(body.error);
+  });
+
+  it('POST /api/jobs/:jobId/generate-cover-letter with mocked LLM returns cover letter', async () => {
+    const savedFetch = globalThis.fetch;
+    globalThis.fetch = async (url, opts) => {
+      const urlStr = String(url);
+      if (urlStr.includes('/v1/chat/completions')) {
+        return {
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: 'Dear Hiring Manager, I am excited to apply for this role.' } }],
+            model: 'mock-model',
+          }),
+        };
+      }
+      return savedFetch(url, opts);
+    };
+
+    try {
+      const res = await post(`/api/jobs/${clJobId}/generate-cover-letter`, { resumeId: clResumeId, instructions: 'Keep it brief.' });
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.ok(body.coverLetter);
+      assert.ok(body.coverLetter.id);
+      assert.ok(body.coverLetter.content);
+      assert.equal(body.coverLetter.content, 'Dear Hiring Manager, I am excited to apply for this role.');
+    } finally {
+      globalThis.fetch = savedFetch;
+    }
+  });
+
+  it('GET /api/jobs/:jobId/cover-letters returns saved cover letters', async () => {
+    const res = await fetch(`${base}/api/jobs/${clJobId}/cover-letters`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(Array.isArray(body.coverLetters));
+    assert.ok(body.coverLetters.length >= 1);
+    assert.ok(body.coverLetters[0].content);
+  });
+
+  it('DELETE /api/cover-letters/:id removes the cover letter', async () => {
+    const listRes = await fetch(`${base}/api/jobs/${clJobId}/cover-letters`);
+    const listBody = await listRes.json();
+    assert.ok(listBody.coverLetters.length >= 1);
+    const coverId = listBody.coverLetters[0].id;
+
+    const delRes = await del(`/api/cover-letters/${coverId}`, {});
+    assert.equal(delRes.status, 200);
+    const delBody = await delRes.json();
+    assert.equal(delBody.ok, true);
+
+    // Verify it's gone
+    const checkRes = await fetch(`${base}/api/jobs/${clJobId}/cover-letters`);
+    const checkBody = await checkRes.json();
+    assert.ok(!checkBody.coverLetters.some(cl => cl.id === coverId));
+  });
+
+  it('DELETE /api/cover-letters/:id returns 404 for nonexistent cover letter', async () => {
+    const res = await del('/api/cover-letters/nonexistent-cl-id', {});
+    assert.equal(res.status, 404);
+  });
 });

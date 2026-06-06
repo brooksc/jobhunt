@@ -1935,4 +1935,18 @@ describe('route catch blocks with broken DB path', () => {
     });
     assert.ok(res.status === 400 || res.status === 500);
   });
+
+  it('GET /api/settings/llm-consent/:provider returns 500 on DB error', async () => {
+    const res = await fetch(`${brokenBase}/api/settings/llm-consent/anthropic`);
+    assert.equal(res.status, 500);
+  });
+
+  it('POST /api/settings/llm-consent/:provider returns 500 on DB error', async () => {
+    const res = await fetch(`${brokenBase}/api/settings/llm-consent/anthropic`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ consented: true }),
+    });
+    assert.equal(res.status, 500);
+  });
 });

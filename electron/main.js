@@ -1,7 +1,7 @@
 // Electron main process: starts the Express server then opens a BrowserWindow.
 import { app, BrowserWindow, shell, globalShortcut, Notification } from 'electron';
+import { mkdirSync } from 'node:fs';
 import path from 'path';
-import os from 'os';
 import { fileURLToPath } from 'url';
 import { countUnreadJobs } from '../server/db.js';
 
@@ -193,10 +193,12 @@ function navigateDeepLink(url) {
 }
 
 async function startServer() {
-  // Use the same DB as the CLI server: ~/.config/jobhunt/jobhunt.db
-  // Respect JOBHUNT_DB_PATH if already set (same convention as the CLI).
+  // Respect JOBHUNT_DB_PATH if already set (used by tests and CLI).
+  // Otherwise default to Electron's userData directory, which resolves to the
+  // correct platform path for both GitHub DMG and Mac App Store builds.
   const dbPath = process.env.JOBHUNT_DB_PATH
-    || path.join(os.homedir(), '.config', 'jobhunt', 'jobhunt.db');
+    || path.join(app.getPath('userData'), 'jobhunt.db');
+  mkdirSync(path.dirname(dbPath), { recursive: true });
   process.env.JOBHUNT_DB_PATH = dbPath;
   appDbPath = dbPath;
 

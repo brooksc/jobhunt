@@ -6,7 +6,7 @@ describe('Electron shell smoke', () => {
   it('starts the server with the shared config database and preferred extension ports', () => {
     const source = readFileSync('electron/main.js', 'utf8');
 
-    assert.match(source, /path\.join\(os\.homedir\(\),\s*'\.config',\s*'jobhunt',\s*'jobhunt\.db'\)/);
+    assert.match(source, /app\.getPath\('userData'\)/);
     assert.match(source, /process\.env\.JOBHUNT_DB_PATH\s*=\s*dbPath/);
     assert.match(source, /createApp\(\{[^}]*dbPath[^}]*autoExtract:\s*true[^}]*\}\)/);
     assert.match(source, /minWidth:\s*960/);

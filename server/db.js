@@ -257,6 +257,19 @@ CREATE INDEX IF NOT EXISTS idx_llm_request_attempts_request
 
 CREATE INDEX IF NOT EXISTS idx_llm_request_attempts_job
   ON llm_request_attempts (job_id, started_at);
+
+CREATE TABLE IF NOT EXISTS contacts (
+  id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  role TEXT,
+  email TEXT,
+  linkedin_url TEXT,
+  phone TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 `;
 
 // ------------------------------------------------------------------
@@ -2258,4 +2271,46 @@ export function listDashboardJobs(dbPath, limit = 50) {
     captures.captured_at, jobs.extracted_at
     FROM jobs JOIN captures ON captures.id=jobs.capture_id
     ORDER BY captures.created_at DESC LIMIT ?`).all(limit);
+}
+
+// ------------------------------------------------------------------
+// Contacts
+// ------------------------------------------------------------------
+
+export function listContacts(dbPath, jobId) {
+  const db = initDb(dbPath);
+  return db.prepare('SELECT * FROM contacts WHERE job_id=? ORDER BY created_at').all(jobId);
+}
+
+export function addContact(dbPath, jobId, { name, role, email, linkedin_url, phone, notes }) {
+  const db = initDb(dbPath);
+  const now = nowIso();
+  const id = makeId('con');
+  db.prepare(`INSERT INTO contacts (id, job_id, name, role, email, linkedin_url, phone, notes, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(id, jobId, name, role || null, email || null, linkedin_url || null, phone || null, notes || null, now, now);
+  return db.prepare('SELECT * FROM contacts WHERE id=?').get(id);
+}
+
+export function updateContact(dbPath, contactId, fields) {
+  const db = initDb(dbPath);
+  const allowed = ['name', 'role', 'email', 'linkedin_url', 'phone', 'notes'];
+  const updates = {};
+  for (const key of allowed) {
+    if (key in fields) updates[key] = fields[key] ?? null;
+  }
+  if (!Object.keys(updates).length) {
+    return db.prepare('SELECT * FROM contacts WHERE id=?').get(contactId) || null;
+  }
+  const now = nowIso();
+  const setClause = Object.keys(updates).map(k => `${k}=?`).join(', ');
+  db.prepare(`UPDATE contacts SET ${setClause}, updated_at=? WHERE id=?`)
+    .run(...Object.values(updates), now, contactId);
+  return db.prepare('SELECT * FROM contacts WHERE id=?').get(contactId) || null;
+}
+
+export function deleteContact(dbPath, contactId) {
+  const db = initDb(dbPath);
+  const result = db.prepare('DELETE FROM contacts WHERE id=?').run(contactId);
+  return result.changes > 0 ? { deleted: true } : { deleted: false };
 }

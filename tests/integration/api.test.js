@@ -1949,4 +1949,131 @@ describe('route catch blocks with broken DB path', () => {
     });
     assert.equal(res.status, 500);
   });
+
+  it('GET /api/jobs/:jobId/contacts returns 500 on DB error', async () => {
+    const res = await fetch(`${brokenBase}/api/jobs/fake-job-id/contacts`);
+    assert.equal(res.status, 500);
+  });
+
+  it('POST /api/jobs/:jobId/contacts returns 500 on DB error', async () => {
+    const res = await bpost('/api/jobs/fake-job-id/contacts', { name: 'Alice' });
+    assert.equal(res.status, 500);
+  });
+
+  it('PATCH /api/contacts/:contactId returns 500 on DB error', async () => {
+    const res = await fetch(`${brokenBase}/api/contacts/fake-contact-id`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'recruiter' }),
+    });
+    assert.equal(res.status, 500);
+  });
+
+  it('DELETE /api/contacts/:contactId returns 500 on DB error', async () => {
+    const res = await fetch(`${brokenBase}/api/contacts/fake-contact-id`, { method: 'DELETE' });
+    assert.equal(res.status, 500);
+  });
+});
+
+describe('contacts CRUD', () => {
+  let jobId;
+
+  before(async () => {
+    const captureRes = await post('/captures', {
+      ...CAPTURE,
+      url: 'https://contacts-test.example.com/job/1',
+      page_title: 'Contacts Test Job',
+      visible_text: 'Job posting for contacts test.',
+    });
+    const captureBody = await captureRes.json();
+    const d = initDb(dbPath);
+    jobId = d.prepare('SELECT id FROM jobs WHERE capture_id=?').get(captureBody.capture_id).id;
+  });
+
+  it('GET /api/jobs/:jobId/contacts returns empty array for new job', async () => {
+    const res = await fetch(`${base}/api/jobs/${jobId}/contacts`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.deepEqual(body.contacts, []);
+  });
+
+  it('POST /api/jobs/:jobId/contacts creates a contact', async () => {
+    const res = await fetch(`${base}/api/jobs/${jobId}/contacts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Alice Smith', role: 'recruiter', email: 'alice@example.com' }),
+    });
+    assert.equal(res.status, 201);
+    const body = await res.json();
+    assert.ok(body.contact);
+    assert.equal(body.contact.name, 'Alice Smith');
+    assert.equal(body.contact.role, 'recruiter');
+    assert.equal(body.contact.email, 'alice@example.com');
+    assert.ok(body.contact.id);
+  });
+
+  it('GET /api/jobs/:jobId/contacts returns the created contact', async () => {
+    const res = await fetch(`${base}/api/jobs/${jobId}/contacts`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.contacts.length, 1);
+    assert.equal(body.contacts[0].name, 'Alice Smith');
+  });
+
+  it('POST /api/jobs/:jobId/contacts returns 400 when name is missing', async () => {
+    const res = await fetch(`${base}/api/jobs/${jobId}/contacts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'recruiter' }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.ok(body.error);
+  });
+
+  it('PATCH /api/contacts/:contactId updates fields', async () => {
+    const listRes = await fetch(`${base}/api/jobs/${jobId}/contacts`);
+    const { contacts } = await listRes.json();
+    const contactId = contacts[0].id;
+
+    const res = await fetch(`${base}/api/contacts/${contactId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'hiring manager', phone: '555-1234' }),
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.contact.role, 'hiring manager');
+    assert.equal(body.contact.phone, '555-1234');
+    assert.equal(body.contact.name, 'Alice Smith');
+  });
+
+  it('PATCH /api/contacts/:contactId returns 404 for nonexistent id', async () => {
+    const res = await fetch(`${base}/api/contacts/nonexistent-contact-id`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'recruiter' }),
+    });
+    assert.equal(res.status, 404);
+  });
+
+  it('DELETE /api/contacts/:contactId removes the contact', async () => {
+    const listRes = await fetch(`${base}/api/jobs/${jobId}/contacts`);
+    const { contacts } = await listRes.json();
+    const contactId = contacts[0].id;
+
+    const res = await fetch(`${base}/api/contacts/${contactId}`, { method: 'DELETE' });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.ok, true);
+
+    const check = await fetch(`${base}/api/jobs/${jobId}/contacts`);
+    const checkBody = await check.json();
+    assert.equal(checkBody.contacts.length, 0);
+  });
+
+  it('DELETE /api/contacts/:contactId returns 404 for nonexistent id', async () => {
+    const res = await fetch(`${base}/api/contacts/nonexistent-contact-id`, { method: 'DELETE' });
+    assert.equal(res.status, 404);
+  });
 });

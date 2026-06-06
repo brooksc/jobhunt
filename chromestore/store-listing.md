@@ -42,6 +42,8 @@ FEATURES
 
 REQUIRES THE JOBHUNT MAC APP
 This extension is a companion to the Jobhunt Mac app, which runs locally on your machine and handles LLM extraction, fit scoring, availability checking, and the full job tracking UI. The extension connects to the app over localhost.
+
+Learn more and download at jobhunt-app.com
 ```
 
 ---

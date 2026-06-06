@@ -1,15 +1,23 @@
 ---
 id: TASK-028
 title: In-app AI provider consent UI (App Store policy requirement)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-06 22:40'
+updated_date: '2026-06-06 23:06'
 labels:
   - ui
   - privacy
   - mas
 milestone: m-0
 dependencies: []
+modified_files:
+  - server/db.js
+  - server/api.js
+  - static/components/LlmConsentModal.jsx
+  - static/index.html
+  - static/screens/settings.jsx
+  - tests/integration/api.test.js
 priority: medium
 ordinal: 6000
 ---
@@ -98,12 +106,18 @@ This task covers the consent flow only — not a full privacy settings screen ov
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Per-provider consent flags are stored in the settings table (llm_consent_anthropic, llm_consent_google, etc.)
-- [ ] #2 No cloud LLM API call is made before the corresponding consent flag is '1'
-- [ ] #3 Consent modal clearly states which data is sent, to which provider, and why
-- [ ] #4 Modal includes a link to the provider's privacy policy that opens in an external browser
-- [ ] #5 Accept saves consent and resumes extraction without showing modal again for that provider
-- [ ] #6 Cancel/decline does not save consent and does not trigger an LLM call
-- [ ] #7 Local providers (localhost, 127.0.0.1) skip the consent check entirely
-- [ ] #8 Consent persists across app restarts
+- [x] #1 Per-provider consent flags are stored in the settings table (llm_consent_anthropic, llm_consent_google, etc.)
+- [x] #2 No cloud LLM API call is made before the corresponding consent flag is '1'
+- [x] #3 Consent modal clearly states which data is sent, to which provider, and why
+- [x] #4 Modal includes a link to the provider's privacy policy that opens in an external browser
+- [x] #5 Accept saves consent and resumes extraction without showing modal again for that provider
+- [x] #6 Cancel/decline does not save consent and does not trigger an LLM call
+- [x] #7 Local providers (localhost, 127.0.0.1) skip the consent check entirely
+- [x] #8 Consent persists across app restarts
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added llm_consent_* flags to SETTINGS_DEFAULTS. Added GET/POST /api/settings/llm-consent/:provider routes. Created LlmConsentModal.jsx component with provider name, data disclosure, privacy policy link, Accept/Decline. Wired into settings.jsx provider selection flow. Local providers (localhost/127.0.0.1) bypass consent. Added 5 integration tests. 459 tests pass, coverage above thresholds.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,15 +1,20 @@
 ---
 id: TASK-030
 title: Add auto-update for GitHub builds via electron-updater
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-06 22:42'
+updated_date: '2026-06-06 23:09'
 labels:
   - electron
   - auto-update
 milestone: m-0
 dependencies:
   - TASK-029
+modified_files:
+  - electron/main.js
+  - package.json
+  - package-lock.json
 priority: medium
 ordinal: 4000
 ---
@@ -82,9 +87,15 @@ Depends on task-029 (electron-builder dual-target config) which defines the `bui
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 electron-updater is in package.json dependencies
-- [ ] #2 electron/main.js calls autoUpdater.checkForUpdatesAndNotify() only when !process.mas
-- [ ] #3 The import of electron-updater uses dynamic import() not a static top-level import
-- [ ] #4 publish config in package.json build section has provider: github, owner: brooksc, repo: jobhunt
-- [ ] #5 npm test passes
+- [x] #1 electron-updater is in package.json dependencies
+- [x] #2 electron/main.js calls autoUpdater.checkForUpdatesAndNotify() only when !process.mas
+- [x] #3 The import of electron-updater uses dynamic import() not a static top-level import
+- [x] #4 publish config in package.json build section has provider: github, owner: brooksc, repo: jobhunt
+- [x] #5 npm test passes
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Installed electron-updater ^6.8.8. Added dynamic import with !process.mas guard in app.whenReady() after window creation. Added publish config (provider: github, owner: brooksc, repo: jobhunt) to the build section of package.json. 459 tests pass.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -215,17 +215,24 @@ function SettingsPage() {
     return res.json();
   }
 
-  // Populate model list when provider changes (or on mount)
+  // Populate model list when provider or free-rotate setting changes
   React.useEffect(() => {
     const hardcoded = PROVIDER_HARDCODED_MODELS[llmProvider];
     if (hardcoded) {
       setModels(hardcoded);
       return;
     }
+    if (llmProvider === 'openrouter' && llmOpenrouterFreeRotate) {
+      fetch('/api/settings/free-models')
+        .then(r => r.json())
+        .then(data => { if (data.ok && data.models?.length > 0) setModels(data.models); })
+        .catch(() => {});
+      return;
+    }
     _callTestLlm(true)
       .then(data => { if (data.ok && data.models?.length > 0) setModels(data.models); })
       .catch(() => {});
-  }, [llmProvider]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [llmProvider, llmOpenrouterFreeRotate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch context window info when model or provider changes
   React.useEffect(() => {
@@ -236,13 +243,24 @@ function SettingsPage() {
       .catch(() => {});
   }, [llmModel, llmProvider]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  async function _fetchFreeModels() {
+    const r = await fetch('/api/settings/free-models');
+    return r.json();
+  }
+
   async function handleTestLlm() {
     setTesting(true);
     setTestResult(null);
     try {
-      const data = await _callTestLlm();
-      setTestResult(data);
-      if (data.ok && data.models?.length > 0) setModels(data.models);
+      if (llmProvider === 'openrouter' && llmOpenrouterFreeRotate) {
+        const data = await _fetchFreeModels();
+        setTestResult(data);
+        if (data.ok && data.models?.length > 0) setModels(data.models);
+      } else {
+        const data = await _callTestLlm();
+        setTestResult(data);
+        if (data.ok && data.models?.length > 0) setModels(data.models);
+      }
     } catch (e) {
       setTestResult({ ok: false, error: e.message });
     } finally {
@@ -253,7 +271,8 @@ function SettingsPage() {
   async function handleFetchModels() {
     setFetchingModels(true);
     try {
-      const data = await _callTestLlm(true);
+      const useFree = llmProvider === 'openrouter' && llmOpenrouterFreeRotate;
+      const data = useFree ? await _fetchFreeModels() : await _callTestLlm(true);
       if (data.ok && data.models?.length > 0) {
         setModels(data.models);
       } else {
@@ -403,11 +422,13 @@ function SettingsPage() {
             <select
               value={llmModel}
               onChange={e => setLlmModel(e.target.value)}
+              size={models.length > 5 ? Math.min(models.length, 8) : 1}
               style={{
-                width: "100%", height: 30, padding: "0 8px",
+                width: "100%", padding: "4px 8px",
                 background: "var(--bg-elev)", border: "1px solid var(--border)",
                 borderRadius: "var(--r-2)", color: "var(--fg)",
                 fontFamily: "var(--font-mono)", fontSize: 12,
+                ...(models.length <= 5 ? { height: 30, padding: "0 8px" } : {}),
               }}
             >
               {models.length === 0 && (

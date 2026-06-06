@@ -1012,6 +1012,33 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
     }
   });
 
+  const VALID_CONSENT_PROVIDERS = ['anthropic', 'google', 'openrouter', 'openai'];
+
+  app.get('/api/settings/llm-consent/:provider', (req, res) => {
+    try {
+      const { provider } = req.params;
+      if (!VALID_CONSENT_PROVIDERS.includes(provider)) return res.status(400).json({ error: 'invalid provider' });
+      const d = db.initDb(dbPath);
+      const val = d.prepare('SELECT value FROM settings WHERE key = ?').get(`llm_consent_${provider}`);
+      res.json({ provider, consented: val?.value === '1' });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/settings/llm-consent/:provider', (req, res) => {
+    try {
+      const { provider } = req.params;
+      if (!VALID_CONSENT_PROVIDERS.includes(provider)) return res.status(400).json({ error: 'invalid provider' });
+      const { consented } = req.body;
+      const d = db.initDb(dbPath);
+      db.setSetting(d, `llm_consent_${provider}`, consented ? '1' : '0');
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.post('/api/settings/test-llm', async (req, res) => {
     try {
       const settings = getDbSettings();

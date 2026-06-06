@@ -87,6 +87,49 @@ function SettingsPage() {
   const [contextInfo, setContextInfo] = React.useState(null);
   const [debugEnabled, setDebugEnabled] = React.useState(() => localStorage.getItem('jh.debug') === '1');
   const [activeTab, setActiveTab] = React.useState('settings');
+  const [consentPending, setConsentPending] = React.useState(null); // { provider, nextProvider }
+
+  const CLOUD_PROVIDERS = new Set(['anthropic', 'google', 'openrouter', 'openai']);
+
+  async function handleProviderChange(nextProvider) {
+    setTestResult(null);
+    setModels([]);
+    setLlmModel("");
+    if (!CLOUD_PROVIDERS.has(nextProvider)) {
+      setLlmProvider(nextProvider);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/settings/llm-consent/${nextProvider}`);
+      const data = await res.json();
+      if (data.consented) {
+        setLlmProvider(nextProvider);
+      } else {
+        setConsentPending(nextProvider);
+      }
+    } catch {
+      // On error, allow the change (fail open — consent is best-effort UI)
+      setLlmProvider(nextProvider);
+    }
+  }
+
+  async function handleConsentAccept() {
+    const provider = consentPending;
+    setConsentPending(null);
+    try {
+      await fetch(`/api/settings/llm-consent/${provider}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ consented: true }),
+      });
+    } catch { /* ignore — provider change still goes through */ }
+    setLlmProvider(provider);
+  }
+
+  function handleConsentDecline() {
+    setConsentPending(null);
+    // Leave llmProvider unchanged (reverts to whatever it was before)
+  }
 
   function toggleDebug() {
     const next = !debugEnabled;
@@ -300,6 +343,13 @@ function SettingsPage() {
 
   return (
     <div style={{ overflow: "auto", flex: 1, minHeight: 0 }}>
+      {consentPending && (
+        <LlmConsentModal
+          provider={consentPending}
+          onAccept={handleConsentAccept}
+          onDecline={handleConsentDecline}
+        />
+      )}
       {tabs.length > 0 && (
         <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', padding: '0 28px', background: 'var(--bg)' }}>
           {tabs.map(tab => {
@@ -383,7 +433,7 @@ function SettingsPage() {
             <div className="jh-label">Provider</div>
             <select
               value={llmProvider}
-              onChange={e => { setLlmProvider(e.target.value); setTestResult(null); setModels([]); setLlmModel(""); }}
+              onChange={e => handleProviderChange(e.target.value)}
               style={{
                 width: "100%", height: 30, padding: "0 8px",
                 background: "var(--bg-elev)", border: "1px solid var(--border)",

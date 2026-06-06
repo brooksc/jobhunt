@@ -1,6 +1,6 @@
-import { describe, it } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { selectFreeStructuredModels, runWithModelRotation } from '../../server/extract.js';
+import { selectFreeStructuredModels, runWithModelRotation, fetchFreeModelIds } from '../../server/extract.js';
 
 describe('selectFreeStructuredModels', () => {
   const T = { input_modalities: ['text'], output_modalities: ['text'] };
@@ -28,6 +28,66 @@ describe('selectFreeStructuredModels', () => {
     assert.deepEqual(selectFreeStructuredModels(null), []);
     assert.deepEqual(selectFreeStructuredModels({}), []);
     assert.deepEqual(selectFreeStructuredModels({ data: [] }), []);
+  });
+});
+
+describe('fetchFreeModelIds', () => {
+  let originalFetch;
+
+  before(() => {
+    originalFetch = globalThis.fetch;
+  });
+
+  after(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const FREE_MODELS_RESPONSE = {
+    data: [
+      { id: 'free/a', pricing: { prompt: '0', completion: '0' }, supported_parameters: ['structured_outputs'], architecture: { output_modalities: ['text'] } },
+      { id: 'free/b', pricing: { prompt: '0', completion: '0' }, supported_parameters: ['response_format'], architecture: { modality: 'text->text' } },
+      { id: 'paid/c', pricing: { prompt: '0.001', completion: '0.002' }, supported_parameters: ['structured_outputs'], architecture: { output_modalities: ['text'] } },
+    ],
+  };
+
+  it('returns only free structured-output models', async () => {
+    let capturedHeaders;
+    globalThis.fetch = async (url, opts) => {
+      capturedHeaders = opts?.headers || {};
+      return { ok: true, json: async () => FREE_MODELS_RESPONSE };
+    };
+    const ids = await fetchFreeModelIds('');
+    assert.deepEqual(ids.sort(), ['free/a', 'free/b']);
+  });
+
+  it('sends Authorization header when apiKey is provided', async () => {
+    let capturedHeaders;
+    globalThis.fetch = async (url, opts) => {
+      capturedHeaders = opts?.headers || {};
+      return { ok: true, json: async () => FREE_MODELS_RESPONSE };
+    };
+    await fetchFreeModelIds('sk-test-key');
+    assert.equal(capturedHeaders['Authorization'], 'Bearer sk-test-key');
+  });
+
+  it('sends no Authorization header when apiKey is empty', async () => {
+    let capturedHeaders;
+    globalThis.fetch = async (url, opts) => {
+      capturedHeaders = opts?.headers || {};
+      return { ok: true, json: async () => FREE_MODELS_RESPONSE };
+    };
+    await fetchFreeModelIds('');
+    assert.ok(!('Authorization' in capturedHeaders));
+  });
+
+  it('propagates HTTP errors as thrown exceptions', async () => {
+    globalThis.fetch = async () => ({ ok: false, status: 401 });
+    await assert.rejects(() => fetchFreeModelIds('bad-key'), /OpenRouter HTTP 401/);
+  });
+
+  it('propagates network errors as thrown exceptions', async () => {
+    globalThis.fetch = async () => { throw new Error('ECONNREFUSED'); };
+    await assert.rejects(() => fetchFreeModelIds(''), /ECONNREFUSED/);
   });
 });
 

@@ -1,9 +1,10 @@
 ---
 id: TASK-031
 title: GitHub Actions release workflow for signed DMG + MAS pkg
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-06 22:42'
+updated_date: '2026-06-06 23:11'
 labels:
   - ci
   - release
@@ -11,6 +12,11 @@ labels:
 milestone: m-0
 dependencies:
   - TASK-029
+modified_files:
+  - .github/workflows/release.yml
+  - scripts/notarize.cjs
+  - package.json
+  - package-lock.json
 priority: medium
 ordinal: 5000
 ---
@@ -153,12 +159,18 @@ Depends on task-029 (electron-builder dual-target config), which defines the `el
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 .github/workflows/release.yml exists and passes actionlint
-- [ ] #2 Workflow triggers on push to tags matching v*
-- [ ] #3 build-dmg job: imports Developer ID cert, builds with --publish always, notarizes
-- [ ] #4 build-mas job: imports MAS Application + Installer certs, builds pkg, uploads artifact with 30-day retention
-- [ ] #5 scripts/notarize.cjs uses notarytool and skips gracefully when APPLE_ID env var is absent
-- [ ] #6 @electron/notarize is in devDependencies
-- [ ] #7 All 9 required secrets are documented in workflow file comments
-- [ ] #8 npm test passes
+- [x] #1 .github/workflows/release.yml exists and passes actionlint
+- [x] #2 Workflow triggers on push to tags matching v*
+- [x] #3 build-dmg job: imports Developer ID cert, builds with --publish always, notarizes
+- [x] #4 build-mas job: imports MAS Application + Installer certs, builds pkg, uploads artifact with 30-day retention
+- [x] #5 scripts/notarize.cjs uses notarytool and skips gracefully when APPLE_ID env var is absent
+- [x] #6 @electron/notarize is in devDependencies
+- [x] #7 All 9 required secrets are documented in workflow file comments
+- [x] #8 npm test passes
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Created .github/workflows/release.yml with build-dmg (Developer ID sign + notarize + publish to GitHub Releases) and build-mas (MAS Application + Installer certs, pkg artifact with 30-day retention) jobs, both triggered on v* tags. All 9 required secrets documented in comments. Created scripts/notarize.cjs using notarytool, skips gracefully when APPLE_ID absent. Added @electron/notarize ^3.1.1 to devDependencies. 459 tests pass.
+<!-- SECTION:FINAL_SUMMARY:END -->

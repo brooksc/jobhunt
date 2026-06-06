@@ -8,7 +8,7 @@
 | Category | Productivity |
 | Language | English |
 | Visibility | Unlisted |
-| Version | 0.2.0 |
+| Version | 0.2.2 |
 
 ---
 
@@ -56,6 +56,7 @@ These are entered in the "Permissions" step of the submission form.
 | `scripting` | Inject the capture script into the active tab to extract page text, structured data, and metadata. |
 | `storage` | Store the offline capture queue locally so jobs captured while the Mac app is offline are not lost. |
 | `contextMenus` | Add right-click menu items: Save job with note, Mark site reviewed, Open capture queue. |
+| `downloads` | Export the offline capture queue as a CSV file the user can open in Google Sheets or another tracker. |
 | Host: `http://127.0.0.1:876[5-9]/*` | Send captured job data to the Jobhunt Mac app running on localhost. Multiple ports are probed to find the active instance. |
 
 ---
@@ -78,4 +79,4 @@ Suggested copy:
 | Screenshot 1 (1280×800) | `screenshot-capture-queue-1280x800.png` | ✓ ready |
 | Small promo tile (440×280) | — | Optional; not needed for unlisted |
 | Marquee promo tile (1400×560) | — | Optional; not needed for unlisted |
-| Extension zip | `jobhunt-capture-0.2.0.zip` | ✓ ready |
+| Extension zip | `jobhunt-capture-0.2.2.zip` | ✓ ready |

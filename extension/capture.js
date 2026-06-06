@@ -366,6 +366,36 @@
     await new Promise((resolve) => setTimeout(resolve, 350));
   }
 
+  // Fetch from Greenhouse's public boards API and return a synthetic JSON-LD JobPosting.
+  // Works for both job-boards.greenhouse.io (new React SPA, zero JSON-LD in DOM) and
+  // the classic boards.greenhouse.io domain.
+  async function fetchGreenhouseJobData(url) {
+    const match = url.match(/(?:job-boards|boards)\.greenhouse\.io\/([^/?#]+)\/jobs\/(\d+)/);
+    if (!match) return null;
+    const [, board, jobId] = match;
+    try {
+      const res = await fetch(`https://boards-api.greenhouse.io/v1/boards/${board}/jobs/${jobId}`, {
+        headers: { Accept: 'application/json' }
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const posting = { '@type': 'JobPosting', title: data.title || null, description: data.content || '' };
+      if (data.location?.name) {
+        posting.jobLocation = { '@type': 'Place', address: { '@type': 'PostalAddress', addressLocality: data.location.name } };
+      }
+      // pay_input_ranges is available for postings that expose compensation publicly.
+      if (data.pay_input_ranges?.length) {
+        const r = data.pay_input_ranges[0];
+        posting.baseSalary = {
+          '@type': 'MonetaryAmount',
+          currency: r.currency_type || 'USD',
+          value: { '@type': 'QuantitativeValue', minValue: r.min_cents ? r.min_cents / 100 : null, maxValue: r.max_cents ? r.max_cents / 100 : null, unitText: 'YEAR' }
+        };
+      }
+      return { posting, rawTitle: data.title || null };
+    } catch (_) { return null; }
+  }
+
   async function capturePage(win, doc) {
     // Remove any preflight dialog left over from a previous interrupted capture.
     // In world:MAIN the injected script persists across calls, so a stale dialog
@@ -374,15 +404,43 @@
     if (stale) stale.remove();
 
     await expandHiddenContent();
+
+    const url = win.location.href;
+    let pageTitle = doc.title || url;
+    const structuredData = collectStructuredData(doc);
+
+    // Greenhouse SPA pages (job-boards.greenhouse.io) don't embed JSON-LD in the HTML —
+    // the structured data is rendered client-side after our capture runs. Fetch from the
+    // public Boards API instead and inject a synthetic JSON-LD JobPosting so the
+    // extraction pipeline gets the full description and salary.
+    const ghData = await fetchGreenhouseJobData(url);
+    if (ghData) {
+      structuredData.push(ghData.posting);
+      // The page title on job-boards.greenhouse.io is "Job Application for …" not the
+      // job title itself; the API returns the canonical job title.
+      if (ghData.rawTitle && /^Job Application\b/i.test(pageTitle)) {
+        pageTitle = ghData.rawTitle;
+      }
+    }
+
+    // BambooHR career SPAs (*.bamboohr.com/careers/{id}) often leave document.title as
+    // the generic "BambooHR" string even after the job content has rendered. Use the
+    // first H1 in the main content area as a more reliable job title.
+    if (/\.bamboohr\.com\/careers\//.test(url) && (!pageTitle || pageTitle === 'BambooHR')) {
+      const h1 = doc.querySelector('main h1, [role="main"] h1, h1');
+      const h1Text = h1 ? h1.textContent.trim() : '';
+      if (h1Text && h1Text !== 'BambooHR') pageTitle = h1Text;
+    }
+
     const payload = {
       schema_version: 1,
       captured_at: new Date().toISOString(),
-      url: win.location.href,
+      url,
       canonical_url: collectCanonicalUrl(doc),
-      page_title: doc.title || win.location.href,
+      page_title: pageTitle,
       selected_text: collectSelectedText(win),
       visible_text: collectVisibleText(doc, win),
-      structured_data: collectStructuredData(doc),
+      structured_data: structuredData,
       user_note: "",
       source: {
         extension_version: "0.2.0",

@@ -841,9 +841,9 @@ Salary rules:
 - If salary bands differ by currency, preserve each currency label and range in salary_note; do not combine currencies into one range.
 
 List extraction rules:
-- Extract 3-8 concrete skills from responsibilities, requirements, and role scope, even when the posting has no "Skills" heading.
-- Extract hard requirements into requirements.
-- Extract preferred qualifications, repeated domain signals, and useful background signals into nice_to_haves; do not leave nice_to_haves empty when the posting names relevant domains, partners, products, or technologies.
+- Extract every distinct concrete skill, technology, tool, or domain named anywhere in the posting (responsibilities, requirements, role scope, and team/charter description), even when there is no "Skills" heading. Aim for completeness (typically 6-15); do not stop at a handful. Do not invent skills that are not in the posting.
+- Extract hard requirements into requirements. If the posting lists qualifications without separating "required" from "preferred" (e.g. a single "What we're looking for", "Qualifications", or "Minimum qualifications" list), treat every bullet in that list as a requirement and capture them all.
+- Extract preferred qualifications and useful background signals into nice_to_haves. When the posting has no explicit "Preferred" or "Nice to have" section, mine the responsibilities, role summary, and required qualifications for domain signals: technologies, industry verticals, cross-functional partner teams (e.g. "engineering, design, research"), and products or platforms mentioned as context. Even a single mention is enough — nice_to_haves must not be empty when the posting names any relevant domain, partner, product, or technology.
 - Use concise noun phrases copied or closely paraphrased from the posting.
 ${locationRules}
 ${locationPrefRules}

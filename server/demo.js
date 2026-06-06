@@ -1,15 +1,15 @@
 // Demo database seeding — creates a representative dataset for first-run exploration.
 import { copyFileSync, existsSync } from 'fs';
-import os from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { initDb } from './db.js';
+import { initDb, appConfigDir } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Bundled seed template checked into the repo — never written to at runtime.
 const SEED_DB_PATH = join(__dirname, 'demo.db');
-// Writable working copy in the user's config directory.
-export const DEMO_DB_PATH = join(os.homedir(), '.config', 'jobhunt', 'demo.db');
+// Writable working copy — resolved at import time so JOBHUNT_CONFIG_DIR is already set
+// by electron/main.js for Electron builds (both DMG and MAS) before this module loads.
+export const DEMO_DB_PATH = join(appConfigDir(), 'demo.db');
 
 function daysAgo(n) {
   return new Date(Date.now() - n * 24 * 3600 * 1000).toISOString();

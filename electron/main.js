@@ -193,9 +193,13 @@ function navigateDeepLink(url) {
 }
 
 async function startServer() {
-  // Respect JOBHUNT_DB_PATH if already set (used by tests and CLI).
-  // Otherwise default to Electron's userData directory, which resolves to the
-  // correct platform path for both GitHub DMG and Mac App Store builds.
+  // Route all file I/O for both GitHub DMG and Mac App Store builds into the
+  // Electron userData directory (sandbox-safe). JOBHUNT_CONFIG_DIR must be set
+  // before any server module is imported so demo.js and db.js resolve paths at
+  // the right time. JOBHUNT_DB_PATH is kept for tests/CLI override.
+  if (!process.env.JOBHUNT_CONFIG_DIR) {
+    process.env.JOBHUNT_CONFIG_DIR = app.getPath('userData');
+  }
   const dbPath = process.env.JOBHUNT_DB_PATH
     || path.join(app.getPath('userData'), 'jobhunt.db');
   mkdirSync(path.dirname(dbPath), { recursive: true });

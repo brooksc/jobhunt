@@ -297,6 +297,12 @@ app.whenReady().then(async () => {
     if (mainWindow) mainWindow.webContents.toggleDevTools();
   });
 
+  // Auto-update: GitHub Releases only. MAS builds are updated by the App Store.
+  if (!process.mas) {
+    const { autoUpdater } = await import('electron-updater');
+    autoUpdater.checkForUpdatesAndNotify();
+  }
+
   // macOS: re-open window when clicking dock icon with no windows open
   app.on('activate', () => {
     if (!mainWindow && serverPort) createWindow();

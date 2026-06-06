@@ -484,6 +484,11 @@ function HelpPage() {
               <li>When using LM Studio or Ollama, all AI processing stays on-device. No job data ever leaves your machine.</li>
               <li>The Chrome extension only communicates with the local Jobhunt service running on your machine (localhost).</li>
             </ul>
+            <a href="https://jobhunt-app.com/privacy" target="_blank" rel="noopener noreferrer"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 10, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elev)', color: 'var(--fg)', textDecoration: 'none', fontSize: 12 }}>
+              <Icon.External size={13} />
+              Full privacy policy
+            </a>
           </section>
 
           <section className="jh-help__section">

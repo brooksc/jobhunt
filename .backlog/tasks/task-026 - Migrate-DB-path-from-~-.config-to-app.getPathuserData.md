@@ -1,14 +1,18 @@
 ---
 id: TASK-026
 title: Migrate DB path from ~/.config to app.getPath('userData')
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-06 22:38'
+updated_date: '2026-06-06 22:48'
 labels:
   - electron
   - data
 milestone: m-0
 dependencies: []
+modified_files:
+  - electron/main.js
+  - tests/electron/smoke.test.js
 priority: high
 ordinal: 1000
 ---
@@ -81,10 +85,16 @@ The `JOBHUNT_DB_PATH` environment variable override must be preserved. It's used
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 app.getPath('userData') is used as the default DB path in startServer()
-- [ ] #2 JOBHUNT_DB_PATH environment variable override still takes precedence
-- [ ] #3 The userData directory is created with mkdirSync({ recursive: true }) before initDb is called
-- [ ] #4 os import is removed if no longer used
-- [ ] #5 npm test passes with no failures
-- [ ] #6 App launches successfully and loads existing data at the new path after manual data copy
+- [x] #1 app.getPath('userData') is used as the default DB path in startServer()
+- [x] #2 JOBHUNT_DB_PATH environment variable override still takes precedence
+- [x] #3 The userData directory is created with mkdirSync({ recursive: true }) before initDb is called
+- [x] #4 os import is removed if no longer used
+- [x] #5 npm test passes with no failures
+- [x] #6 App launches successfully and loads existing data at the new path after manual data copy
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Switched DB path from `path.join(os.homedir(), '.config', 'jobhunt', 'jobhunt.db')` to `path.join(app.getPath('userData'), 'jobhunt.db')` in `electron/main.js`. Added `mkdirSync({ recursive: true })` to ensure the directory exists on fresh installs. Removed the `os` import; added `mkdirSync` from `node:fs`. Updated the smoke test assertion to check for `app.getPath('userData')` instead of the old hardcoded path. Data manually copied from `~/.config/jobhunt/jobhunt.db` to `~/Library/Application Support/Jobhunt/jobhunt.db` (both old and new target backed up with timestamp before migration). All 454 tests pass.
+<!-- SECTION:FINAL_SUMMARY:END -->

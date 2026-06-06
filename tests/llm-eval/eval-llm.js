@@ -307,42 +307,91 @@ Required qualifications:
   },
 ];
 
-const fitFixture = {
-  name: 'AI platform TPM ranking',
-  context: {
-    company: 'ExampleCloud',
-    title: 'Principal Technical Program Manager, AI Platform',
-    extracted: {
+// A real, committed resume (strong for AI/platform TPM roles) and a clearly
+// off-domain resume, so fit "truth" is the robust relative ordering
+// (on-domain >> off-domain) rather than an unverifiable absolute score.
+const RESUME_GENERAL = readFileSync(join(HERE, '../fixtures/resumes/Brooks_Cutter_Resume_General.md'), 'utf8').trim();
+const PINTEREST_EXTRACTED = JSON.parse(readFileSync(join(HERE, '../fixtures/resumes/reference_jd_pinterest_extracted.json'), 'utf8'));
+const OFF_DOMAIN_RESUME = `
+Registered nurse with 8 years in acute care and clinical operations. Skilled in patient triage,
+EHR charting, medication administration, care coordination, infection control, and staff scheduling.
+No software, program management, cloud, or AI experience.
+`.trim();
+
+const fitFixtures = [
+  {
+    name: 'AI platform TPM ranking (synthetic JD + resumes)',
+    context: {
       company: 'ExampleCloud',
       title: 'Principal Technical Program Manager, AI Platform',
-      seniority: 'Principal / Senior',
-      summary: 'Lead cross-functional delivery for LLM inference, API reliability, eval pipelines, and developer productivity programs.',
-      requirements: [
-        '8+ years of technical program management experience',
-        'Experience leading cloud infrastructure, distributed systems, or AI platform programs',
-        'Strong executive communication and cross-functional planning',
-      ],
-      nice_to_haves: [
-        'Experience with LLM platforms, model evaluation, or developer tooling',
-        'Experience defining reliability metrics and operational reviews',
-      ],
-      skills: ['technical program management', 'AI platform', 'LLM inference', 'developer productivity', 'API reliability', 'model evaluation'],
+      extracted: {
+        company: 'ExampleCloud',
+        title: 'Principal Technical Program Manager, AI Platform',
+        seniority: 'Principal / Senior',
+        summary: 'Lead cross-functional delivery for LLM inference, API reliability, eval pipelines, and developer productivity programs.',
+        requirements: [
+          '8+ years of technical program management experience',
+          'Experience leading cloud infrastructure, distributed systems, or AI platform programs',
+          'Strong executive communication and cross-functional planning',
+        ],
+        nice_to_haves: [
+          'Experience with LLM platforms, model evaluation, or developer tooling',
+          'Experience defining reliability metrics and operational reviews',
+        ],
+        skills: ['technical program management', 'AI platform', 'LLM inference', 'developer productivity', 'API reliability', 'model evaluation'],
+      },
     },
-  },
-  strongResume: `
+    strongResume: `
 Principal Technical Program Manager with 11 years leading AI infrastructure, LLM platform,
 developer productivity, and cloud reliability programs. Led cross-functional roadmap and execution
 for inference APIs, model evaluation pipelines, incident review processes, executive operating
 reviews, and multi-team launch planning at Meta and Microsoft. Deep experience with distributed
 systems, API governance, platform reliability metrics, and engineering productivity.
-  `.trim(),
-  weakResume: `
+    `.trim(),
+    weakResume: `
 Marketing operations manager with 4 years of experience planning webinars, managing campaign
 calendars, and coordinating vendor invoices. Some exposure to project tracking tools and stakeholder
 communications. No hands-on experience with cloud infrastructure, AI platforms, developer tooling,
 distributed systems, or technical program management.
-  `.trim(),
-};
+    `.trim(),
+  },
+  {
+    // Real JD (Pinterest) + a real committed resume vs an off-domain resume.
+    name: 'Pinterest ML/AI Platform (real JD) — real TPM resume vs off-domain',
+    context: { company: 'Pinterest', title: PINTEREST_EXTRACTED.title, extracted: PINTEREST_EXTRACTED },
+    strongResume: RESUME_GENERAL,
+    weakResume: OFF_DOMAIN_RESUME,
+  },
+  {
+    // Different domain (payments/fintech) to check the scorer rewards
+    // domain-relevant experience, not just generic TPM keywords.
+    name: 'Payments TPM (synthetic JD) — fintech resume vs off-domain',
+    context: {
+      company: 'PayWorks',
+      title: 'Technical Program Manager, Payments',
+      extracted: {
+        company: 'PayWorks',
+        title: 'Technical Program Manager, Payments',
+        seniority: 'Senior',
+        summary: 'Coordinate partner integrations, launch readiness, risk tracking, and incident follow-up for payment processing systems.',
+        requirements: [
+          '5+ years technical program management experience',
+          'Payment systems or fintech experience',
+          'Ability to manage vendor dependencies and launch plans',
+        ],
+        nice_to_haves: ['SQL familiarity', 'Experience with fraud or risk systems'],
+        skills: ['payments', 'fintech', 'vendor management', 'launch planning', 'risk tracking', 'SQL'],
+      },
+    },
+    strongResume: `
+Technical Program Manager with 9 years in fintech and payments. Led partner/processor integrations,
+PCI-DSS compliance programs, fraud and risk system rollouts, vendor dependency management, and
+launch readiness across payment processing platforms. Strong SQL, incident response, and
+cross-functional delivery with banking and card-network partners.
+    `.trim(),
+    weakResume: OFF_DOMAIN_RESUME,
+  },
+];
 
 function parseArgs(argv) {
   const args = {
@@ -557,44 +606,40 @@ async function evaluateModel({ provider, apiKey, baseUrl, model, timeout, prefer
     }
   }
 
-  const fitStarted = Date.now();
-  let fitResult;
-  try {
-    const strong = await scorer.score(fitFixture.context, fitFixture.strongResume);
-    const weak = await scorer.score(fitFixture.context, fitFixture.weakResume);
-    const scored = scoreFit(strong.fit, weak.fit);
-    fitResult = {
-      name: fitFixture.name,
-      ok: scored.score >= 85,
-      score: scored.score,
-      elapsed_ms: Date.now() - fitStarted,
-      model_returned: strong.modelName || weak.modelName,
-      response_format: strong.responseFormatType || weak.responseFormatType,
-      checks: scored.checks,
-      strong_fit: strong.fit,
-      weak_fit: weak.fit,
-    };
-  } catch (error) {
-    fitResult = {
-      name: fitFixture.name,
-      ok: false,
-      score: 0,
-      elapsed_ms: Date.now() - fitStarted,
-      error: String(error),
-    };
+  const fitResults = [];
+  for (const fixture of fitFixtures) {
+    const fitStarted = Date.now();
+    try {
+      const strong = await scorer.score(fixture.context, fixture.strongResume);
+      const weak = await scorer.score(fixture.context, fixture.weakResume);
+      const scored = scoreFit(strong.fit, weak.fit);
+      fitResults.push({
+        name: fixture.name,
+        ok: scored.score >= 85,
+        score: scored.score,
+        elapsed_ms: Date.now() - fitStarted,
+        model_returned: strong.modelName || weak.modelName,
+        response_format: strong.responseFormatType || weak.responseFormatType,
+        checks: scored.checks,
+        strong_fit: strong.fit,
+        weak_fit: weak.fit,
+      });
+    } catch (error) {
+      fitResults.push({ name: fixture.name, ok: false, score: 0, elapsed_ms: Date.now() - fitStarted, error: String(error) });
+    }
   }
 
-  const allScores = [...extractionResults.map(r => r.score), fitResult.score];
+  const allScores = [...extractionResults.map(r => r.score), ...fitResults.map(r => r.score)];
   const overall = Math.round(allScores.reduce((sum, score) => sum + score, 0) / allScores.length);
   return {
     provider,
     model,
     base_url: baseUrl,
     timeout_seconds: timeout,
-    ok: overall >= 85 && extractionResults.every(r => r.ok) && fitResult.ok,
+    ok: overall >= 85 && extractionResults.every(r => r.ok) && fitResults.every(r => r.ok),
     overall_score: overall,
     extraction: extractionResults,
-    fit: fitResult,
+    fit: fitResults,
   };
 }
 
@@ -610,11 +655,13 @@ function printResult(result) {
     if (extraction.error) console.log(`  error: ${extraction.error}`);
   }
 
-  console.log(`${result.fit.ok ? 'PASS' : 'FAIL'} fit ranking: ${result.fit.name} (${result.fit.score}/100, ${result.fit.elapsed_ms}ms)`);
-  printFailedChecks(result.fit.checks);
-  if (result.fit.error) console.log(`  error: ${result.fit.error}`);
-  if (result.fit.strong_fit && result.fit.weak_fit) {
-    console.log(`  strong=${result.fit.strong_fit.overall_score}, weak=${result.fit.weak_fit.overall_score}`);
+  for (const fit of result.fit) {
+    console.log(`${fit.ok ? 'PASS' : 'FAIL'} fit ranking: ${fit.name} (${fit.score}/100, ${fit.elapsed_ms}ms)`);
+    printFailedChecks(fit.checks);
+    if (fit.error) console.log(`  error: ${fit.error}`);
+    if (fit.strong_fit && fit.weak_fit) {
+      console.log(`  strong=${fit.strong_fit.overall_score}, weak=${fit.weak_fit.overall_score}`);
+    }
   }
 }
 

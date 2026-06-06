@@ -117,6 +117,14 @@ describe('cleanDescription', () => {
     assert.equal(result, 'Visible content');
   });
 
+  it('ignores non-JobPosting structured data entries and returns only visible text', () => {
+    const result = cleanDescription({
+      visibleText: 'Visible text',
+      structuredData: [{ '@type': 'Organization', name: 'Acme Corp' }, { '@type': 'BreadcrumbList' }],
+    });
+    assert.equal(result, 'Visible text');
+  });
+
   it('traverses @graph to find JobPosting description (builtinseattle format)', () => {
     const result = cleanDescription({
       visibleText: 'Page content',

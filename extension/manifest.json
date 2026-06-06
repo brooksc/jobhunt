@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Jobhunt Capture",
-  "version": "0.2.2",
+  "version": "0.2.16",
   "description": "Capture job postings into the local jobhunt tracker.",
   "homepage_url": "https://jobhunt-app.com",
   "permissions": [

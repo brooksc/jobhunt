@@ -13,6 +13,7 @@ const GONE_BODY_PATTERNS = [
   'this job has been removed',
 ];
 
+export function _normalizeUrlForCompare(url) { return normalizeUrlForCompare(url); }
 function normalizeUrlForCompare(url) {
   try {
     const parsed = new URL(url);

@@ -9,12 +9,9 @@ const PROVIDER_LABELS = {
   custom: "Custom OpenAI-compatible",
 };
 
-const PROVIDER_HARDCODED_MODELS = {
-  anthropic: ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
-  google: ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
-  openai: ["gpt-4o", "gpt-4o-mini", "o3", "o3-mini"],
-  // openrouter: fetched dynamically (full catalog or free-only list depending on settings)
-};
+// All cloud providers fetch their model list dynamically from their APIs.
+// Hardcode only lmstudio/custom (no public catalog endpoint).
+const PROVIDER_HARDCODED_MODELS = {};
 
 // Providers that use the local/custom base URL input
 const SHOWS_BASE_URL = new Set(["lmstudio", "custom"]);
@@ -33,7 +30,13 @@ function SettingsPage() {
   const defaults = React.useMemo(() => ({
     llmProvider: s.llm_provider || "lmstudio",
     llmBaseUrl: s.llm_base_url || "http://127.0.0.1:1234",
-    llmApiKey: s.llm_api_key || "",
+    llmApiKeys: {
+      openai: s.llm_api_key_openai || "",
+      anthropic: s.llm_api_key_anthropic || "",
+      google: s.llm_api_key_google || "",
+      openrouter: s.llm_api_key_openrouter || "",
+      custom: s.llm_api_key_custom || "",
+    },
     llmModel: s.llm_model || "",
     siteInterval: String(s.site_review_interval_days || 14),
     followupDays: String(s.followup_default_days || 7),
@@ -54,7 +57,11 @@ function SettingsPage() {
 
   const [llmProvider, setLlmProvider] = React.useState(defaults.llmProvider);
   const [llmBaseUrl, setLlmBaseUrl] = React.useState(defaults.llmBaseUrl);
-  const [llmApiKey, setLlmApiKey] = React.useState(defaults.llmApiKey);
+  const [llmApiKeys, setLlmApiKeys] = React.useState(defaults.llmApiKeys);
+  const llmApiKey = llmApiKeys[llmProvider] || "";
+  function setLlmApiKey(val) {
+    setLlmApiKeys(prev => ({ ...prev, [llmProvider]: val }));
+  }
   const [llmModel, setLlmModel] = React.useState(defaults.llmModel);
   const [siteInterval, setSiteInterval] = React.useState(defaults.siteInterval);
   const [followupDays, setFollowupDays] = React.useState(defaults.followupDays);
@@ -94,7 +101,7 @@ function SettingsPage() {
   const isDirtyFromSaved = (
     llmProvider !== savedValues.llmProvider ||
     llmBaseUrl !== savedValues.llmBaseUrl ||
-    llmApiKey !== savedValues.llmApiKey ||
+    JSON.stringify(llmApiKeys) !== JSON.stringify(savedValues.llmApiKeys) ||
     llmModel !== savedValues.llmModel ||
     siteInterval !== savedValues.siteInterval ||
     followupDays !== savedValues.followupDays ||
@@ -123,7 +130,11 @@ function SettingsPage() {
         body: JSON.stringify({
           llm_provider: next.llmProvider,
           llm_base_url: next.llmBaseUrl,
-          llm_api_key: next.llmApiKey,
+          llm_api_key_openai: next.llmApiKeys.openai || "",
+          llm_api_key_anthropic: next.llmApiKeys.anthropic || "",
+          llm_api_key_google: next.llmApiKeys.google || "",
+          llm_api_key_openrouter: next.llmApiKeys.openrouter || "",
+          llm_api_key_custom: next.llmApiKeys.custom || "",
           llm_model: next.llmModel,
           site_review_interval_days: Number(next.siteInterval),
           followup_default_days: Number(next.followupDays),
@@ -148,7 +159,11 @@ function SettingsPage() {
         Object.assign(window.JH_SETTINGS || {}, {
           llm_provider: next.llmProvider,
           llm_base_url: next.llmBaseUrl,
-          llm_api_key: next.llmApiKey,
+          llm_api_key_openai: next.llmApiKeys.openai || "",
+          llm_api_key_anthropic: next.llmApiKeys.anthropic || "",
+          llm_api_key_google: next.llmApiKeys.google || "",
+          llm_api_key_openrouter: next.llmApiKeys.openrouter || "",
+          llm_api_key_custom: next.llmApiKeys.custom || "",
           llm_model: next.llmModel,
           site_review_interval_days: Number(next.siteInterval),
           followup_default_days: Number(next.followupDays),
@@ -182,7 +197,7 @@ function SettingsPage() {
     const next = {
       llmProvider,
       llmBaseUrl,
-      llmApiKey,
+      llmApiKeys,
       llmModel,
       siteInterval,
       followupDays,
@@ -204,7 +219,7 @@ function SettingsPage() {
       saveSettings(next);
     }, 700);
     return () => clearTimeout(timer);
-  }, [llmProvider, llmBaseUrl, llmApiKey, llmModel, siteInterval, followupDays, preferredLocations, allowRemote, allowHybrid, allowOnsite, preferredMetros, filterEnabled, llmDebugLevel, llmPriceInput, llmPriceOutput, llmOpenrouterFreeRotate, availabilityAutoCheck, availabilityIntervalDays, availabilityStaleDays]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [llmProvider, llmBaseUrl, llmApiKeys, llmModel, siteInterval, followupDays, preferredLocations, allowRemote, allowHybrid, allowOnsite, preferredMetros, filterEnabled, llmDebugLevel, llmPriceInput, llmPriceOutput, llmOpenrouterFreeRotate, availabilityAutoCheck, availabilityIntervalDays, availabilityStaleDays]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function _callTestLlm(quick = false) {
     const res = await fetch("/api/settings/test-llm", {
@@ -219,20 +234,18 @@ function SettingsPage() {
   // The cancelled flag prevents a slow in-flight response from overwriting
   // a newer fetch that already resolved.
   React.useEffect(() => {
-    const hardcoded = PROVIDER_HARDCODED_MODELS[llmProvider];
-    if (hardcoded) {
-      setModels(hardcoded);
-      return;
-    }
+    setModels([]);
+    // Cloud providers that need a key: don't even try without one
+    if (NEEDS_API_KEY.has(llmProvider) && !SHOWS_BASE_URL.has(llmProvider) && !llmApiKey) return;
     let cancelled = false;
     const promise = (llmProvider === 'openrouter' && llmOpenrouterFreeRotate)
       ? _fetchFreeModels()
       : _callTestLlm(true);
     promise
-      .then(data => { if (!cancelled && data.ok && data.models?.length > 0) setModels(data.models); })
+      .then(data => { if (!cancelled && data.ok && data.models?.length > 0) setModels([...data.models].sort()); })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [llmProvider, llmOpenrouterFreeRotate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [llmProvider, llmOpenrouterFreeRotate, llmApiKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch context window info when model or provider changes
   React.useEffect(() => {
@@ -254,7 +267,7 @@ function SettingsPage() {
     try {
       const data = await ((llmProvider === 'openrouter' && llmOpenrouterFreeRotate) ? _fetchFreeModels() : _callTestLlm());
       setTestResult(data);
-      if (data.ok && data.models?.length > 0) setModels(data.models);
+      if (data.ok && data.models?.length > 0) setModels([...data.models].sort());
     } catch (e) {
       setTestResult({ ok: false, error: e.message });
     } finally {
@@ -268,7 +281,7 @@ function SettingsPage() {
       const useFree = llmProvider === 'openrouter' && llmOpenrouterFreeRotate;
       const data = useFree ? await _fetchFreeModels() : await _callTestLlm(true);
       if (data.ok && data.models?.length > 0) {
-        setModels(data.models);
+        setModels([...data.models].sort());
       } else {
         window.JH_TOAST?.show(data.error || "No models returned — is LM Studio running?", "error");
       }
@@ -370,7 +383,7 @@ function SettingsPage() {
             <div className="jh-label">Provider</div>
             <select
               value={llmProvider}
-              onChange={e => { setLlmProvider(e.target.value); setTestResult(null); setModels([]); }}
+              onChange={e => { setLlmProvider(e.target.value); setTestResult(null); setModels([]); setLlmModel(""); }}
               style={{
                 width: "100%", height: 30, padding: "0 8px",
                 background: "var(--bg-elev)", border: "1px solid var(--border)",
@@ -404,7 +417,7 @@ function SettingsPage() {
               <div className="jh-label">API key</div>
               <div className="jh-input">
                 <input
-                  type="password"
+                  type="text"
                   value={llmApiKey}
                   onChange={e => setLlmApiKey(e.target.value)}
                   placeholder={llmProvider === "openai" ? "sk-…" : llmProvider === "anthropic" ? "sk-ant-…" : "API key"}
@@ -414,30 +427,37 @@ function SettingsPage() {
             </div>
           )}
 
+          {(() => {
+            const needsKey = NEEDS_API_KEY.has(llmProvider) && !SHOWS_BASE_URL.has(llmProvider);
+            const waitingForKey = needsKey && !llmApiKey;
+            return (
           <div>
             <div className="jh-label">Model</div>
             <select
               value={llmModel}
               onChange={e => setLlmModel(e.target.value)}
+              disabled={waitingForKey}
               size={models.length > 5 ? Math.min(models.length, 8) : 1}
               style={{
                 width: "100%",
                 height: models.length > 5 ? undefined : 30,
                 padding: models.length > 5 ? "4px 8px" : "0 8px",
                 background: "var(--bg-elev)", border: "1px solid var(--border)",
-                borderRadius: "var(--r-2)", color: "var(--fg)",
+                borderRadius: "var(--r-2)", color: waitingForKey ? "var(--fg-faint)" : "var(--fg)",
                 fontFamily: "var(--font-mono)", fontSize: 12,
+                opacity: waitingForKey ? 0.5 : 1,
               }}
             >
-              {models.length === 0 && (
+              {waitingForKey && <option value="">— enter API key to load models —</option>}
+              {!waitingForKey && models.length === 0 && (
                 <option value={llmModel}>{llmModel || "— no models loaded —"}</option>
               )}
-              {models.length > 0 && !models.includes(llmModel) && llmModel && (
+              {!waitingForKey && models.length > 0 && !models.includes(llmModel) && llmModel && (
                 <option value={llmModel}>{llmModel} ⚠ not in list</option>
               )}
               {models.map(m => <option key={m} value={m}>{m}</option>)}
             </select>
-            {!PROVIDER_HARDCODED_MODELS[llmProvider] && (
+            {!waitingForKey && (
               <div style={{ marginTop: 4 }}>
                 <Btn size="sm" kind="ghost" icon={<Icon.Refresh size={11} />} onClick={handleFetchModels} disabled={fetchingModels}>
                   {fetchingModels ? "Loading models…" : models.length > 0 ? `${models.length} model${models.length !== 1 ? "s" : ""} loaded` : "Load models from server"}
@@ -445,6 +465,8 @@ function SettingsPage() {
               </div>
             )}
           </div>
+          );
+          })()}
 
           {(() => {
             if (!contextInfo) return null;

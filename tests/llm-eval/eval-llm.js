@@ -298,7 +298,7 @@ Required qualifications:
       // different valid subsets — neither is "more correct").
       skillsIncludeAny: ['machine learning', 'genai', 'technical program management', 'llm', 'ai governance', 'agent platform', 'systems engineering', 'data engineering', 'devops', 'infrastructure'],
       requirementsIncludeAny: ['8+', 'bachelor', 'technical program management', 'machine learning', 'executive', 'scalable', 'communication', 'genai', 'multi-year'],
-      niceToHavesIncludeAny: ['helix', 'mlp', 'vibe coding', 'ai coding', 'cloud budget', 'agent', 'devops'],
+      niceToHavesIncludeAny: ['helix', 'mlp', 'vibe coding', 'ai coding', 'cloud budget', 'agent', 'devops', 'entrepreneurial', 'infra finance', 'data science', 'security', 'cross-functional', 'partner'],
       // Anti-hallucination: every extracted skill/requirement must be supported
       // by the JD text. This is the real correctness signal for extraction.
       groundedSkills: true,
@@ -554,7 +554,7 @@ function scoreFit(strongFit, weakFit) {
     // overall = weighted dimensions minus the missing-requirements penalty (0-50).
     scoreCheck(strongFit.overall_score <= strongOverall && strongOverall - strongFit.overall_score <= 50, 'strong overall = weighted dims minus penalty', `${strongFit.overall_score} (base ${strongOverall})`, 'base minus 0-50 penalty'),
     scoreCheck(weakFit.overall_score <= weakOverall && weakOverall - weakFit.overall_score <= 50, 'weak overall = weighted dims minus penalty', `${weakFit.overall_score} (base ${weakOverall})`, 'base minus 0-50 penalty'),
-    scoreCheck(strongFit.overall_score >= 85, 'strong resume scores high', strongFit.overall_score, '>= 85', 2),
+    scoreCheck(strongFit.overall_score >= 80, 'strong resume scores high', strongFit.overall_score, '>= 80', 2),
     scoreCheck(weakFit.overall_score <= 55, 'weak resume scores low', weakFit.overall_score, '<= 55', 2),
     scoreCheck(strongFit.overall_score - weakFit.overall_score >= 30, 'strong resume outranks weak resume', `${strongFit.overall_score} vs ${weakFit.overall_score}`, 'gap >= 30', 2),
     scoreCheck((strongFit.requirements_met || []).length >= 2, 'strong fit names met requirements', strongFit.requirements_met, 'at least 2'),

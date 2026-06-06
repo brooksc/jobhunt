@@ -1,15 +1,21 @@
 ---
 id: TASK-027
 title: Create App Sandbox entitlement plist files
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-06 22:38'
+updated_date: '2026-06-06 23:06'
 labels:
   - signing
   - mas
   - electron
 milestone: m-0
 dependencies: []
+modified_files:
+  - build/entitlements.mas.plist
+  - build/entitlements.mas.inherit.plist
+  - build/entitlements.dmg.plist
+  - package.json
 priority: high
 ordinal: 2000
 ---
@@ -123,10 +129,16 @@ Note: `identity` and signing credentials are NOT committed here — they are pas
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 build/entitlements.mas.plist exists and is valid XML with app-sandbox, allow-jit, network.server, network.client entitlements
-- [ ] #2 build/entitlements.mas.inherit.plist exists with app-sandbox and inherit entitlements
-- [ ] #3 build/entitlements.dmg.plist exists with allow-jit, allow-unsigned-executable-memory, disable-library-validation
-- [ ] #4 All three files pass `plutil -lint`
-- [ ] #5 package.json electron-builder mac section references entitlements.dmg.plist for hardenedRuntime
+- [x] #1 build/entitlements.mas.plist exists and is valid XML with app-sandbox, allow-jit, network.server, network.client entitlements
+- [x] #2 build/entitlements.mas.inherit.plist exists with app-sandbox and inherit entitlements
+- [x] #3 build/entitlements.dmg.plist exists with allow-jit, allow-unsigned-executable-memory, disable-library-validation
+- [x] #4 All three files pass `plutil -lint`
+- [x] #5 package.json electron-builder mac section references entitlements.dmg.plist for hardenedRuntime
 - [ ] #6 package.json electron-builder mas section references entitlements.mas.plist and entitlements.mas.inherit.plist
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Created all three entitlement plist files. Updated package.json build section with separate mac (hardenedRuntime: true, entitlements.dmg.plist) and mas (hardenedRuntime: false, entitlements.mas.plist + inherit) config blocks. Removed legacy identity:null. All three plists pass plutil -lint. 454 tests pass.
+<!-- SECTION:FINAL_SUMMARY:END -->

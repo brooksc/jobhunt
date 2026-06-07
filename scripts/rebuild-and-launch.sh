@@ -25,14 +25,21 @@ if pgrep -x "Jobhunt" > /dev/null 2>&1; then
 fi
 
 # ------------------------------------------------------------------
-# 2. Lint
+# 2. Sync dependencies
+# ------------------------------------------------------------------
+echo ""
+echo "Syncing dependencies..."
+nice npm install --prefer-offline
+
+# ------------------------------------------------------------------
+# 3. Lint
 # ------------------------------------------------------------------
 echo ""
 echo "Linting..."
 nice npm run lint
 
 # ------------------------------------------------------------------
-# 3. Tests (skip electron smoke — requires a built app)
+# 4. Tests (skip electron smoke — requires a built app)
 # ------------------------------------------------------------------
 if [ "$SKIP_TESTS" = "0" ]; then
   echo ""
@@ -51,14 +58,14 @@ if [ "$SKIP_TESTS" = "0" ]; then
 fi
 
 # ------------------------------------------------------------------
-# 4. Bump patch version
+# 5. Bump patch version
 # ------------------------------------------------------------------
 echo ""
 NEW_VERSION=$(./scripts/bump-version.sh patch)
 echo "Version: ${NEW_VERSION}"
 
 # ------------------------------------------------------------------
-# 5. Build / Launch
+# 6. Build / Launch
 # ------------------------------------------------------------------
 echo ""
 if [ "$FAST" = "1" ]; then

@@ -73,7 +73,9 @@ if [ "$FAST" = "1" ]; then
   nice ./node_modules/.bin/electron . &
 else
   echo "Building Electron app..."
-  DEBUG=electron-builder nice ./node_modules/.bin/electron-builder --dir --mac
+  # CSC_IDENTITY_AUTO_DISCOVERY=false skips code signing for local dev builds.
+  # Signing happens in CI (release.yml) where the real certificates are available.
+  DEBUG=electron-builder CSC_IDENTITY_AUTO_DISCOVERY=false nice ./node_modules/.bin/electron-builder --dir --mac
   echo ""
   echo "Launching Jobhunt..."
   open dist/mac-arm64/Jobhunt.app

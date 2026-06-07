@@ -8,10 +8,12 @@ import { countUnreadJobs } from '../server/db.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appIconPath = path.join(__dirname, '../static/icons/icon-512.png');
 
-// All app data lives in SQLite — no need for Electron's encrypted browser
-// session storage (safeStorage). Using 'basic' avoids the macOS Keychain
-// prompt that would otherwise appear on every unsigned dev build.
+// All app data lives in SQLite — Chromium's encrypted session storage is
+// unused. 'password-store=basic' suppresses the prompt on Linux; on macOS
+// the equivalent is 'use-mock-keychain', which replaces the OS Keychain with
+// an in-memory mock so Chromium never prompts for "Jobhunt Safe Storage".
 app.commandLine.appendSwitch('password-store', 'basic');
+app.commandLine.appendSwitch('use-mock-keychain');
 
 let mainWindow = null;
 let serverPort = null;

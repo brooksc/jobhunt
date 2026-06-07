@@ -3,6 +3,7 @@
 
 import { jsonrepair } from 'jsonrepair';
 import { expandMetros } from './metros.js';
+import * as appleFoundation from './apple-foundation.js';
 import {
   connect, initDb, getSettings, setSetting,
   getLlmQueueForProcessing, getLlmRequestsByIds,
@@ -278,9 +279,23 @@ async function postGoogleCompletion({ apiKey, model, messages, timeout }) {
   throw new Error('Google: exceeded rate-limit retry budget');
 }
 
+async function postAppleFoundationCompletion({ messages, timeout }) {
+  if (!appleFoundation.isAvailable()) {
+    throw new Error('Apple Foundation Models requires macOS 26 (Tahoe) or later');
+  }
+  const system = messages.find(m => m.role === 'system')?.content ?? null;
+  const userMsgs = messages.filter(m => m.role === 'user');
+  const prompt = userMsgs.map(m => m.content).join('\n');
+  const raw = await appleFoundation.complete({ system, prompt, timeout });
+  // Strip markdown code fences the model may wrap around JSON output
+  const content = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  return { content, model: 'apple-foundation-models' };
+}
+
 async function postChatCompletion({ provider, baseUrl, apiKey, model, messages, timeout, schemaFormat }) {
   if (provider === 'anthropic') return postAnthropicCompletion({ apiKey, model, messages, timeout });
   if (provider === 'google') return postGoogleCompletion({ apiKey, model, messages, timeout });
+  if (provider === 'apple') return postAppleFoundationCompletion({ messages, timeout });
   return postOpenAICompatibleCompletion({ baseUrl, apiKey, model, messages, timeout, schemaFormat });
 }
 
@@ -339,6 +354,7 @@ export function parseExtractedJob(content) {
     nice_to_haves: Array.isArray(data.nice_to_haves) ? data.nice_to_haves.filter(Boolean).map(String) : [],
     benefits: Array.isArray(data.benefits) ? data.benefits.filter(Boolean).map(String) : [],
     application_url: data.application_url ?? null,
+    application_instructions: typeof data.application_instructions === 'string' ? data.application_instructions : null,
     confidence: (data.confidence && typeof data.confidence === 'object') ? data.confidence : {},
   });
 }
@@ -692,6 +708,8 @@ export function normalizeCompanyFromSource(extracted, description) {
 
 export function _parseFitScore(content) { return parseFitScore(content); }
 export function _missingRequirementsPenalty(req) { return missingRequirementsPenalty(req); }
+export function _fitUserPrompt(context, resume) { return fitUserPrompt(context, resume); }
+export function _userPrompt(pending, opts) { return userPrompt(pending, opts); }
 function parseFitScore(content) {
   const data = loadsJsonLenient(extractJsonObject(content));
   const dimensions = Array.isArray(data.dimensions)
@@ -857,6 +875,7 @@ Return JSON with exactly these keys:
 - nice_to_haves: array of strings
 - benefits: array of strings
 - application_url: string or null
+- application_instructions: string or null — verbatim text of any explicit submission instructions the posting gives about HOW to apply (e.g. "include phrase X at the top of your resume", "submit via this link", "include your salary expectations"). These are submission mechanics, NOT job qualifications. Null when no special submission instructions are present.
 - confidence: object mapping field names to confidence numbers from 0 to 1
 
 Salary rules:
@@ -920,15 +939,20 @@ function fitUserPrompt(context, resume) {
     block('Required qualifications', extracted.requirements),
     block('Preferred / nice-to-have', extracted.nice_to_haves),
     block('Skills', extracted.skills),
-  ].join('\n');
+    extracted.application_instructions
+      ? `Application instructions (submission mechanics — DO NOT factor into scores): ${extracted.application_instructions}`
+      : null,
+  ].filter(Boolean).join('\n');
   const dimensionLines = FIT_DIMENSIONS.map(name => `  - "${name}": ${FIT_DIMENSION_GUIDE[name]}`).join('\n');
   const dimensionNames = FIT_DIMENSIONS.map(name => `"${name}"`).join(', ');
   return `Score how well the candidate fits this job.
 
+IMPORTANT: Application instructions (labeled "submission mechanics" in the job posting below) describe HOW to apply — e.g. "include phrase X at the top of your resume". These are NOT job qualifications. Never include them in requirements_met or requirements_not_met, and never penalize any dimension for the candidate not following them.
+
 Return JSON with exactly these keys:
 - summary: string — 1-3 sentences explaining the overall fit
-- requirements_met: array of concise strings naming job requirements the resume clearly satisfies; include evidence when useful
-- requirements_not_met: array of concise strings naming important job requirements with weak, missing, or unclear evidence in the resume
+- requirements_met: array of concise strings naming job qualifications the resume clearly satisfies; include evidence when useful; exclude any submission mechanics
+- requirements_not_met: array of concise strings naming important job qualifications with weak, missing, or unclear evidence in the resume; exclude any submission mechanics
 - dimensions: array of exactly ${FIT_DIMENSIONS.length} objects, one per dimension, each with:
   - name: one of ${dimensionNames}
   - score: integer 0-100
@@ -943,6 +967,7 @@ Scoring guidance:
 - Do not provide an overall score. The application computes it from the dimension scores.
 - For requirements_met and requirements_not_met, focus on concrete job requirements, not generic praise.
 - If evidence is mixed or absent, put the item in requirements_not_met and explain what is missing.
+- Application instructions (labeled above as "submission mechanics") describe HOW to apply, not whether the candidate is qualified. Do NOT include them in requirements_met or requirements_not_met. Do NOT penalize any dimension score for them — they can be acted on at application time.
 
 Job posting:
 ${jobSection}
@@ -1037,9 +1062,10 @@ function extractedJobSchema() {
       nice_to_haves: { type: 'array', items: { type: 'string' } },
       benefits: { type: 'array', items: { type: 'string' } },
       application_url: { type: ['string', 'null'] },
+      application_instructions: { type: ['string', 'null'] },
       confidence: { type: 'object' },
     },
-    required: ['company', 'title', 'location', 'remote_type', 'salary_min', 'salary_max', 'salary_hourly_min', 'salary_hourly_max', 'salary_currency', 'salary_note', 'employment_type', 'seniority', 'skills', 'summary', 'requirements', 'nice_to_haves', 'benefits', 'application_url', 'confidence'],
+    required: ['company', 'title', 'location', 'remote_type', 'salary_min', 'salary_max', 'salary_hourly_min', 'salary_hourly_max', 'salary_currency', 'salary_note', 'employment_type', 'seniority', 'skills', 'summary', 'requirements', 'nice_to_haves', 'benefits', 'application_url', 'application_instructions', 'confidence'],
     additionalProperties: false,
   };
 }
@@ -1122,7 +1148,7 @@ let _extractionRunning = false;
 const HOSTED_PROVIDERS = new Set(['openai', 'anthropic', 'google', 'openrouter']);
 const HOSTED_CONCURRENCY = 5;
 // Google free tier is 15 RPM — start conservative; promote after a success streak.
-const PROVIDER_CONCURRENCY = { google: 1 };
+const PROVIDER_CONCURRENCY = { google: 1, apple: 1 };
 const CONCURRENCY_PROMOTE_AFTER = 10; // consecutive successes before bumping
 const _runtimeConcurrency = {};
 const _successStreak = {};

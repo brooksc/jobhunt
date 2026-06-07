@@ -87,7 +87,8 @@ function SettingsPage() {
   const [contextInfo, setContextInfo] = React.useState(null);
   const [debugEnabled, setDebugEnabled] = React.useState(() => localStorage.getItem('jh.debug') === '1');
   const [activeTab, setActiveTab] = React.useState('settings');
-  const [consentPending, setConsentPending] = React.useState(null); // { provider, nextProvider }
+  const [consentPending, setConsentPending] = React.useState(null);
+  const [reQueuePrompt, setReQueuePrompt] = React.useState(null); // nextProvider when leaving apple
 
   const CLOUD_PROVIDERS = new Set(['anthropic', 'google', 'openrouter', 'openai']);
 
@@ -95,6 +96,11 @@ function SettingsPage() {
     setTestResult(null);
     setModels([]);
     setLlmModel("");
+    // When leaving Apple, prompt to re-queue jobs before changing provider
+    if (llmProvider === "apple" && nextProvider !== "apple") {
+      setReQueuePrompt(nextProvider);
+      return;
+    }
     if (!CLOUD_PROVIDERS.has(nextProvider)) {
       setLlmProvider(nextProvider);
       return;
@@ -111,6 +117,34 @@ function SettingsPage() {
       // On error, allow the change (fail open — consent is best-effort UI)
       setLlmProvider(nextProvider);
     }
+  }
+
+  async function finishProviderChange(nextProvider) {
+    if (!CLOUD_PROVIDERS.has(nextProvider)) {
+      setLlmProvider(nextProvider);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/settings/llm-consent/${nextProvider}`);
+      const data = await res.json();
+      if (data.consented) { setLlmProvider(nextProvider); }
+      else { setConsentPending(nextProvider); }
+    } catch { setLlmProvider(nextProvider); }
+  }
+
+  async function handleReQueueAndSwitch(scope, nextProvider) {
+    setReQueuePrompt(null);
+    if (scope !== "skip") {
+      try {
+        const body = scope === "apple" ? { model: "apple-foundation-models" } : {};
+        await fetch("/api/jobs/bulk/reset-extraction", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+      } catch { /* best-effort */ }
+    }
+    finishProviderChange(nextProvider);
   }
 
   async function handleConsentAccept() {
@@ -350,6 +384,29 @@ function SettingsPage() {
           onDecline={handleConsentDecline}
         />
       )}
+      {reQueuePrompt && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.45)" }}>
+          <div style={{ background: "var(--bg)", borderRadius: 12, padding: 28, maxWidth: 420, width: "90%", boxShadow: "0 8px 32px rgba(0,0,0,0.28)" }}>
+            <h3 style={{ margin: "0 0 10px", fontSize: 16 }}>Switching away from Apple Intelligence</h3>
+            <p style={{ margin: "0 0 18px", fontSize: 13, color: "var(--fg-mute)", lineHeight: 1.5 }}>
+              Jobs processed with Apple Intelligence may have missing fields or inaccurate fit scores. Would you like to re-queue them for re-processing with your new model?
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <button onClick={() => handleReQueueAndSwitch("apple", reQueuePrompt)} style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid var(--accent)", background: "var(--accent-bg)", color: "var(--accent)", cursor: "pointer", fontSize: 13, fontWeight: 600, textAlign: "left" }}>
+                Re-queue Apple-processed jobs
+                <span style={{ display: "block", fontSize: 11, fontWeight: 400, color: "var(--fg-mute)", marginTop: 2 }}>Only jobs extracted with Apple Intelligence will be re-processed.</span>
+              </button>
+              <button onClick={() => handleReQueueAndSwitch("all", reQueuePrompt)} style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg-elev)", color: "var(--fg)", cursor: "pointer", fontSize: 13, textAlign: "left" }}>
+                Re-queue all jobs
+                <span style={{ display: "block", fontSize: 11, color: "var(--fg-mute)", marginTop: 2 }}>All previously extracted jobs will be re-processed with the new model.</span>
+              </button>
+              <button onClick={() => handleReQueueAndSwitch("skip", reQueuePrompt)} style={{ padding: "10px 16px", borderRadius: 8, border: "none", background: "none", color: "var(--fg-mute)", cursor: "pointer", fontSize: 13, textAlign: "left" }}>
+                No thanks — switch without re-queuing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {tabs.length > 0 && (
         <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border)', padding: '0 28px', background: 'var(--bg)' }}>
           {tabs.map(tab => {
@@ -441,10 +498,20 @@ function SettingsPage() {
               }}
             >
               {Object.entries(PROVIDER_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              {window.JH_SETTINGS?.apple_foundation_available && (
+                <option value="apple">Apple Intelligence (on-device, macOS 26+)</option>
+              )}
             </select>
-            <div style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 4 }}>
-              Not sure? From our benchmarks, <strong style={{ color: "var(--fg-mute)" }}>Gemini 3.1 Flash</strong> is a good balance of cost and accuracy to start with. See Help → Choosing a model.
-            </div>
+            {llmProvider !== "apple" && (
+              <div style={{ fontSize: 11, color: "var(--fg-faint)", marginTop: 4 }}>
+                Not sure? From our benchmarks, <strong style={{ color: "var(--fg-mute)" }}>Gemini 3.1 Flash</strong> is a good balance of cost and accuracy to start with. See Help → Choosing a model.
+              </div>
+            )}
+            {llmProvider === "apple" && (
+              <div style={{ fontSize: 11, color: "var(--st-rejected, #c0392b)", marginTop: 4, padding: "6px 8px", background: "rgba(192,57,43,0.08)", borderRadius: "var(--r-2)", border: "1px solid var(--st-rejected, #c0392b)" }}>
+                <strong>Warning:</strong> Apple Intelligence is a small on-device model. Our testing shows it produces noticeably less accurate extractions and fit scores than cloud or LM Studio models — missing fields, weaker reasoning, and inconsistent JSON output. Use it for a zero-setup first look, but plan to re-process with a stronger model before making decisions. Requires macOS 26 (Tahoe). Free, no account needed.
+              </div>
+            )}
           </div>
 
           {SHOWS_BASE_URL.has(llmProvider) && (
@@ -456,7 +523,7 @@ function SettingsPage() {
             </div>
           )}
 
-          {!SHOWS_BASE_URL.has(llmProvider) && llmProvider !== "anthropic" && llmProvider !== "google" && (
+          {!SHOWS_BASE_URL.has(llmProvider) && llmProvider !== "anthropic" && llmProvider !== "google" && llmProvider !== "apple" && (
             <div style={{ fontSize: 11, color: "var(--fg-faint)" }}>
               Endpoint: {llmProvider === "openai" ? "https://api.openai.com" : llmProvider === "openrouter" ? "https://openrouter.ai/api" : "(custom)"}
             </div>
@@ -477,7 +544,13 @@ function SettingsPage() {
             </div>
           )}
 
-          {(() => {
+          {llmProvider === "apple" && (
+            <div style={{ fontSize: 11, color: "var(--fg-faint)" }}>
+              Model: on-device (selected automatically by the OS)
+            </div>
+          )}
+
+          {llmProvider !== "apple" && (() => {
             const needsKey = NEEDS_API_KEY.has(llmProvider) && !SHOWS_BASE_URL.has(llmProvider);
             const waitingForKey = needsKey && !llmApiKey;
             return (
@@ -566,11 +639,13 @@ function SettingsPage() {
             {testResult && (
               <span style={{ fontSize: 12, display: "inline-flex", flexDirection: "column", gap: 4 }}>
                 {(() => {
-                  const noModels = testResult.ok && (testResult.models?.length || 0) === 0;
+                  const isApple = llmProvider === "apple";
+                  const noModels = testResult.ok && !isApple && (testResult.models?.length || 0) === 0;
                   const connOk = testResult.ok && !noModels;
                   const connColor = connOk ? "var(--st-offer)" : "var(--st-rejected)";
                   const providerName = PROVIDER_LABELS[llmProvider] || llmProvider;
                   const connText = !testResult.ok ? testResult.error
+                    : isApple ? "Apple Intelligence · on-device"
                     : noModels ? `Connected to ${providerName} but no models found`
                     : `${providerName} · ${testResult.models.length} model(s)`;
                   return (

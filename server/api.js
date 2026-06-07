@@ -10,6 +10,7 @@ import { isIP } from 'net';
 
 import * as db from './db.js';
 import { jobsCsv } from './export.js';
+import { addSseClient, initSseBroadcaster } from './sse.js';
 import { checkJobsAvailability, maybeRunStaleAvailabilityCheck } from './availability.js';
 import { METRO_DATA } from './metros.js';
 import {
@@ -19,6 +20,7 @@ import {
   MAX_DESCRIPTION_CHARS, MAX_RESUME_CHARS, promptOverheadChars, refreshRotationPool, fetchFreeModelIds,
   generateCoverLetter,
 } from './extract.js';
+import { isAvailable as appleFoundationAvailable, shutdown as appleFoundationShutdown, complete as appleFoundationComplete } from './apple-foundation.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -158,6 +160,9 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
   // Health & root
   // ------------------------------------------------------------------
 
+  initSseBroadcaster();
+  process.once('exit', appleFoundationShutdown);
+
   app.get('/health', (req, res) => {
     res.json({ ok: true, service: 'jobhunt', version: VERSION });
   });
@@ -165,6 +170,19 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
   // Used by the Chrome extension to discover which port the server is on
   app.get('/api/ping', (req, res) => {
     res.json({ app: 'jobhunt', version: VERSION, isDemo });
+  });
+
+  // Server-Sent Events: browser tabs subscribe here and receive a data-changed
+  // push whenever LLM processing, availability checks, or queue state changes.
+  app.get('/api/events', (req, res) => {
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    res.flushHeaders();
+    addSseClient(res);
   });
 
   app.post('/api/db/switch', async (req, res) => {
@@ -537,6 +555,23 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
   // ------------------------------------------------------------------
   // Jobs
   // ------------------------------------------------------------------
+
+  // Reset extraction to pending for jobs matching an optional model filter.
+  // body: { model: 'apple-foundation-models' } — only that model; omit for all jobs.
+  app.post('/api/jobs/bulk/reset-extraction', (req, res) => {
+    try {
+      const modelFilter = req.body?.model ?? null;
+      const d = db.initDb(dbPath);
+      const rows = modelFilter
+        ? d.prepare("SELECT id FROM jobs WHERE extraction_model=?").all(modelFilter)
+        : d.prepare("SELECT id FROM jobs WHERE extraction_status != 'pending'").all();
+      const ids = rows.map(r => r.id);
+      for (const id of ids) db.resetJobExtraction(id, dbPath);
+      res.json({ ok: true, reset: ids.length });
+    } catch (err) {
+      res.status(500).json({ error: String(err.message) });
+    }
+  });
 
   app.patch('/api/jobs/bulk/status', (req, res) => {
     try {
@@ -1165,6 +1200,22 @@ export function createApp({ dbPath: initialDbPath, autoExtract = false, demoDemo
       const model = req.body?.model || settings.llm_model || '';
       const rawBaseUrl = req.body?.base_url || settings.llm_base_url || 'http://127.0.0.1:1234';
 
+      if (provider === 'apple') {
+        if (!appleFoundationAvailable()) {
+          return res.json({ ok: false, error: 'Apple Foundation Models requires macOS 26 (Tahoe) or later' });
+        }
+        try {
+          const reply = await appleFoundationComplete({ prompt: 'Reply with the single word: ok', timeout: 30 });
+          return res.json({
+            ok: true,
+            models: [],
+            modelTests: [{ name: 'Inference', status: 'pass', message: `Apple Intelligence responded: "${reply.trim().slice(0, 80)}"` }],
+          });
+        } catch (e) {
+          return res.json({ ok: false, error: String(e.message) });
+        }
+      }
+
       if (provider === 'anthropic') {
         if (!apiKey) return res.json({ ok: true, models: [] });
         const ac = new AbortController();
@@ -1779,7 +1830,9 @@ function buildUiData(dbPath) {
     };
   });
 
-  const metrics = buildMetrics(jobs, siteRows, dupes, needsActionCount);
+  const queueOutstanding = db.getOutstandingLlmRequests(dbPath, ['queued', 'running', 'failed'], null).length;
+  const queueUnqueued = db.countUnqueuedPendingJobs(dbPath);
+  const metrics = buildMetrics(jobs, siteRows, dupes, needsActionCount, queueOutstanding, queueUnqueued);
   const resolvedDbPath = dbPath || db.defaultDbPath();
 
   return {
@@ -1815,13 +1868,14 @@ function buildUiData(dbPath) {
       location_allow_onsite: settingsData.location_allow_onsite || 'true',
       preferred_metros: settingsData.preferred_metros || '',
       location_filter_enabled: settingsData.location_filter_enabled || 'true',
+      apple_foundation_available: appleFoundationAvailable(),
     },
   };
 }
 
 export const DB_STATUS_TO_UI = { interested: 'saved', interviewing: 'interview', closed: 'archived', ignored: 'archived' };
 
-export function buildMetrics(jobs, sites, dupes, needsActionCount) {
+export function buildMetrics(jobs, sites, dupes, needsActionCount, queueOutstanding = 0, queueUnqueued = 0) {
   const counts = { saved: 0, applied: 0, interview: 0, offers: 0, rejected: 0, archived: 0, duplicates: 0, pendingExtraction: 0, failedExtraction: 0 };
   for (const job of jobs) {
     const status = DB_STATUS_TO_UI[job.status] || job.status;
@@ -1852,5 +1906,7 @@ export function buildMetrics(jobs, sites, dupes, needsActionCount) {
     needsAction: needsActionCount,
     jobs: jobs.length,
     sites: sites.length,
+    queueOutstanding,
+    queueUnqueued,
   };
 }

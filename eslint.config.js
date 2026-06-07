@@ -28,6 +28,7 @@ export default [
       globals: {
         process: 'readonly', console: 'readonly', fetch: 'readonly',
         Buffer: 'readonly', setTimeout: 'readonly', clearTimeout: 'readonly',
+        setInterval: 'readonly', clearInterval: 'readonly',
         URL: 'readonly', AbortController: 'readonly', AbortSignal: 'readonly',
       },
     },

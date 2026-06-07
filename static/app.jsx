@@ -48,7 +48,7 @@ function resolveSiteRef(siteRef) {
   return site ? (site.id || site.origin) : null;
 }
 
-function JobhuntApp({ initialRoute = "jobs", initialJobId = null, initialTheme = "auto", initialTab = "overview", panelOpen: panelOpenProp = null }) {
+function JobhuntApp({ initialRoute = "jobs", initialJobId = null, initialTheme = "auto", initialTab = "details", panelOpen: panelOpenProp = null }) {
   const initial = parseHash();
   // If the hash has a route, use it; otherwise restore from localStorage; then fall back to prop
   const hasHash = window.location.hash.length > 1;

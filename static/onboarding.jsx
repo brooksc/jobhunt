@@ -1,6 +1,6 @@
 // Jobhunt — Onboarding wizard
 
-const OB_PROVIDERS = [
+const OB_PROVIDERS_BASE = [
   {
     id: 'lmstudio',
     emoji: '🖥️',
@@ -39,6 +39,24 @@ const OB_PROVIDERS = [
     needsApiKey: true,
   },
 ];
+
+const OB_PROVIDER_APPLE = {
+  id: 'apple',
+  emoji: '🍎',
+  label: 'Apple Intelligence',
+  tagline: 'Zero setup — try it now',
+  desc: 'Runs on-device using macOS 26 built-in AI. No account, no cost, no data sent anywhere. Good for a quick first look — but known to miss details in job descriptions. Plan to switch to a stronger model later.',
+  needsBaseUrl: false,
+  needsApiKey: false,
+  warning: true,
+};
+
+function getOBProviders() {
+  if (window.JH_SETTINGS?.apple_foundation_available) {
+    return [OB_PROVIDER_APPLE, ...OB_PROVIDERS_BASE];
+  }
+  return OB_PROVIDERS_BASE;
+}
 
 const API_KEY_URLS = {
   openai: { label: 'Get API key', url: 'https://platform.openai.com/api-keys' },
@@ -155,33 +173,32 @@ function StepExtension({ onNext, onBack }) {
         The extension captures any job posting with one click — the fastest way to get jobs into Jobhunt.
       </p>
 
-      {/* Coming soon badge */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 8, background: 'var(--bg-elev-2)', border: '1px solid var(--border)', marginBottom: 20 }}>
-        <span style={{ fontSize: 16 }}>🏪</span>
-        <div>
-          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-mute)', textTransform: 'uppercase', letterSpacing: '.05em' }}>Coming soon</span>
-          <div style={{ fontSize: 13, color: 'var(--fg)' }}>Chrome Web Store listing — one-click install once published.</div>
+      {/* Chrome Web Store */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', borderRadius: 8, background: 'var(--accent-bg)', border: '2px solid var(--accent)', marginBottom: 16 }}>
+        <span style={{ fontSize: 28, flexShrink: 0 }}>🏪</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--fg)', marginBottom: 4 }}>Available on the Chrome Web Store</div>
+          <div style={{ fontSize: 12, color: 'var(--fg-mute)', marginBottom: 10, lineHeight: 1.4 }}>One-click install — no developer mode or manual setup needed.</div>
+          <a
+            href="https://chromewebstore.google.com/detail/jobhunt-capture/jekcbebhfeidkpapienoflbcaeeknlch"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: 'inline-block', padding: '7px 16px', borderRadius: 6, background: 'var(--accent)', color: '#fff', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}
+          >
+            → Install Jobhunt Capture
+          </a>
         </div>
       </div>
 
-      {/* Developer mode install */}
       <div style={{ padding: '14px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elev)', marginBottom: 16 }}>
-        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12 }}>Install now with Developer mode</div>
+        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 10 }}>After installing</div>
         <div style={step}>
           <div style={num}>1</div>
-          <div>Open <span style={code}>chrome://extensions</span> in Chrome</div>
-        </div>
-        <div style={step}>
-          <div style={num}>2</div>
-          <div>Enable <strong>Developer mode</strong> using the toggle in the top-right corner</div>
-        </div>
-        <div style={step}>
-          <div style={num}>3</div>
-          <div>Click <strong>Load unpacked</strong> and select the <span style={code}>extension/</span> folder inside the Jobhunt project directory</div>
+          <div>Pin the <strong>Jobhunt Capture</strong> icon to your Chrome toolbar</div>
         </div>
         <div style={{ ...step, borderBottom: 'none', paddingBottom: 0 }}>
-          <div style={num}>4</div>
-          <div>Pin the <strong>Jobhunt Capture</strong> icon to your toolbar for easy access</div>
+          <div style={num}>2</div>
+          <div>Browse to any job posting and click the icon to capture it — done</div>
         </div>
       </div>
 
@@ -201,6 +218,7 @@ function StepAI({ provider, setProvider, apiKey, setApiKey, baseUrl, setBaseUrl,
   const [testing, setTesting] = React.useState(false);
   const [fetchedModels, setFetchedModels] = React.useState([]);
   const [fetchingModels, setFetchingModels] = React.useState(false);
+  const OB_PROVIDERS = getOBProviders();
   const info = OB_PROVIDERS.find(p => p.id === provider) || OB_PROVIDERS[0];
 
   async function fetchModels() {
@@ -295,58 +313,77 @@ function StepAI({ provider, setProvider, apiKey, setApiKey, baseUrl, setBaseUrl,
 
       {/* Provider config */}
       <div style={{ padding: '14px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-elev)', marginBottom: 12 }}>
-        {info.needsBaseUrl && (
-          <div style={{ marginBottom: 10 }}>
-            <label style={{ fontSize: 12, color: 'var(--fg-mute)', display: 'block', marginBottom: 4 }}>Server URL</label>
-            <input value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="http://127.0.0.1:1234"
-              style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--fg)', fontSize: 13, boxSizing: 'border-box' }} />
-            <div style={{ marginTop: 4, fontSize: 11, color: 'var(--fg-mute)' }}>
-              <a href={LM_STUDIO_URL} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>→ Download LM Studio</a>
+        {provider === 'apple' ? (
+          <div>
+            <div style={{ fontSize: 12, color: 'var(--st-rejected, #c0392b)', padding: '8px 10px', borderRadius: 6, background: 'rgba(192,57,43,0.08)', border: '1px solid var(--st-rejected, #c0392b)', marginBottom: 10, lineHeight: 1.5 }}>
+              <strong>Heads up:</strong> Apple Intelligence is a small on-device model — great for getting started instantly, but known to miss details in job descriptions and produce weaker fit scores. Plan to switch to a cloud or LM Studio model once you're set up.
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--fg-mute)', marginBottom: 10 }}>Model: selected automatically by macOS — no configuration needed.</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Btn size="sm" onClick={test} disabled={testing}>{testing ? 'Testing…' : 'Test connection'}</Btn>
+              {testResult && (
+                <span style={{ fontSize: 12, color: testResult.ok ? 'var(--st-offer)' : 'var(--st-rejected)' }}>
+                  {testResult.ok ? '✓ Ready' : `✗ ${testResult.error || 'Failed'}`}
+                </span>
+              )}
             </div>
           </div>
-        )}
-        {info.needsApiKey && (
-          <div style={{ marginBottom: 10 }}>
-            <label style={{ fontSize: 12, color: 'var(--fg-mute)', display: 'block', marginBottom: 4 }}>API key</label>
-            <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)}
-              placeholder={provider === 'openai' ? 'sk-…' : provider === 'anthropic' ? 'sk-ant-…' : 'API key'}
-              style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--fg)', fontSize: 13, boxSizing: 'border-box' }} />
-            {apiKeyInfo && (
-              <div style={{ marginTop: 4, fontSize: 11, color: 'var(--fg-mute)' }}>
-                <a href={apiKeyInfo.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>→ {apiKeyInfo.label}</a>
+        ) : (
+          <div>
+            {info.needsBaseUrl && (
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ fontSize: 12, color: 'var(--fg-mute)', display: 'block', marginBottom: 4 }}>Server URL</label>
+                <input value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="http://127.0.0.1:1234"
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--fg)', fontSize: 13, boxSizing: 'border-box' }} />
+                <div style={{ marginTop: 4, fontSize: 11, color: 'var(--fg-mute)' }}>
+                  <a href={LM_STUDIO_URL} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>→ Download LM Studio</a>
+                </div>
               </div>
             )}
+            {info.needsApiKey && (
+              <div style={{ marginBottom: 10 }}>
+                <label style={{ fontSize: 12, color: 'var(--fg-mute)', display: 'block', marginBottom: 4 }}>API key</label>
+                <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)}
+                  placeholder={provider === 'openai' ? 'sk-…' : provider === 'anthropic' ? 'sk-ant-…' : 'API key'}
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--fg)', fontSize: 13, boxSizing: 'border-box' }} />
+                {apiKeyInfo && (
+                  <div style={{ marginTop: 4, fontSize: 11, color: 'var(--fg-mute)' }}>
+                    <a href={apiKeyInfo.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>→ {apiKeyInfo.label}</a>
+                  </div>
+                )}
+              </div>
+            )}
+            <div style={{ marginBottom: 10 }}>
+              <label style={{ fontSize: 12, color: 'var(--fg-mute)', display: 'block', marginBottom: 4 }}>Model</label>
+              {fetchedModels.length > 0 ? (
+                <select value={model} onChange={e => setModel(e.target.value)}
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--fg)', fontSize: 13 }}>
+                  {fetchedModels.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              ) : (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input value={model} onChange={e => setModel(e.target.value)}
+                    placeholder={provider === 'lmstudio' ? 'e.g. gemma-3-12b-it (from LM Studio)' : 'e.g. gpt-4o-mini'}
+                    style={{ flex: 1, padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--fg)', fontSize: 13, boxSizing: 'border-box' }} />
+                  <Btn size="sm" onClick={fetchModels} disabled={fetchingModels}>
+                    {fetchingModels ? 'Fetching…' : 'Fetch models'}
+                  </Btn>
+                </div>
+              )}
+              {fetchingModels && fetchedModels.length === 0 && (
+                <div style={{ marginTop: 4, fontSize: 11, color: 'var(--fg-mute)' }}>Fetching available models…</div>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Btn size="sm" onClick={test} disabled={testing}>{testing ? 'Testing…' : 'Test connection'}</Btn>
+              {testResult && (
+                <span style={{ fontSize: 12, color: testResult.ok ? 'var(--st-offer)' : 'var(--st-rejected)' }}>
+                  {testResult.ok ? '✓ Connected' : `✗ ${testResult.error || 'Failed'}`}
+                </span>
+              )}
+            </div>
           </div>
         )}
-        <div style={{ marginBottom: 10 }}>
-          <label style={{ fontSize: 12, color: 'var(--fg-mute)', display: 'block', marginBottom: 4 }}>Model</label>
-          {fetchedModels.length > 0 ? (
-            <select value={model} onChange={e => setModel(e.target.value)}
-              style={{ width: '100%', padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--fg)', fontSize: 13 }}>
-              {fetchedModels.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          ) : (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input value={model} onChange={e => setModel(e.target.value)}
-                placeholder={provider === 'lmstudio' ? 'e.g. gemma-3-12b-it (from LM Studio)' : 'e.g. gpt-4o-mini'}
-                style={{ flex: 1, padding: '7px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--fg)', fontSize: 13, boxSizing: 'border-box' }} />
-              <Btn size="sm" onClick={fetchModels} disabled={fetchingModels}>
-                {fetchingModels ? 'Fetching…' : 'Fetch models'}
-              </Btn>
-            </div>
-          )}
-          {fetchingModels && fetchedModels.length === 0 && (
-            <div style={{ marginTop: 4, fontSize: 11, color: 'var(--fg-mute)' }}>Fetching available models…</div>
-          )}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Btn size="sm" onClick={test} disabled={testing}>{testing ? 'Testing…' : 'Test connection'}</Btn>
-          {testResult && (
-            <span style={{ fontSize: 12, color: testResult.ok ? 'var(--st-offer)' : 'var(--st-rejected)' }}>
-              {testResult.ok ? '✓ Connected' : `✗ ${testResult.error || 'Failed'}`}
-            </span>
-          )}
-        </div>
       </div>
 
       <WizardNav step={2} onBack={onBack} onContinue={onNext} onSkip={onSkip} />
@@ -397,10 +434,10 @@ function StepResume({ resumeText, setResumeText, onNext, onBack, onSkip }) {
 
 // Step 5: Summary
 function StepSummary({ provider, apiKey, locations, preferredMetros, filterEnabled, resumeText, dontShow, setDontShow, onFinish, onBack, saving }) {
-  const providerInfo = OB_PROVIDERS.find(p => p.id === provider);
+  const providerInfo = getOBProviders().find(p => p.id === provider);
   const rows = [
     { label: 'AI provider', value: providerInfo ? `${providerInfo.emoji} ${providerInfo.label}` : '—', set: !!providerInfo },
-    { label: 'API key', value: apiKey ? '••••••••' : 'Not set', set: !!apiKey },
+    ...( provider !== 'apple' ? [{ label: 'API key', value: apiKey ? '••••••••' : 'Not set', set: !!apiKey }] : [] ),
     { label: 'Location filter', value: !filterEnabled ? 'Open to relocation' : (preferredMetros ? `${preferredMetros.split(',').length} metro area(s)` : locations || 'Not set'), set: !filterEnabled || !!(preferredMetros || locations) },
     { label: 'Resume', value: resumeText ? `${resumeText.split(/\s+/).length.toLocaleString()} words` : 'Not set', set: !!resumeText },
   ];

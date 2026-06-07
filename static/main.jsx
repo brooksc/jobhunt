@@ -211,7 +211,7 @@
       } catch (e) {
         console.warn(`Failed to parse extracted_json for job ${j.job_id}:`, e);
       }
-      let manualOverrides = [];
+      let manualOverrides;
       try {
         manualOverrides = j.manual_overrides
           ? (typeof j.manual_overrides === "string" ? JSON.parse(j.manual_overrides) : j.manual_overrides)
@@ -294,6 +294,7 @@
         requirements: toStringArray(extracted?.requirements),
         niceToHaves: toStringArray(extracted?.nice_to_haves),
         benefits: toStringArray(extracted?.benefits),
+        applicationInstructions: extracted?.application_instructions || null,
         rating: j.rating || null,
         hasDuplicate: !!j.duplicate_of_job_id,
         duplicateOfJobId: j.duplicate_of_job_id || null,
@@ -418,8 +419,8 @@
   }
 
   function publishUiData(mapped) {
-    const pendingExtraction = mapped.metrics?.pendingExtraction || 0;
-    const failedExtraction = mapped.metrics?.failedExtraction || 0;
+    const queueOutstanding = mapped.metrics?.queueOutstanding ?? 0;
+    const queueUnqueued = mapped.metrics?.queueUnqueued ?? 0;
     Object.assign(window, {
       JH_STATUSES: STATUSES,
       JH_JOBS: mapped.jobs,
@@ -433,11 +434,11 @@
       JH_METROS: mapped.metros,
       JH_IS_DEMO: mapped.isDemo || false,
       JH_QUEUE_STATS: {
-        totalOutstanding: pendingExtraction + failedExtraction,
-        queued: pendingExtraction,
+        totalOutstanding: queueOutstanding + queueUnqueued,
+        queued: queueOutstanding,
         running: 0,
-        failed: failedExtraction,
-        pending_unqueued: 0,
+        failed: 0,
+        pending_unqueued: queueUnqueued,
       },
     });
     window.dispatchEvent(new Event(UI_DATA_REFRESH_EVENT));
@@ -556,6 +557,13 @@
       snoozeAction: (actionId, days) => api(`/api/actions/${actionId}/snooze`, { method: "POST", body: JSON.stringify({ days }) }).then(refreshUiDataOrReload),
       setRating: (jobId, rating) => api(`/api/jobs/${jobId}/rating`, { method: "PATCH", body: JSON.stringify({ rating }) }).then(refreshUiDataOrReload),
     },
+  });
+
+  // Push-based refresh: reconnects automatically if the server restarts.
+  const _es = new EventSource('/api/events');
+  _es.addEventListener('data-changed', () => {
+    refreshUiData().catch(() => {});
+    window.dispatchEvent(new Event(window.JH_LLM_QUEUE_REFRESH_EVENT || 'jobhunt:llm-queue-refreshed'));
   });
 
   const root = ReactDOM.createRoot(rootEl);

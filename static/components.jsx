@@ -162,7 +162,7 @@ const CoLogo = ({ name, url }) => {
   const co = (window.JH_COMPANIES || {})[name];
   const mono = (co && co.mono) || (name ? name.slice(0, 1).toUpperCase() : "?");
   let faviconUrl = null;
-  try { if (url) faviconUrl = new URL(url).origin + "/favicon.ico"; } catch (e) {}
+  try { if (url) faviconUrl = new URL(url).origin + "/favicon.ico"; } catch (_e) { /* invalid URL */ }
   return (
     <span className="jh-comp__mark">
       {faviconUrl

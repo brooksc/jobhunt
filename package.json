@@ -1,6 +1,6 @@
 {
   "name": "jobhunt",
-  "version": "0.2.19",
+  "version": "0.2.37",
   "description": "Local-first job tracking tool",
   "type": "module",
   "main": "electron/main.js",
@@ -16,10 +16,11 @@
     "serve:once": "node server/index.js serve",
     "dev": "node --watch server/index.js serve",
     "electron": "electron .",
-    "electron:build": "electron-builder --dir",
-    "electron:dist": "electron-builder",
-    "test": "node --test tests/unit/availability.test.js tests/unit/counts.test.js tests/unit/cleaning.test.js tests/unit/export.test.js tests/unit/extract.test.js tests/unit/extension_capture.test.js tests/unit/extension_csv.test.js tests/unit/extension_manifest.test.js tests/unit/extension_retry_queue.test.js tests/unit/transform.test.js tests/unit/rotation.test.js tests/integration/db.test.js tests/integration/api.test.js tests/integration/resumes.test.js tests/integration/cost.test.js tests/integration/concurrency.test.js tests/integration/mcp.test.js tests/electron/smoke.test.js",
-    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=85 --test-coverage-branches=78 tests/unit/availability.test.js tests/unit/counts.test.js tests/unit/cleaning.test.js tests/unit/export.test.js tests/unit/extract.test.js tests/unit/extension_capture.test.js tests/unit/extension_csv.test.js tests/unit/extension_manifest.test.js tests/unit/extension_retry_queue.test.js tests/unit/transform.test.js tests/unit/rotation.test.js tests/integration/db.test.js tests/integration/api.test.js tests/integration/resumes.test.js tests/integration/cost.test.js tests/integration/concurrency.test.js tests/integration/mcp.test.js tests/electron/smoke.test.js",
+    "build:native": "swiftc -O native/foundation-models/main.swift -o native/foundation-models/foundation-models",
+    "electron:build": "npm run build:native && electron-builder --dir",
+    "electron:dist": "npm run build:native && electron-builder",
+    "test": "node --test tests/unit/availability.test.js tests/unit/counts.test.js tests/unit/cleaning.test.js tests/unit/export.test.js tests/unit/extract.test.js tests/unit/extension_capture.test.js tests/unit/extension_csv.test.js tests/unit/extension_manifest.test.js tests/unit/extension_retry_queue.test.js tests/unit/transform.test.js tests/unit/rotation.test.js tests/unit/sort.test.js tests/unit/jd-parser.test.js tests/unit/apple-foundation.test.js tests/integration/db.test.js tests/integration/api.test.js tests/integration/resumes.test.js tests/integration/cost.test.js tests/integration/concurrency.test.js tests/integration/mcp.test.js tests/electron/smoke.test.js",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-lines=85 --test-coverage-branches=78 tests/unit/availability.test.js tests/unit/counts.test.js tests/unit/cleaning.test.js tests/unit/export.test.js tests/unit/extract.test.js tests/unit/extension_capture.test.js tests/unit/extension_csv.test.js tests/unit/extension_manifest.test.js tests/unit/extension_retry_queue.test.js tests/unit/transform.test.js tests/unit/rotation.test.js tests/unit/sort.test.js tests/unit/jd-parser.test.js tests/unit/apple-foundation.test.js tests/integration/db.test.js tests/integration/api.test.js tests/integration/resumes.test.js tests/integration/cost.test.js tests/integration/concurrency.test.js tests/integration/mcp.test.js tests/electron/smoke.test.js",
     "test:ui": "node --test tests/ui/jobs-smoke.test.js",
     "eval:llm": "node tests/llm-eval/eval-llm.js",
     "typecheck": "tsc --noEmit",
@@ -50,6 +51,12 @@
       "output": "dist"
     },
     "npmRebuild": false,
+    "extraResources": [
+      {
+        "from": "native/foundation-models/foundation-models",
+        "to": "foundation-models"
+      }
+    ],
     "files": [
       "electron/**/*",
       "server/**/*",

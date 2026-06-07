@@ -104,7 +104,7 @@ function CompareTab({ duplicate, original, onNavigate }) {
   );
 }
 
-function JobDetail({ jobId, onClose, initialTab = "overview", jobIds = [], onNavigate }) {
+function JobDetail({ jobId, onClose, initialTab = "details", jobIds = [], onNavigate }) {
   const job = window.JH_JOBS.find((j) => j.id === jobId);
   const originalJob = job?.duplicateOfJobId ? window.JH_JOBS.find((j) => j.id === job.duplicateOfJobId) : null;
   const [tab, setTab] = React.useState(initialTab);
@@ -212,12 +212,12 @@ function JobDetail({ jobId, onClose, initialTab = "overview", jobIds = [], onNav
       </div>
 
       <div className="jh-tabs" role="tablist" onKeyDown={(e) => {
-        const tabs = originalJob ? ["overview", "compare", "timeline", "description", "raw"] : ["overview", "timeline", "description", "raw"];
+        const tabs = originalJob ? ["details", "fit", "apply", "compare", "timeline", "description", "raw"] : ["details", "fit", "apply", "timeline", "description", "raw"];
         const current = tabs.indexOf(tab);
         if (e.key === "ArrowRight" && current < tabs.length - 1) { e.preventDefault(); setTab(tabs[current + 1]); }
         if (e.key === "ArrowLeft" && current > 0) { e.preventDefault(); setTab(tabs[current - 1]); }
       }}>
-        {(originalJob ? ["overview", "compare", "timeline", "description", "raw"] : ["overview", "timeline", "description", "raw"]).map((t) => (
+        {(originalJob ? ["details", "fit", "apply", "compare", "timeline", "description", "raw"] : ["details", "fit", "apply", "timeline", "description", "raw"]).map((t) => (
           <button
             key={t}
             role="tab"
@@ -252,7 +252,9 @@ function JobDetail({ jobId, onClose, initialTab = "overview", jobIds = [], onNav
       )}
 
       <div className="jh-panel__body">
-        {tab === "overview" && <OverviewTab job={effectiveJob} onPatch={patchJob} onClose={onClose} />}
+        {tab === "details" && <DetailsTab job={effectiveJob} onPatch={patchJob} />}
+        {tab === "fit" && <FitTab job={effectiveJob} />}
+        {tab === "apply" && <ApplyTab job={effectiveJob} onClose={onClose} />}
         {tab === "compare" && originalJob && <CompareTab duplicate={effectiveJob} original={originalJob} onNavigate={onNavigate} />}
         {tab === "timeline" && <TimelineTab job={job} note={note} setNote={setNote} />}
         {tab === "description" && <DescriptionTab job={job} />}
@@ -383,7 +385,7 @@ function ContactsSection({ jobId }) {
   );
 }
 
-function OverviewTab({ job, onPatch, onClose }) {
+function DetailsTab({ job, onPatch }) {
   const [localSkills, setLocalSkills] = React.useState(job.skills || []);
   const [skillsDirty, setSkillsDirty] = React.useState(false);
   const [addSkillDialog, setAddSkillDialog] = React.useState(false);
@@ -400,8 +402,15 @@ function OverviewTab({ job, onPatch, onClose }) {
     setSkillsDirty(true);
   }
 
+  const isAppleProcessed = job.extraction?.model === "apple-foundation-models";
+
   return (
     <>
+      {isAppleProcessed && (
+        <div style={{ fontSize: 11, color: "var(--st-rejected, #c0392b)", marginBottom: 10, padding: "6px 8px", background: "rgba(192,57,43,0.08)", borderRadius: "var(--r-2)", border: "1px solid var(--st-rejected, #c0392b)" }}>
+          <strong>Processed with Apple Intelligence</strong> — extractions from this model may have missing fields, weaker reasoning, or inaccurate fit scores. Consider re-processing with a cloud or LM Studio model.
+        </div>
+      )}
       {addSkillDialog && (
         <AppTextInputDialog
           title="Add skill"
@@ -505,6 +514,44 @@ function OverviewTab({ job, onPatch, onClose }) {
         )}
       </dl>
 
+      <div className="jh-section">
+        <h3>Extraction</h3>
+        <dl className="jh-fields" style={{ gridTemplateColumns: "110px 1fr" }}>
+          <dt>Status</dt><dd><ExtractionChip ext={job.extraction} /></dd>
+          <dt>Extracted at</dt><dd data-mono style={{ fontSize: 11.5, color: "var(--fg-mute)" }}>{fmtDateTime(job.extraction.at)}</dd>
+          {job.extraction.model && <><dt>Model</dt><dd data-mono style={{ fontSize: 11.5, color: "var(--fg-mute)" }}>{job.extraction.model}</dd></>}
+          {job.extraction.error && (
+            <>
+              <dt>Error</dt>
+              <dd style={{ flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
+                <span style={{ color: "var(--st-rejected)", fontSize: 12, fontFamily: "var(--font-mono)" }}>{job.extraction.error}</span>
+                <Btn size="sm" kind="accent" icon={<Icon.Refresh size={11} />}
+                  onClick={() => {
+                    window.JH_API.api(`/api/jobs/${job.id}/extract`, { method: "POST" })
+                      .then(() => { window.JH_TOAST.show("Queued for re-extraction"); window.JH_REFRESH_UI_DATA(); })
+                      .catch(e => window.JH_TOAST.show(e.message, "error"));
+                  }}>
+                  Retry extraction
+                </Btn>
+              </dd>
+            </>
+          )}
+        </dl>
+      </div>
+    </>
+  );
+}
+
+function FitTab({ job }) {
+  const fitModel = job.fit?.model || job.fitScores?.find(f => f.model)?.model;
+  const isAppleFit = fitModel === "apple-foundation-models";
+  return (
+    <>
+      {isAppleFit && (
+        <div style={{ fontSize: 11, color: "var(--st-rejected, #c0392b)", marginBottom: 10, padding: "6px 8px", background: "rgba(192,57,43,0.08)", borderRadius: "var(--r-2)", border: "1px solid var(--st-rejected, #c0392b)" }}>
+          <strong>Fit scored with Apple Intelligence</strong> — scores may be less reliable. Re-score with a stronger model for accurate results.
+        </div>
+      )}
       {job.summary && (
         <div className="jh-section">
           <h3>Summary</h3>
@@ -536,34 +583,25 @@ function OverviewTab({ job, onPatch, onClose }) {
       )}
 
       <FitScorePanel job={job} />
+    </>
+  );
+}
+
+function ApplyTab({ job, onClose }) {
+  return (
+    <>
+      {job.applicationInstructions && (
+        <div style={{ background: "var(--yellow-bg, #fffbe6)", border: "1px solid var(--yellow-border, #ffe58f)", borderRadius: 6, padding: "10px 12px", marginBottom: 12, fontSize: 13, lineHeight: 1.5 }}>
+          <strong style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+            <Icon.AlertTriangle size={14} style={{ color: "var(--yellow-fg, #d48806)", flexShrink: 0 }} />
+            Application instructions
+          </strong>
+          {job.applicationInstructions}
+        </div>
+      )}
       <ContactsSection jobId={job.id} />
       <CoverLetterPanel job={job} />
       <CaptureDiagnostics job={job} onClose={onClose} />
-
-      <div className="jh-section">
-        <h3>Extraction</h3>
-        <dl className="jh-fields" style={{ gridTemplateColumns: "110px 1fr" }}>
-          <dt>Status</dt><dd><ExtractionChip ext={job.extraction} /></dd>
-          <dt>Extracted at</dt><dd data-mono style={{ fontSize: 11.5, color: "var(--fg-mute)" }}>{fmtDateTime(job.extraction.at)}</dd>
-          {job.extraction.model && <><dt>Model</dt><dd data-mono style={{ fontSize: 11.5, color: "var(--fg-mute)" }}>{job.extraction.model}</dd></>}
-          {job.extraction.error && (
-            <>
-              <dt>Error</dt>
-              <dd style={{ flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
-                <span style={{ color: "var(--st-rejected)", fontSize: 12, fontFamily: "var(--font-mono)" }}>{job.extraction.error}</span>
-                <Btn size="sm" kind="accent" icon={<Icon.Refresh size={11} />}
-                  onClick={() => {
-                    window.JH_API.api(`/api/jobs/${job.id}/extract`, { method: "POST" })
-                      .then(() => { window.JH_TOAST.show("Queued for re-extraction"); window.JH_REFRESH_UI_DATA(); })
-                      .catch(e => window.JH_TOAST.show(e.message, "error"));
-                  }}>
-                  Retry extraction
-                </Btn>
-              </dd>
-            </>
-          )}
-        </dl>
-      </div>
     </>
   );
 }
@@ -724,32 +762,32 @@ function TimelineItem({ ev }) {
 }
 
 function DescriptionTab({ job }) {
-  const body = job.cleanedDescription || job.summary || "";
-  return (
-    <div className="jh-section" style={{ marginTop: 0 }}>
-      <h3>Cleaned description</h3>
-      <div style={{ fontSize: 13, lineHeight: 1.6, color: "var(--fg)" }}>
-        <p style={{ marginTop: 0 }}>
-          <strong style={{ color: "var(--fg-strong)" }}>{job.title}</strong> · {job.company}
-        </p>
-        {body ? <pre className="jh-raw" style={{ whiteSpace: "pre-wrap" }}>{body}</pre> : <p>No cleaned description available.</p>}
-        {(job.requirements || []).length > 0 && (
-          <>
-            <h4 style={{ fontSize: 12, color: "var(--fg-strong)", margin: "16px 0 6px" }}>What you'll do</h4>
-            <ul style={{ paddingLeft: 18, margin: 0, color: "var(--fg)" }}>
-              {job.requirements.map((r, i) => <li key={i} style={{ marginBottom: 4 }}>{r}</li>)}
-            </ul>
-          </>
-        )}
-        {(job.niceToHaves || []).length > 0 && (
-          <>
-            <h4 style={{ fontSize: 12, color: "var(--fg-strong)", margin: "16px 0 6px" }}>Bonus</h4>
-            <ul style={{ paddingLeft: 18, margin: 0, color: "var(--fg)" }}>
-              {job.niceToHaves.map((r, i) => <li key={i} style={{ marginBottom: 4 }}>{r}</li>)}
-            </ul>
-          </>
-        )}
+  const text = job.cleanedDescription || "";
+  const parseJdBlocks = window._JHP?.parseJdBlocks ?? (() => []);
+  const blocks = parseJdBlocks(text);
+
+  if (!text) {
+    return (
+      <div className="jh-section" style={{ marginTop: 0 }}>
+        <p style={{ color: "var(--fg-mute)", fontSize: 13 }}>No description available.</p>
       </div>
+    );
+  }
+
+  const headingStyle = { fontSize: 13, fontWeight: 600, color: "var(--fg-strong)", margin: "18px 0 6px 0" };
+  const paraStyle   = { fontSize: 13, lineHeight: 1.65, color: "var(--fg)", margin: "0 0 10px 0" };
+  const listStyle   = { fontSize: 13, lineHeight: 1.65, color: "var(--fg)", paddingLeft: 20, margin: "0 0 10px 0" };
+  const liStyle     = { marginBottom: 4 };
+
+  return (
+    <div style={{ padding: "4px 0", maxWidth: 680 }}>
+      {blocks.map((b, i) => {
+        if (b.type === 'heading')   return <h4 key={i} style={headingStyle}>{b.text}</h4>;
+        if (b.type === 'list')      return <ul key={i} style={listStyle}>{b.items.map((item, j) => <li key={j} style={liStyle}>{item}</li>)}</ul>;
+        if (b.type === 'paragraph') return <p key={i} style={paraStyle}>{b.text}</p>;
+        if (b.type === 'hr')        return <hr key={i} style={{ border: "none", borderTop: "1px solid var(--border)", margin: "14px 0" }} />;
+        return null;
+      })}
     </div>
   );
 }

@@ -1,14 +1,19 @@
 #!/bin/sh
 # Kill any running Jobhunt Electron app, run tests, rebuild, and relaunch.
-# Usage: ./scripts/rebuild-and-launch.sh [--skip-tests]
+# Usage: ./scripts/rebuild-and-launch.sh [--skip-tests] [--fast]
+#   --fast  Skip electron-builder packaging; run electron directly (much faster dev loop)
 set -e
 
 cd "$(dirname "$0")/.."
 
 SKIP_TESTS=0
-if [ "${1:-}" = "--skip-tests" ]; then
-  SKIP_TESTS=1
-fi
+FAST=0
+for arg in "$@"; do
+  case "$arg" in
+    --skip-tests) SKIP_TESTS=1 ;;
+    --fast)       FAST=1 ;;
+  esac
+done
 
 # ------------------------------------------------------------------
 # 1. Kill running Jobhunt app
@@ -53,17 +58,18 @@ NEW_VERSION=$(./scripts/bump-version.sh patch)
 echo "Version: ${NEW_VERSION}"
 
 # ------------------------------------------------------------------
-# 5. Build Electron app
+# 5. Build / Launch
 # ------------------------------------------------------------------
 echo ""
-echo "Building Electron app..."
-nice ./node_modules/.bin/electron-builder --dir --mac
-
-# ------------------------------------------------------------------
-# 6. Launch
-# ------------------------------------------------------------------
-echo ""
-echo "Launching Jobhunt..."
-open dist/mac-arm64/Jobhunt.app
+if [ "$FAST" = "1" ]; then
+  echo "Launching Jobhunt (dev mode, no packaging)..."
+  nice ./node_modules/.bin/electron . &
+else
+  echo "Building Electron app..."
+  nice ./node_modules/.bin/electron-builder --dir --mac
+  echo ""
+  echo "Launching Jobhunt..."
+  open dist/mac-arm64/Jobhunt.app
+fi
 
 echo "Done."

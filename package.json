@@ -1,6 +1,6 @@
 {
   "name": "jobhunt",
-  "version": "0.2.16",
+  "version": "0.2.19",
   "description": "Local-first job tracking tool",
   "type": "module",
   "main": "electron/main.js",
@@ -46,7 +46,10 @@
   "build": {
     "appId": "com.jobhunt-app.jobhunt",
     "productName": "Jobhunt",
-    "directories": { "output": "dist" },
+    "directories": {
+      "output": "dist"
+    },
+    "npmRebuild": false,
     "files": [
       "electron/**/*",
       "server/**/*",
@@ -61,7 +64,13 @@
       "entitlements": "build/entitlements.dmg.plist",
       "entitlementsInherit": "build/entitlements.dmg.plist",
       "target": [
-        { "target": "dmg", "arch": ["arm64", "x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ]
     },
     "mas": {
@@ -69,7 +78,13 @@
       "entitlementsInherit": "build/entitlements.mas.inherit.plist",
       "hardenedRuntime": false,
       "target": [
-        { "target": "mas", "arch": ["arm64", "x64"] }
+        {
+          "target": "mas",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ]
     },
     "dmg": {

@@ -14,6 +14,8 @@ import {
   resolveProviderBaseUrl,
   _parseFitScore,
   _missingRequirementsPenalty,
+  _fitUserPrompt,
+  _userPrompt,
   refreshRotationPool,
   runWithModelRotation,
   _onSuccess,
@@ -21,6 +23,11 @@ import {
   _resetConcurrencyState,
   selectFreeStructuredModels,
 } from '../../server/extract.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const GLANCE_PM_JD = readFileSync(join(__dirname, '../fixtures/job-128-glance-pm.txt'), 'utf8');
 
 describe('parseExtractedJob', () => {
   it('coerces null and invalid enum values to unknown', () => {
@@ -1005,5 +1012,61 @@ describe('selectFreeStructuredModels branch coverage', () => {
     };
     const result = selectFreeStructuredModels(data);
     assert.deepEqual(result, []);
+  });
+});
+
+describe('extraction prompt — application_instructions field', () => {
+  it('includes application_instructions in the extraction schema', () => {
+    const prompt = _userPrompt({ url: 'https://example.com', canonical_url: 'https://example.com', page_title: 'PM', description: GLANCE_PM_JD });
+    assert.match(prompt, /application_instructions/);
+    assert.match(prompt, /submission mechanics/);
+  });
+
+  it('extraction schema describes it as separate from qualifications', () => {
+    const prompt = _userPrompt({ url: 'https://example.com', canonical_url: 'https://example.com', page_title: 'PM', description: '' });
+    assert.match(prompt, /NOT job qualifications/);
+  });
+});
+
+describe('fit scoring prompt — application_instructions not penalized (job-128 Glance PM regression)', () => {
+  const jobContext = {
+    title: 'Product Manager',
+    company: 'Glance',
+    extracted: {
+      title: 'Product Manager',
+      company: 'Glance',
+      seniority: 'Senior',
+      summary: 'Drive product and go-to-market execution.',
+      requirements: ['5+ years Product Management in B2B SaaS', 'PLG experience', 'Engineering background'],
+      nice_to_haves: ['AI/ML experience', 'Mid-market enterprise focus'],
+      skills: ['Product strategy', 'Go-to-market', 'PLG', 'B2B SaaS'],
+      application_instructions: "To be considered, you must include the phrase 'Human Application' at the top of your resume when you submit.",
+    },
+  };
+  const resume = 'Brooks Cutter — Technical Program Manager with 20 years experience in AI/ML and platform programs.';
+
+  it('includes application_instructions labeled as submission mechanics in the prompt', () => {
+    const prompt = _fitUserPrompt(jobContext, resume);
+    assert.match(prompt, /Application instructions/);
+    assert.match(prompt, /submission mechanics/);
+    assert.match(prompt, /Human Application/);
+  });
+
+  it('tells the scorer not to penalize for application instructions', () => {
+    const prompt = _fitUserPrompt(jobContext, resume);
+    assert.match(prompt, /DO NOT factor into scores/);
+    assert.match(prompt, /Do NOT penalize any dimension score/);
+  });
+
+  it('explicitly bans submission mechanics from requirements_met and requirements_not_met', () => {
+    const prompt = _fitUserPrompt(jobContext, resume);
+    assert.match(prompt, /Never include them in requirements_met or requirements_not_met/);
+    assert.match(prompt, /exclude any submission mechanics/);
+  });
+
+  it('omits application_instructions content block when field is absent', () => {
+    const ctx = { ...jobContext, extracted: { ...jobContext.extracted, application_instructions: null } };
+    const prompt = _fitUserPrompt(ctx, resume);
+    assert.doesNotMatch(prompt, /Human Application/);
   });
 });

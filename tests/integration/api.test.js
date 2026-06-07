@@ -2195,3 +2195,70 @@ describe('Cover letter API', () => {
     assert.equal(res.status, 404);
   });
 });
+
+// -----------------------------------------------------------------------
+// POST /api/jobs/bulk/reset-extraction
+// -----------------------------------------------------------------------
+
+describe('POST /api/jobs/bulk/reset-extraction', () => {
+  let appleJobId;
+  let otherJobId;
+
+  before(async () => {
+    const db = initDb(dbPath);
+
+    const { capture_id: appleCapId } = insertCapture({ ...CAPTURE, url: 'https://apple-extraction.example.com/j1' }, dbPath);
+    appleJobId = db.prepare('SELECT id FROM jobs WHERE capture_id=?').get(appleCapId).id;
+    markExtractionSucceeded(appleJobId, { company: 'Apple Co', title: 'Engineer' }, dbPath, null, 'apple-foundation-models', 90);
+
+    const { capture_id: otherCapId } = insertCapture({ ...CAPTURE, url: 'https://other-extraction.example.com/j1' }, dbPath);
+    otherJobId = db.prepare('SELECT id FROM jobs WHERE capture_id=?').get(otherCapId).id;
+    markExtractionSucceeded(otherJobId, { company: 'Other Co', title: 'Engineer' }, dbPath, null, 'gemini-2.5-flash', 95);
+  });
+
+  it('resets only apple-processed jobs when model filter provided', async () => {
+    const res = await post('/api/jobs/bulk/reset-extraction', { model: 'apple-foundation-models' });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.ok, true);
+    assert.ok(body.reset >= 1, 'at least one job reset');
+
+    const db = initDb(dbPath);
+    const apple = db.prepare('SELECT extraction_status FROM jobs WHERE id=?').get(appleJobId);
+    assert.equal(apple.extraction_status, 'pending', 'apple job reset to pending');
+
+    const other = db.prepare('SELECT extraction_status FROM jobs WHERE id=?').get(otherJobId);
+    assert.equal(other.extraction_status, 'succeeded', 'non-apple job left untouched');
+  });
+
+  it('resets all non-pending jobs when no model filter', async () => {
+    // Re-mark other job as succeeded so there is something to reset
+    markExtractionSucceeded(otherJobId, { company: 'Other Co', title: 'Engineer' }, dbPath, null, 'gemini-2.5-flash', 95);
+
+    const res = await post('/api/jobs/bulk/reset-extraction', {});
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.ok, true);
+
+    const db = initDb(dbPath);
+    const other = db.prepare('SELECT extraction_status FROM jobs WHERE id=?').get(otherJobId);
+    assert.equal(other.extraction_status, 'pending');
+  });
+});
+
+// -----------------------------------------------------------------------
+// GET /api/ui-data — queue count fields in metrics
+// -----------------------------------------------------------------------
+
+describe('GET /api/ui-data queue metrics', () => {
+  it('includes queueOutstanding and queueUnqueued in metrics', async () => {
+    const res = await fetch(`${base}/api/ui-data`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.metrics, 'metrics field present');
+    assert.ok('queueOutstanding' in body.metrics, 'queueOutstanding field present');
+    assert.ok('queueUnqueued' in body.metrics, 'queueUnqueued field present');
+    assert.equal(typeof body.metrics.queueOutstanding, 'number');
+    assert.equal(typeof body.metrics.queueUnqueued, 'number');
+  });
+});

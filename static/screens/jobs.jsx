@@ -8,11 +8,11 @@ function persistSavedViews(views) {
 }
 
 const DEFAULT_COLUMNS = ["company", "title", "status", "rating", "fit", "salaryMin", "salaryMax", "lastOpened"];
-const ALL_COLUMNS = ["jobNumber", "company", "title", "status", "rating", "fit", "salaryMin", "salaryMax", "remote", "location", "source", "seniority", "employment", "captured", "lastOpened", "lastStatusChanged", "processed", "extraction"];
+const ALL_COLUMNS = ["jobNumber", "company", "title", "status", "rating", "fit", "salaryMin", "salaryMax", "remote", "location", "source", "seniority", "employment", "captured", "lastOpened", "lastStatusChanged", "processed", "extraction", "llmModel"];
 const COLUMN_LABELS = {
   jobNumber: "ID", company: "Company", title: "Title", status: "Status", rating: "Rating", fit: "Fit", salaryMin: "Salary min", salaryMax: "Salary max",
   remote: "Meets criteria", location: "Location", source: "Source", seniority: "Seniority",
-  employment: "Employment", captured: "Last captured", lastOpened: "Last opened", lastStatusChanged: "Last status change", processed: "Last processed", extraction: "Extraction",
+  employment: "Employment", captured: "Last captured", lastOpened: "Last opened", lastStatusChanged: "Last status change", processed: "Last processed", extraction: "Extraction", llmModel: "LLM model",
 };
 
 const SORT_OPTIONS = [
@@ -620,7 +620,7 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
     if (selectAllRef.current) {
       selectAllRef.current.indeterminate = someSel;
     }
-  }, [sel, filtered]);
+  }, [sel, someSel]);
 
   // Expose focus function so the global Cmd+K handler in app.jsx can call it
   React.useEffect(() => {
@@ -738,34 +738,10 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
     return true;
   });
 
-  function sortValue(job, key) {
-    if (key === "salaryMin") return job.salaryMin || job.salaryMax || 0;
-    if (key === "salaryMax") return job.salaryMax || job.salaryMin || 0;
-    if (key === "rating") return job.rating || 0;
-    if (key === "fitScore") return job.fit?.score ?? -1;
-    if (key === "extractionStatus") return job.extraction?.status || "";
-    if (key === "lastProcessedAt") return job.extraction?.at || "";
-    if (key === "lastOpenedAt") return job.lastOpenedAt || "";
-    if (key === "lastStatusChangedAt") return job.lastStatusChangedAt || "";
-    if (key === "nextActionDue") return job.nextAction?.dueDate || "";
-    return job[key] ?? "";
-  }
+  const _sortJobs = window._JHS?.sortJobs ?? ((arr, s) => arr);
+  const sortedFiltered = _sortJobs(filtered, sort);
 
-  filtered.sort((a, b) => {
-    const av = sortValue(a, sort.key);
-    const bv = sortValue(b, sort.key);
-    const aEmpty = av == null || av === "" || av === "—";
-    const bEmpty = bv == null || bv === "" || bv === "—";
-    if (aEmpty && bEmpty) return 0;
-    if (aEmpty) return 1;
-    if (bEmpty) return -1;
-    const cmp = typeof av === "number" && typeof bv === "number"
-      ? av - bv
-      : String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: "base" });
-    return sort.dir === "asc" ? cmp : -cmp;
-  });
-
-  const allSel = sel.size > 0 && filtered.every((j) => sel.has(j.id));
+  const allSel = sel.size > 0 && sortedFiltered.every((j) => sel.has(j.id));
   const someSel = sel.size > 0 && !allSel;
   const selectedJobs = jobs.filter((j) => sel.has(j.id));
   const selectedMissingAiCount = selectedJobs.filter(hasMissingAiFields).length;
@@ -773,12 +749,12 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
   function toggle(id, checked, shiftKey = false) {
     const nextChecked = checked ?? !sel.has(id);
     if (shiftKey && lastSelectionRef.current) {
-      const start = filtered.findIndex((j) => j.id === lastSelectionRef.current);
-      const end = filtered.findIndex((j) => j.id === id);
+      const start = sortedFiltered.findIndex((j) => j.id === lastSelectionRef.current);
+      const end = sortedFiltered.findIndex((j) => j.id === id);
       if (start !== -1 && end !== -1) {
         const next = new Set(sel);
         const [from, to] = start < end ? [start, end] : [end, start];
-        filtered.slice(from, to + 1).forEach((j) => {
+        sortedFiltered.slice(from, to + 1).forEach((j) => {
           if (nextChecked) next.add(j.id);
           else next.delete(j.id);
         });
@@ -794,7 +770,7 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
   }
   function toggleAll() {
     if (allSel) setSel(new Set());
-    else setSel(new Set(filtered.map((j) => j.id)));
+    else setSel(new Set(sortedFiltered.map((j) => j.id)));
     lastSelectionRef.current = null;
   }
 
@@ -894,6 +870,7 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
             {col("lastStatusChanged") && <col style={{ width: 96 }} />}
             {col("processed") && <col style={{ width: 96 }} />}
             {col("extraction") && <col style={{ width: 80 }} />}
+            {col("llmModel") && <col style={{ width: 120 }} />}
             {!panelOpen && <col style={{ width: panelOpen ? 0 : 200 }} />}
           </colgroup>
           <thead>
@@ -924,11 +901,12 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
               {col("lastStatusChanged") && <SortH k="lastStatusChangedAt">Status changed</SortH>}
               {col("processed") && <SortH k="lastProcessedAt">Processed</SortH>}
               {col("extraction") && <SortH k="extractionStatus">Extract</SortH>}
+              {col("llmModel") && <th>LLM model</th>}
               {!panelOpen && <SortH k="nextActionDue">Next action</SortH>}
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 && (
+            {sortedFiltered.length === 0 && (
               <tr>
                 <td colSpan={20} style={{ padding: "48px 24px", textAlign: "center" }}>
                   {jobs.length === 0 ? (
@@ -950,7 +928,7 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
                 </td>
               </tr>
             )}
-            {filtered.map((j) => (
+            {sortedFiltered.map((j) => (
               <tr
                 key={j.id}
                 tabIndex={0}
@@ -1014,6 +992,12 @@ function JobsPage({ selectedJobId, onSelectJob, panelOpen, savedViewName, setSav
                 {col("lastStatusChanged") && <td className="col-mono" title={fmtDateTime(j.lastStatusChangedAt)}>{fmtCaptured(j.lastStatusChangedAt)}</td>}
                 {col("processed") && <td className="col-mono" title={fmtDateTime(j.extraction?.at)}>{fmtCaptured(j.extraction?.at)}</td>}
                 {col("extraction") && <td><ExtractionChip ext={j.extraction} /></td>}
+                {col("llmModel") && (() => {
+                  const m = j.extraction?.model;
+                  const isApple = m === "apple-foundation-models";
+                  const label = !m ? "—" : isApple ? "Apple" : m.length > 14 ? m.slice(0, 13) + "…" : m;
+                  return <td className="col-mono" title={m || ""} style={{ fontSize: 11, color: isApple ? "var(--st-applied, #e67e22)" : "var(--fg-mute)" }}>{label}</td>;
+                })()}
                 {!panelOpen && (
                   <td className="col-mute">
                     {j.nextAction ? (

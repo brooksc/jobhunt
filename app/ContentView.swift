@@ -39,11 +39,9 @@ struct ContentView: View {
             Text("Dashboard coming soon")
                 .foregroundStyle(.secondary)
         case .dataQuality:
-            Text("Data Quality coming soon")
-                .foregroundStyle(.secondary)
+            DataQualityView()
         case .needsAction:
-            Text("Needs Action coming soon")
-                .foregroundStyle(.secondary)
+            NeedsActionView()
         case .llmQueue:
             LLMQueueView(queueActor: appServices.queueActor, settings: appServices.settings)
         case .sites:
@@ -51,8 +49,7 @@ struct ContentView: View {
         case .duplicates:
             DuplicatesView()
         case .settings:
-            Text("Settings coming soon")
-                .foregroundStyle(.secondary)
+            SettingsView()
         case .help:
             Text("Help coming soon")
                 .foregroundStyle(.secondary)

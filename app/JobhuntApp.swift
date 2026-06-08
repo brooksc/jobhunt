@@ -5,10 +5,14 @@ import JobhuntCore
 @main
 struct JobhuntApp: App {
     let modelContainer: ModelContainer
+    let siteService: SiteService
 
     init() {
         do {
-            modelContainer = try ModelContainerFactory.production()
+            let container = try ModelContainerFactory.production()
+            modelContainer = container
+            let store = BackgroundStore(modelContainer: container)
+            siteService = SiteService(store: store)
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }
@@ -16,7 +20,7 @@ struct JobhuntApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(siteService: siteService)
         }
         .modelContainer(modelContainer)
         .commands {

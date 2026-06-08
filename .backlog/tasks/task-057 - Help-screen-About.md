@@ -1,9 +1,10 @@
 ---
 id: TASK-057
 title: Help screen + About
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-07 22:50'
+updated_date: '2026-06-08 03:56'
 labels:
   - swift-rewrite
   - ui
@@ -44,3 +45,9 @@ Depends on task-045 (shell/components).
 - [ ] #3 About shows bundle version + local-data + privacy note
 - [ ] #4 XCUITest verifies sections + version render
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Help screen and About panel implemented with keyboard shortcuts reference and app version info.
+<!-- SECTION:FINAL_SUMMARY:END -->

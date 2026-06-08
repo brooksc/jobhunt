@@ -1,11 +1,11 @@
 ---
 id: TASK-039
 title: 'FitScorer: weighted 5-dimension scoring + penalty model + rescore'
-status: In Progress
+status: Done
 assignee:
   - claude
 created_date: '2026-06-07 22:45'
-updated_date: '2026-06-08 02:05'
+updated_date: '2026-06-08 02:13'
 labels:
   - swift-rewrite
   - core
@@ -45,8 +45,25 @@ Depends on task-034 (Job/JobFitScore/Resume models). The ExtractionEngine (later
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Weighted 5-dimension score + penalty reproduces extract.js results on fixtures (incl. cap and floor)
-- [ ] #2 fitScoreJSON structure matches what the Detail Fit tab expects
-- [ ] #3 rescoreAll recompute matches rescore.js on a seeded store and updates Job.fitScore
-- [ ] #4 CoreTests cover weighting, penalty cap, floor, and rescore
+- [x] #1 Weighted 5-dimension score + penalty reproduces extract.js results on fixtures (incl. cap and floor)
+- [x] #2 fitScoreJSON structure matches what the Detail Fit tab expects
+- [x] #3 rescoreAll recompute matches rescore.js on a seeded store and updates Job.fitScore
+- [x] #4 CoreTests cover weighting, penalty cap, floor, and rescore
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented FitScorer.swift (core/Services/) with pure Foundation-only deterministic scoring math ported from server/extract.js and server/rescore.js:
+
+- 5-dimension weighted scoring: required_qualifications 45%, preferred_qualifications 5%, skills 15%, experience_level 20%, domain_fit 15% (totaling 100%)
+- Penalty model: -5 per generic missing requirement, -10 per domain-gap keyword (asic/fpga/rtl/tapeout/tape-out/silicon/emulation/hyperscaler/cloud service/soc /vlsi/gds), capped at -50
+- Final score = max(0, weighted_sum - penalty)
+- FitScoreResult struct: { overall: Int, breakdown: [String: Double], penalty: Int, penaltyReasons: [String], scoreWeights: [String: Double] }
+- rescoreFromJSON(): recomputes score from stored fitScoreJSON without LLM, handling both legacy JS format (dimensions array) and Swift format (breakdown dict)
+- encode()/decode() for JSON round-trip storage
+
+26 XCTest cases in tests/CoreTests/FitScorerTests.swift covering: weight totals, score computation, heterogeneous weighted score, partial dimension normalization, generic vs domain-gap penalties, penalty cap at -50, floor at 0, penaltyReasons list, breakdown clamping, scoreWeights in result, rescoreFromJSON for both formats, encode/decode round-trip, empty dimensions, case-insensitive domain gap keywords, mixed penalty scenarios.
+
+Also fixed pre-existing AvailabilityChecker.swift #Predicate compilation error (enum != comparisons not supported in SwiftData predicates; converted to rawValue string comparisons).
+<!-- SECTION:FINAL_SUMMARY:END -->

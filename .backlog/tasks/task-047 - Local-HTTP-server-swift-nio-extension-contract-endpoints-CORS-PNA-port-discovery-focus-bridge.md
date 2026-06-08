@@ -3,9 +3,10 @@ id: TASK-047
 title: >-
   Local HTTP server (swift-nio): extension contract endpoints, CORS/PNA, port
   discovery, focus bridge
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-07 22:48'
+updated_date: '2026-06-08 03:08'
 labels:
   - swift-rewrite
   - server

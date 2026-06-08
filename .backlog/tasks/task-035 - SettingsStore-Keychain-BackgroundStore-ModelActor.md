@@ -1,9 +1,11 @@
 ---
 id: TASK-035
 title: SettingsStore + Keychain + BackgroundStore ModelActor
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - claude
 created_date: '2026-06-07 22:44'
+updated_date: '2026-06-08 01:46'
 labels:
   - swift-rewrite
   - core
@@ -48,3 +50,13 @@ Depends on task-034 (models: Setting). Consumed by the LLM engine, all bulk oper
 - [ ] #4 Consent helper: cloud providers require explicit consent, localhost providers auto-consented
 - [ ] #5 CoreTests cover defaults, round-trip, Keychain, consent logic, and an off-main-actor batched write
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. core/Settings/KeychainStore.swift — Security framework wrapper: store/read/delete String by service+key
+2. core/Settings/SettingsStore.swift — @Observable, reads Setting from SwiftData context, typed accessors with SETTINGS_DEFAULTS, API key accessors delegate to KeychainStore
+3. core/Settings/ConsentHelper.swift — isConsented(provider:) logic: localhost providers auto-consented, cloud requires flag
+4. core/Services/BackgroundStore.swift — @ModelActor owning a background ModelContext; batchInsert, batchSave helpers
+5. Tests/CoreTests/SettingsStoreTests.swift — defaults, set/get, Keychain, consent, off-main-actor write
+<!-- SECTION:PLAN:END -->

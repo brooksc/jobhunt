@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template for Developer ID export. The CI workflow generates this file at runtime
+     with the actual APPLE_TEAM_ID injected. This copy is for local reference only. -->
+<plist version="1.0">
+<dict>
+  <key>method</key>
+  <string>developer-id</string>
+  <key>teamID</key>
+  <string>REPLACE_WITH_TEAM_ID</string>
+</dict>
+</plist>

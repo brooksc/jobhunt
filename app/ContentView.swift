@@ -6,24 +6,17 @@ import SwiftUI
 struct ContentView: View {
     var router: Router
     @State private var theme = Theme()
+    @State private var columnVisibility: NavigationSplitViewVisibility = .doubleColumn
     @Environment(AppServices.self) private var appServices
 
-    @Query private var sites: [Site]
     @Query(filter: #Predicate<Job> { $0.unread == true }) private var unreadJobs: [Job]
 
-    private var selectedSite: Site? {
-        guard let id = router.selectedSiteID else { return nil }
-        return sites.first { $0.id == id }
-    }
-
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             Sidebar(router: router, theme: theme)
-        } content: {
-            contentView(for: router.selectedSection)
-                .navigationSplitViewColumnWidth(min: 550, ideal: 700)
+                .navigationSplitViewColumnWidth(min: 170, ideal: 200)
         } detail: {
-            detailView(for: router.selectedSection)
+            sectionView(for: router.selectedSection)
         }
         .environment(router)
         .environment(theme)
@@ -47,10 +40,10 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    func contentView(for section: SidebarSection) -> some View {
+    private func sectionView(for section: SidebarSection) -> some View {
         switch section {
         case .jobs:
-            JobsView()
+            JobsPaneView()
         case .dashboard:
             DashboardView()
         case .dataQuality:
@@ -60,32 +53,80 @@ struct ContentView: View {
         case .llmQueue:
             LLMQueueView(queueActor: appServices.queueActor, settings: appServices.settings)
         case .sites:
-            SitesView(siteService: appServices.siteService)
+            SitesPaneView(siteService: appServices.siteService)
         case .duplicates:
             DuplicatesView()
         case .settings:
             SettingsView()
         case .help:
-            Text("Help coming soon")
-                .foregroundStyle(.secondary)
+            HelpView()
         }
     }
+}
 
-    @ViewBuilder
-    func detailView(for section: SidebarSection) -> some View {
-        switch section {
-        case .sites:
-            if let site = selectedSite {
-                SiteDetailView(site: site, siteService: appServices.siteService)
-            } else {
-                ContentUnavailableView(
-                    "No Site Selected",
-                    systemImage: "globe",
-                    description: Text("Select a site to view details.")
-                )
+// MARK: - Jobs pane (list + optional detail split)
+
+private struct JobsPaneView: View {
+    @Environment(Router.self) private var router
+
+    var body: some View {
+        HSplitView {
+            JobsView()
+                .frame(minWidth: 400, idealWidth: 550)
+            if let jobID = router.selectedJobID {
+                JobDetailWrapper(jobID: jobID)
+                    .frame(minWidth: 350)
             }
-        default:
-            JobDetailPlaceholder()
+        }
+    }
+}
+
+// MARK: - Sites pane (list + detail split)
+
+private struct SitesPaneView: View {
+    let siteService: SiteService
+    @Environment(Router.self) private var router
+    @Query private var sites: [Site]
+
+    private var selectedSite: Site? {
+        guard let id = router.selectedSiteID else { return nil }
+        return sites.first { $0.id == id }
+    }
+
+    var body: some View {
+        HSplitView {
+            SitesView(siteService: siteService)
+                .frame(minWidth: 250, idealWidth: 350)
+            Group {
+                if let site = selectedSite {
+                    SiteDetailView(site: site, siteService: siteService)
+                } else {
+                    ContentUnavailableView(
+                        "No Site Selected",
+                        systemImage: "globe",
+                        description: Text("Select a site to view details.")
+                    )
+                }
+            }
+            .frame(minWidth: 350)
+        }
+    }
+}
+
+// MARK: - Job detail query wrapper
+
+private struct JobDetailWrapper: View {
+    let jobID: String
+    @Query private var jobs: [Job]
+
+    init(jobID: String) {
+        self.jobID = jobID
+        _jobs = Query(filter: #Predicate { $0.id == jobID })
+    }
+
+    var body: some View {
+        if let job = jobs.first {
+            JobDetailView(job: job)
         }
     }
 }

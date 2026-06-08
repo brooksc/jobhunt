@@ -156,6 +156,7 @@ struct LLMQueueView: View {
                 selectionContextMenu(for: ids)
             }
         }
+        .navigationTitle("LLM Queue")
         .toolbar { toolbarContent }
         .task {
             // Sync isPaused from settings

@@ -35,6 +35,7 @@ struct DuplicatesView: View {
                     .frame(minWidth: 480)
             }
         }
+        .navigationTitle("Duplicates")
         .onChange(of: allJobs) { _, _ in
             refreshPairs()
         }

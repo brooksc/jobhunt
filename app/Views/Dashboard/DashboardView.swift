@@ -163,7 +163,7 @@ struct DashboardView: View {
                             .cornerRadius(2)
                         }
                     }
-                    .frame(height: 120)
+                    .frame(height: 150)
                     .chartXAxis {
                         AxisMarks(values: .stride(by: .day, count: 7)) {
                             AxisValueLabel(format: .dateTime.month().day())

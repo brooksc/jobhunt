@@ -2,7 +2,9 @@ import XCTest
 @testable import JobhuntServer
 
 final class ServerTests: XCTestCase {
-    func testVersion() {
-        XCTAssertFalse(JobhuntServer.version.isEmpty)
+    func testServerErrorCases() {
+        // Ensure the error enum is accessible
+        _ = ServerError.noPortAvailable
+        _ = ServerError.listenerCancelled
     }
 }

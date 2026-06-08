@@ -3,9 +3,11 @@ id: TASK-043
 title: >-
   External one-time legacy SQLite → SwiftData migrator (standalone CLI, not
   shipped)
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - claude
 created_date: '2026-06-07 22:46'
+updated_date: '2026-06-08 02:13'
 labels:
   - swift-rewrite
   - tooling

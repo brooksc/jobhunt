@@ -1,9 +1,10 @@
 ---
 id: TASK-046
 title: 'JobService + SiteService: capture ingestion, job/site workflows, CSV export'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-07 22:47'
+updated_date: '2026-06-08 03:08'
 labels:
   - swift-rewrite
   - core

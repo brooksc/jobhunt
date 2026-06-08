@@ -3,9 +3,11 @@ id: TASK-037
 title: >-
   Extraction field normalization: salary, remote type, location, company
   inference
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - claude
 created_date: '2026-06-07 22:44'
+updated_date: '2026-06-08 02:05'
 labels:
   - swift-rewrite
   - core

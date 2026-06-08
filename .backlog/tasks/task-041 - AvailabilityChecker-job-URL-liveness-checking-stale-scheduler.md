@@ -1,11 +1,11 @@
 ---
 id: TASK-041
 title: 'AvailabilityChecker: job-URL liveness checking + stale scheduler'
-status: In Progress
+status: Done
 assignee:
   - claude
 created_date: '2026-06-07 22:45'
-updated_date: '2026-06-08 02:05'
+updated_date: '2026-06-08 02:15'
 labels:
   - swift-rewrite
   - core
@@ -44,8 +44,22 @@ Depends on task-034 (models). Reads settings (task-035) if available. Emits even
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 checkURL reproduces availability.js gone-detection (status codes, body patterns, redirects, missing title)
-- [ ] #2 checkJobs / checkStaleJobs honor thresholds (21d default), per-run limit (25), and bounded concurrency
-- [ ] #3 Jobs found gone are set not_available and emit jobUnavailable events
-- [ ] #4 Ported availability.test.js passes as XCTest using a mocked URLProtocol
+- [x] #1 checkURL reproduces availability.js gone-detection (status codes, body patterns, redirects, missing title)
+- [x] #2 checkJobs / checkStaleJobs honor thresholds (21d default), per-run limit (25), and bounded concurrency
+- [x] #3 Jobs found gone are set not_available and emit jobUnavailable events
+- [x] #4 Ported availability.test.js passes as XCTest using a mocked URLProtocol
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented AvailabilityChecker.swift in core/Services/ with full port of server/availability.js behavior:
+
+- URLAvailabilityResult enum (.available, .gone(reason:), .error(_))
+- checkURL(_ url:, title:, session:): URLSession-based HEAD+GET with 12s timeout, 404/410 detection, 15 gone body patterns, redirect-to-non-job heuristic (root/jobs/careers/company paths), missing-title-after-redirect detection. Timeout and network errors treated as available (matches JS behavior).
+- checkJobs(_ jobs:, store:, session:): parallel bounded concurrency (max 10) via TaskGroup with lightweight Sendable value types to avoid SwiftData actor isolation issues. Gone jobs updated via BackgroundStore and jobUnavailable notification posted.
+- checkStaleJobs(store:, staleDays:, limit:): fetches jobs older than cutoff (default 21d), limits to 25/run, in-memory filtering to avoid SwiftData enum predicate limitations on macOS 15.
+- maybeRunStaleCheck(store:, settings:, session:): reads availabilityAutoCheckEnabled, availabilityAutoCheckIntervalDays, availabilityStaleDays from SettingsStore; posts availabilityCheckCompleted notification for app layer to update last-check timestamp.
+
+15 XCTest cases in Tests/CoreTests/AvailabilityCheckerTests.swift porting the JS test suite: 404/410 detection, body pattern detection, redirect heuristics (company page, missing title, canonical redirect, search page, cross-domain), URL normalization, isMeaningfulTitle, checkJobs with BackgroundStore (skip archived/notAvailable, mark gone, emit notification), checkStaleJobs stale selection, maybeRunStaleCheck disabled/interval/elapsed cases. All 96 CoreTests pass (81 pre-existing + 15 new).
+<!-- SECTION:FINAL_SUMMARY:END -->

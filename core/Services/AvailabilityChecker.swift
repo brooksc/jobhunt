@@ -1,3 +1,4 @@
+// swiftlint:disable line_length cyclomatic_complexity function_body_length large_tuple
 import Foundation
 import SwiftData
 
@@ -38,7 +39,7 @@ public enum AvailabilityChecker {
         "posting has expired", "job posting has expired", "no longer accepting applications",
         "job listing has expired", "this position has been filled", "this role is no longer",
         "opening is no longer", "requisition is no longer", "job has been closed",
-        "this job has been removed",
+        "this job has been removed"
     ]
     static let timeoutSeconds: TimeInterval = 12
 
@@ -68,9 +69,9 @@ public enum AvailabilityChecker {
 
     static func normalizedText(_ value: String) -> String {
         let lower = value.lowercased()
-        let cleaned = lower.unicodeScalars.map { c -> Character in
-            let v = c.value
-            if (v >= 97 && v <= 122) || (v >= 48 && v <= 57) { return Character(c) } // a-z, 0-9
+        let cleaned = lower.unicodeScalars.map { scalar -> Character in
+            let codePoint = scalar.value
+            if (codePoint >= 97 && codePoint <= 122) || (codePoint >= 48 && codePoint <= 57) { return Character(scalar) } // a-z, 0-9
             return " "
         }
         return String(cleaned).split(separator: " ").joined(separator: " ")
@@ -151,10 +152,8 @@ public enum AvailabilityChecker {
 
             // 2. Body pattern matching.
             let body = String(data: data, encoding: .utf8)?.lowercased() ?? ""
-            for pattern in goneBodyPatterns {
-                if body.contains(pattern) {
-                    return .gone(reason: "body: \(pattern)")
-                }
+            for pattern in goneBodyPatterns where body.contains(pattern) {
+                return .gone(reason: "body: \(pattern)")
             }
 
             // 3. Redirect to non-job page.
@@ -224,8 +223,8 @@ public enum AvailabilityChecker {
             for spec in specs {
                 // Wait for one result if at the concurrency limit.
                 if inFlight >= maxConcurrent {
-                    if let r = await group.next() {
-                        checkedJobs.append(r)
+                    if let nextResult = await group.next() {
+                        checkedJobs.append(nextResult)
                         inFlight -= 1
                     }
                 }
@@ -235,14 +234,14 @@ public enum AvailabilityChecker {
                 let url = spec.url
                 inFlight += 1
                 group.addTask {
-                    let r = await checkURL(url, title: title, session: session)
-                    return CheckedJob(jobID: id, jobNumber: jobNumber, title: title, result: r)
+                    let checkResult = await checkURL(url, title: title, session: session)
+                    return CheckedJob(jobID: id, jobNumber: jobNumber, title: title, result: checkResult)
                 }
             }
 
             // Drain remaining tasks.
-            for await r in group {
-                checkedJobs.append(r)
+            for await groupResult in group {
+                checkedJobs.append(groupResult)
             }
         }
 
@@ -254,9 +253,9 @@ public enum AvailabilityChecker {
             if case .gone(let reason) = checked.result {
                 do {
                     let idToMatch = checked.jobID
-                    try await store.update(Job.self, predicate: #Predicate { $0.id == idToMatch }) { j in
-                        j.status = .notAvailable
-                        j.updatedAt = Date()
+                    try await store.update(Job.self, predicate: #Predicate { $0.id == idToMatch }) { job in
+                        job.status = .notAvailable
+                        job.updatedAt = Date()
                     }
                     markedCount += 1
                     NotificationCenter.default.post(
@@ -266,7 +265,7 @@ public enum AvailabilityChecker {
                             JobUnavailableKey.jobID: checked.jobID,
                             JobUnavailableKey.jobNumber: checked.jobNumber as Any,
                             JobUnavailableKey.title: checked.title,
-                            JobUnavailableKey.reason: reason,
+                            JobUnavailableKey.reason: reason
                         ]
                     )
                 } catch {
@@ -354,3 +353,4 @@ public extension Notification.Name {
     /// The app layer should listen and update SettingsKey.availabilityLastAutoCheckAt.
     static let availabilityCheckCompleted = Notification.Name("jobhunt.availabilityCheckCompleted")
 }
+// swiftlint:enable line_length cyclomatic_complexity function_body_length large_tuple

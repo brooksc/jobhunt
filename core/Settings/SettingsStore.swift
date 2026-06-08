@@ -29,7 +29,7 @@ private let settingsDefaults: [String: String] = [
     SettingsKey.llmConsentAnthropic: "0",
     SettingsKey.llmConsentGoogle: "0",
     SettingsKey.llmConsentOpenRouter: "0",
-    SettingsKey.llmConsentOpenAI: "0",
+    SettingsKey.llmConsentOpenAI: "0"
 ]
 
 @Observable
@@ -63,8 +63,8 @@ public final class SettingsStore {
     }
 
     public func bool(forKey key: String) -> Bool {
-        let v = string(forKey: key)
-        return v == "true" || v == "1"
+        let strVal = string(forKey: key)
+        return strVal == "true" || strVal == "1"
     }
 
     public func setBool(_ value: Bool, forKey key: String) {

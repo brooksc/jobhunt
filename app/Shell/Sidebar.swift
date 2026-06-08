@@ -11,7 +11,7 @@ struct Sidebar: View {
         ("Saved", JobStatus.saved.rawValue),
         ("Applied", JobStatus.applied.rawValue),
         ("Interview", JobStatus.interview.rawValue),
-        ("Offer", JobStatus.offer.rawValue),
+        ("Offer", JobStatus.offer.rawValue)
     ]
 
     var body: some View {

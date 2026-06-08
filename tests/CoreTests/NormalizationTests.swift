@@ -1,3 +1,4 @@
+// swiftlint:disable line_length file_length
 import XCTest
 @testable import JobhuntCore
 
@@ -535,7 +536,7 @@ final class JobFieldNormalizerTests: XCTestCase {
             "salary_min": nil,
             "salary_max": nil,
             "salary_hourly_min": nil,
-            "salary_hourly_max": nil,
+            "salary_hourly_max": nil
         ]
         let source = """
 Senior Engineer
@@ -552,3 +553,5 @@ San Francisco, CA
         XCTAssertNotNil(result["salary_max"])
     }
 }
+
+// swiftlint:enable line_length file_length

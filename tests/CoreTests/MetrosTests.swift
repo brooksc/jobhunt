@@ -1,3 +1,4 @@
+// swiftlint:disable force_unwrapping
 // MetrosTests.swift — tests for Metros utility
 import XCTest
 @testable import JobhuntCore
@@ -115,3 +116,5 @@ final class MetrosTests: XCTestCase {
         XCTAssertEqual(stateAbbrevToFull["ny"], "New York")
     }
 }
+
+// swiftlint:enable force_unwrapping

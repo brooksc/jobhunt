@@ -1,3 +1,4 @@
+// swiftlint:disable line_length force_unwrapping
 import XCTest
 import SwiftData
 @testable import JobhuntCore
@@ -41,8 +42,8 @@ final class DuplicateDetectorTests: XCTestCase {
     func testCompanyJaccardPartialOverlap() {
         // "Acme Corp Solutions" → {"acme"}, "Acme Widget" → {"acme", "widget"}
         // intersection = 1, union = 2, Jaccard = 0.5
-        let j = DuplicateDetector.companyJaccard("Acme Corp Solutions", "Acme Widget")
-        XCTAssertEqual(j, 0.5, accuracy: 0.001)
+        let jaccardScore = DuplicateDetector.companyJaccard("Acme Corp Solutions", "Acme Widget")
+        XCTAssertEqual(jaccardScore, 0.5, accuracy: 0.001)
     }
 
     func testCompanyJaccardBothEmpty() {
@@ -114,21 +115,21 @@ final class DuplicateDetectorTests: XCTestCase {
     // MARK: - Hash helpers
 
     func testCleanedHashIsDeterministic() {
-        let h1 = DuplicateDetector.cleanedHash(from: "hello world")
-        let h2 = DuplicateDetector.cleanedHash(from: "hello world")
-        XCTAssertEqual(h1, h2)
+        let hash1 = DuplicateDetector.cleanedHash(from: "hello world")
+        let hash2 = DuplicateDetector.cleanedHash(from: "hello world")
+        XCTAssertEqual(hash1, hash2)
     }
 
     func testCleanedHashDiffersForDifferentInputs() {
-        let h1 = DuplicateDetector.cleanedHash(from: "hello world")
-        let h2 = DuplicateDetector.cleanedHash(from: "hello world!")
-        XCTAssertNotEqual(h1, h2)
+        let hash1 = DuplicateDetector.cleanedHash(from: "hello world")
+        let hash2 = DuplicateDetector.cleanedHash(from: "hello world!")
+        XCTAssertNotEqual(hash1, hash2)
     }
 
     func testRawHashIsDeterministic() {
-        let h1 = DuplicateDetector.rawHash(url: "https://example.com", canonicalURL: nil, selectedText: "text", visibleText: "visible", structuredData: [])
-        let h2 = DuplicateDetector.rawHash(url: "https://example.com", canonicalURL: nil, selectedText: "text", visibleText: "visible", structuredData: [])
-        XCTAssertEqual(h1, h2)
+        let hash1 = DuplicateDetector.rawHash(url: "https://example.com", canonicalURL: nil, selectedText: "text", visibleText: "visible", structuredData: [])
+        let hash2 = DuplicateDetector.rawHash(url: "https://example.com", canonicalURL: nil, selectedText: "text", visibleText: "visible", structuredData: [])
+        XCTAssertEqual(hash1, hash2)
     }
 
     // MARK: - sortedJSON (matches db.js output)
@@ -329,10 +330,10 @@ final class DuplicateDetectorTests: XCTestCase {
         // 3 jobs with same cleaned hash → 2 pairs (groupSize - 1 = 2)
         let hash = DuplicateDetector.cleanedHash(from: "unique posting text with enough distinct tokens for hash detection of duplication")
 
-        for i in 1...3 {
-            let cap = Capture(url: "https://source\(i).com/job", pageTitle: "Dev", rawHash: "rh\(i)", cleanedHash: hash)
+        for idx in 1...3 {
+            let cap = Capture(url: "https://source\(idx).com/job", pageTitle: "Dev", rawHash: "rh\(idx)", cleanedHash: hash)
             cap.cleanedDescription = "unique posting text with enough distinct tokens for hash detection of duplication"
-            let job = Job(jobNumber: i, company: "Corp", title: "Dev", extractionStatus: .succeeded)
+            let job = Job(jobNumber: idx, company: "Corp", title: "Dev", extractionStatus: .succeeded)
             job.capture = cap
             ctx.insert(cap)
             ctx.insert(job)
@@ -355,7 +356,7 @@ private func makeTestContainer() throws -> ModelContainer {
         Job.self, Capture.self, DuplicateDecision.self,
         JobEvent.self, JobAction.self, Contact.self,
         CoverLetter.self, JobFitScore.self, LLMRequest.self,
-        LLMRequestAttempt.self, DataQualityReview.self,
+        LLMRequestAttempt.self, DataQualityReview.self
     ])
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
     return try ModelContainer(for: schema, configurations: config)
@@ -390,14 +391,14 @@ private extension JobSnapshot {
         return JobSnapshot(job: job, capture: cap)
     }
 
-    func withRemoteType(_ rt: String) -> JobSnapshot {
+    func withRemoteType(_ remoteType: String) -> JobSnapshot {
         let cap = Capture(url: self.sourceURL, pageTitle: "", rawHash: self.id, cleanedHash: self.cleanedHash)
         cap.cleanedDescription = self.cleanedDescription
         let job = Job(
             id: self.id,
             company: self.company,
             title: self.title,
-            remoteType: RemoteType(rawValue: rt),
+            remoteType: RemoteType(rawValue: remoteType),
             salaryMin: self.salaryMin,
             salaryMax: self.salaryMax,
             extractionStatus: ExtractionStatus(rawValue: self.extractionStatus) ?? .succeeded
@@ -406,3 +407,5 @@ private extension JobSnapshot {
         return JobSnapshot(job: job, capture: cap)
     }
 }
+
+// swiftlint:enable line_length force_unwrapping

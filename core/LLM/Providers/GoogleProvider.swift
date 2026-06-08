@@ -35,7 +35,7 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
 
         var payload: [String: Any] = [
             "contents": contents,
-            "generationConfig": ["responseMimeType": "application/json"],
+            "generationConfig": ["responseMimeType": "application/json"]
         ]
         if let sys = systemMsg {
             payload["systemInstruction"] = ["parts": [["text": sys.content]]]

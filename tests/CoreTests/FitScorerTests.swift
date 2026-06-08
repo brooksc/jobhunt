@@ -12,7 +12,7 @@ final class FitScorerTests: XCTestCase {
             "preferred_qualifications": score,
             "skills": score,
             "experience_level": score,
-            "domain_fit": score,
+            "domain_fit": score
         ]
     }
 
@@ -59,7 +59,7 @@ final class FitScorerTests: XCTestCase {
             "preferred_qualifications": 60,
             "skills": 70,
             "experience_level": 90,
-            "domain_fit": 50,
+            "domain_fit": 50
         ]
         let result = FitScorer.computeScore(dimensions: dims)
         XCTAssertEqual(result.overall, 75)
@@ -98,12 +98,12 @@ final class FitScorerTests: XCTestCase {
     func testAllDomainGapKeywordsRecognized() {
         let keywords = ["asic", "fpga", "rtl", "tapeout", "tape-out", "silicon",
                         "emulation", "hyperscaler", "cloud service", "soc ", "vlsi", "gds"]
-        for kw in keywords {
+        for keyword in keywords {
             let result = FitScorer.computeScore(
                 dimensions: allDimensions(100),
-                requirementsNotMet: ["needs \(kw) expertise"]
+                requirementsNotMet: ["needs \(keyword) expertise"]
             )
-            XCTAssertEqual(result.penalty, 10, "keyword '\(kw)' should cost 10")
+            XCTAssertEqual(result.penalty, 10, "keyword '\(keyword)' should cost 10")
         }
     }
 

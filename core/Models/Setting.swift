@@ -52,6 +52,6 @@ public enum SettingsKey {
     // API key settings that must live in Keychain, not SwiftData (App Store hygiene).
     public static let keychainKeys: Set<String> = [
         llmAPIKey, llmAPIKeyOpenAI, llmAPIKeyAnthropic,
-        llmAPIKeyGoogle, llmAPIKeyOpenRouter, llmAPIKeyCustom,
+        llmAPIKeyGoogle, llmAPIKeyOpenRouter, llmAPIKeyCustom
     ]
 }

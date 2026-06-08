@@ -95,8 +95,8 @@ public enum LLMProviderError: Error, LocalizedError {
         switch self {
         case .httpError(let code, let body):
             return "LLM HTTP \(code): \(body.prefix(500))"
-        case .timeout(let s):
-            return "LLM request timed out after \(s)s"
+        case .timeout(let seconds):
+            return "LLM request timed out after \(seconds)s"
         case .noResponse:
             return "LLM produced no response"
         case .unavailable(let reason):

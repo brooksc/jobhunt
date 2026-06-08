@@ -1,3 +1,4 @@
+// swiftlint:disable line_length
 import Foundation
 
 // MARK: - Types
@@ -37,14 +38,14 @@ public enum FitScorer {
         "preferred_qualifications": 0.05,
         "skills": 0.15,
         "experience_level": 0.20,
-        "domain_fit": 0.15,
+        "domain_fit": 0.15
     ]
 
     // MARK: Domain-gap keywords (case-insensitive substring match)
 
     public static let domainGapKeywords: [String] = [
         "asic", "fpga", "rtl", "tapeout", "tape-out", "silicon", "emulation",
-        "hyperscaler", "cloud service", "soc ", "vlsi", "gds",
+        "hyperscaler", "cloud service", "soc ", "vlsi", "gds"
     ]
 
     // MARK: Penalty cap
@@ -124,10 +125,10 @@ public enum FitScorer {
             // Legacy JS format: [{name: "...", score: N, rationale: "..."}, ...]
             guard !dimensionsArray.isEmpty else { return nil }
             var dict: [String: Double] = [:]
-            for d in dimensionsArray {
-                if let name = d["name"] as? String, let score = d["score"] as? Double {
+            for dim in dimensionsArray {
+                if let name = dim["name"] as? String, let score = dim["score"] as? Double {
                     dict[name] = score
-                } else if let name = d["name"] as? String, let score = d["score"] as? Int {
+                } else if let name = dim["name"] as? String, let score = dim["score"] as? Int {
                     dict[name] = Double(score)
                 }
             }
@@ -161,3 +162,4 @@ public enum FitScorer {
         return try? JSONDecoder().decode(FitScoreResult.self, from: data)
     }
 }
+// swiftlint:enable line_length

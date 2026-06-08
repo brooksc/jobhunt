@@ -1,3 +1,4 @@
+// swiftlint:disable line_length nesting
 import Foundation
 
 /// Builds an LLMProvider from the current SettingsStore values.
@@ -109,8 +110,8 @@ public actor OpenRouterRotationPool {
                 && (Double(model.pricing?.completion ?? "1") ?? 1) == 0
             guard isFree else { return nil }
 
-            let sp = model.supportedParameters ?? []
-            let hasStructured = sp.contains("structured_outputs") || sp.contains("response_format")
+            let supportedParams = model.supportedParameters ?? []
+            let hasStructured = supportedParams.contains("structured_outputs") || supportedParams.contains("response_format")
             guard hasStructured else { return nil }
 
             // Text-only output check (exclude audio/image generation models)
@@ -154,3 +155,4 @@ private struct OpenRouterModel: Decodable {
         }
     }
 }
+// swiftlint:enable line_length nesting

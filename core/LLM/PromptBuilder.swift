@@ -1,3 +1,4 @@
+// swiftlint:disable line_length function_body_length
 import Foundation
 
 // MARK: - PromptBuilder
@@ -27,7 +28,7 @@ public enum PromptBuilder {
                 url: url,
                 pageTitle: pageTitle,
                 locationContext: locationContext
-            )),
+            ))
         ]
     }
 
@@ -44,7 +45,7 @@ public enum PromptBuilder {
             ChatMessage(role: "user", content: fitUserPrompt(
                 extractedJob: extractedJob,
                 resumeText: resumeText
-            )),
+            ))
         ]
     }
 
@@ -178,7 +179,7 @@ Location preference context:
             "preferred_qualifications": "how well the resume satisfies the nice-to-have / preferred qualifications",
             "skills": "overlap between the candidate's skills and the skills the job lists",
             "experience_level": "alignment between the candidate's seniority/years and the role's level",
-            "domain_fit": "relevance of the candidate's industry/domain background to this role",
+            "domain_fit": "relevance of the candidate's industry/domain background to this role"
         ]
 
         func block(_ label: String, _ value: String?) -> String {
@@ -197,10 +198,10 @@ Location preference context:
             block("Summary", extractedJob.summary),
             listBlock("Required qualifications", extractedJob.requirements),
             listBlock("Preferred / nice-to-have", extractedJob.niceToHaves),
-            listBlock("Skills", extractedJob.skills),
+            listBlock("Skills", extractedJob.skills)
         ]
-        if let ai = extractedJob.applicationInstructions {
-            jobParts.append("Application instructions (submission mechanics — DO NOT factor into scores): \(ai)")
+        if let appInstructions = extractedJob.applicationInstructions {
+            jobParts.append("Application instructions (submission mechanics — DO NOT factor into scores): \(appInstructions)")
         }
 
         let jobSection = jobParts.joined(separator: "\n")
@@ -300,3 +301,5 @@ public struct ExtractedJobContext: Sendable {
         self.applicationInstructions = applicationInstructions
     }
 }
+
+// swiftlint:enable line_length function_body_length

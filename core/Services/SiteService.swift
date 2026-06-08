@@ -86,11 +86,12 @@ public actor SiteService {
         return site.id
     }
 
-    public func updateSite(id: String, name: String?, excludeState: SiteState?) async throws {
+    public func updateSite(id: String, name: String?, excludeState: SiteState?, intervalDays: Int? = nil) async throws {
         let siteID = id
         try await store.update(Site.self, predicate: #Predicate { $0.id == siteID }) { site in
             if let name { site.companyName = name }
             if let state = excludeState { site.state = state }
+            if let days = intervalDays { site.intervalDays = days }
             site.updatedAt = Date()
         }
     }

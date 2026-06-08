@@ -1,8 +1,19 @@
 import SwiftUI
+import SwiftData
+import JobhuntCore
 
 struct ContentView: View {
     @State private var router = Router()
     @State private var theme = Theme()
+
+    let siteService: SiteService
+
+    @Query private var sites: [Site]
+
+    private var selectedSite: Site? {
+        guard let id = router.selectedSiteID else { return nil }
+        return sites.first { $0.id == id }
+    }
 
     var body: some View {
         NavigationSplitView {
@@ -10,8 +21,7 @@ struct ContentView: View {
         } content: {
             contentView(for: router.selectedSection)
         } detail: {
-            Text("Select a job")
-                .foregroundStyle(.secondary)
+            detailView(for: router.selectedSection)
         }
         .environment(router)
         .environment(theme)
@@ -40,8 +50,7 @@ struct ContentView: View {
             Text("LLM Queue coming soon")
                 .foregroundStyle(.secondary)
         case .sites:
-            Text("Sites coming soon")
-                .foregroundStyle(.secondary)
+            SitesView(siteService: siteService)
         case .duplicates:
             Text("Duplicates coming soon")
                 .foregroundStyle(.secondary)
@@ -53,8 +62,23 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
         }
     }
-}
 
-#Preview {
-    ContentView()
+    @ViewBuilder
+    func detailView(for section: SidebarSection) -> some View {
+        switch section {
+        case .sites:
+            if let site = selectedSite {
+                SiteDetailView(site: site, siteService: siteService)
+            } else {
+                ContentUnavailableView(
+                    "No Site Selected",
+                    systemImage: "globe",
+                    description: Text("Select a site to view details.")
+                )
+            }
+        default:
+            Text("Select an item")
+                .foregroundStyle(.secondary)
+        }
+    }
 }

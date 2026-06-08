@@ -3,11 +3,11 @@ id: TASK-043
 title: >-
   External one-time legacy SQLite → SwiftData migrator (standalone CLI, not
   shipped)
-status: In Progress
+status: Done
 assignee:
   - claude
 created_date: '2026-06-07 22:46'
-updated_date: '2026-06-08 02:13'
+updated_date: '2026-06-08 02:20'
 labels:
   - swift-rewrite
   - tooling
@@ -46,9 +46,25 @@ Depends on task-034 (models + ModelContainerFactory). Standalone — no UI/serve
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 CLI reads a legacy jobhunt.db (read-only) and writes a SwiftData store usable by the app
-- [ ] #2 Every table mapped; jobNumber/hashes/timestamps/JSON blobs preserved verbatim
-- [ ] #3 Prints per-entity migration summary; usage documented
-- [ ] #4 Test against a fixture legacy DB: per-entity counts match and key fields verified intact
-- [ ] #5 Tool is excluded from the shipped app bundles
+- [x] #1 CLI reads a legacy jobhunt.db (read-only) and writes a SwiftData store usable by the app
+- [x] #2 Every table mapped; jobNumber/hashes/timestamps/JSON blobs preserved verbatim
+- [x] #3 Prints per-entity migration summary; usage documented
+- [x] #4 Test against a fixture legacy DB: per-entity counts match and key fields verified intact
+- [x] #5 Tool is excluded from the shipped app bundles
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented the JobhuntMigrator standalone CLI tool:
+
+- tools/migrator/main.swift: Full migration from legacy SQLite jobhunt.db to SwiftData store. Opens source DB read-only (SQLITE_OPEN_READONLY). Maps all 15 legacy tables (captures, jobs, events, site_reviews, duplicate_decisions, settings, job_actions, data_quality_reviews, sites, resumes, job_fit_scores, llm_requests, llm_request_attempts, contacts, cover_letters) to their JobhuntCore @Model counterparts. Preserves jobNumber, rawHash/cleanedHash, timestamps (ISO8601 parse), and JSON blobs verbatim. Prints per-entity summary. Falls back to defaults for unknown enum rawValues.
+
+- tools/migrator/README.md: Usage documentation including CLI options, example invocations, post-migration steps, and a full table mapping.
+
+- Project.swift: Added JobhuntMigrator target (commandLineTool, bundleId com.jobhunt-app.jobhunt.migrator, sources tools/migrator/**/*.swift, depends on JobhuntCore). Added to DMG scheme build action; excluded from MAS scheme.
+
+- Tests/CoreTests/MigratorTests.swift: Three tests — (1) non-existent DB path returns SQLITE error and creates no file, (2) empty DB with minimal schema produces 0-row SwiftData store, (3) fixture DB with 1 row per key table migrates correctly with spot-checks on jobNumber=42, rawHash="hash_abc", extractedJSON preserved, and capture relationship linked.
+
+Build: xcodebuild Jobhunt-DMG scheme succeeds. All CoreTests pass including MigratorTests.
+<!-- SECTION:FINAL_SUMMARY:END -->

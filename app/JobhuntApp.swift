@@ -5,10 +5,13 @@ import JobhuntCore
 @main
 struct JobhuntApp: App {
     let modelContainer: ModelContainer
+    let appServices: AppServices
 
     init() {
         do {
-            modelContainer = try ModelContainerFactory.production()
+            let container = try ModelContainerFactory.production()
+            modelContainer = container
+            appServices = AppServices(modelContainer: container)
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }
@@ -17,6 +20,7 @@ struct JobhuntApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(appServices)
         }
         .modelContainer(modelContainer)
         .commands {

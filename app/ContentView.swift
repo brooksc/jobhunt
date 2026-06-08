@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @State private var router = Router()
     @State private var theme = Theme()
+    @Environment(AppServices.self) private var appServices
 
     var body: some View {
         NavigationSplitView {
@@ -10,8 +11,7 @@ struct ContentView: View {
         } content: {
             contentView(for: router.selectedSection)
         } detail: {
-            Text("Select a job")
-                .foregroundStyle(.secondary)
+            JobDetailPlaceholder()
         }
         .environment(router)
         .environment(theme)
@@ -25,8 +25,7 @@ struct ContentView: View {
     func contentView(for section: SidebarSection) -> some View {
         switch section {
         case .jobs:
-            Text("Jobs screen coming soon")
-                .foregroundStyle(.secondary)
+            JobsView()
         case .dashboard:
             Text("Dashboard coming soon")
                 .foregroundStyle(.secondary)
@@ -55,6 +54,4 @@ struct ContentView: View {
     }
 }
 
-#Preview {
-    ContentView()
-}
+// Preview requires a real ModelContainer (for AppServices) so is omitted here.

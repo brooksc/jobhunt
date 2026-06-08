@@ -178,6 +178,13 @@ let appUITestsTarget = testTarget(
     deps: [.target(name: "Jobhunt")]
 )
 
+let llmEvalTarget = testTarget(
+    name: "LLMEval",
+    bundleSuffix: "LLMEval",
+    sources: ["Tests/LLMEval/**/*.swift"],
+    deps: [.target(name: "JobhuntCore")]
+)
+
 // MARK: - Schemes
 
 let dmgScheme = Scheme.scheme(
@@ -235,6 +242,7 @@ let project = Project(
         mcpTarget, mcpTestsTarget,
         migratorTarget,
         appTarget, appUITestsTarget,
+        llmEvalTarget,
     ],
     schemes: [dmgScheme, masScheme]
 )

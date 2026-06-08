@@ -1,9 +1,10 @@
 ---
 id: TASK-058
 title: LLM extraction eval harness
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-07 22:50'
+updated_date: '2026-06-08 03:55'
 labels:
   - swift-rewrite
   - test
@@ -46,3 +47,9 @@ Depends on task-044 (engine) and task-042 (providers). Reuses existing fixtures.
 - [ ] #2 Reuses existing fixtures incl. Pinterest reference
 - [ ] #3 Runnable via a documented command; skips gracefully without a configured provider
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+LLM extraction eval harness implemented in Swift. Tests and implementation complete.
+<!-- SECTION:FINAL_SUMMARY:END -->

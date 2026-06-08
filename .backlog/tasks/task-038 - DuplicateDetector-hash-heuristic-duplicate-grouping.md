@@ -1,9 +1,11 @@
 ---
 id: TASK-038
 title: 'DuplicateDetector: hash + heuristic duplicate grouping'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - claude
 created_date: '2026-06-07 22:45'
+updated_date: '2026-06-08 02:05'
 labels:
   - swift-rewrite
   - core

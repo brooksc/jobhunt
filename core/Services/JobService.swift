@@ -370,6 +370,30 @@ public actor JobService {
         }
     }
 
+    // MARK: - Field-level updates (used by detail inspector)
+
+    /// Update individual string/enum fields on a job. Pass nil to leave a field unchanged.
+    public func updateJobFields(
+        jobID: String,
+        company: String?? = .none,
+        title: String?? = .none,
+        location: String?? = .none,
+        remoteType: RemoteType?? = .none,
+        applicationURL: String?? = .none,
+        duplicateOfJobID: String?? = .none
+    ) async throws {
+        let id = jobID
+        try await store.update(Job.self, predicate: #Predicate { $0.id == id }) { job in
+            if let v = company { job.company = v }
+            if let v = title { job.title = v }
+            if let v = location { job.location = v }
+            if let v = remoteType { job.remoteType = v }
+            if let v = applicationURL { job.applicationURL = v }
+            if let v = duplicateOfJobID { job.duplicateOfJobID = v }
+            job.updatedAt = Date()
+        }
+    }
+
     // MARK: - URL lookup (used by server /api/jobs/by-url)
 
     /// Find the job_number for the first job whose capture URL matches the given URL.

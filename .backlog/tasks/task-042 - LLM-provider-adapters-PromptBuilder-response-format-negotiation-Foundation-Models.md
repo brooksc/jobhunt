@@ -3,11 +3,11 @@ id: TASK-042
 title: >-
   LLM provider adapters + PromptBuilder + response-format negotiation +
   Foundation Models
-status: In Progress
+status: Done
 assignee:
   - claude
 created_date: '2026-06-07 22:46'
-updated_date: '2026-06-08 02:12'
+updated_date: '2026-06-08 02:24'
 labels:
   - swift-rewrite
   - core
@@ -54,10 +54,31 @@ Depends on task-035 (settings/Keychain) and task-037 (char limits/normalization 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 All 7 providers implement LLMProvider with correct request building (LM Studio/OpenAI/Anthropic/Google/OpenRouter/Custom/FoundationModels)
-- [ ] #2 Concurrency limits per provider match legacy values
-- [ ] #3 Format-negotiation ladder (schema→json_object→prompt-only) works and records response_format
-- [ ] #4 PromptBuilder reproduces extraction + fit prompts and honors char/overhead budgets
-- [ ] #5 FoundationModelsProvider calls the framework in-process, gated to macOS 26+ (no subprocess)
-- [ ] #6 CoreTests cover request building (mocked URLProtocol), fallback path, prompt truncation, and availability gating
+- [x] #1 All 7 providers implement LLMProvider with correct request building (LM Studio/OpenAI/Anthropic/Google/OpenRouter/Custom/FoundationModels)
+- [x] #2 Concurrency limits per provider match legacy values
+- [x] #3 Format-negotiation ladder (schema→json_object→prompt-only) works and records response_format
+- [x] #4 PromptBuilder reproduces extraction + fit prompts and honors char/overhead budgets
+- [x] #5 FoundationModelsProvider calls the framework in-process, gated to macOS 26+ (no subprocess)
+- [x] #6 CoreTests cover request building (mocked URLProtocol), fallback path, prompt truncation, and availability gating
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented all 7 LLM provider adapters, PromptBuilder, format-negotiation ladder, and FoundationModels integration in Swift.
+
+**Files created in core/LLM/:**
+- LLMProvider.swift: ChatMessage, ChatRequest, ChatResponse, ResponseFormat enum (.jsonSchema/.jsonObject/.text), LLMProvider protocol (Sendable), LLMProviderError
+- LLMProviderFactory.swift: makeProvider(settings:) dispatches by provider name; resolveBaseURL() mirrors resolveProviderBaseUrl(); OpenRouterRotationPool actor for hourly-TTL free-model refresh
+- PromptBuilder.swift: buildExtractionPrompt + buildFitPrompt, truncation at LLMConstants.maxDescriptionChars/maxResumeChars, LocationContext, ExtractedJobContext, promptOverheadChars()
+
+**Providers (core/LLM/Providers/):**
+- OpenAICompatibleTransport.swift: shared json_schema→json_object→nil(text) negotiation ladder; HTTP 400 triggers fallback
+- LMStudioProvider (concurrencyLimit=1), OpenAIProvider (3), AnthropicProvider (2, x-api-key header), GoogleProvider (3, generateContent + JSON mode), OpenRouterProvider (3, extra HTTP-Referer/X-Title headers), CustomProvider (2), FoundationModelsProvider (1, #available(macOS 26) gated, in-process LanguageModelSession via Obj-C selectors, no subprocess)
+
+**Tests (tests/CoreTests/):**
+- LLMProviderTests.swift: 17 tests using LLMMockURLProtocol — URL/headers/body assertions for all providers, format-negotiation fallback (jsonSchema→jsonObject→text), HTTP 500 error propagation
+- PromptBuilderTests.swift: 20 tests — truncation at limits, required JSON keys, location context, dimensions, application instructions, overhead measurement
+
+All 189 CoreTests pass. BUILD SUCCEEDED.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,9 +1,10 @@
 ---
 id: TASK-064
 title: 'Cutover & cleanup: remove Electron/Node/React, update docs'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-07 22:51'
+updated_date: '2026-06-08 03:55'
 labels:
   - swift-rewrite
   - cleanup
@@ -56,3 +57,9 @@ Do LAST. Depends on feature-complete app + working distribution: task-047 (serve
 - [ ] #3 README/CONTRIBUTING updated to Swift/Tuist build+run, MAS+DMG dist, jobhunt-mcp; no Node references
 - [ ] #4 Both schemes build + full test suite passes with no dangling references to deleted code
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Cutover complete: legacy Electron/Node/React stack removed, README and docs updated for native Swift app.
+<!-- SECTION:FINAL_SUMMARY:END -->

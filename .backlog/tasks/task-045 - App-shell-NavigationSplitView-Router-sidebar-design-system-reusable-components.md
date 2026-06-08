@@ -3,9 +3,10 @@ id: TASK-045
 title: >-
   App shell: NavigationSplitView, Router, sidebar, design system + reusable
   components
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-07 22:47'
+updated_date: '2026-06-08 02:58'
 labels:
   - swift-rewrite
   - ui

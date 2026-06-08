@@ -1,0 +1,55 @@
+name: Release MAS
+on:
+  push:
+    tags: ['v*']
+jobs:
+  build-mas:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Import MAS certificates
+        run: |
+          echo "${{ secrets.MAS_CERT_BASE64 }}" | base64 --decode > mas.p12
+          echo "${{ secrets.MAS_INSTALLER_CERT_BASE64 }}" | base64 --decode > installer.p12
+          security create-keychain -p "" build.keychain
+          security import mas.p12 -k build.keychain -P "${{ secrets.MAS_CERT_PASSWORD }}" -T /usr/bin/codesign
+          security import installer.p12 -k build.keychain -P "${{ secrets.MAS_INSTALLER_CERT_PASSWORD }}" -T /usr/bin/productbuild
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+          security list-keychains -d user -s build.keychain
+      - name: Install Tuist
+        run: curl -Ls https://install.tuist.io | bash
+      - name: Install dependencies
+        run: tuist install || true
+      - name: Generate project
+        run: tuist generate --no-open
+      - name: Run tests
+        run: nice xcodebuild test -project Jobhunt.xcodeproj -scheme Jobhunt-MAS -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
+      - name: Archive (MAS)
+        run: |
+          nice xcodebuild archive \
+            -project Jobhunt.xcodeproj \
+            -scheme Jobhunt-MAS \
+            -configuration Release-MAS \
+            -archivePath build/Jobhunt-MAS.xcarchive \
+            CODE_SIGN_IDENTITY="3rd Party Mac Developer Application" \
+            DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }}
+      - name: Export .pkg
+        run: |
+          cat > export-options-mas.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store</string>
+            <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath build/Jobhunt-MAS.xcarchive \
+            -exportPath build/export-mas \
+            -exportOptionsPlist export-options-mas.plist
+      - name: Upload .pkg as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Jobhunt-MAS-${{ github.ref_name }}.pkg
+          path: build/export-mas/*.pkg
+          # Manual upload to App Store Connect via Transporter

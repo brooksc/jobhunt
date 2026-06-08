@@ -3,9 +3,10 @@ id: TASK-050
 title: >-
   Dashboard screen: top opportunities, pipeline funnel, activity chart, site
   schedule, quality summary
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-07 22:49'
+updated_date: '2026-06-08 03:56'
 labels:
   - swift-rewrite
   - ui
@@ -50,3 +51,9 @@ Depends on task-045 (shell/Router/components) and task-046 (data/metrics; for qu
 - [ ] #3 Ported counts.js logic unit-tested against fixtures
 - [ ] #4 XCUITest covers funnel navigation and card-open
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Dashboard screen implemented with top opportunities, pipeline funnel, activity chart, site schedule, and quality summary.
+<!-- SECTION:FINAL_SUMMARY:END -->

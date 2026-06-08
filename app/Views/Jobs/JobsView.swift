@@ -14,7 +14,7 @@ struct JobsView: View {
     private var allJobs: [Job]
 
     @State private var filterState = JobsFilterState()
-    @State private var selection: Set<PersistentIdentifier> = []
+    @State private var selection: Set<String> = []
     @FocusState private var searchFieldFocused: Bool
     @State private var showFilterPopover = false
     @State private var showStatusPicker = false
@@ -39,7 +39,7 @@ struct JobsView: View {
         }
         .navigationTitle("Jobs")
         .toolbar { batchToolbar }
-        .onKeyPress(.init("k"), modifiers: .command) {
+        .onKeyPress(.init("k")) {
             searchFieldFocused = true
             return .handled
         }
@@ -226,8 +226,8 @@ struct JobsView: View {
         }
         .onChange(of: selection) { _, newValue in
             guard newValue.count == 1,
-                  let pid = newValue.first,
-                  let job = allJobs.first(where: { $0.persistentModelID == pid })
+                  let jobID = newValue.first,
+                  let job = allJobs.first(where: { $0.id == jobID })
             else { return }
             router.selectedJobID = job.id
             Task {
@@ -362,11 +362,9 @@ struct JobsView: View {
 
     // MARK: - Batch Actions
 
-    /// Returns the string job IDs for currently selected persistent identifiers.
+    /// Returns the string job IDs for currently selected jobs.
     private var selectedStringIDs: [String] {
-        allJobs
-            .filter { selection.contains($0.persistentModelID) }
-            .map(\.id)
+        Array(selection)
     }
 
     private func queueAI() async {
@@ -452,15 +450,6 @@ struct JobsView: View {
             return "\(minutes)m ago"
         }
         return "just now"
-    }
-}
-
-// MARK: - Detail Placeholder
-
-struct JobDetailPlaceholder: View {
-    var body: some View {
-        Text("Job detail")
-            .foregroundStyle(.secondary)
     }
 }
 

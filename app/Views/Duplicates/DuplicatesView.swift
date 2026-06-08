@@ -362,7 +362,7 @@ private struct JobCompareColumn: View {
                     Link(destination: sourceURL) {
                         Text(shortURL(snapshot.sourceURL))
                             .font(.caption)
-                            .foregroundStyle(.accentColor)
+                            .foregroundStyle(Color.accentColor)
                             .lineLimit(1)
                     }
                 }

@@ -46,7 +46,8 @@ private enum StatusFilterOption: String, CaseIterable, Identifiable {
 
 struct NeedsActionView: View {
     @Environment(Router.self) private var router
-    @Environment(JobService.self) private var jobService
+    @Environment(AppServices.self) private var appServices
+    private var jobService: JobService { appServices.jobService }
 
     @Query(
         filter: #Predicate<JobAction> { $0.completedAt == nil },

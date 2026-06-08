@@ -3,9 +3,11 @@ id: TASK-033
 title: >-
   Swift project scaffold: Tuist project, targets, dual-flavor build,
   entitlements, CI skeleton
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - claude
 created_date: '2026-06-07 22:43'
+updated_date: '2026-06-08 01:36'
 labels:
   - swift-rewrite
   - foundation
@@ -59,3 +61,20 @@ Other tasks will add sources into core/, server/swift/, mcp/swift/, app/ as laid
 - [ ] #6 CI workflow builds both schemes on macos-latest
 - [ ] #7 swiftlint/swiftformat run clean in CI
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Install swiftlint + swiftformat via brew
+2. Scaffold directories: Tuist/, app/, core/, server/swift/, mcp/swift/, Tests/{CoreTests,ServerTests,MCPTests,AppUITests}/
+3. Write Project.swift (Tuist manifest): 4 targets (JobhuntCore framework, JobhuntServer framework, JobhuntMCP executable, Jobhunt app) + 4 test targets + 2 schemes (Jobhunt-DMG / Jobhunt-MAS with MAS_BUILD flag)
+4. Write Tuist/Config.swift and Tuist/Package.swift (SPM deps placeholder)
+5. Write entitlement files: build/Jobhunt-DMG.entitlements (hardened runtime, no JIT/library-validation), build/Jobhunt-MAS.entitlements (sandbox + network.server + network.client)
+6. Write minimal app entry: app/JobhuntApp.swift + app/ContentView.swift (empty NavigationSplitView)
+7. Write stub source files for JobhuntCore, JobhuntServer, JobhuntMCP so targets compile
+8. Write .swiftlint.yml and .swiftformat configs
+9. Write .github/workflows/swift-build.yml CI skeleton
+10. Update .gitignore to exclude *.xcodeproj, DerivedData, Tuist/.build
+11. Run: tuist generate && xcodebuild -scheme Jobhunt-DMG build && xcodebuild -scheme Jobhunt-MAS build
+12. Verify: plutil -lint on entitlements, codesign -d --entitlements on MAS product
+<!-- SECTION:PLAN:END -->

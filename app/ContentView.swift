@@ -3,11 +3,12 @@ import SwiftData
 import JobhuntCore
 
 struct ContentView: View {
-    @State private var router = Router()
+    var router: Router
     @State private var theme = Theme()
     @Environment(AppServices.self) private var appServices
 
     @Query private var sites: [Site]
+    @Query(filter: #Predicate<Job> { $0.unread == true }) private var unreadJobs: [Job]
 
     private var selectedSite: Site? {
         guard let id = router.selectedSiteID else { return nil }
@@ -27,6 +28,10 @@ struct ContentView: View {
         .preferredColorScheme(
             theme.colorSchemePreference == .auto ? nil :
                 theme.colorSchemePreference == .dark ? .dark : .light
+        )
+        .background(
+            DockBadgeUpdater(unreadCount: unreadJobs.count)
+                .frame(width: 0, height: 0)
         )
     }
 

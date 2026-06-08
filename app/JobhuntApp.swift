@@ -7,6 +7,8 @@ struct JobhuntApp: App {
     let modelContainer: ModelContainer
     let appServices: AppServices
     let onboardingManager: OnboardingManager
+    let router: Router
+    let platformIntegration: PlatformIntegration
 
     init() {
         do {
@@ -15,6 +17,13 @@ struct JobhuntApp: App {
             let services = AppServices(modelContainer: container)
             appServices = services
             onboardingManager = OnboardingManager(settings: services.settings)
+            let sharedRouter = Router()
+            router = sharedRouter
+            let integration = PlatformIntegration(router: sharedRouter, modelContainer: container)
+            platformIntegration = integration
+            Task { @MainActor in
+                integration.start(queue: services.queueActor)
+            }
         } catch {
             fatalError("Failed to create ModelContainer: \(error)")
         }
@@ -22,7 +31,7 @@ struct JobhuntApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(router: router)
                 .environment(appServices)
                 .sheet(isPresented: Binding(
                     get: { onboardingManager.isPresented },
@@ -34,10 +43,20 @@ struct JobhuntApp: App {
                         modelContainer: modelContainer
                     )
                 }
+                .onOpenURL { url in
+                    platformIntegration.handleDeepLink(url)
+                }
         }
         .modelContainer(modelContainer)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            #if !MAS_BUILD
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    SparkleUpdater.checkForUpdates()
+                }
+            }
+            #endif
         }
     }
 }

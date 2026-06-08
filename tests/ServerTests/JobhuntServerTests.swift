@@ -1,4 +1,4 @@
-// swiftlint:disable force_try force_unwrapping
+// swiftlint:disable force_unwrapping
 import XCTest
 import SwiftData
 @testable import JobhuntServer
@@ -72,9 +72,12 @@ final class JobhuntServerTests: XCTestCase {
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 200)
 
-        struct HealthBody: Decodable { let ok: Bool }
+        struct HealthBody: Decodable {
+            let isOK: Bool
+            enum CodingKeys: String, CodingKey { case isOK = "ok" }
+        }
         let body = try JSONDecoder().decode(HealthBody.self, from: data)
-        XCTAssertTrue(body.ok)
+        XCTAssertTrue(body.isOK)
     }
 
     func testCaptureEndpoint() async throws {
@@ -85,7 +88,7 @@ final class JobhuntServerTests: XCTestCase {
         let payload: [String: String] = [
             "url": "https://example.com/jobs/123",
             "page_title": "Senior Engineer",
-            "visible_text": "We are looking for a senior engineer to join our team.",
+            "visible_text": "We are looking for a senior engineer to join our team."
         ]
         req.httpBody = try JSONEncoder().encode(payload)
 
@@ -94,12 +97,21 @@ final class JobhuntServerTests: XCTestCase {
         XCTAssertEqual(http.statusCode, 200)
 
         struct CaptureBody: Decodable {
-            let ok: Bool; let capture_id: String; let job_number: Int; let duplicate: Bool
+            let isOK: Bool
+            let captureID: String
+            let jobNumber: Int
+            let duplicate: Bool
+            enum CodingKeys: String, CodingKey {
+                case isOK = "ok"
+                case captureID = "capture_id"
+                case jobNumber = "job_number"
+                case duplicate
+            }
         }
         let body = try JSONDecoder().decode(CaptureBody.self, from: data)
-        XCTAssertTrue(body.ok)
-        XCTAssertFalse(body.capture_id.isEmpty)
-        XCTAssertGreaterThan(body.job_number, 0)
+        XCTAssertTrue(body.isOK)
+        XCTAssertFalse(body.captureID.isEmpty)
+        XCTAssertGreaterThan(body.jobNumber, 0)
         XCTAssertFalse(body.duplicate)
     }
 
@@ -111,7 +123,7 @@ final class JobhuntServerTests: XCTestCase {
         let payload: [String: String] = [
             "url": "",
             "page_title": "Senior Engineer",
-            "visible_text": "Some text",
+            "visible_text": "Some text"
         ]
         req.httpBody = try JSONEncoder().encode(payload)
 
@@ -132,7 +144,7 @@ final class JobhuntServerTests: XCTestCase {
         // No visible_text or selected_text
         let payload: [String: String] = [
             "url": "https://example.com/jobs/456",
-            "page_title": "Engineer",
+            "page_title": "Engineer"
         ]
         req.httpBody = try JSONEncoder().encode(payload)
 

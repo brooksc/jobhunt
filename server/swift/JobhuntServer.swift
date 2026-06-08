@@ -11,47 +11,91 @@ private struct PingResponse: Encodable {
 }
 
 private struct HealthResponse: Encodable {
-    let ok: Bool
+    let isOK: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case isOK = "ok"
+    }
 }
 
 private struct CaptureRequest: Decodable {
     let url: String
-    let page_title: String
-    let selected_text: String?
-    let visible_text: String?
-    let user_note: String?
-    let canonical_url: String?
-    let structured_data_json: String?
+    let pageTitle: String
+    let selectedText: String?
+    let visibleText: String?
+    let userNote: String?
+    let canonicalURL: String?
+    let structuredDataJSON: String?
+
+    enum CodingKeys: String, CodingKey {
+        case url
+        case pageTitle = "page_title"
+        case selectedText = "selected_text"
+        case visibleText = "visible_text"
+        case userNote = "user_note"
+        case canonicalURL = "canonical_url"
+        case structuredDataJSON = "structured_data_json"
+    }
 }
 
 private struct CaptureResponse: Encodable {
-    let ok: Bool
-    let capture_id: String
-    let job_number: Int
+    let isOK: Bool
+    let captureID: String
+    let jobNumber: Int
     let duplicate: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case isOK = "ok"
+        case captureID = "capture_id"
+        case jobNumber = "job_number"
+        case duplicate
+    }
 }
 
 private struct SiteReviewRequest: Decodable {
     let url: String
-    let page_title: String?
-    let interval_days: Int?
+    let pageTitle: String?
+    let intervalDays: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case url
+        case pageTitle = "page_title"
+        case intervalDays = "interval_days"
+    }
 }
 
 private struct SiteReviewResponse: Encodable {
-    let ok: Bool
-    let site_review_id: String
+    let isOK: Bool
+    let siteReviewID: String
+
+    enum CodingKeys: String, CodingKey {
+        case isOK = "ok"
+        case siteReviewID = "site_review_id"
+    }
 }
 
 private struct JobByURLResponse: Encodable {
-    let job_number: Int
+    let jobNumber: Int
+
+    enum CodingKeys: String, CodingKey {
+        case jobNumber = "job_number"
+    }
 }
 
 private struct FocusRequest: Decodable {
-    let job_number: Int?
+    let jobNumber: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case jobNumber = "job_number"
+    }
 }
 
 private struct FocusResponse: Encodable {
-    let ok: Bool
+    let isOK: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case isOK = "ok"
+    }
 }
 
 // MARK: - JobhuntServer
@@ -150,7 +194,8 @@ public actor JobhuntServer {
 
     private func receiveRequest(on connection: NWConnection) {
         // Read up to 1MB of data
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 1_048_576) { [weak self] data, _, isComplete, error in
+        // swiftlint:disable:next line_length
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 1_048_576) { [weak self] data, _, isComplete, _ in
             guard let self else { return }
             if let data, !data.isEmpty {
                 Task {
@@ -210,7 +255,7 @@ public actor JobhuntServer {
     // MARK: - Route handlers
 
     private func handleHealth() -> HTTPResponse {
-        HTTPResponse.ok(HealthResponse(ok: true))
+        HTTPResponse.ok(HealthResponse(isOK: true))
     }
 
     private func handlePing() -> HTTPResponse {
@@ -223,7 +268,7 @@ public actor JobhuntServer {
         }
 
         let url = captureReq.url.trimmingCharacters(in: .whitespaces)
-        let pageTitle = captureReq.page_title.trimmingCharacters(in: .whitespaces)
+        let pageTitle = captureReq.pageTitle.trimmingCharacters(in: .whitespaces)
 
         if url.isEmpty {
             return HTTPResponse.error("url and page_title required")
@@ -232,8 +277,8 @@ public actor JobhuntServer {
             return HTTPResponse.error("url and page_title required")
         }
 
-        let selectedTrimmed = captureReq.selected_text?.trimmingCharacters(in: .whitespaces) ?? ""
-        let visibleTrimmed = captureReq.visible_text?.trimmingCharacters(in: .whitespaces) ?? ""
+        let selectedTrimmed = captureReq.selectedText?.trimmingCharacters(in: .whitespaces) ?? ""
+        let visibleTrimmed = captureReq.visibleText?.trimmingCharacters(in: .whitespaces) ?? ""
         if selectedTrimmed.isEmpty && visibleTrimmed.isEmpty {
             return HTTPResponse.error("visible_text or selected_text required")
         }
@@ -241,19 +286,19 @@ public actor JobhuntServer {
         let payload = CapturePayload(
             url: url,
             pageTitle: pageTitle,
-            selectedText: captureReq.selected_text,
-            visibleText: captureReq.visible_text,
-            userNote: captureReq.user_note,
-            canonicalURL: captureReq.canonical_url,
-            structuredDataJSON: captureReq.structured_data_json
+            selectedText: captureReq.selectedText,
+            visibleText: captureReq.visibleText,
+            userNote: captureReq.userNote,
+            canonicalURL: captureReq.canonicalURL,
+            structuredDataJSON: captureReq.structuredDataJSON
         )
 
         do {
             let result = try await jobService.ingestCapture(payload)
             return HTTPResponse.ok(CaptureResponse(
-                ok: true,
-                capture_id: result.captureID,
-                job_number: result.jobNumber,
+                isOK: true,
+                captureID: result.captureID,
+                jobNumber: result.jobNumber,
                 duplicate: result.isDuplicate
             ))
         } catch {
@@ -271,15 +316,15 @@ public actor JobhuntServer {
             return HTTPResponse.error("url required")
         }
 
-        let intervalDays = reviewReq.interval_days ?? 14
+        let intervalDays = reviewReq.intervalDays ?? 14
 
         do {
             let siteReviewID = try await siteService.upsertSiteReview(
                 url: url,
-                title: reviewReq.page_title,
+                title: reviewReq.pageTitle,
                 intervalDays: intervalDays
             )
-            return HTTPResponse.ok(SiteReviewResponse(ok: true, site_review_id: siteReviewID))
+            return HTTPResponse.ok(SiteReviewResponse(isOK: true, siteReviewID: siteReviewID))
         } catch {
             return HTTPResponse.error(error.localizedDescription)
         }
@@ -294,7 +339,7 @@ public actor JobhuntServer {
         do {
             let jobNumber = try await findJobNumber(byURL: url)
             if let jobNumber {
-                return HTTPResponse.ok(JobByURLResponse(job_number: jobNumber))
+                return HTTPResponse.ok(JobByURLResponse(jobNumber: jobNumber))
             } else {
                 return HTTPResponse.error("not found", code: 404)
             }
@@ -311,7 +356,7 @@ public actor JobhuntServer {
 
     private func handleFocus(_ request: HTTPRequest) async -> HTTPResponse {
         let focusReq = try? request.decodeBody(as: FocusRequest.self)
-        let jobNumber = focusReq?.job_number
+        let jobNumber = focusReq?.jobNumber
 
         let userInfo: [AnyHashable: Any]
         if let jobNumber {
@@ -326,7 +371,7 @@ public actor JobhuntServer {
             userInfo: userInfo
         )
 
-        return HTTPResponse.ok(FocusResponse(ok: true))
+        return HTTPResponse.ok(FocusResponse(isOK: true))
     }
 }
 

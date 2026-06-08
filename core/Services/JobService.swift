@@ -1,4 +1,4 @@
-// swiftlint:disable file_length type_body_length function_body_length
+// swiftlint:disable function_body_length
 import Foundation
 import SwiftData
 import CryptoKit
@@ -108,7 +108,9 @@ public actor JobService {
             visibleText: payload.visibleText,
             structuredData: structuredData
         )
-        let cleanedHashValue = cleanedDescription.isEmpty ? nil : DuplicateDetector.cleanedHash(from: cleanedDescription)
+        let cleanedHashValue = cleanedDescription.isEmpty
+            ? nil
+            : DuplicateDetector.cleanedHash(from: cleanedDescription)
 
         // 4. Dedup: check raw_hash first, then cleaned_hash
         let existingCaptures = try await store.fetch(FetchDescriptor<Capture>())

@@ -4,6 +4,13 @@
 // HTTP server via /mcp/* endpoints authenticated with X-MCP-Token.
 import Foundation
 
+// MARK: - Simple string error
+
+struct MCPError: Error {
+    let message: String
+    init(_ message: String) { self.message = message }
+}
+
 // MARK: - Token & port discovery
 
 func readToken() -> String? {
@@ -253,7 +260,7 @@ func textResult(_ value: Any) -> [String: Any] {
     return ["content": [["type": "text", "text": text]]]
 }
 
-func callTool(name: String, args: [String: Any], port: Int, token: String) -> Result<[String: Any], String> {
+func callTool(name: String, args: [String: Any], port: Int, token: String) -> Result<[String: Any], MCPError> {
     let (path, body): (String, [String: Any])
 
     switch name {
@@ -265,37 +272,37 @@ func callTool(name: String, args: [String: Any], port: Int, token: String) -> Re
 
     case "job_get":
         guard let num = args["job_number"] else {
-            return .failure("job_number required")
+            return .failure(MCPError("job_number required"))
         }
         (path, body) = ("/mcp/jobs/get", ["job_number": num])
 
     case "add_capture":
         guard args["url"] != nil, args["page_title"] != nil else {
-            return .failure("url and page_title required")
+            return .failure(MCPError("url and page_title required"))
         }
         (path, body) = ("/mcp/captures/add", args)
 
     case "update_job":
         guard args["job_number"] != nil else {
-            return .failure("job_number required")
+            return .failure(MCPError("job_number required"))
         }
         (path, body) = ("/mcp/jobs/update", args)
 
     case "set_job_status":
         guard args["job_number"] != nil, args["status"] != nil else {
-            return .failure("job_number and status required")
+            return .failure(MCPError("job_number and status required"))
         }
         (path, body) = ("/mcp/jobs/status", args)
 
     case "add_job_note":
         guard args["job_number"] != nil, args["note"] != nil else {
-            return .failure("job_number and note required")
+            return .failure(MCPError("job_number and note required"))
         }
         (path, body) = ("/mcp/jobs/note", args)
 
     case "rerun_extraction":
         guard args["job_number"] != nil else {
-            return .failure("job_number required")
+            return .failure(MCPError("job_number required"))
         }
         (path, body) = ("/mcp/jobs/rerun", args)
 
@@ -304,19 +311,19 @@ func callTool(name: String, args: [String: Any], port: Int, token: String) -> Re
 
     case "add_site":
         guard args["url"] != nil else {
-            return .failure("url required")
+            return .failure(MCPError("url required"))
         }
         (path, body) = ("/mcp/sites/add", args)
 
     case "update_site":
         guard args["id"] != nil else {
-            return .failure("id required")
+            return .failure(MCPError("id required"))
         }
         (path, body) = ("/mcp/sites/update", args)
 
     case "delete_site":
         guard args["id"] != nil else {
-            return .failure("id required")
+            return .failure(MCPError("id required"))
         }
         (path, body) = ("/mcp/sites/delete", args)
 
@@ -324,7 +331,7 @@ func callTool(name: String, args: [String: Any], port: Int, token: String) -> Re
         (path, body) = ("/mcp/snapshot", [:])
 
     default:
-        return .failure("unknown tool: \(name)")
+        return .failure(MCPError("unknown tool: \(name)"))
     }
 
     let (status, result) = postMCP(path: path, body: body, port: port, token: token)
@@ -335,7 +342,7 @@ func callTool(name: String, args: [String: Any], port: Int, token: String) -> Re
         } else {
             msg = "HTTP \(status)"
         }
-        return .failure(msg)
+        return .failure(MCPError(msg))
     }
     if let result {
         return .success(textResult(result))
@@ -392,10 +399,10 @@ while let line = readLine() {
         switch callTool(name: toolName, args: toolArgs, port: port, token: token) {
         case .success(let result):
             writeResponse(successResponse(id: id, result: result))
-        case .failure(let msg):
+        case .failure(let err):
             writeResponse(successResponse(id: id, result: [
                 "isError": true,
-                "content": [["type": "text", "text": msg]]
+                "content": [["type": "text", "text": err.message]]
             ] as [String: Any]))
         }
 

@@ -24,7 +24,7 @@ private func makeTestServer() throws -> JobhuntServer {
     let queue = QueueActor(store: store, settings: settings, providerFactory: { NoOpProvider() })
     let jobService = JobService(store: store, queue: queue)
     let siteService = SiteService(store: store)
-    return JobhuntServer(jobService: jobService, siteService: siteService, appVersion: "1.0.0-test")
+    return JobhuntServer(jobService: jobService, siteService: siteService, appVersion: "1.0.0-test", store: store)
 }
 
 // MARK: - JobhuntServerTests

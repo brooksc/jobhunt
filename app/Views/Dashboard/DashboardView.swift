@@ -364,7 +364,7 @@ private struct QualitySummarySection: View {
                         Text("\(issueCount)")
                             .font(.title2)
                             .fontWeight(.bold)
-                            .foregroundStyle(issueCount == 0 ? .secondary : .orange)
+                            .foregroundStyle(issueCount == 0 ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.orange))
                         Text("Jobs with extraction issues")
                             .font(.caption)
                             .foregroundStyle(.secondary)

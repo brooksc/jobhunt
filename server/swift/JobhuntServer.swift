@@ -248,13 +248,15 @@ public actor JobhuntServer {
         // MCP bridge routes (DMG builds only)
         #if !MAS_BUILD
         if request.path.hasPrefix("/mcp/") {
-            return await routeMCPRequest(
+            if let response = await routeMCPRequest(
                 request,
                 jobService: jobService,
                 siteService: siteService,
                 store: store,
                 mcpToken: mcpToken
-            )
+            ) {
+                return response
+            }
         }
         #endif
 

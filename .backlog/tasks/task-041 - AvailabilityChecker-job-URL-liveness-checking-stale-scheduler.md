@@ -1,9 +1,11 @@
 ---
 id: TASK-041
 title: 'AvailabilityChecker: job-URL liveness checking + stale scheduler'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - claude
 created_date: '2026-06-07 22:45'
+updated_date: '2026-06-08 02:05'
 labels:
   - swift-rewrite
   - core

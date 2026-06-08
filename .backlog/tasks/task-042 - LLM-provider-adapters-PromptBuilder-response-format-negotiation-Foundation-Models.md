@@ -3,9 +3,11 @@ id: TASK-042
 title: >-
   LLM provider adapters + PromptBuilder + response-format negotiation +
   Foundation Models
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - claude
 created_date: '2026-06-07 22:46'
+updated_date: '2026-06-08 02:12'
 labels:
   - swift-rewrite
   - core

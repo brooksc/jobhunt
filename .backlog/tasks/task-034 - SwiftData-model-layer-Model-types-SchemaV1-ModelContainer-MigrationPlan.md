@@ -1,9 +1,11 @@
 ---
 id: TASK-034
 title: 'SwiftData model layer: @Model types, SchemaV1, ModelContainer, MigrationPlan'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - claude
 created_date: '2026-06-07 22:43'
+updated_date: '2026-06-08 01:41'
 labels:
   - swift-rewrite
   - core
@@ -55,3 +57,19 @@ Depends on task-033 (project scaffold provides JobhuntCore target). All Core ser
 - [ ] #5 CoreTests: round-trip + relationship + cascade + uniqueness tests pass for every model
 - [ ] #6 JobhuntCore builds clean under Swift 6 strict concurrency (models Sendable-safe)
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Files to create in core/Models/:
+- Enums.swift: JobStatus, ExtractionStatus, FitStatus, RemoteType, SiteState, LLMRequestType, LLMRequestStatus
+- Capture.swift, Job.swift, JobEvent.swift, SiteReview.swift, DuplicateDecision.swift
+- Setting.swift (+ SettingsKeys enum), JobAction.swift, DataQualityReview.swift, Site.swift
+- Resume.swift, JobFitScore.swift, LLMRequest.swift, LLMRequestAttempt.swift
+- Contact.swift, CoverLetter.swift
+- Schema.swift: SchemaV1 VersionedSchema + JobhuntMigrationPlan
+- ModelContainerFactory.swift: on-disk (app data dir) and in-memory containers
+
+Tests in Tests/CoreTests/:
+- ModelRoundTripTests.swift: insert/fetch/relationship/cascade/uniqueness per model
+<!-- SECTION:PLAN:END -->

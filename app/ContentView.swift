@@ -36,8 +36,7 @@ struct ContentView: View {
         case .jobs:
             JobsView()
         case .dashboard:
-            Text("Dashboard coming soon")
-                .foregroundStyle(.secondary)
+            DashboardView()
         case .dataQuality:
             DataQualityView()
         case .needsAction:

@@ -1,11 +1,11 @@
 ---
 id: TASK-036
 title: 'Core text utilities: Cleaning, JD block parser, JSON repair, Metros'
-status: In Progress
+status: Done
 assignee:
   - claude
 created_date: '2026-06-07 22:44'
-updated_date: '2026-06-08 02:05'
+updated_date: '2026-06-08 02:13'
 labels:
   - swift-rewrite
   - core
@@ -50,9 +50,25 @@ Depends on task-033 (scaffold). No model dependency. Used by extraction (E/M), d
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Cleaning reproduces cleaning.js output for the same inputs (selected/visible preference, JSON-LD, HTML strip, Workday band split)
-- [ ] #2 JDParser reproduces static/jd-parser.js block output including boilerplate skip and LinkedIn dup-marker stop
-- [ ] #3 JSONRepair recovers fenced/trailing-comma/unquoted-key/single-quote malformed JSON
-- [ ] #4 Metros tables + parsePreferredMetros + expandMetros match metros.js
-- [ ] #5 Ported XCTest versions of cleaning + jd-parser JS tests pass; utilities import no SwiftData/SwiftUI
+- [x] #1 Cleaning reproduces cleaning.js output for the same inputs (selected/visible preference, JSON-LD, HTML strip, Workday band split)
+- [x] #2 JDParser reproduces static/jd-parser.js block output including boilerplate skip and LinkedIn dup-marker stop
+- [x] #3 JSONRepair recovers fenced/trailing-comma/unquoted-key/single-quote malformed JSON
+- [x] #4 Metros tables + parsePreferredMetros + expandMetros match metros.js
+- [x] #5 Ported XCTest versions of cleaning + jd-parser JS tests pass; utilities import no SwiftData/SwiftUI
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented four pure-Foundation Swift utilities in core/Util/:
+
+- **Cleaning.swift**: Ports cleanDescription (selectedText preference, JSON-LD @graph traversal, HTML stripping with entity decode, Workday salary-band newline splitting), normalizeWhitespace, and stripHtml. Function-for-function match with server/cleaning.js.
+
+- **JDParser.swift**: Ports parseJdBlocks returning [JDBlock] enum (heading/paragraph/list/hr). Handles boilerplate skipping (30-line lookahead for prose/header/emoji), LinkedIn "Feed post" chrome skip, LinkedIn concatenated duplicate stop, trailing hr removal. Mirrors static/jd-parser.js.
+
+- **JSONRepair.swift**: Implements extractJSON (strips ```json fences), repairJSON (trailing commas, unquoted keys, single-quote conversion, fenced blocks). Validates output with JSONSerialization.
+
+- **Metros.swift**: Full METRO_DATA table (20 states), parsePreferredMetros, expandMetros with deduplication and state abbreviation/full-name inclusion. Exact mirror of server/metros.js.
+
+Tests in Tests/CoreTests/: CleaningTests.swift (15 tests porting cleaning.test.js), JDParserTests.swift (12 tests porting jd-parser.test.js with inline LinkedIn fixture), JSONRepairTests.swift (11 tests), MetrosTests.swift (14 tests). All 100 CoreTests pass. No SwiftUI/AppKit/SwiftData imports in any utility file.
+<!-- SECTION:FINAL_SUMMARY:END -->

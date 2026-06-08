@@ -73,15 +73,17 @@ final class JobServiceTests: XCTestCase {
         let result1 = try await svc.ingestCapture(payload1)
         XCTAssertFalse(result1.isDuplicate)
 
-        // Same URL + same content → duplicate detected via rawHash
+        // Same URL + identical content → rawHash collision → isDuplicate=true
         let payload2 = CapturePayload(
-            url: "https://other-board.com/jobs/99",
+            url: "https://example.com/jobs/1",
             pageTitle: "Software Engineer",
             selectedText: nil,
             visibleText: "Join our engineering team as a software engineer."
         )
         let result2 = try await svc.ingestCapture(payload2)
         XCTAssertTrue(result2.isDuplicate)
+        // Should return the original captureID
+        XCTAssertEqual(result2.captureID, result1.captureID)
     }
 
     // MARK: - testIngestValidation

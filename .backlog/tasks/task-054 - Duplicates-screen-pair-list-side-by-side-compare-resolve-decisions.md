@@ -1,9 +1,10 @@
 ---
 id: TASK-054
 title: 'Duplicates screen: pair list, side-by-side compare, resolve decisions'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-07 22:49'
+updated_date: '2026-06-08 03:31'
 labels:
   - swift-rewrite
   - ui

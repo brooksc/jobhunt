@@ -24,3 +24,10 @@ claude/
 # Chrome Web Store submission binaries (use GitHub Releases instead)
 chromestore/*.zip
 chromestore/*.png
+
+# Xcode / Tuist generated files
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+Tuist/.build/
+Tuist/Dependencies/

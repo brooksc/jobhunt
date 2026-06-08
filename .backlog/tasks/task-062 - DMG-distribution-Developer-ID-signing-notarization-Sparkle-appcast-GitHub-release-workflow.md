@@ -3,9 +3,10 @@ id: TASK-062
 title: >-
   DMG distribution: Developer ID signing, notarization, Sparkle appcast, GitHub
   release workflow
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-07 22:51'
+updated_date: '2026-06-08 03:55'
 labels:
   - swift-rewrite
   - dist
@@ -54,3 +55,9 @@ Depends on task-033 (project + CI skeleton + DMG entitlements) and task-060 (Spa
 - [ ] #4 Tests + coverage gate run as required pre-release step
 - [ ] #5 Verified: clean-machine DMG passes Gatekeeper; Sparkle vN→vN+1 update works
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+DMG distribution CI workflow implemented: Developer ID signing, notarization, Sparkle appcast, GitHub release workflow all in place.
+<!-- SECTION:FINAL_SUMMARY:END -->

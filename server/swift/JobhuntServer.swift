@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import SwiftData
 import JobhuntCore
 
 // MARK: - Request/Response Codable types
@@ -107,17 +108,27 @@ public actor JobhuntServer {
     private let siteService: SiteService
     private let appVersion: String
     private let isDemo: Bool
+    #if !MAS_BUILD
+    private let store: BackgroundStore
+    private let mcpToken: String
+    #endif
 
     public init(
         jobService: JobService,
         siteService: SiteService,
         appVersion: String = "1.0.0",
-        isDemo: Bool = false
+        isDemo: Bool = false,
+        store: BackgroundStore,
+        mcpToken: String = ""
     ) {
         self.jobService = jobService
         self.siteService = siteService
         self.appVersion = appVersion
         self.isDemo = isDemo
+        #if !MAS_BUILD
+        self.store = store
+        self.mcpToken = mcpToken
+        #endif
     }
 
     /// Try ports 8765–8769 in order, start listening on first available.
@@ -233,6 +244,19 @@ public actor JobhuntServer {
         if request.method == "OPTIONS" {
             return HTTPResponse.noContent()
         }
+
+        // MCP bridge routes (DMG builds only)
+        #if !MAS_BUILD
+        if request.path.hasPrefix("/mcp/") {
+            return await routeMCPRequest(
+                request,
+                jobService: jobService,
+                siteService: siteService,
+                store: store,
+                mcpToken: mcpToken
+            )
+        }
+        #endif
 
         switch (request.method, request.path) {
         case ("GET", "/health"):

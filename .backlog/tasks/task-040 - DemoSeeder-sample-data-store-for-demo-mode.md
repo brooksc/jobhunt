@@ -1,11 +1,11 @@
 ---
 id: TASK-040
 title: 'DemoSeeder: sample-data store for demo mode'
-status: In Progress
+status: Done
 assignee:
   - claude
 created_date: '2026-06-07 22:45'
-updated_date: '2026-06-08 02:05'
+updated_date: '2026-06-08 02:11'
 labels:
   - swift-rewrite
   - core
@@ -42,8 +42,25 @@ Depends on task-034 (models). Uses task-035 BackgroundStore if available (otherw
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 seedDemo writes representative jobs/sites/resumes/events into an isolated demo container
-- [ ] #2 reseedDemo resets demo data cleanly
-- [ ] #3 Demo vs user container switch works without touching user data
-- [ ] #4 CoreTests verify counts, reset, and isolation
+- [x] #1 seedDemo writes representative jobs/sites/resumes/events into an isolated demo container
+- [x] #2 reseedDemo resets demo data cleanly
+- [x] #3 Demo vs user container switch works without touching user data
+- [x] #4 CoreTests verify counts, reset, and isolation
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented DemoSeeder.swift in core/Demo/ with:
+
+- `DemoSeeder.seedDemo(into:)` — inserts 15 representative jobs (covering all statuses: offer, interview, applied, saved, rejected, archived), 3 sites, 2 resumes, with captures and events, into an isolated SwiftData container via BackgroundStore actor. Idempotent (no-op if jobs already exist).
+- `DemoSeeder.reseedDemo(into:)` — deletes all entities (jobs, captures, sites, resumes, events, fit scores, LLM requests, etc.) then re-seeds from scratch.
+- `ModelContainerFactory.demo()` — convenience async factory returning an in-memory container pre-seeded with demo data, separate from the user store.
+- `DemoMode` enum (`.live` / `.demo`) for the app shell to switch between containers.
+
+Jobs cover variety: different statuses/companies/salary ranges/remote modes, some with fit scores (58–91), some pending extraction, one duplicate, one non-job captured page.
+
+17 CoreTests in Tests/CoreTests/DemoSeederTests.swift verify: exact entity counts (15 jobs, 3 sites, 2 resumes, 15 captures), status variety, fit score presence, pending extraction jobs, duplicate detection, idempotency, reseed cleanliness, and container isolation.
+
+Build: clean (BUILD SUCCEEDED). Tests: 54 passing (0 failures), including all 17 new DemoSeeder tests.
+<!-- SECTION:FINAL_SUMMARY:END -->

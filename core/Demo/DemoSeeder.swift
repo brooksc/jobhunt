@@ -1,3 +1,4 @@
+// swiftlint:disable line_length file_length function_body_length large_tuple
 import Foundation
 import SwiftData
 
@@ -65,8 +66,8 @@ extension BackgroundStore {
 
     private func performSeed() throws {
         let now = Date()
-        func daysAgo(_ n: Double) -> Date {
-            Date(timeIntervalSinceNow: -n * 86400)
+        func daysAgo(_ numDays: Double) -> Date {
+            Date(timeIntervalSinceNow: -numDays * 86400)
         }
 
         // MARK: Resumes
@@ -387,7 +388,7 @@ extension BackgroundStore {
                 extractionStatus: .succeeded, fitScore: nil, fitStatus: .none,
                 note: "Accidentally captured — not a job posting.",
                 duplicateOfJobID: nil
-            ),
+            )
         ]
 
         // Insert resumes
@@ -494,16 +495,16 @@ extension BackgroundStore {
         let sites: [(id: String, url: String, origin: String, title: String, interval: Int)] = [
             ("site_001", "https://www.linkedin.com/jobs/search/?keywords=technical+program+manager&f_WT=2", "https://www.linkedin.com", "LinkedIn Jobs — TPM Remote", 7),
             ("site_002", "https://www.builtinseattle.com/jobs/remote", "https://www.builtinseattle.com", "Built In Seattle — Remote", 7),
-            ("site_003", "https://levels.fyi/jobs?title=Technical+Program+Manager", "https://levels.fyi", "Levels.fyi — TPM Jobs", 14),
+            ("site_003", "https://levels.fyi/jobs?title=Technical+Program+Manager", "https://levels.fyi", "Levels.fyi — TPM Jobs", 14)
         ]
 
-        for s in sites {
+        for siteData in sites {
             let site = Site(
-                id: s.id,
-                origin: s.origin,
-                url: s.url,
-                pageTitle: s.title,
-                intervalDays: s.interval,
+                id: siteData.id,
+                origin: siteData.origin,
+                url: siteData.url,
+                pageTitle: siteData.title,
+                intervalDays: siteData.interval,
                 lastReviewedAt: reviewedAt,
                 nextReviewAt: nextReview,
                 state: .reviewed,
@@ -544,7 +545,7 @@ extension BackgroundStore {
             "benefits": [] as [String],
             "skills": skills,
             "application_url": url,
-            "confidence": 0.92,
+            "confidence": 0.92
         ]
         if let min = salaryMin, let max = salaryMax {
             dict["salary_note"] = "$\(min / 1000)K–$\(max / 1000)K"
@@ -561,7 +562,7 @@ extension BackgroundStore {
             "score": score,
             "summary": "Strong match — \(quality) alignment with your background.",
             "strengths": ["Technical program management experience", "Cross-functional leadership"],
-            "gaps": score < 80 ? ["Could strengthen domain-specific experience"] : [] as [String],
+            "gaps": score < 80 ? ["Could strengthen domain-specific experience"] : [] as [String]
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: dict),
               let str = String(data: data, encoding: .utf8) else { return nil }
@@ -581,3 +582,5 @@ public enum DemoMode: Sendable {
     case live
     case demo
 }
+
+// swiftlint:enable line_length file_length function_body_length large_tuple

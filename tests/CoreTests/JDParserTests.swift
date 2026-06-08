@@ -1,3 +1,4 @@
+// swiftlint:disable line_length force_unwrapping
 // JDParserTests.swift — port of tests/unit/jd-parser.test.js
 import XCTest
 @testable import JobhuntCore
@@ -173,9 +174,7 @@ final class JDParserTests: XCTestCase {
     func testSkipsLinkedInProfileChromeBeforeActualPost() {
         let blocks = parseJdBlocks(linkedInJD)
         let firstText: String
-        if case .paragraph(let t) = blocks.first { firstText = t }
-        else if case .heading(let t) = blocks.first { firstText = t }
-        else { firstText = "" }
+        if case .paragraph(let txt) = blocks.first { firstText = txt } else if case .heading(let txt) = blocks.first { firstText = txt } else { firstText = "" }
         XCTAssertFalse(firstText.contains("Technical Program Manager @ Meta"),
                        "First block should not be user profile header, got: \(firstText.prefix(80))")
     }
@@ -184,10 +183,10 @@ final class JDParserTests: XCTestCase {
         let blocks = parseJdBlocks(linkedInJD)
         let allText = blocks.map { block -> String in
             switch block {
-            case .paragraph(let t): return t
-            case .heading(let t): return t
+            case .paragraph(let txt): return txt
+            case .heading(let txt): return txt
             case .list(let items): return items.joined(separator: " ")
-            case .hr: return ""
+            case .horizontalRule: return ""
             }
         }.joined(separator: " ")
         XCTAssertTrue(allText.contains("Technical Product Manager"), "job title should appear in parsed content")
@@ -196,7 +195,7 @@ final class JDParserTests: XCTestCase {
     func testStripsTheConcatenatedDuplicateParagraphAtTheBottom() {
         let blocks = parseJdBlocks(linkedInJD)
         let allText = blocks.compactMap { block -> String? in
-            if case .paragraph(let t) = block { return t }
+            if case .paragraph(let txt) = block { return txt }
             return nil
         }.joined(separator: "\n")
         XCTAssertFalse(allText.contains("Feed postIT Recruiter"), "concatenated LinkedIn duplicate should be stripped")
@@ -204,7 +203,7 @@ final class JDParserTests: XCTestCase {
 
     func testDoesNotEndWithABareHrBlock() {
         let blocks = parseJdBlocks(linkedInJD)
-        if case .hr = blocks.last {
+        if case .horizontalRule = blocks.last {
             XCTFail("trailing hr should be removed")
         }
     }
@@ -219,3 +218,5 @@ final class JDParserTests: XCTestCase {
         XCTAssertTrue(allItems.contains(where: { $0.contains("years") }), "requirements list items should be present")
     }
 }
+
+// swiftlint:enable line_length force_unwrapping

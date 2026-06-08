@@ -1,3 +1,4 @@
+// swiftlint:disable line_length file_length cyclomatic_complexity function_body_length type_body_length
 import XCTest
 import SQLite3
 import SwiftData
@@ -16,19 +17,19 @@ final class MigratorTests: XCTestCase {
     func makeTempDB(setup: (OpaquePointer) throws -> Void) throws -> String {
         let dir = FileManager.default.temporaryDirectory
         let path = dir.appendingPathComponent("migrator_test_\(UUID().uuidString).db").path
-        var db: OpaquePointer?
-        let rc = sqlite3_open_v2(path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil)
-        XCTAssertEqual(rc, SQLITE_OK)
-        guard let db else { XCTFail("Could not create temp DB"); throw XCTestError(.failureWhileWaiting) }
-        defer { sqlite3_close(db) }
-        try setup(db)
+        var dbPtr: OpaquePointer?
+        let openResult = sqlite3_open_v2(path, &dbPtr, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil)
+        XCTAssertEqual(openResult, SQLITE_OK)
+        guard let dbPtr else { XCTFail("Could not create temp DB"); throw XCTestError(.failureWhileWaiting) }
+        defer { sqlite3_close(dbPtr) }
+        try setup(dbPtr)
         return path
     }
 
-    func exec(_ db: OpaquePointer, _ sql: String) {
-        var err: UnsafeMutablePointer<CChar>? = nil
-        let rc = sqlite3_exec(db, sql, nil, nil, &err)
-        if rc != SQLITE_OK {
+    func exec(_ dbHandle: OpaquePointer, _ sql: String) {
+        var err: UnsafeMutablePointer<CChar>?
+        let execResult = sqlite3_exec(dbHandle, sql, nil, nil, &err)
+        if execResult != SQLITE_OK {
             let msg = err.map { String(cString: $0) } ?? "unknown"
             XCTFail("SQL error: \(msg) for: \(sql)")
         }
@@ -36,8 +37,8 @@ final class MigratorTests: XCTestCase {
     }
 
     /// Minimal legacy schema — just the tables tested here.
-    func createMinimalSchema(_ db: OpaquePointer) {
-        exec(db, """
+    func createMinimalSchema(_ dbHandle: OpaquePointer) {
+        exec(dbHandle, """
             CREATE TABLE captures (
               id TEXT PRIMARY KEY,
               url TEXT NOT NULL,
@@ -54,7 +55,7 @@ final class MigratorTests: XCTestCase {
               created_at TEXT NOT NULL
             )
         """)
-        exec(db, """
+        exec(dbHandle, """
             CREATE TABLE jobs (
               id TEXT PRIMARY KEY,
               job_number INTEGER,
@@ -90,7 +91,7 @@ final class MigratorTests: XCTestCase {
               updated_at TEXT NOT NULL
             )
         """)
-        exec(db, """
+        exec(dbHandle, """
             CREATE TABLE events (
               id TEXT PRIMARY KEY,
               job_id TEXT NOT NULL,
@@ -100,7 +101,7 @@ final class MigratorTests: XCTestCase {
               created_at TEXT NOT NULL
             )
         """)
-        exec(db, """
+        exec(dbHandle, """
             CREATE TABLE site_reviews (
               id TEXT PRIMARY KEY,
               site_url TEXT NOT NULL,
@@ -112,7 +113,7 @@ final class MigratorTests: XCTestCase {
               created_at TEXT NOT NULL
             )
         """)
-        exec(db, """
+        exec(dbHandle, """
             CREATE TABLE duplicate_decisions (
               cleaned_hash TEXT PRIMARY KEY,
               decision TEXT NOT NULL,
@@ -122,14 +123,14 @@ final class MigratorTests: XCTestCase {
               created_at TEXT NOT NULL
             )
         """)
-        exec(db, """
+        exec(dbHandle, """
             CREATE TABLE settings (
               key TEXT PRIMARY KEY,
               value TEXT NOT NULL,
               updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
             )
         """)
-        exec(db, """
+        exec(dbHandle, """
             CREATE TABLE job_actions (
               id TEXT PRIMARY KEY,
               job_id TEXT NOT NULL,
@@ -141,14 +142,14 @@ final class MigratorTests: XCTestCase {
               updated_at TEXT NOT NULL
             )
         """)
-        exec(db, """
+        exec(dbHandle, """
             CREATE TABLE data_quality_reviews (
               job_id TEXT PRIMARY KEY,
               reviewed_at TEXT NOT NULL,
               note TEXT NOT NULL DEFAULT ''
             )
         """)
-        exec(db, """
+        exec(dbHandle, """
             CREATE TABLE sites (
               id TEXT PRIMARY KEY,
               origin TEXT NOT NULL,
@@ -168,7 +169,7 @@ final class MigratorTests: XCTestCase {
               updated_at TEXT NOT NULL
             )
         """)
-        exec(db, """
+        exec(dbHandle, """
             CREATE TABLE resumes (
               id TEXT PRIMARY KEY,
               name TEXT NOT NULL,
@@ -181,7 +182,7 @@ final class MigratorTests: XCTestCase {
               updated_at TEXT NOT NULL
             )
         """)
-        exec(db, """
+        exec(dbHandle, """
             CREATE TABLE job_fit_scores (
               job_id TEXT NOT NULL,
               resume_id TEXT NOT NULL,
@@ -195,7 +196,7 @@ final class MigratorTests: XCTestCase {
               PRIMARY KEY (job_id, resume_id)
             )
         """)
-        exec(db, """
+        exec(dbHandle, """
             CREATE TABLE llm_requests (
               id TEXT PRIMARY KEY,
               job_id TEXT NOT NULL,
@@ -210,7 +211,7 @@ final class MigratorTests: XCTestCase {
               finished_at TEXT
             )
         """)
-        exec(db, """
+        exec(dbHandle, """
             CREATE TABLE llm_request_attempts (
               id TEXT PRIMARY KEY,
               request_id TEXT NOT NULL,
@@ -232,7 +233,7 @@ final class MigratorTests: XCTestCase {
               resume_id TEXT
             )
         """)
-        exec(db, """
+        exec(dbHandle, """
             CREATE TABLE contacts (
               id TEXT PRIMARY KEY,
               job_id TEXT NOT NULL,
@@ -246,7 +247,7 @@ final class MigratorTests: XCTestCase {
               updated_at TEXT NOT NULL
             )
         """)
-        exec(db, """
+        exec(dbHandle, """
             CREATE TABLE cover_letters (
               id TEXT PRIMARY KEY,
               job_id TEXT NOT NULL,
@@ -266,16 +267,16 @@ final class MigratorTests: XCTestCase {
         let path = "/tmp/definitely_does_not_exist_\(UUID().uuidString).db"
         // We can't directly call the migrator's openReadOnly (it's in the executable, not a testable module),
         // but we can replicate the same logic to verify SQLITE_CANTOPEN is returned.
-        var db: OpaquePointer?
-        let rc = sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil)
-        XCTAssertNotEqual(rc, SQLITE_OK, "sqlite3_open_v2 should fail for a non-existent path in readonly mode")
-        sqlite3_close(db)
+        var dbPtr: OpaquePointer?
+        let openResult = sqlite3_open_v2(path, &dbPtr, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil)
+        XCTAssertNotEqual(openResult, SQLITE_OK, "sqlite3_open_v2 should fail for a non-existent path in readonly mode")
+        sqlite3_close(dbPtr)
         XCTAssertFalse(FileManager.default.fileExists(atPath: path), "File should not have been created")
     }
 
     /// An empty legacy DB (all tables present, no rows) should produce a 0-row SwiftData store.
     func testEmptyDBProducesZeroRows() async throws {
-        let dbPath = try makeTempDB { db in createMinimalSchema(db) }
+        let dbPath = try makeTempDB { dbHandle in createMinimalSchema(dbHandle) }
         defer { try? FileManager.default.removeItem(atPath: dbPath) }
 
         let outputPath = FileManager.default.temporaryDirectory
@@ -284,8 +285,8 @@ final class MigratorTests: XCTestCase {
 
         // Open source DB
         var srcDB: OpaquePointer?
-        let rc = sqlite3_open_v2(dbPath, &srcDB, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil)
-        XCTAssertEqual(rc, SQLITE_OK)
+        let openResult = sqlite3_open_v2(dbPath, &srcDB, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil)
+        XCTAssertEqual(openResult, SQLITE_OK)
         guard let srcDB else { XCTFail("Could not open source DB"); return }
         defer { sqlite3_close(srcDB) }
 
@@ -303,9 +304,9 @@ final class MigratorTests: XCTestCase {
         var siteCount = 0
         var resumeCount = 0
 
-        func queryRows(_ db: OpaquePointer, _ sql: String) -> [[String: String?]] {
+        func queryRows(_ dbHandle: OpaquePointer, _ sql: String) -> [[String: String?]] {
             var stmt: OpaquePointer?
-            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+            guard sqlite3_prepare_v2(dbHandle, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
             defer { sqlite3_finalize(stmt) }
             var rows: [[String: String?]] = []
             while sqlite3_step(stmt) == SQLITE_ROW {
@@ -352,35 +353,35 @@ final class MigratorTests: XCTestCase {
     func testFixtureDBRowCountsMatch() async throws {
         let now = "2024-01-15T12:00:00Z"
 
-        let dbPath = try makeTempDB { db in
-            createMinimalSchema(db)
+        let dbPath = try makeTempDB { dbHandle in
+            createMinimalSchema(dbHandle)
 
             // Insert a capture
-            exec(db, """
+            exec(dbHandle, """
                 INSERT INTO captures (id, url, page_title, raw_hash, captured_at, created_at)
                 VALUES ('cap1', 'https://example.com/jobs/1', 'Senior Engineer', 'hash_abc', '\(now)', '\(now)')
             """)
 
             // Insert a job linked to the capture
-            exec(db, """
+            exec(dbHandle, """
                 INSERT INTO jobs (id, job_number, capture_id, company, title, status,
                                   manual_overrides, extraction_status, fit_status, unread,
                                   created_at, updated_at)
                 VALUES ('job1', 42, 'cap1', 'Acme Corp', 'Senior Engineer', 'saved',
                         '[]', 'succeeded', 'none', 0, '\(now)', '\(now)')
             """)
-            exec(db, """
+            exec(dbHandle, """
                 UPDATE jobs SET extracted_json = '{"title":"Senior Engineer"}' WHERE id = 'job1'
             """)
 
             // Insert an event
-            exec(db, """
+            exec(dbHandle, """
                 INSERT INTO events (id, job_id, event_type, occurred_at, created_at)
                 VALUES ('ev1', 'job1', 'applied', '\(now)', '\(now)')
             """)
 
             // Insert a site
-            exec(db, """
+            exec(dbHandle, """
                 INSERT INTO sites (id, origin, url, company_description, page_title, state,
                                    interval_days, note, added_at, created_at, updated_at)
                 VALUES ('site1', 'https://acme.com', 'https://acme.com/careers', '', 'Acme Jobs',
@@ -388,13 +389,13 @@ final class MigratorTests: XCTestCase {
             """)
 
             // Insert a resume
-            exec(db, """
+            exec(dbHandle, """
                 INSERT INTO resumes (id, name, text, char_count, active, sort_order, created_at, updated_at)
                 VALUES ('res1', 'My Resume', 'Resume content here', 19, 1, 0, '\(now)', '\(now)')
             """)
 
             // Insert a setting
-            exec(db, """
+            exec(dbHandle, """
                 INSERT INTO settings (key, value, updated_at) VALUES ('llm_provider', 'lmstudio', '\(now)')
             """)
         }
@@ -406,8 +407,8 @@ final class MigratorTests: XCTestCase {
 
         // Open source
         var srcDB: OpaquePointer?
-        let rc = sqlite3_open_v2(dbPath, &srcDB, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil)
-        XCTAssertEqual(rc, SQLITE_OK)
+        let openResult = sqlite3_open_v2(dbPath, &srcDB, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil)
+        XCTAssertEqual(openResult, SQLITE_OK)
         guard let srcDB else { XCTFail("Could not open fixture DB"); return }
         defer { sqlite3_close(srcDB) }
 
@@ -419,15 +420,15 @@ final class MigratorTests: XCTestCase {
         let context = ModelContext(container)
 
         // Replicate the migration logic inline for the key tables
-        func queryRows(_ db: OpaquePointer, _ sql: String) -> [[String: String?]] {
+        func queryRows(_ dbHandle: OpaquePointer, _ sql: String) -> [[String: String?]] {
             var stmt: OpaquePointer?
-            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+            guard sqlite3_prepare_v2(dbHandle, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
             defer { sqlite3_finalize(stmt) }
             var rows: [[String: String?]] = []
             while sqlite3_step(stmt) == SQLITE_ROW {
                 var row: [String: String?] = [:]
-                let n = sqlite3_column_count(stmt)
-                for col in 0..<n {
+                let colCount = sqlite3_column_count(stmt)
+                for col in 0..<colCount {
                     let name = String(cString: sqlite3_column_name(stmt, col))
                     if sqlite3_column_type(stmt, col) == SQLITE_NULL {
                         row[name] = .some(nil)
@@ -452,7 +453,7 @@ final class MigratorTests: XCTestCase {
 
         let isoBasic = ISO8601DateFormatter()
         isoBasic.formatOptions = [.withInternetDateTime]
-        func parseDate(_ s: String?) -> Date? { s.flatMap { isoBasic.date(from: $0) } }
+        func parseDate(_ dateStr: String?) -> Date? { dateStr.flatMap { isoBasic.date(from: $0) } }
         func dateOrNow(_ row: [String: String?], _ key: String) -> Date { parseDate(row[key] ?? nil) ?? Date() }
 
         // Migrate captures
@@ -466,12 +467,12 @@ final class MigratorTests: XCTestCase {
         }
 
         var captureMap: [String: Capture] = [:]
-        for c in (try? context.fetch(FetchDescriptor<Capture>())) ?? [] { captureMap[c.id] = c }
+        for cap in (try? context.fetch(FetchDescriptor<Capture>())) ?? [] { captureMap[cap.id] = cap }
 
         // Migrate jobs
         for row in queryRows(srcDB, "SELECT * FROM jobs") {
             guard let id = str(row, "id") else { continue }
-            let j = Job(
+            let jobObj = Job(
                 id: id,
                 jobNumber: intVal(row, "job_number"),
                 company: str(row, "company"),
@@ -485,20 +486,20 @@ final class MigratorTests: XCTestCase {
                 createdAt: dateOrNow(row, "created_at"),
                 updatedAt: dateOrNow(row, "updated_at")
             )
-            if let capId = str(row, "capture_id") { j.capture = captureMap[capId] }
-            context.insert(j)
+            if let capId = str(row, "capture_id") { jobObj.capture = captureMap[capId] }
+            context.insert(jobObj)
         }
 
         var jobMap: [String: Job] = [:]
-        for j in (try? context.fetch(FetchDescriptor<Job>())) ?? [] { jobMap[j.id] = j }
+        for jobFetched in (try? context.fetch(FetchDescriptor<Job>())) ?? [] { jobMap[jobFetched.id] = jobFetched }
 
         // Migrate events
         for row in queryRows(srcDB, "SELECT * FROM events") {
             guard let id = str(row, "id"), let jobId = str(row, "job_id") else { continue }
-            let ev = JobEvent(id: id, eventType: req(row, "event_type"), occurredAt: dateOrNow(row, "occurred_at"),
+            let evObj = JobEvent(id: id, eventType: req(row, "event_type"), occurredAt: dateOrNow(row, "occurred_at"),
                               createdAt: dateOrNow(row, "created_at"))
-            ev.job = jobMap[jobId]
-            context.insert(ev)
+            evObj.job = jobMap[jobId]
+            context.insert(evObj)
         }
 
         // Migrate sites
@@ -572,3 +573,5 @@ final class MigratorTests: XCTestCase {
         XCTAssertEqual(setting.value, "lmstudio")
     }
 }
+
+// swiftlint:enable line_length file_length cyclomatic_complexity function_body_length type_body_length

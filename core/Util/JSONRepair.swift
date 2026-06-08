@@ -41,7 +41,7 @@ public func repairJSON(_ input: String) throws -> String {
 
     // Validate it parses
     guard let data = text.data(using: .utf8),
-          let _ = try? JSONSerialization.jsonObject(with: data) else {
+          (try? JSONSerialization.jsonObject(with: data)) != nil else {
         throw JSONRepairError.unparseable(text)
     }
     return text
@@ -55,14 +55,14 @@ public enum JSONRepairError: Error {
 
 /// Strip ``` fences (redundant with extractJSON but defensive)
 private func removeFencedMarkdown(_ text: String) -> String {
-    let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    if t.hasPrefix("```") {
-        let stripped = t
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.hasPrefix("```") {
+        let stripped = trimmed
             .replacingOccurrences(of: #"^```(?:json)?\s*\n?"#, with: "", options: .regularExpression)
             .replacingOccurrences(of: #"\n?\s*```\s*$"#, with: "", options: .regularExpression)
         return stripped.trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    return t
+    return trimmed
 }
 
 /// Remove trailing commas before `}` or `]`.
@@ -97,36 +97,36 @@ private func quoteUnquotedKeys(_ text: String) -> String {
 /// This is a best-effort implementation — doesn't handle all edge cases.
 private func convertSingleQuotes(_ text: String) -> String {
     var result = ""
-    var i = text.startIndex
+    var idx = text.startIndex
     var inDouble = false
     var inSingle = false
 
-    while i < text.endIndex {
-        let ch = text[i]
-        let next = text.index(after: i)
+    while idx < text.endIndex {
+        let charVal = text[idx]
+        let next = text.index(after: idx)
 
-        switch ch {
+        switch charVal {
         case "\\" where inDouble || inSingle:
             // Escaped character — pass through both chars
-            result.append(ch)
+            result.append(charVal)
             if next < text.endIndex {
                 result.append(text[next])
-                i = text.index(after: next)
+                idx = text.index(after: next)
             } else {
-                i = next
+                idx = next
             }
             continue
         case "\"" where !inSingle:
             inDouble.toggle()
-            result.append(ch)
+            result.append(charVal)
         case "'" where !inDouble:
             inSingle.toggle()
             // Replace with double quote
             result.append("\"")
         default:
-            result.append(ch)
+            result.append(charVal)
         }
-        i = next
+        idx = next
     }
     return result
 }

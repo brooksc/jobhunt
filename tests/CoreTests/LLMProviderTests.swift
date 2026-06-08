@@ -1,3 +1,4 @@
+// swiftlint:disable force_unwrapping file_length
 import XCTest
 @testable import JobhuntCore
 
@@ -10,8 +11,8 @@ final class LLMMockURLProtocol: URLProtocol {
     static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
     static var capturedRequests: [URLRequest] = []
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override static func canInit(with request: URLRequest) -> Bool { true }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
         LLMMockURLProtocol.capturedRequests.append(request)
@@ -196,7 +197,7 @@ final class AnthropicProviderTests: XCTestCase {
         let req = ChatRequest(
             messages: [
                 ChatMessage(role: "system", content: "sys"),
-                ChatMessage(role: "user", content: "user"),
+                ChatMessage(role: "user", content: "user")
             ],
             model: "claude-sonnet-4-6"
         )
@@ -224,7 +225,7 @@ final class AnthropicProviderTests: XCTestCase {
         let req = ChatRequest(
             messages: [
                 ChatMessage(role: "system", content: "Be helpful"),
-                ChatMessage(role: "user", content: "Hello"),
+                ChatMessage(role: "user", content: "Hello")
             ],
             model: "claude-sonnet-4-6"
         )
@@ -283,7 +284,7 @@ final class GoogleProviderTests: XCTestCase {
         let req = ChatRequest(
             messages: [
                 ChatMessage(role: "system", content: "sys"),
-                ChatMessage(role: "user", content: "q"),
+                ChatMessage(role: "user", content: "q")
             ],
             model: "gemini-2.5-flash"
         )
@@ -531,3 +532,5 @@ final class LLMProviderErrorTests: XCTestCase {
         }
     }
 }
+
+// swiftlint:enable force_unwrapping file_length

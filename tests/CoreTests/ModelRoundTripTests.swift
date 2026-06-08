@@ -30,15 +30,15 @@ final class ModelRoundTripTests: XCTestCase {
     }
 
     func testCaptureRawHashUniqueness() throws {
-        let c1 = Capture(url: "https://a.com", pageTitle: "A", rawHash: "same_hash")
-        let c2 = Capture(url: "https://b.com", pageTitle: "B", rawHash: "same_hash")
-        context.insert(c1)
-        context.insert(c2)
+        let capture1 = Capture(url: "https://a.com", pageTitle: "A", rawHash: "same_hash")
+        let capture2 = Capture(url: "https://b.com", pageTitle: "B", rawHash: "same_hash")
+        context.insert(capture1)
+        context.insert(capture2)
         // SwiftData does not throw on save for duplicate unique values in in-memory stores the same way
         // as SQLite — the duplicate should be caught at the uniqueness constraint level.
         // We verify insertion of distinct hashes works.
-        let c3 = Capture(url: "https://c.com", pageTitle: "C", rawHash: "different_hash")
-        context.insert(c3)
+        let capture3 = Capture(url: "https://c.com", pageTitle: "C", rawHash: "different_hash")
+        context.insert(capture3)
         try context.save()
         let fetched = try context.fetch(FetchDescriptor<Capture>())
         XCTAssertGreaterThanOrEqual(fetched.count, 1)
@@ -203,8 +203,8 @@ final class ModelRoundTripTests: XCTestCase {
     // MARK: - DuplicateDecision
 
     func testDuplicateDecisionRoundTrip() throws {
-        let dd = DuplicateDecision(cleanedHash: "dup_hash", decision: "keep")
-        context.insert(dd)
+        let dupDecision = DuplicateDecision(cleanedHash: "dup_hash", decision: "keep")
+        context.insert(dupDecision)
         try context.save()
 
         let fetched = try context.fetch(FetchDescriptor<DuplicateDecision>())
@@ -231,13 +231,13 @@ final class ModelRoundTripTests: XCTestCase {
     // MARK: - ModelContainerFactory in-memory
 
     func testInMemoryContainerIsIsolated() throws {
-        let c1 = try ModelContainerFactory.inMemory()
-        let c2 = try ModelContainerFactory.inMemory()
-        let ctx1 = ModelContext(c1)
+        let capture1 = try ModelContainerFactory.inMemory()
+        let capture2 = try ModelContainerFactory.inMemory()
+        let ctx1 = ModelContext(capture1)
         ctx1.insert(Job(jobNumber: 999))
         try ctx1.save()
 
-        let ctx2 = ModelContext(c2)
+        let ctx2 = ModelContext(capture2)
         let fetched = try ctx2.fetch(FetchDescriptor<Job>())
         XCTAssertEqual(fetched.count, 0, "In-memory containers must be isolated")
     }

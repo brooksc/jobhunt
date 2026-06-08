@@ -1,3 +1,4 @@
+// swiftlint:disable function_body_length
 import Foundation
 import SwiftData
 
@@ -161,8 +162,8 @@ public enum ExtractionEngine {
         guard let outer = raw, let inner = outer else { return nil }
         if let dict = inner as? [String: Any] {
             let values = dict.values.compactMap { val -> Double? in
-                if let d = val as? Double { return d }
-                if let i = val as? Int { return Double(i) }
+                if let dbl = val as? Double { return dbl }
+                if let int = val as? Int { return Double(int) }
                 return nil
             }
             guard !values.isEmpty else { return nil }
@@ -239,3 +240,4 @@ public enum ExtractionEngineError: Error, LocalizedError {
         }
     }
 }
+// swiftlint:enable function_body_length

@@ -1,3 +1,4 @@
+// swiftlint:disable nesting
 import Foundation
 
 /// Anthropic Messages API provider.
@@ -32,7 +33,7 @@ public final class AnthropicProvider: LLMProvider, @unchecked Sendable {
         var payload: [String: Any] = [
             "model": request.model,
             "max_tokens": request.maxTokens,
-            "messages": userMsgs.map { ["role": $0.role, "content": $0.content] },
+            "messages": userMsgs.map { ["role": $0.role, "content": $0.content] }
         ]
         if let sys = systemMsg { payload["system"] = sys.content }
 
@@ -87,3 +88,4 @@ private struct AnthropicResponse: Decodable {
         }
     }
 }
+// swiftlint:enable nesting

@@ -1,3 +1,4 @@
+// swiftlint:disable cyclomatic_complexity function_body_length nesting
 import Foundation
 
 /// Shared transport logic for all OpenAI-compatible providers
@@ -17,13 +18,15 @@ enum OpenAICompatibleTransport {
         session: URLSession = .shared,
         timeoutSeconds: Int = 300
     ) async throws -> ChatResponse {
-        let url = URL(string: "\(baseURL)/v1/chat/completions")!
+        guard let url = URL(string: "\(baseURL)/v1/chat/completions") else {
+            throw LLMProviderError.httpError(statusCode: 0, body: "Invalid base URL: \(baseURL)")
+        }
 
         var headers: [String: String] = ["Content-Type": "application/json"]
         if !apiKey.isEmpty {
             headers["Authorization"] = "Bearer \(apiKey)"
         }
-        for (k, v) in extraHeaders { headers[k] = v }
+        for (headerKey, headerVal) in extraHeaders { headers[headerKey] = headerVal }
 
         // Build the format negotiation ladder: preferred → json_object → nil (text)
         var formats: [ResponseFormat?] = [nil, nil, nil]
@@ -36,15 +39,15 @@ enum OpenAICompatibleTransport {
             formats = [nil]
         }
 
-        var lastBadStatusCode: Int? = nil
-        var lastBadBody: String? = nil
+        var lastBadStatusCode: Int?
+        var lastBadBody: String?
 
         for fmt in formats {
             let body = try buildBody(request: request, fmt: fmt)
             var urlRequest = URLRequest(url: url)
             urlRequest.httpMethod = "POST"
             urlRequest.timeoutInterval = Double(timeoutSeconds)
-            for (k, v) in headers { urlRequest.setValue(v, forHTTPHeaderField: k) }
+            for (headerKey, headerVal) in headers { urlRequest.setValue(headerVal, forHTTPHeaderField: headerKey) }
             urlRequest.httpBody = body
 
             let (data, response) = try await session.data(for: urlRequest)
@@ -94,7 +97,7 @@ enum OpenAICompatibleTransport {
             "messages": request.messages.map { ["role": $0.role, "content": $0.content] },
             "temperature": 0,
             "stream": false,
-            "max_tokens": request.maxTokens,
+            "max_tokens": request.maxTokens
         ]
         if let fmt {
             obj["response_format"] = responseFormatJSON(fmt)
@@ -112,8 +115,8 @@ enum OpenAICompatibleTransport {
                 "json_schema": [
                     "name": name,
                     "strict": true,
-                    "schema": schemaObj,
-                ],
+                    "schema": schemaObj
+                ]
             ]
         case .jsonObject:
             return ["type": "json_object"]
@@ -148,3 +151,4 @@ struct OpenAIChatResponse: Decodable {
         }
     }
 }
+// swiftlint:enable cyclomatic_complexity function_body_length nesting

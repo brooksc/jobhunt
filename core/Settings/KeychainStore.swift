@@ -46,7 +46,7 @@ public struct KeychainStore: Sendable {
         [
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
-            kSecAttrAccount: key,
+            kSecAttrAccount: key
         ]
     }
 }

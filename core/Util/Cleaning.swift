@@ -17,8 +17,8 @@ public func cleanDescription(
     }
 
     var parts: [String] = []
-    let vt = visibleText.trimmingCharacters(in: .whitespaces)
-    if !vt.isEmpty { parts.append(vt) }
+    let visibleTrimmed = visibleText.trimmingCharacters(in: .whitespaces)
+    if !visibleTrimmed.isEmpty { parts.append(visibleTrimmed) }
 
     let jsonLdDesc = extractJsonLdDescription(structuredData)
     if !jsonLdDesc.isEmpty { parts.append(jsonLdDesc) }
@@ -58,10 +58,10 @@ private func findJobPosting(_ value: Any) -> [String: Any]? {
 
     let typeValue = dict["@type"]
     var types: [String] = []
-    if let t = typeValue as? String {
-        types = [t]
-    } else if let t = typeValue as? [String] {
-        types = t
+    if let typeStr = typeValue as? String {
+        types = [typeStr]
+    } else if let typeArr = typeValue as? [String] {
+        types = typeArr
     }
     if types.contains("JobPosting") { return dict }
 
@@ -99,11 +99,11 @@ private func decodeNumericEntities(_ text: String) -> String {
 
     // Process all numeric entity matches and replace them
     func replaceEntities(pattern: String, extractor: (String) -> Int?) {
-        guard let re = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return }
+        guard let entityRegex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return }
         // Collect all matches first, then process in reverse order to preserve offsets
         let nsStr = result as NSString
         let allRange = NSRange(location: 0, length: nsStr.length)
-        let matches = re.matches(in: result, range: allRange)
+        let matches = entityRegex.matches(in: result, range: allRange)
         for match in matches.reversed() {
             guard let captureRange = Range(match.range(at: 1), in: result) else { continue }
             let numStr = String(result[captureRange])

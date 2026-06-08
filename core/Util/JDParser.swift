@@ -1,6 +1,6 @@
 // JDParser.swift — port of static/jd-parser.js
 // Pure Foundation only — no SwiftUI/AppKit/SwiftData imports.
-
+// swiftlint:disable line_length cyclomatic_complexity function_body_length
 import Foundation
 
 // MARK: - Types
@@ -9,7 +9,7 @@ public enum JDBlock: Equatable {
     case heading(text: String)
     case paragraph(text: String)
     case list(items: [String])
-    case hr
+    case horizontalRule
 }
 
 // MARK: - Parser
@@ -29,8 +29,8 @@ public func parseJdBlocks(_ text: String?) -> [JDBlock] {
     )
     let emojiRe = try? NSRegularExpression(pattern: #"^\p{Emoji_Presentation}"#)
 
-    let isProse: (String) -> Bool = { l in
-        l.count >= 80 || (l.count >= 50 && (l.contains(",") || l.contains(".")))
+    let isProse: (String) -> Bool = { str in
+        str.count >= 80 || (str.count >= 50 && (str.contains(",") || str.contains(".")))
     }
 
     // For LinkedIn pages, "Feed post" marks the start of actual post content.
@@ -39,23 +39,23 @@ public func parseJdBlocks(_ text: String?) -> [JDBlock] {
 
     var start = searchFrom
     let searchLimit = min(lines.count, searchFrom + 30)
-    for i in searchFrom..<searchLimit {
-        let l = lines[i].trimmingCharacters(in: .whitespaces)
-        let nsStr = l as NSString
+    for idx in searchFrom..<searchLimit {
+        let line = lines[idx].trimmingCharacters(in: .whitespaces)
+        let nsStr = line as NSString
         let range = NSRange(location: 0, length: nsStr.length)
-        let matchesHeader = headerRe?.firstMatch(in: l, range: range) != nil
-        let matchesEmoji = emojiRe?.firstMatch(in: l, range: range) != nil
-        if isProse(l) || matchesHeader || matchesEmoji {
-            start = i
+        let matchesHeader = headerRe?.firstMatch(in: line, range: range) != nil
+        let matchesEmoji = emojiRe?.firstMatch(in: line, range: range) != nil
+        if isProse(line) || matchesHeader || matchesEmoji {
+            start = idx
             break
         }
     }
 
     var blocks: [JDBlock] = []
-    var current: JDBlock? = nil
+    var current: JDBlock?
 
     let flush: () -> Void = {
-        if let c = current { blocks.append(c); current = nil }
+        if let cur = current { blocks.append(cur); current = nil }
     }
 
     for raw in lines[start...] {
@@ -86,7 +86,7 @@ public func parseJdBlocks(_ text: String?) -> [JDBlock] {
         // Horizontal rule
         if isHorizontalRule(line) {
             flush()
-            blocks.append(.hr)
+            blocks.append(.horizontalRule)
             continue
         }
 
@@ -115,7 +115,7 @@ public func parseJdBlocks(_ text: String?) -> [JDBlock] {
     flush()
 
     // Drop trailing <hr> blocks (LinkedIn separator before duplicate)
-    while case .hr = blocks.last {
+    while case .horizontalRule = blocks.last {
         blocks.removeLast()
     }
 
@@ -163,3 +163,4 @@ private func isHeadingLine(_ line: String, matchesHeader: Bool, matchesEmoji: Bo
 
     return isAllCaps || endsWithColon || isKnownHeader || isEmojiLed
 }
+// swiftlint:enable line_length cyclomatic_complexity function_body_length

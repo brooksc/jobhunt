@@ -1,3 +1,4 @@
+// swiftlint:disable line_length
 import Foundation
 import SwiftData
 
@@ -18,9 +19,13 @@ public enum ModelContainerFactory {
     }
 
     private static func productionStoreURL() -> URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        // urls(for:in:) returns an empty array only on simulator/tests; guard is a safety net.
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("Jobhunt/jobhunt.store")
+        }
         let dir = appSupport.appendingPathComponent("Jobhunt", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("jobhunt.store")
     }
 }
+// swiftlint:enable line_length

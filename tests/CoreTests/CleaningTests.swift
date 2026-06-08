@@ -1,3 +1,4 @@
+// swiftlint:disable line_length
 // CleaningTests.swift — port of tests/unit/cleaning.test.js
 import XCTest
 @testable import JobhuntCore
@@ -115,7 +116,7 @@ final class CleaningTests: XCTestCase {
                 "@context": "https://schema.org",
                 "@graph": [
                     ["@type": "JobPosting", "description": "Found via @graph traversal."],
-                    ["@type": "BreadcrumbList", "itemListElement": [] as [Any]],
+                    ["@type": "BreadcrumbList", "itemListElement": [] as [Any]]
                 ]
             ]]
         )
@@ -149,3 +150,5 @@ final class CleaningTests: XCTestCase {
         XCTAssertTrue(result.contains("San Francisco Bay Area:"), "JSON-LD band label present")
     }
 }
+
+// swiftlint:enable line_length

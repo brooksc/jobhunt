@@ -1,3 +1,4 @@
+// swiftlint:disable force_unwrapping line_length
 import XCTest
 import SwiftData
 @testable import JobhuntCore
@@ -9,19 +10,17 @@ final class MockURLProtocol: URLProtocol {
     // Map from URL string pattern → handler closure.
     static var handlers: [(String, (URLRequest) -> (HTTPURLResponse, Data))] = []
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override static func canInit(with request: URLRequest) -> Bool { true }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
         let urlString = request.url?.absoluteString ?? ""
-        for (pattern, handler) in MockURLProtocol.handlers {
-            if urlString.contains(pattern) {
-                let (response, data) = handler(request)
-                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-                client?.urlProtocol(self, didLoad: data)
-                client?.urlProtocolDidFinishLoading(self)
-                return
-            }
+        for (pattern, handler) in MockURLProtocol.handlers where urlString.contains(pattern) {
+            let (response, data) = handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+            return
         }
         // Default: 200 OK with empty body.
         let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
@@ -44,8 +43,8 @@ final class MockURLProtocol: URLProtocol {
 // MARK: - Helper
 
 private func makeResponse(url: String, status: Int = 200, body: String = "") -> (HTTPURLResponse, Data) {
-    let u = URL(string: url)!
-    let resp = HTTPURLResponse(url: u, statusCode: status, httpVersion: nil, headerFields: nil)!
+    let parsedURL = URL(string: url)!
+    let resp = HTTPURLResponse(url: parsedURL, statusCode: status, httpVersion: nil, headerFields: nil)!
     return (resp, Data(body.utf8))
 }
 
@@ -165,7 +164,7 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
             title: "Principal Technical Program Manager",
             session: session
         )
-        if case .gone(let r) = result { XCTFail("Expected .available but got .gone(\(r))") }
+        if case .gone(let goneReason) = result { XCTFail("Expected .available but got .gone(\(goneReason))") }
     }
 
     func testGoneWhenRedirectedToSearchPage() async {
@@ -194,7 +193,7 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
             title: "Senior Software Engineer Role",
             session: session
         )
-        if case .gone(let r) = result { XCTFail("Expected .available but got .gone(\(r))") }
+        if case .gone(let goneReason) = result { XCTFail("Expected .available but got .gone(\(goneReason))") }
     }
 
     func testGoneForLevelsFyiJobsPageRedirect() async {
@@ -346,7 +345,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
     func testCheckJobsMarksGoneJobAsNotAvailable() async throws {
         MockURLProtocol.handlers = [
             ("check-gone.example.com", { _ in makeResponse(url: "https://check-gone.example.com/job/2", status: 404, body: "not found") }),
-            ("check-available.example.com", { _ in makeResponse(url: "https://check-available.example.com/job/1", status: 200, body: "Job posting available") }),
+            ("check-available.example.com", { _ in makeResponse(url: "https://check-available.example.com/job/1", status: 200, body: "Job posting available") })
         ]
 
         let goodJob = try makeJobWithCapture(url: "https://check-available.example.com/job/1", title: "Good Job")
@@ -369,7 +368,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         // Stale job (captured 30 days ago).
         let staleDate = Date().addingTimeInterval(-30 * 86400)
         MockURLProtocol.handlers = [
-            ("stale.example.com", { _ in makeResponse(url: "https://stale.example.com/job/1", status: 404, body: "gone") }),
+            ("stale.example.com", { _ in makeResponse(url: "https://stale.example.com/job/1", status: 404, body: "gone") })
         ]
 
         let staleJob = try makeJobWithCapture(
@@ -433,3 +432,5 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(result.checked, 0)
     }
 }
+
+// swiftlint:enable force_unwrapping line_length

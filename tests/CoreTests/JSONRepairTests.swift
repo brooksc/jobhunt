@@ -1,3 +1,4 @@
+// swiftlint:disable force_unwrapping
 // JSONRepairTests.swift — tests for JSONRepair utility
 import XCTest
 @testable import JobhuntCore
@@ -50,7 +51,7 @@ final class JSONRepairTests: XCTestCase {
         let input = "{name: \"Alice\", age: 30}"
         let result = try repairJSON(input)
         let data = result.data(using: .utf8)!
-        let obj = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let obj = (try JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         XCTAssertEqual(obj["name"] as? String, "Alice")
         XCTAssertEqual(obj["age"] as? Int, 30)
     }
@@ -61,7 +62,7 @@ final class JSONRepairTests: XCTestCase {
         let input = "{'key': 'value'}"
         let result = try repairJSON(input)
         let data = result.data(using: .utf8)!
-        let obj = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let obj = (try JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         XCTAssertEqual(obj["key"] as? String, "value")
     }
 
@@ -71,7 +72,7 @@ final class JSONRepairTests: XCTestCase {
         let input = "```json\n{\"title\": \"Engineer\", \"salary\": 100000}\n```"
         let result = try repairJSON(input)
         let data = result.data(using: .utf8)!
-        let obj = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let obj = (try JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         XCTAssertEqual(obj["title"] as? String, "Engineer")
     }
 
@@ -91,7 +92,9 @@ final class JSONRepairTests: XCTestCase {
         let input = "```json\n{name: 'Alice', age: 30,}\n```"
         let result = try repairJSON(input)
         let data = result.data(using: .utf8)!
-        let obj = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let obj = (try JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         XCTAssertEqual(obj["name"] as? String, "Alice")
     }
 }
+
+// swiftlint:enable force_unwrapping

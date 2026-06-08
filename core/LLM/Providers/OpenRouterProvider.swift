@@ -27,7 +27,7 @@ public final class OpenRouterProvider: LLMProvider, @unchecked Sendable {
     public func complete(_ request: ChatRequest) async throws -> ChatResponse {
         let extraHeaders: [String: String] = [
             "HTTP-Referer": "https://github.com/jobhunt-app/jobhunt",
-            "X-Title": "Jobhunt",
+            "X-Title": "Jobhunt"
         ]
         return try await OpenAICompatibleTransport.complete(
             request: request,

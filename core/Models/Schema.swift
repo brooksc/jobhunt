@@ -20,7 +20,7 @@ public enum SchemaV1: VersionedSchema {
             LLMRequest.self,
             LLMRequestAttempt.self,
             Contact.self,
-            CoverLetter.self,
+            CoverLetter.self
         ]
     }
 }

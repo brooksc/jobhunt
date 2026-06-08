@@ -1,3 +1,4 @@
+// swiftlint:disable line_length
 import XCTest
 @testable import JobhuntCore
 
@@ -203,3 +204,4 @@ final class PromptBuilderTests: XCTestCase {
         XCTAssertGreaterThan(withCtx.extractChars, noCtx.extractChars)
     }
 }
+// swiftlint:enable line_length

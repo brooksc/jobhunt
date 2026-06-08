@@ -1,3 +1,4 @@
+// swiftlint:disable line_length
 import Foundation
 
 /// Apple Foundation Models provider — calls LanguageModelSession in-process.
@@ -110,8 +111,8 @@ enum FoundationModelsBridge {
             let block: CompletionBlock = { result, error in
                 if let error {
                     continuation.resume(throwing: error)
-                } else if let r = result {
-                    let text = (r.value(forKey: "content") as? String) ?? ""
+                } else if let responseObj = result {
+                    let text = (responseObj.value(forKey: "content") as? String) ?? ""
                     continuation.resume(returning: text)
                 } else {
                     continuation.resume(returning: "")
@@ -121,3 +122,4 @@ enum FoundationModelsBridge {
         }
     }
 }
+// swiftlint:enable line_length

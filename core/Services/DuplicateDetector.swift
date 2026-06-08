@@ -1,3 +1,4 @@
+// swiftlint:disable line_length cyclomatic_complexity function_body_length type_body_length large_tuple
 import Foundation
 import CryptoKit
 import SwiftData
@@ -90,7 +91,8 @@ public struct DuplicateDetector {
         var pairs: [DuplicatePair] = []
 
         // 1. Exact hash groups (same cleaned_hash, multiple jobs, different URLs)
-        let hashGroups = Dictionary(grouping: snapshots.filter { $0.cleanedHash != nil }) { $0.cleanedHash! }
+        let snapshotsWithHash = snapshots.filter { $0.cleanedHash != nil }
+        let hashGroups = Dictionary(grouping: snapshotsWithHash) { $0.cleanedHash ?? "" }
         for (hash, group) in hashGroups where group.count >= 2 {
             guard !resolvedHashes.contains(hash) else { continue }
             // Sort by creation order proxy (jobNumber ascending = earlier capture = preferred)
@@ -146,7 +148,7 @@ public struct DuplicateDetector {
             "canonical_url": canonicalURL as Any,
             "selected_text": selectedText ?? "",
             "visible_text": visibleText ?? "",
-            "structured_data": structuredData,
+            "structured_data": structuredData
         ]
         _ = payload // suppress warning; value is built below via sorted-key serialisation
         let json = sortedJSON([
@@ -154,7 +156,7 @@ public struct DuplicateDetector {
             "selected_text": selectedText ?? "",
             "structured_data": structuredData,
             "url": url,
-            "visible_text": visibleText ?? "",
+            "visible_text": visibleText ?? ""
         ])
         return sha256Hex(json)
     }
@@ -172,11 +174,11 @@ public struct DuplicateDetector {
 
     // Tokens that carry no signal for company identity (matches db.js COMPANY_STOP_WORDS)
     static let companyStopWords: Set<String> = [
-        "the","a","an","of","for","and","or","in","at","by","to","its","with",
-        "inc","corp","corporation","co","ltd","llc","llp","lp","plc",
-        "technologies","technology","tech","group","holdings","holding",
-        "solutions","services","systems","software","platforms","platform",
-        "global","international","worldwide","ventures","labs","lab","ai",
+        "the", "a", "an", "of", "for", "and", "or", "in", "at", "by", "to", "its", "with",
+        "inc", "corp", "corporation", "co", "ltd", "llc", "llp", "lp", "plc",
+        "technologies", "technology", "tech", "group", "holdings", "holding",
+        "solutions", "services", "systems", "software", "platforms", "platform",
+        "global", "international", "worldwide", "ventures", "labs", "lab", "ai"
     ]
 
     static func companyTokens(_ name: String) -> Set<String> {
@@ -186,13 +188,13 @@ public struct DuplicateDetector {
     }
 
     /// Jaccard similarity on meaningful company name tokens.
-    static func companyJaccard(_ a: String, _ b: String) -> Double {
-        let ta = companyTokens(a)
-        let tb = companyTokens(b)
-        if ta.isEmpty && tb.isEmpty { return 1.0 }
-        if ta.isEmpty || tb.isEmpty { return 0.0 }
-        let intersection = ta.intersection(tb).count
-        let union = ta.union(tb).count
+    static func companyJaccard(_ compA: String, _ compB: String) -> Double {
+        let tokensA = companyTokens(compA)
+        let tokensB = companyTokens(compB)
+        if tokensA.isEmpty && tokensB.isEmpty { return 1.0 }
+        if tokensA.isEmpty || tokensB.isEmpty { return 0.0 }
+        let intersection = tokensA.intersection(tokensB).count
+        let union = tokensA.union(tokensB).count
         return Double(intersection) / Double(union)
     }
 
@@ -205,7 +207,7 @@ public struct DuplicateDetector {
         "into", "including", "jobs", "listed", "looking", "more", "must", "other", "over", "position",
         "posted", "posting", "remote", "requirements", "responsibilities", "role", "same", "seeking",
         "should", "team", "than", "that", "their", "there", "this", "through", "with", "will", "work",
-        "working", "would", "years", "your",
+        "working", "would", "years", "your"
     ]
 
     static func descriptionTokens(_ value: String) -> Set<String> {
@@ -229,7 +231,7 @@ public struct DuplicateDetector {
     static let atsRegistrables: Set<String> = [
         "greenhouse", "lever", "workday", "myworkdayjobs", "ashbyhq", "smartrecruiters",
         "taleo", "icims", "bamboohr", "jobvite", "recruitee", "workable", "rippling",
-        "pinpointhq", "dover", "jazhr", "breezy", "jobscore", "applytojob",
+        "pinpointhq", "dover", "jazhr", "breezy", "jobscore", "applytojob"
     ]
 
     static func companyDomainScore(company: String?, urlString: String) -> Int {
@@ -271,8 +273,8 @@ public struct DuplicateDetector {
     }
 
     static func knownValue(_ value: String?) -> String {
-        let n = normalizeDuplicateText(value ?? "")
-        return (n.isEmpty || n == "unknown") ? "" : n
+        let normalized = normalizeDuplicateText(value ?? "")
+        return (normalized.isEmpty || normalized == "unknown") ? "" : normalized
     }
 
     /// Returns nil if salary bands diverge > 10% on both bounds (hard block).
@@ -286,17 +288,17 @@ public struct DuplicateDetector {
         }
 
         var fieldConflicts: [String] = []
-        for (field, lv, rv) in [
-            ("remote_type",      left.remoteType,      right.remoteType),
-            ("employment_type",  left.employmentType,  right.employmentType),
-            ("seniority",        left.seniority,       right.seniority),
-            ("location",         left.location,        right.location),
+        for (field, leftVal, rightVal) in [
+            ("remote_type", left.remoteType, right.remoteType),
+            ("employment_type", left.employmentType, right.employmentType),
+            ("seniority", left.seniority, right.seniority),
+            ("location", left.location, right.location)
         ] as [(String, String?, String?)] {
-            let lk = knownValue(lv)
-            let rk = knownValue(rv)
-            if !lk.isEmpty && !rk.isEmpty && lk != rk { fieldConflicts.append(field) }
+            let leftKnown = knownValue(leftVal)
+            let rightKnown = knownValue(rightVal)
+            if !leftKnown.isEmpty && !rightKnown.isEmpty && leftKnown != rightKnown { fieldConflicts.append(field) }
         }
-        if let lc = left.salaryCurrency, let rc = right.salaryCurrency, lc != rc {
+        if let leftCurrency = left.salaryCurrency, let rightCurrency = right.salaryCurrency, leftCurrency != rightCurrency {
             fieldConflicts.append("salary_currency")
         }
 
@@ -311,28 +313,26 @@ public struct DuplicateDetector {
     // MARK: - Internal: union-find company clustering (matches clusterByCompany in db.js)
 
     static func clusterByCompany(_ jobs: [JobSnapshot], threshold: Double = 0.5) -> [[JobSnapshot]] {
-        let n = jobs.count
-        var parent = Array(0..<n)
-        func find(_ x: Int) -> Int {
-            var x = x
-            while parent[x] != x {
-                parent[x] = parent[parent[x]]
-                x = parent[x]
+        let count = jobs.count
+        var parent = Array(0..<count)
+        func find(_ nodeIdx: Int) -> Int {
+            var nodeIdx = nodeIdx
+            while parent[nodeIdx] != nodeIdx {
+                parent[nodeIdx] = parent[parent[nodeIdx]]
+                nodeIdx = parent[nodeIdx]
             }
-            return x
+            return nodeIdx
         }
-        for i in 0..<n {
-            for j in (i+1)..<n {
-                if companyJaccard(jobs[i].company ?? "", jobs[j].company ?? "") >= threshold {
-                    let pi = find(i), pj = find(j)
-                    if pi != pj { parent[pi] = pj }
-                }
+        for idx in 0..<count {
+            for jdx in (idx+1)..<count where companyJaccard(jobs[idx].company ?? "", jobs[jdx].company ?? "") >= threshold {
+                let parentI = find(idx), parentJ = find(jdx)
+                if parentI != parentJ { parent[parentI] = parentJ }
             }
         }
         var clusters: [Int: [JobSnapshot]] = [:]
-        for i in 0..<n {
-            let root = find(i)
-            clusters[root, default: []].append(jobs[i])
+        for idx in 0..<count {
+            let root = find(idx)
+            clusters[root, default: []].append(jobs[idx])
         }
         return Array(clusters.values)
     }
@@ -368,9 +368,9 @@ public struct DuplicateDetector {
                     .map { snap -> (snap: JobSnapshot, score: Int) in
                         (snap, DuplicateDetector.companyDomainScore(company: snap.company, urlString: snap.sourceURL))
                     }
-                    .sorted { a, b in
-                        if a.score != b.score { return a.score > b.score }
-                        return a.snap.id < b.snap.id
+                    .sorted { lhs, rhs in
+                        if lhs.score != rhs.score { return lhs.score > rhs.score }
+                        return lhs.snap.id < rhs.snap.id
                     }
 
                 let (keep, keepScore) = (sorted[0].snap, sorted[0].score)
@@ -390,8 +390,12 @@ public struct DuplicateDetector {
                     let domainConfidence = 0.65 + (Double(keepScore - candidateScore) / 100.0) * 0.24
                     let descWeight = evidence.descSimilarity == nil ? 0.0
                         : min(1.0, Double(evidence.descTokenCount) / 30.0)
-                    let descAdj = evidence.descSimilarity == nil ? 0.0
-                        : descWeight * (evidence.descSimilarity! - 0.5) * 0.3
+                    let descAdj: Double
+                    if let sim = evidence.descSimilarity {
+                        descAdj = descWeight * (sim - 0.5) * 0.3
+                    } else {
+                        descAdj = 0.0
+                    }
                     let fieldPenalty = Double(evidence.fieldConflicts.count) * 0.08
                     let confidence = min(0.99, max(0.01, domainConfidence + descAdj - fieldPenalty))
 
@@ -450,42 +454,43 @@ public struct DuplicateDetector {
         case let dict as [String: Any]:
             let pairs = dict.keys.sorted().map { key -> String in
                 let jsonKey = jsonString(key)
-                return "\(jsonKey):\(sortedJSON(dict[key]!))"
+                let val = dict[key] ?? NSNull()
+                return "\(jsonKey):\(sortedJSON(val))"
             }.joined(separator: ",")
             return "{\(pairs)}"
         case is NSNull:
             return "null"
-        case let b as Bool:
-            return b ? "true" : "false"
-        case let n as Int:
-            return "\(n)"
-        case let n as Double:
-            if n.truncatingRemainder(dividingBy: 1) == 0 { return "\(Int(n))" }
-            return "\(n)"
-        case let s as String:
-            return jsonString(s)
+        case let boolVal as Bool:
+            return boolVal ? "true" : "false"
+        case let intVal as Int:
+            return "\(intVal)"
+        case let doubleVal as Double:
+            if doubleVal.truncatingRemainder(dividingBy: 1) == 0 { return "\(Int(doubleVal))" }
+            return "\(doubleVal)"
+        case let strVal as String:
+            return jsonString(strVal)
         default:
             return "null"
         }
     }
 
-    private static func jsonString(_ s: String) -> String {
+    private static func jsonString(_ str: String) -> String {
         var result = "\""
-        for ch in s.unicodeScalars {
-            switch ch.value {
+        for scalar in str.unicodeScalars {
+            switch scalar.value {
             case 0x22: result += "\\\""
             case 0x5C: result += "\\\\"
             case 0x0A: result += "\\n"
             case 0x0D: result += "\\r"
             case 0x09: result += "\\t"
             case 0x00..<0x20:
-                result += String(format: "\\u%04x", ch.value)
+                result += String(format: "\\u%04x", scalar.value)
             default:
-                result.unicodeScalars.append(ch)
+                result.unicodeScalars.append(scalar)
             }
         }
         result += "\""
         return result
     }
 }
-
+// swiftlint:enable line_length cyclomatic_complexity function_body_length type_body_length large_tuple

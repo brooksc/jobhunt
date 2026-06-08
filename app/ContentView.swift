@@ -50,8 +50,7 @@ struct ContentView: View {
         case .sites:
             SitesView(siteService: appServices.siteService)
         case .duplicates:
-            Text("Duplicates coming soon")
-                .foregroundStyle(.secondary)
+            DuplicatesView()
         case .settings:
             Text("Settings coming soon")
                 .foregroundStyle(.secondary)

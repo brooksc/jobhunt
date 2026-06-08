@@ -28,8 +28,7 @@ struct ContentView: View {
             Text("Jobs screen coming soon")
                 .foregroundStyle(.secondary)
         case .dashboard:
-            Text("Dashboard coming soon")
-                .foregroundStyle(.secondary)
+            DashboardView()
         case .dataQuality:
             Text("Data Quality coming soon")
                 .foregroundStyle(.secondary)

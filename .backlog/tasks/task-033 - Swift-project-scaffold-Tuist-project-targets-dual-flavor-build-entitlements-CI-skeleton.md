@@ -3,11 +3,11 @@ id: TASK-033
 title: >-
   Swift project scaffold: Tuist project, targets, dual-flavor build,
   entitlements, CI skeleton
-status: In Progress
+status: Done
 assignee:
   - claude
 created_date: '2026-06-07 22:43'
-updated_date: '2026-06-08 01:36'
+updated_date: '2026-06-08 01:40'
 labels:
   - swift-rewrite
   - foundation
@@ -53,13 +53,13 @@ Other tasks will add sources into core/, server/swift/, mcp/swift/, app/ as laid
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 `tuist generate` succeeds and produces Jobhunt.xcodeproj (gitignored)
-- [ ] #2 `xcodebuild -scheme Jobhunt-DMG build` succeeds; app launches showing an empty NavigationSplitView
-- [ ] #3 `xcodebuild -scheme Jobhunt-MAS build` succeeds with App Sandbox entitlements applied (verify with codesign -d --entitlements)
-- [ ] #4 JobhuntCore, JobhuntServer, JobhuntMCP targets exist and build; MAS_BUILD condition compiles MCP out of the MAS app
-- [ ] #5 Both entitlement plists pass `plutil -lint`; jobhunt:// scheme present in Info.plist
-- [ ] #6 CI workflow builds both schemes on macos-latest
-- [ ] #7 swiftlint/swiftformat run clean in CI
+- [x] #1 `tuist generate` succeeds and produces Jobhunt.xcodeproj (gitignored)
+- [x] #2 `xcodebuild -scheme Jobhunt-DMG build` succeeds; app launches showing an empty NavigationSplitView
+- [x] #3 `xcodebuild -scheme Jobhunt-MAS build` succeeds with App Sandbox entitlements applied (verify with codesign -d --entitlements)
+- [x] #4 JobhuntCore, JobhuntServer, JobhuntMCP targets exist and build; MAS_BUILD condition compiles MCP out of the MAS app
+- [x] #5 Both entitlement plists pass `plutil -lint`; jobhunt:// scheme present in Info.plist
+- [x] #6 CI workflow builds both schemes on macos-latest
+- [x] #7 swiftlint/swiftformat run clean in CI
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -78,3 +78,9 @@ Other tasks will add sources into core/, server/swift/, mcp/swift/, app/ as laid
 11. Run: tuist generate && xcodebuild -scheme Jobhunt-DMG build && xcodebuild -scheme Jobhunt-MAS build
 12. Verify: plutil -lint on entitlements, codesign -d --entitlements on MAS product
 <!-- SECTION:PLAN:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Scaffolded the full Tuist-based Swift project for Jobhunt. Tuist 4.196.1 installed. Project.swift defines 4 targets (JobhuntCore framework, JobhuntServer framework, JobhuntMCP commandLineTool, Jobhunt app) + 4 test targets + 2 schemes (Jobhunt-DMG / Jobhunt-MAS). Four project-level configurations (Debug/Release × DMG/MAS) with MAS_BUILD active compilation condition on the MAS configs. Both schemes build successfully (BUILD SUCCEEDED). Entitlements wired: DMG gets hardened runtime + network.server/client; MAS gets app-sandbox + network.server/client + files.user-selected.read-only. jobhunt:// URL scheme registered in Info.plist. swiftlint 0.63.3 + swiftformat 0.61.1 both pass clean. CI workflow at .github/workflows/swift-build.yml runs tuist generate + both scheme builds + CoreTests + lint on push. Xcodeproj gitignored. Minor: moved Tuist/Config.swift → Tuist.swift per Tuist 4.x convention (eliminates deprecation warning). Disabled sorted_imports in swiftlint (swiftformat owns import ordering via testable-bottom grouping)."
+<!-- SECTION:FINAL_SUMMARY:END -->

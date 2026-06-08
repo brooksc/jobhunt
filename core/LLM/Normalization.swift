@@ -1,3 +1,4 @@
+// swiftlint:disable line_length file_length function_body_length
 import Foundation
 
 // MARK: - SalaryNormalizer
@@ -30,9 +31,9 @@ public enum SalaryNormalizer {
                 return out
             }
             let amounts = moneyAmounts(filteredSrc).filter { $0 >= 1000 }
-            if let mm = minMax(amounts) {
-                out["salary_min"] = Int(mm.min) as Any?
-                out["salary_max"] = Int(mm.max) as Any?
+            if let minMaxPair = minMax(amounts) {
+                out["salary_min"] = Int(minMaxPair.min) as Any?
+                out["salary_max"] = Int(minMaxPair.max) as Any?
             }
             return out
         }
@@ -42,19 +43,19 @@ public enum SalaryNormalizer {
 
         // Hourly path
         let hourlyAmts = hourlyAmounts(salaryText)
-        if let mm = minMax(hourlyAmts) {
+        if let minMaxPair = minMax(hourlyAmts) {
             var out = extracted
             out["salary_currency"] = currency as Any?
-            out["salary_hourly_min"] = mm.min as Any?
-            out["salary_hourly_max"] = mm.max as Any?
-            out["salary_min"] = Int(round(mm.min * 2080)) as Any?
-            out["salary_max"] = Int(round(mm.max * 2080)) as Any?
+            out["salary_hourly_min"] = minMaxPair.min as Any?
+            out["salary_hourly_max"] = minMaxPair.max as Any?
+            out["salary_min"] = Int(round(minMaxPair.min * 2080)) as Any?
+            out["salary_max"] = Int(round(minMaxPair.max * 2080)) as Any?
             return out
         }
 
         // Source text band selection (when preferred locations are set)
         if let src = sourceText, !src.isEmpty {
-            let specificTerms = _specificPreferredTerms(preferredLocations)
+            let specificTerms = specificPreferredTerms(preferredLocations)
             if !specificTerms.isEmpty {
                 let sourceSalaryText = salaryTextForCurrency(src, currency: currency)
                 if let band = selectSalaryBand(salaryBands(sourceSalaryText), preferredLocations: preferredLocations, note: sourceSalaryText) {
@@ -80,9 +81,9 @@ public enum SalaryNormalizer {
         let annualAmounts = moneyAmounts(salaryText).filter { $0 >= 1000 }
         var out = extracted
         out["salary_currency"] = currency as Any?
-        if let mm = minMax(annualAmounts) {
-            out["salary_min"] = Int(mm.min) as Any?
-            out["salary_max"] = Int(mm.max) as Any?
+        if let minMaxPair = minMax(annualAmounts) {
+            out["salary_min"] = Int(minMaxPair.min) as Any?
+            out["salary_max"] = Int(minMaxPair.max) as Any?
         }
         return out
     }
@@ -103,7 +104,7 @@ public enum SalaryNormalizer {
         let numStr = (text as NSString).substring(with: match.range(at: 1)).replacingOccurrences(of: ",", with: "")
         guard let value = Double(numStr), value.isFinite else { return nil }
         let suffixRange = match.range(at: 2)
-        if suffixRange.location != NSNotFound, let r = Range(suffixRange, in: text), !text[r].isEmpty {
+        if suffixRange.location != NSNotFound, let suffixRangeResult = Range(suffixRange, in: text), !text[suffixRangeResult].isEmpty {
             return value * 1000
         }
         return value
@@ -120,20 +121,20 @@ public enum SalaryNormalizer {
             // symbol prefix range: "$133,400 - $226,600"
             (#"[$€£]\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\s*(?:[$€£]\s*)?(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?"#, 4),
             // currency-suffix range: "133,400 - 226,600 USD"
-            (#"\b(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*(?:USD|CAD|EUR|GBP)\b"#, 4),
+            (#"\b(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*(?:USD|CAD|EUR|GBP)\b"#, 4)
         ]
         for (pattern, _) in rangePatterns {
-            guard let re = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { continue }
-            let ns = text as NSString
-            let matches = re.matches(in: text, range: NSRange(text.startIndex..., in: text))
-            for m in matches {
-                let g1 = ns.substring(with: m.range(at: 1))
-                let g2 = m.range(at: 2).location != NSNotFound ? ns.substring(with: m.range(at: 2)) : ""
-                let g3 = ns.substring(with: m.range(at: 3))
-                let g4 = m.range(at: 4).location != NSNotFound ? ns.substring(with: m.range(at: 4)) : ""
-                let suffix = g4.isEmpty ? g2 : g4
-                if let v1 = parseSalaryAmount(g1 + (g2.isEmpty ? suffix : g2)) { amounts.append(v1) }
-                if let v2 = parseSalaryAmount(g3 + suffix) { amounts.append(v2) }
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { continue }
+            let nsText = text as NSString
+            let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+            for mtch in matches {
+                let group1 = nsText.substring(with: mtch.range(at: 1))
+                let group2 = mtch.range(at: 2).location != NSNotFound ? nsText.substring(with: mtch.range(at: 2)) : ""
+                let group3 = nsText.substring(with: mtch.range(at: 3))
+                let group4 = mtch.range(at: 4).location != NSNotFound ? nsText.substring(with: mtch.range(at: 4)) : ""
+                let suffix = group4.isEmpty ? group2 : group4
+                if let val1 = parseSalaryAmount(group1 + (group2.isEmpty ? suffix : group2)) { amounts.append(val1) }
+                if let val2 = parseSalaryAmount(group3 + suffix) { amounts.append(val2) }
             }
         }
 
@@ -142,16 +143,16 @@ public enum SalaryNormalizer {
             #"[$€£]\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?"#,
             #"(?:USD|CAD|EUR|GBP)\s*\$?\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?"#,
             #"\b(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*(?:USD|CAD|EUR|GBP)\b"#,
-            #"\b(\d+(?:\.\d+)?)\s*([kK])\b"#,
+            #"\b(\d+(?:\.\d+)?)\s*([kK])\b"#
         ]
         for pattern in singlePatterns {
-            guard let re = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { continue }
-            let ns = text as NSString
-            let matches = re.matches(in: text, range: NSRange(text.startIndex..., in: text))
-            for m in matches {
-                let g1 = ns.substring(with: m.range(at: 1))
-                let g2 = m.range(at: 2).location != NSNotFound ? ns.substring(with: m.range(at: 2)) : ""
-                if let v = parseSalaryAmount(g1 + g2) { amounts.append(v) }
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { continue }
+            let nsText = text as NSString
+            let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+            for mtch in matches {
+                let group1 = nsText.substring(with: mtch.range(at: 1))
+                let group2 = mtch.range(at: 2).location != NSNotFound ? nsText.substring(with: mtch.range(at: 2)) : ""
+                if let parsedAmt = parseSalaryAmount(group1 + group2) { amounts.append(parsedAmt) }
             }
         }
 
@@ -170,11 +171,11 @@ public enum SalaryNormalizer {
 
         // Also match "50 - 150 USD/hr" style ranges
         let rangeHourly = #"(\d+(?:\.\d+)?)\s*[-–—]\s*(\d+(?:\.\d+)?)\s*(?:USD|CAD|EUR|GBP)?\s*/?\s*(?:hr|hour)\b"#
-        if let re = try? NSRegularExpression(pattern: rangeHourly, options: .caseInsensitive) {
-            let ns = text as NSString
-            for m in re.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
-                if let v1 = Double(ns.substring(with: m.range(at: 1))) { amounts.append(v1) }
-                if let v2 = Double(ns.substring(with: m.range(at: 2))) { amounts.append(v2) }
+        if let regex = try? NSRegularExpression(pattern: rangeHourly, options: .caseInsensitive) {
+            let nsText = text as NSString
+            for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+                if let val1 = Double(nsText.substring(with: match.range(at: 1))) { amounts.append(val1) }
+                if let val2 = Double(nsText.substring(with: match.range(at: 2))) { amounts.append(val2) }
             }
         }
 
@@ -184,8 +185,8 @@ public enum SalaryNormalizer {
 
     static func minMax(_ values: [Double]) -> (min: Double, max: Double)? {
         let nums = values.filter { $0.isFinite }
-        guard !nums.isEmpty else { return nil }
-        return (min: nums.min()!, max: nums.max()!)
+        guard !nums.isEmpty, let minVal = nums.min(), let maxVal = nums.max() else { return nil }
+        return (min: minVal, max: maxVal)
     }
 
     // MARK: - Currency detection
@@ -213,13 +214,13 @@ public enum SalaryNormalizer {
             "USD": #"\b(?:CAD|EUR|GBP)\b|[€£]"#,
             "CAD": #"\b(?:USD|EUR|GBP)\b|[$€£]"#,
             "EUR": #"\b(?:USD|CAD|GBP)\b|[$£]"#,
-            "GBP": #"\b(?:USD|CAD|EUR)\b|[$€]"#,
+            "GBP": #"\b(?:USD|CAD|EUR)\b|[$€]"#
         ]
         let ownCurrencies: [String: String] = [
             "USD": #"\bUSD\b|\$"#,
             "CAD": #"\bCAD\b"#,
             "EUR": #"\bEUR\b|€"#,
-            "GBP": #"\bGBP\b|£"#,
+            "GBP": #"\bGBP\b|£"#
         ]
         guard let ownPattern = ownCurrencies[currency],
               let otherPattern = otherCurrencies[currency] else { return text }
@@ -250,17 +251,17 @@ public enum SalaryNormalizer {
             // symbol-prefix range
             #"[$€£]\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\s*(?:[$€£]\s*)?(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?"#,
             // currency-suffix range
-            #"\b(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*(?:USD|CAD|EUR|GBP)\b"#,
+            #"\b(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*(?:USD|CAD|EUR|GBP)\b"#
         ]
         for pattern in patterns {
-            guard let re = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
-                  let m = re.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) else { continue }
-            let ns = line as NSString
-            let g1 = ns.substring(with: m.range(at: 1))
-            let g2 = m.range(at: 2).location != NSNotFound ? ns.substring(with: m.range(at: 2)) : ""
-            let g3 = ns.substring(with: m.range(at: 3))
-            let g4 = m.range(at: 4).location != NSNotFound ? ns.substring(with: m.range(at: 4)) : ""
-            if let r = salaryRangeValue(g1, g2, g3, g4) { return r }
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+                  let match = regex.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) else { continue }
+            let nsText = line as NSString
+            let group1 = nsText.substring(with: match.range(at: 1))
+            let group2 = match.range(at: 2).location != NSNotFound ? nsText.substring(with: match.range(at: 2)) : ""
+            let group3 = nsText.substring(with: match.range(at: 3))
+            let group4 = match.range(at: 4).location != NSNotFound ? nsText.substring(with: match.range(at: 4)) : ""
+            if let bandResult = salaryRangeValue(group1, group2, group3, group4) { return bandResult }
         }
         return nil
     }
@@ -275,10 +276,7 @@ public enum SalaryNormalizer {
         let endNl = nsText.range(of: "\n", range: remaining).location
         let endDot = nsText.range(of: ".", range: remaining).location
         let end: Int
-        if endNl == NSNotFound && endDot == NSNotFound { end = nsText.length }
-        else if endNl == NSNotFound { end = endDot }
-        else if endDot == NSNotFound { end = endNl }
-        else { end = Swift.min(endNl, endDot) }
+        if endNl == NSNotFound && endDot == NSNotFound { end = nsText.length } else if endNl == NSNotFound { end = endDot } else if endDot == NSNotFound { end = endNl } else { end = Swift.min(endNl, endDot) }
         return nsText.substring(with: NSRange(start..<end)).trimmingCharacters(in: .whitespaces)
     }
 
@@ -286,25 +284,25 @@ public enum SalaryNormalizer {
     public static func salaryBands(_ text: String) -> [SalaryRange] {
         var bands: [SalaryRange] = []
         let lines = text.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        for (i, line) in lines.enumerated() {
+        for (idx, line) in lines.enumerated() {
             guard let range = lineRange(line) else { continue }
-            let previous = (i > 0 && lineRange(lines[i - 1]) == nil) ? lines[i - 1] : ""
+            let previous = (idx > 0 && lineRange(lines[idx - 1]) == nil) ? lines[idx - 1] : ""
             let label = (previous + " " + line).trimmingCharacters(in: .whitespaces)
             bands.append(SalaryRange(min: range.min, max: range.max, label: label))
         }
 
         // Also catch inline ranges not caught by line-by-line
         let rangeRe = #"(?:USD|CAD|EUR|GBP)?\s*\$?\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\s*\$?\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*(?:per year|annually|annual|USD|CAD|EUR|GBP)?"#
-        if let re = try? NSRegularExpression(pattern: rangeRe, options: .caseInsensitive) {
-            let ns = text as NSString
-            for m in re.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
-                let g1 = ns.substring(with: m.range(at: 1))
-                let g2 = m.range(at: 2).location != NSNotFound ? ns.substring(with: m.range(at: 2)) : ""
-                let g3 = ns.substring(with: m.range(at: 3))
-                let g4 = m.range(at: 4).location != NSNotFound ? ns.substring(with: m.range(at: 4)) : ""
-                guard let range = salaryRangeValue(g1, g2, g3, g4) else { continue }
+        if let regex = try? NSRegularExpression(pattern: rangeRe, options: .caseInsensitive) {
+            let nsText = text as NSString
+            for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+                let group1 = nsText.substring(with: match.range(at: 1))
+                let group2 = match.range(at: 2).location != NSNotFound ? nsText.substring(with: match.range(at: 2)) : ""
+                let group3 = nsText.substring(with: match.range(at: 3))
+                let group4 = match.range(at: 4).location != NSNotFound ? nsText.substring(with: match.range(at: 4)) : ""
+                guard let range = salaryRangeValue(group1, group2, group3, group4) else { continue }
                 if bands.contains(where: { $0.min == range.min && $0.max == range.max }) { continue }
-                let label = sentenceForIndex(text, m.range.location)
+                let label = sentenceForIndex(text, match.range.location)
                 bands.append(SalaryRange(min: range.min, max: range.max, label: label))
             }
         }
@@ -313,7 +311,7 @@ public enum SalaryNormalizer {
 
     // MARK: - Band selection
 
-    static func _specificPreferredTerms(_ preferredLocations: String?) -> [String] {
+    static func specificPreferredTerms(_ preferredLocations: String?) -> [String] {
         parsePreferredLocations(preferredLocations).filter { term in
             let lower = term.lowercased().trimmingCharacters(in: .whitespaces)
             return !["remote", "united states", "usa", "us", "u.s.", "u.s.a."].contains(lower)
@@ -322,13 +320,11 @@ public enum SalaryNormalizer {
 
     static func selectSalaryBand(_ bands: [SalaryRange], preferredLocations: String?, note: String) -> SalaryRange? {
         guard bands.count > 1 else { return nil }
-        let terms = _specificPreferredTerms(preferredLocations)
+        let terms = specificPreferredTerms(preferredLocations)
 
         // Try to find a band matching user's preferred location terms
-        for band in bands {
-            if terms.contains(where: { termMatches(band.label, term: $0) }) {
-                return band
-            }
+        for band in bands where terms.contains(where: { termMatches(band.label, term: $0) }) {
+            return band
         }
 
         let allOtherUSPattern = #"\bacross the U\.?S\.?\b|\ball (?:other )?U\.?S\.? locations\b|\bUnited States\b"#
@@ -382,11 +378,11 @@ public enum RemoteTypeInferer {
         // Patterns that need anchorsMatchLines (start of line checks)
         let anchoredPatterns = [
             #"^Remote(?:\s*[-–—]\s*(?:United States|USA|U\.S\.|US))?\b"#,
-            #"^Work arrangement:\s*Remote\b"#,
+            #"^Work arrangement:\s*Remote\b"#
         ]
         for pattern in anchoredPatterns {
-            if let re = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .anchorsMatchLines]),
-               re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .anchorsMatchLines]),
+               regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil {
                 return true
             }
         }
@@ -399,12 +395,10 @@ public enum RemoteTypeInferer {
             #"\bFully Remote\b"#,
             #"\bWork from Home\b"#,
             #"\bTelecommute\b"#,
-            #""jobLocationType"\s*:\s*"TELECOMMUTE""#,
+            #""jobLocationType"\s*:\s*"TELECOMMUTE""#
         ]
-        for pattern in inlinePatterns {
-            if text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil {
-                return true
-            }
+        for pattern in inlinePatterns where text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil {
+            return true
         }
         return false
     }
@@ -412,9 +406,9 @@ public enum RemoteTypeInferer {
     /// Check job-board URL params for explicit remote filter signals.
     static func urlIndicatesRemote(_ url: String?) -> Bool {
         guard let urlStr = url, !urlStr.isEmpty,
-              let u = URL(string: urlStr),
-              let components = URLComponents(url: u, resolvingAgainstBaseURL: false) else { return false }
-        let host = u.host ?? ""
+              let parsedURL = URL(string: urlStr),
+              let components = URLComponents(url: parsedURL, resolvingAgainstBaseURL: false) else { return false }
+        let host = parsedURL.host ?? ""
         let params = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item -> (String, String)? in
             guard let value = item.value else { return nil }
             return (item.name, value)
@@ -450,12 +444,12 @@ public enum LocationInferer {
         let loc = (extracted["location"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
         let isBareCountry = loc.range(of: #"^(USA|United States|U\.S\.A?\.?|US)$"#, options: [.regularExpression, .caseInsensitive]) != nil
 
-        if let remoteLocation = remoteLocation, (loc.isEmpty || loc.lowercased() == "remote" || isBareCountry) {
+        if let remoteLocation = remoteLocation, loc.isEmpty || loc.lowercased() == "remote" || isBareCountry {
             var out = extracted
             out["location"] = remoteLocation as Any?
             return out
         }
-        if extracted["location"] as? String != nil, !loc.isEmpty { return extracted }
+        if extracted["location"] is String, !loc.isEmpty { return extracted }
 
         if let location = sourceLocationFromTitle(description, title: extracted["title"] as? String) {
             var out = extracted
@@ -475,12 +469,12 @@ public enum LocationInferer {
     static func remoteLocationFromSource(_ description: String?) -> String? {
         let text = description ?? ""
         let pattern = #"^Remote(?:\s*[-–—]\s*((?:United States|USA|U\.S\.|US)(?:\s+or\s+[A-Za-z]+)?))?\b"#
-        guard let re = try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines, .caseInsensitive]),
-              let m = re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { return nil }
-        let ns = text as NSString
-        let g1Range = m.range(at: 1)
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines, .caseInsensitive]),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { return nil }
+        let nsText = text as NSString
+        let g1Range = match.range(at: 1)
         if g1Range.location != NSNotFound && g1Range.length > 0 {
-            return "Remote - " + ns.substring(with: g1Range).trimmingCharacters(in: .whitespaces)
+            return "Remote - " + nsText.substring(with: g1Range).trimmingCharacters(in: .whitespaces)
         }
         return "Remote"
     }
@@ -488,10 +482,10 @@ public enum LocationInferer {
     static func locationFromBasedIn(_ description: String?) -> String? {
         let text = description ?? ""
         let pattern = #"\b(?:hybrid|remote|onsite|on-site)\s+role\s+based\s+in\s+([^.\n(]+?)(?:\s*\(|\.|\n|$)"#
-        guard let re = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
-              let m = re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { return nil }
-        let ns = text as NSString
-        return ns.substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespaces).replacingOccurrences(of: #"\s*,\s*$"#, with: "", options: .regularExpression)
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { return nil }
+        let nsText = text as NSString
+        return nsText.substring(with: match.range(at: 1)).trimmingCharacters(in: .whitespaces).replacingOccurrences(of: #"\s*,\s*$"#, with: "", options: .regularExpression)
     }
 
     static func metadataValue(_ lines: [String], label: String) -> String? {
@@ -512,9 +506,9 @@ public enum LocationInferer {
         if let metaLoc = metadataValue(lines, label: "Location") { return metaLoc }
         if let basedIn = locationFromBasedIn(description) { return basedIn }
 
-        for i in 0..<(lines.count - 1) {
-            guard lines[i].lowercased() == normalizedTitle else { continue }
-            let candidate = lines[i + 1]
+        for idx in 0..<(lines.count - 1) {
+            guard lines[idx].lowercased() == normalizedTitle else { continue }
+            let candidate = lines[idx + 1]
             // Match "City, State + N more" pattern (Microsoft style)
             if candidate.range(of: #"\bUnited States\b"#, options: .regularExpression) != nil && candidate.contains(",") {
                 return candidate.replacingOccurrences(of: #"\s+\+\s*"#, with: " + ", options: .regularExpression)
@@ -546,9 +540,9 @@ public enum CompanyBackfiller {
     static func structuredHiringOrganizationName(_ description: String?) -> String? {
         let text = description ?? ""
         let pattern = #""hiringOrganization"\s*:\s*\{[\s\S]{0,1000}?"name"\s*:\s*"([^"]+)""#
-        guard let re = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
-              let m = re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { return nil }
-        return (text as NSString).substring(with: m.range(at: 1))
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { return nil }
+        return (text as NSString).substring(with: match.range(at: 1))
     }
 }
 
@@ -557,8 +551,8 @@ public enum CompanyBackfiller {
 /// Mirrors mapStatus/mapRemote/mapEmployment/mapExtractionStatus from static/transform.js.
 public enum DisplayNormalizer {
 
-    public static func mapStatus(_ s: String?) -> String {
-        guard let s = s else { return s ?? "" }
+    public static func mapStatus(_ statusStr: String?) -> String {
+        guard let statusStr else { return "" }
         let map: [String: String] = [
             "saved": "saved", "interested": "saved",
             "applied": "applied",
@@ -566,15 +560,15 @@ public enum DisplayNormalizer {
             "offer": "offer",
             "rejected": "rejected",
             "closed": "archived", "ignored": "archived",
-            "duplicate": "duplicate",
+            "duplicate": "duplicate"
         ]
-        return map[s] ?? s
+        return map[statusStr] ?? statusStr
     }
 
-    public static func mapRemote(_ r: String?) -> String {
-        guard let r = r, !r.isEmpty else { return "—" }
+    public static func mapRemote(_ remoteStr: String?) -> String {
+        guard let remoteStr, !remoteStr.isEmpty else { return "—" }
         let map: [String: String] = ["remote": "Remote", "hybrid": "Hybrid", "onsite": "Onsite", "unknown": "—"]
-        return map[r] ?? r
+        return map[remoteStr] ?? remoteStr
     }
 
     public static func mapEmployment(_ raw: String?) -> String {
@@ -584,27 +578,27 @@ public enum DisplayNormalizer {
             "part_time": "Part-time", "parttime": "Part-time", "part-time": "Part-time",
             "contract": "Contract", "contractor": "Contract",
             "freelance": "Freelance", "internship": "Internship", "intern": "Internship",
-            "temporary": "Temporary", "temp": "Temporary",
+            "temporary": "Temporary", "temp": "Temporary"
         ]
         let key = raw.lowercased().replacingOccurrences(of: " ", with: "_")
-        if let v = map[key] { return v }
-        if let v = map[raw.lowercased()] { return v }
+        if let mappedValue = map[key] { return mappedValue }
+        if let mappedValue = map[raw.lowercased()] { return mappedValue }
         return raw.prefix(1).uppercased() + raw.dropFirst()
     }
 
-    public static func mapExtractionStatus(_ s: String?) -> String {
-        if s == "succeeded" { return "ok" }
-        if s == "failed" { return "fail" }
+    public static func mapExtractionStatus(_ status: String?) -> String {
+        if status == "succeeded" { return "ok" }
+        if status == "failed" { return "fail" }
         return "pending"
     }
 
     /// Convert a string or [String] to [String]. Mirrors toStringArray() from transform.js.
-    public static func toStringArray(_ v: Any?) -> [String] {
-        if let arr = v as? [String] { return arr }
-        if let arr = v as? [Any] { return arr.compactMap { $0 as? String } }
-        if let s = v as? String { return s.isEmpty ? [] : [s] }
-        if v == nil { return [] }
-        return [String(describing: v!)]
+    public static func toStringArray(_ value: Any?) -> [String] {
+        if let arr = value as? [String] { return arr }
+        if let arr = value as? [Any] { return arr.compactMap { $0 as? String } }
+        if let str = value as? String { return str.isEmpty ? [] : [str] }
+        guard let value else { return [] }
+        return [String(describing: value)]
     }
 }
 
@@ -645,9 +639,9 @@ private let stateAbbrevToName: [String: String] = [
     "nc": "north carolina", "nd": "north dakota", "oh": "ohio", "ok": "oklahoma", "or": "oregon",
     "pa": "pennsylvania", "ri": "rhode island", "sc": "south carolina", "sd": "south dakota",
     "tn": "tennessee", "tx": "texas", "ut": "utah", "vt": "vermont", "va": "virginia",
-    "wa": "washington", "wv": "west virginia", "wi": "wisconsin", "wy": "wyoming",
+    "wa": "washington", "wv": "west virginia", "wi": "wisconsin", "wy": "wyoming"
 ]
-private let stateNameToAbbrev: [String: String] = Dictionary(uniqueKeysWithValues: stateAbbrevToName.map { (v, k) in (k, v) })
+private let stateNameToAbbrev: [String: String] = Dictionary(uniqueKeysWithValues: stateAbbrevToName.map { (abbr, name) in (name, abbr) })
 
 func parsePreferredLocations(_ preferredLocations: String?) -> [String] {
     guard let pref = preferredLocations, !pref.isEmpty else { return [] }
@@ -690,3 +684,5 @@ func termMatches(_ location: String, term: String) -> Bool {
     }
     return haystack.contains(needle)
 }
+
+// swiftlint:enable line_length file_length function_body_length

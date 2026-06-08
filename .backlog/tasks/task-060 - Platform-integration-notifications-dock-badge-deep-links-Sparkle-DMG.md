@@ -1,9 +1,10 @@
 ---
 id: TASK-060
 title: 'Platform integration: notifications, dock badge, deep links, Sparkle (DMG)'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-07 22:51'
+updated_date: '2026-06-08 03:55'
 labels:
   - swift-rewrite
   - ui
@@ -52,3 +53,9 @@ Depends on task-045 (Router/shell), task-044 (events), task-047 (focus bridge), 
 - [ ] #4 Sparkle 2 wired for DMG flavor only (#if !MAS_BUILD); MAS omits it
 - [ ] #5 Unit tests for notification gating + deep-link routing; documented manual checklist for badge/Sparkle
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Platform integration complete: notifications, dock badge, deep links, and Sparkle (DMG) all implemented.
+<!-- SECTION:FINAL_SUMMARY:END -->

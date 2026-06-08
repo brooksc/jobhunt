@@ -1,6 +1,10 @@
 import SwiftUI
+import JobhuntCore
 
 struct ContentView: View {
+    let queueActor: QueueActor
+    let settings: SettingsStore
+
     @State private var router = Router()
     @State private var theme = Theme()
 
@@ -37,8 +41,7 @@ struct ContentView: View {
             Text("Needs Action coming soon")
                 .foregroundStyle(.secondary)
         case .llmQueue:
-            Text("LLM Queue coming soon")
-                .foregroundStyle(.secondary)
+            LLMQueueView(queueActor: queueActor, settings: settings)
         case .sites:
             Text("Sites coming soon")
                 .foregroundStyle(.secondary)
@@ -53,8 +56,4 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
         }
     }
-}
-
-#Preview {
-    ContentView()
 }

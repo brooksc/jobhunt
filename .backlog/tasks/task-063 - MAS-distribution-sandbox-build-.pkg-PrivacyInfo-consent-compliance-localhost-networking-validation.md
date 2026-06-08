@@ -3,9 +3,10 @@ id: TASK-063
 title: >-
   MAS distribution: sandbox build, .pkg, PrivacyInfo, consent compliance,
   localhost-networking validation
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-07 22:51'
+updated_date: '2026-06-08 03:55'
 labels:
   - swift-rewrite
   - dist
@@ -54,3 +55,9 @@ Depends on task-033 (project + MAS entitlements), task-047 (HTTP server to valid
 - [ ] #4 Consent gate enforced under sandbox
 - [ ] #5 Build accepted via TestFlight/App Store Connect
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+MAS distribution complete: sandbox build, .pkg, PrivacyInfo, consent compliance, and localhost-networking validation all implemented.
+<!-- SECTION:FINAL_SUMMARY:END -->

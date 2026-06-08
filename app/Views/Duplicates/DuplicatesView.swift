@@ -1,4 +1,3 @@
-// swiftlint:disable file_length
 import SwiftUI
 import SwiftData
 import JobhuntCore
@@ -470,5 +469,3 @@ private struct JobCompareColumn: View {
         return String(cleaned.prefix(60))
     }
 }
-
-// swiftlint:enable file_length

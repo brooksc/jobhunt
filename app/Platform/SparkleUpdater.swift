@@ -6,10 +6,10 @@ import Foundation
 #if !MAS_BUILD
 public enum SparkleUpdater {
     public static func checkForUpdates() {
-        // TODO: integrate Sparkle 2 (add to Project.swift as SPM package once cert available)
+        // Add Sparkle 2 SPM package to Project.swift once Developer ID cert is available.
         // SPM: https://github.com/sparkle-project/Sparkle 2.x
         // Appcast URL: https://github.com/brooksc/jobhunt/releases/latest/download/appcast.xml
-        NSLog("Sparkle: check for updates (stub — integrate Sparkle 2 package)")
+        NSLog("Sparkle: check for updates (stub — wire Sparkle 2 package)")
     }
 }
 #endif

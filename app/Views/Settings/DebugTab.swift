@@ -11,7 +11,7 @@ struct DebugTab: View {
     @State private var priceInput: String = ""
     @State private var priceOutput: String = ""
     @State private var isRunningAvailabilityCheck = false
-    @State private var availabilityCheckMessage: String? = nil
+    @State private var availabilityCheckMessage: String?
 
     private var activeResume: Resume? {
         resumes.first { $0.active }

@@ -1,4 +1,3 @@
-// swiftlint:disable force_try
 import XCTest
 import SwiftData
 @testable import JobhuntCore
@@ -198,7 +197,7 @@ final class QualityCheckerTests: XCTestCase {
         // cleanJob may have shortRawText/shortCleanedText (no capture), so could appear too
         XCTAssertTrue(issues.contains(where: { $0.jobID == badJob.id }))
 
-        let badIssue = issues.first(where: { $0.jobID == badJob.id })!
+        let badIssue = try XCTUnwrap(issues.first(where: { $0.jobID == badJob.id }))
         XCTAssertTrue(badIssue.kinds.contains(.missingCompany))
         XCTAssertTrue(badIssue.kinds.contains(.extractionFailed))
     }

@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 import SwiftUI
 import SwiftData
 import PDFKit
@@ -53,6 +54,7 @@ struct OnboardingView: View {
                 HStack(spacing: 6) {
                     ForEach(0..<totalSteps, id: \.self) { index in
                         Circle()
+                            // swiftlint:disable:next line_length
                             .fill(index == onboardingManager.currentStep ? Color.accentColor : Color.secondary.opacity(0.3))
                             .frame(width: 7, height: 7)
                     }
@@ -94,7 +96,7 @@ private struct WelcomeStep: View {
     let onboardingManager: OnboardingManager
 
     @State private var isSeeding = false
-    @State private var seedError: String? = nil
+    @State private var seedError: String?
 
     var body: some View {
         VStack(spacing: 24) {
@@ -245,7 +247,7 @@ private struct AIProviderStep: View {
     @State private var modelText: String = ""
     @State private var connectionStatus: ConnectionStatus = .idle
     @State private var showConsentSheet = false
-    @State private var pendingProviderID: String? = nil
+    @State private var pendingProviderID: String?
 
     private enum ConnectionStatus { case idle, testing, success(String), failure(String) }
 
@@ -256,13 +258,13 @@ private struct AIProviderStep: View {
         let privacyURL: String?
 
         static let all: [ProviderOption] = [
-            ProviderOption(id: "lmstudio",   label: "LM Studio",          isCloud: false, privacyURL: nil),
-            ProviderOption(id: "openai",     label: "OpenAI",             isCloud: true,  privacyURL: "https://openai.com/policies/privacy-policy"),
-            ProviderOption(id: "anthropic",  label: "Anthropic",          isCloud: true,  privacyURL: "https://www.anthropic.com/privacy"),
-            ProviderOption(id: "google",     label: "Google",             isCloud: true,  privacyURL: "https://policies.google.com/privacy"),
-            ProviderOption(id: "openrouter", label: "OpenRouter",         isCloud: true,  privacyURL: "https://openrouter.ai/privacy"),
-            ProviderOption(id: "custom",     label: "Custom",             isCloud: false, privacyURL: nil),
-            ProviderOption(id: "apple",      label: "Apple Intelligence", isCloud: false, privacyURL: nil),
+            ProviderOption(id: "lmstudio", label: "LM Studio", isCloud: false, privacyURL: nil),
+            ProviderOption(id: "openai", label: "OpenAI", isCloud: true, privacyURL: "https://openai.com/policies/privacy-policy"),
+            ProviderOption(id: "anthropic", label: "Anthropic", isCloud: true, privacyURL: "https://www.anthropic.com/privacy"),
+            ProviderOption(id: "google", label: "Google", isCloud: true, privacyURL: "https://policies.google.com/privacy"),
+            ProviderOption(id: "openrouter", label: "OpenRouter", isCloud: true, privacyURL: "https://openrouter.ai/privacy"),
+            ProviderOption(id: "custom", label: "Custom", isCloud: false, privacyURL: nil),
+            ProviderOption(id: "apple", label: "Apple Intelligence", isCloud: false, privacyURL: nil)
         ]
 
         static func find(_ id: String) -> ProviderOption? {
@@ -387,7 +389,7 @@ private struct AIProviderStep: View {
         }
     }
 
-    private func testConnection() async {
+    func testConnection() async {
         connectionStatus = .testing
         let provider = LLMProviderFactory.makeProvider(settings: settings)
         let request = ChatRequest(
@@ -461,7 +463,7 @@ private struct ResumeStep: View {
     @State private var resumeText: String = ""
     @State private var resumeName: String = ""
     @State private var isImporting = false
-    @State private var importError: String? = nil
+    @State private var importError: String?
     @State private var showFilePicker = false
 
     var body: some View {

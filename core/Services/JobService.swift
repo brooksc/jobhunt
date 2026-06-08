@@ -1,4 +1,3 @@
-// swiftlint:disable function_body_length
 import Foundation
 import SwiftData
 import CryptoKit
@@ -70,6 +69,7 @@ public actor JobService {
 
     // MARK: - Core ingestion
 
+    // swiftlint:disable function_body_length
     /// Validate → clean → hash → dedup → create Job → enqueue extraction.
     public func ingestCapture(_ payload: CapturePayload) async throws -> IngestResult {
         // 1. Validate
@@ -182,6 +182,7 @@ public actor JobService {
             isDuplicate: false
         )
     }
+    // swiftlint:enable function_body_length
 
     // MARK: - Job mutations
 
@@ -405,4 +406,3 @@ public actor JobService {
         return job.jobNumber
     }
 }
-// swiftlint:enable file_length type_body_length function_body_length

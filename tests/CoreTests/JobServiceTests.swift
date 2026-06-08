@@ -1,4 +1,3 @@
-// swiftlint:disable line_length force_try force_unwrapping
 import XCTest
 import SwiftData
 @testable import JobhuntCore
@@ -166,9 +165,8 @@ final class JobServiceTests: XCTestCase {
         // Find job by number
         var descriptor = FetchDescriptor<Job>()
         let jobs = try await store.fetch(descriptor)
-        let job = jobs.first(where: { $0.jobNumber == result.jobNumber })
-        XCTAssertNotNil(job)
-        let jobID = job!.id
+        let job = try XCTUnwrap(jobs.first(where: { $0.jobNumber == result.jobNumber }))
+        let jobID = job.id
 
         try await svc.setStatus(.applied, for: jobID)
 
@@ -226,4 +224,3 @@ final class JobServiceTests: XCTestCase {
         XCTAssertEqual(result, "\"say \"\"hello\"\"\"")
     }
 }
-// swiftlint:enable line_length force_try force_unwrapping

@@ -135,14 +135,37 @@ struct HelpView: View {
     private var settingsReferenceSection: some View {
         HelpSection(title: "Settings Reference", systemImage: "gear") {
             VStack(alignment: .leading, spacing: 10) {
-                SettingsRow(name: "LLM Provider", description: "AI backend: LM Studio, Ollama, OpenAI, Anthropic, Google, or any OpenAI-compatible endpoint.")
-                SettingsRow(name: "Model", description: "The model used for extraction and fit scoring. Gemini Flash is a good cost/quality default.")
-                SettingsRow(name: "Resume", description: "Plain text of your resume, used to compute fit scores.")
-                SettingsRow(name: "Preferred Locations", description: "Your preferred work locations, used in fit scoring.")
-                SettingsRow(name: "Work Arrangement", description: "Remote, hybrid, or onsite preference for fit scoring.")
-                SettingsRow(name: "Follow-up Interval", description: "Default number of days before a follow-up is due after applying.")
+                SettingsRow(
+                    name: "LLM Provider",
+                    // swiftlint:disable:next line_length
+                    description: "AI backend: LM Studio, Ollama, OpenAI, Anthropic, Google, or any OpenAI-compatible endpoint."
+                )
+                SettingsRow(
+                    name: "Model",
+                    // swiftlint:disable:next line_length
+                    description: "The model used for extraction and fit scoring. Gemini Flash is a good cost/quality default."
+                )
+                SettingsRow(
+                    name: "Resume",
+                    description: "Plain text of your resume, used to compute fit scores."
+                )
+                SettingsRow(
+                    name: "Preferred Locations",
+                    description: "Your preferred work locations, used in fit scoring."
+                )
+                SettingsRow(
+                    name: "Work Arrangement",
+                    description: "Remote, hybrid, or onsite preference for fit scoring."
+                )
+                SettingsRow(
+                    name: "Follow-up Interval",
+                    description: "Default number of days before a follow-up is due after applying."
+                )
                 SettingsRow(name: "Review Interval", description: "Default interval (days) for site review reminders.")
-                SettingsRow(name: "Debug Logging", description: "Enables verbose LLM request/response logging for troubleshooting.")
+                SettingsRow(
+                    name: "Debug Logging",
+                    description: "Enables verbose LLM request/response logging for troubleshooting."
+                )
             }
         }
     }

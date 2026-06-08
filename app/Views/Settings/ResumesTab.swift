@@ -10,8 +10,8 @@ struct ResumesTab: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var showingAddSheet = false
-    @State private var editingResume: Resume? = nil
-    @State private var deleteCandidate: Resume? = nil
+    @State private var editingResume: Resume?
+    @State private var deleteCandidate: Resume?
     @State private var showingDeleteAlert = false
 
     var body: some View {

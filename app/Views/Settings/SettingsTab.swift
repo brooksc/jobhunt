@@ -10,13 +10,13 @@ private struct ProviderOption: Identifiable, Hashable {
     let privacyURL: String?
 
     static let all: [ProviderOption] = [
-        ProviderOption(id: "lmstudio",          label: "LM Studio",           isCloud: false, privacyURL: nil),
-        ProviderOption(id: "openai",             label: "OpenAI",              isCloud: true,  privacyURL: "https://openai.com/policies/privacy-policy"),
-        ProviderOption(id: "anthropic",          label: "Anthropic",           isCloud: true,  privacyURL: "https://www.anthropic.com/privacy"),
-        ProviderOption(id: "google",             label: "Google",              isCloud: true,  privacyURL: "https://policies.google.com/privacy"),
-        ProviderOption(id: "openrouter",         label: "OpenRouter",          isCloud: true,  privacyURL: "https://openrouter.ai/privacy"),
-        ProviderOption(id: "custom",             label: "Custom",              isCloud: false, privacyURL: nil),
-        ProviderOption(id: "apple",              label: "Apple Intelligence",  isCloud: false, privacyURL: nil),
+        ProviderOption(id: "lmstudio", label: "LM Studio", isCloud: false, privacyURL: nil),
+        ProviderOption(id: "openai", label: "OpenAI", isCloud: true, privacyURL: "https://openai.com/policies/privacy-policy"),
+        ProviderOption(id: "anthropic", label: "Anthropic", isCloud: true, privacyURL: "https://www.anthropic.com/privacy"),
+        ProviderOption(id: "google", label: "Google", isCloud: true, privacyURL: "https://policies.google.com/privacy"),
+        ProviderOption(id: "openrouter", label: "OpenRouter", isCloud: true, privacyURL: "https://openrouter.ai/privacy"),
+        ProviderOption(id: "custom", label: "Custom", isCloud: false, privacyURL: nil),
+        ProviderOption(id: "apple", label: "Apple Intelligence", isCloud: false, privacyURL: nil)
     ]
 
     static func find(_ id: String) -> ProviderOption {
@@ -29,7 +29,7 @@ private struct ProviderOption: Identifiable, Hashable {
 struct SettingsTab: View {
     let settings: SettingsStore
 
-    @State private var pendingProviderID: String? = nil
+    @State private var pendingProviderID: String?
     @State private var showingConsentSheet = false
 
     // Local mirror for the provider picker (to allow reverting on Cancel)
@@ -305,7 +305,7 @@ struct SettingsTab: View {
         }
     }
 
-    private func testConnection() async {
+    func testConnection() async {
         connectionStatus = .testing
         let provider = LLMProviderFactory.makeProvider(settings: settings)
         let request = ChatRequest(
@@ -335,6 +335,7 @@ struct SettingsTab: View {
                 req.setValue("Bearer \(apiKeyText)", forHTTPHeaderField: "Authorization")
             }
             let (data, _) = try await URLSession.shared.data(for: req)
+            // swiftlint:disable:next nesting type_name
             struct ModelsResp: Decodable { struct M: Decodable { let id: String }; let data: [M]? }
             let resp = try JSONDecoder().decode(ModelsResp.self, from: data)
             if let first = resp.data?.first {
@@ -346,4 +347,3 @@ struct SettingsTab: View {
         }
     }
 }
-

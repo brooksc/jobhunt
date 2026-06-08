@@ -160,7 +160,9 @@ public actor JobhuntServer {
 
     private func startListener(on candidatePort: UInt16) async throws {
         let params = NWParameters.tcp
-        let nwPort = NWEndpoint.Port(rawValue: candidatePort)!
+        guard let nwPort = NWEndpoint.Port(rawValue: candidatePort) else {
+            throw JobhuntServerError.invalidPort(candidatePort)
+        }
 
         let listener = try NWListener(using: params, on: nwPort)
 
@@ -205,7 +207,6 @@ public actor JobhuntServer {
 
     private func receiveRequest(on connection: NWConnection) {
         // Read up to 1MB of data
-        // swiftlint:disable:next line_length
         connection.receive(minimumIncompleteLength: 1, maximumLength: 1_048_576) { [weak self] data, _, isComplete, _ in
             guard let self else { return }
             if let data, !data.isEmpty {
@@ -406,4 +407,8 @@ public actor JobhuntServer {
 enum ServerError: Error {
     case noPortAvailable
     case listenerCancelled
+}
+
+enum JobhuntServerError: Error {
+    case invalidPort(UInt16)
 }

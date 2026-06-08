@@ -112,9 +112,10 @@ final class LLMEvalHarness: XCTestCase {
             Work site 0 days / week in-office - remote
             Full-Time
 
-            Product Management IC4 - The typical base pay range for this role across the U.S. is USD $119,800 - $234,700 per year.
-            There is a different range applicable to specific work locations, within the San Francisco Bay area and New York City
-            metropolitan area, and the base pay range for this role in those locations is USD $158,400 - $258,000 per year.
+            Product Management IC4 - The typical base pay range for this role across the U.S. is
+            USD $119,800 - $234,700 per year. There is a different range applicable to specific
+            work locations, within the San Francisco Bay area and New York City metropolitan area,
+            and the base pay range for this role in those locations is USD $158,400 - $258,000 per year.
 
             Responsibilities:
             - Drive product strategy and execution across Microsoft 365 experiences.
@@ -134,7 +135,7 @@ final class LLMEvalHarness: XCTestCase {
             expectedSalaryCurrency: "USD",
             expectedSkillsAny: ["product strategy", "cross-functional", "product delivery"],
             expectedRequirementsAny: ["4+", "product", "technical program management", "cross-functional"]
-        ),
+        )
     ]
 
     // MARK: - Test
@@ -238,62 +239,86 @@ final class LLMEvalHarness: XCTestCase {
     ) -> (passed: Int, total: Int) {
         var passed = 0
         var total = 0
-
-        func check(_ label: String, _ condition: Bool, got: String, expected: String) {
+        func check(_ label: String, _ ok: Bool, got: String, expected: String) {
             total += 1
-            let mark = condition ? "PASS" : "FAIL"
-            print("  [\(mark)] \(label): got=\(got)  expected=\(expected)")
-            if condition { passed += 1 }
+            print("  [\(ok ? "PASS" : "FAIL")] \(label): got=\(got)  expected=\(expected)")
+            if ok { passed += 1 }
         }
+        let fields = extractFields(from: result)
+        scoreScalarFields(fixture: fixture, fields: fields, check: check)
+        scoreListFields(fixture: fixture, fields: fields, check: check)
+        return (passed, total)
+    }
 
-        let company = (result["company"] as? String) ?? ""
-        let title = (result["title"] as? String) ?? ""
-        let remoteType = (result["remote_type"] as? String) ?? ""
-        let salaryMin = result["salary_min"] as? Int
-        let salaryMax = result["salary_max"] as? Int
-        let currency = (result["salary_currency"] as? String) ?? ""
-        let skills = (result["skills"] as? [Any])?.compactMap { $0 as? String } ?? []
-        let requirements = (result["requirements"] as? [Any])?.compactMap { $0 as? String } ?? []
+    // swiftlint:disable:next large_tuple
+    private func extractFields(from result: [String: Any]) -> (
+        company: String, title: String, remoteType: String,
+        salaryMin: Int?, salaryMax: Int?, currency: String,
+        skills: [String], requirements: [String]
+    ) {
+        (
+            company: (result["company"] as? String) ?? "",
+            title: (result["title"] as? String) ?? "",
+            remoteType: (result["remote_type"] as? String) ?? "",
+            salaryMin: result["salary_min"] as? Int,
+            salaryMax: result["salary_max"] as? Int,
+            currency: (result["salary_currency"] as? String) ?? "",
+            skills: (result["skills"] as? [Any])?.compactMap { $0 as? String } ?? [],
+            requirements: (result["requirements"] as? [Any])?.compactMap { $0 as? String } ?? []
+        )
+    }
 
-        if let expectedCompany = fixture.expectedCompany {
-            check("company", company.lowercased().contains(expectedCompany.lowercased()),
-                  got: company, expected: expectedCompany)
+    private func scoreScalarFields(
+        fixture: ExtractionFixture,
+        // swiftlint:disable:next large_tuple
+        fields: (company: String, title: String, remoteType: String, salaryMin: Int?,
+                 salaryMax: Int?, currency: String, skills: [String], requirements: [String]),
+        check: (String, Bool, String, String) -> Void
+    ) {
+        if let exp = fixture.expectedCompany {
+            check("company", fields.company.lowercased().contains(exp.lowercased()), got: fields.company, expected: exp)
         }
-        if let expectedTitle = fixture.expectedTitleContains {
-            check("title", title.lowercased().contains(expectedTitle.lowercased()),
-                  got: title, expected: "contains '\(expectedTitle)'")
+        if let exp = fixture.expectedTitleContains {
+            check("title", fields.title.lowercased().contains(exp.lowercased()),
+                  got: fields.title, expected: "contains '\(exp)'")
         }
-        if let expectedRemote = fixture.expectedRemoteType {
-            check("remote_type", remoteType == expectedRemote,
-                  got: remoteType, expected: expectedRemote)
+        if let exp = fixture.expectedRemoteType {
+            check("remote_type", fields.remoteType == exp, got: fields.remoteType, expected: exp)
         }
-        if let expectedMin = fixture.expectedSalaryMin {
-            check("salary_min", salaryMin == expectedMin,
-                  got: salaryMin.map(String.init) ?? "nil", expected: "\(expectedMin)")
+        if let exp = fixture.expectedSalaryMin {
+            check("salary_min", fields.salaryMin == exp,
+                  got: fields.salaryMin.map(String.init) ?? "nil", expected: "\(exp)")
         }
-        if let expectedMax = fixture.expectedSalaryMax {
-            check("salary_max", salaryMax == expectedMax,
-                  got: salaryMax.map(String.init) ?? "nil", expected: "\(expectedMax)")
+        if let exp = fixture.expectedSalaryMax {
+            check("salary_max", fields.salaryMax == exp,
+                  got: fields.salaryMax.map(String.init) ?? "nil", expected: "\(exp)")
         }
-        if let expectedCurrency = fixture.expectedSalaryCurrency {
-            check("salary_currency", currency.lowercased() == expectedCurrency.lowercased(),
-                  got: currency, expected: expectedCurrency)
+        if let exp = fixture.expectedSalaryCurrency {
+            check("salary_currency", fields.currency.lowercased() == exp.lowercased(),
+                  got: fields.currency, expected: exp)
         }
+    }
+
+    private func scoreListFields(
+        fixture: ExtractionFixture,
+        // swiftlint:disable:next large_tuple
+        fields: (company: String, title: String, remoteType: String, salaryMin: Int?,
+                 salaryMax: Int?, currency: String, skills: [String], requirements: [String]),
+        check: (String, Bool, String, String) -> Void
+    ) {
         if !fixture.expectedSkillsAny.isEmpty {
-            let skillsText = skills.joined(separator: " ").lowercased()
-            let hit = fixture.expectedSkillsAny.contains { skillsText.contains($0.lowercased()) }
+            let text = fields.skills.joined(separator: " ").lowercased()
+            let hit = fixture.expectedSkillsAny.contains { text.contains($0.lowercased()) }
             check("skills (any-of)", hit,
-                  got: skills.prefix(3).joined(separator: ", "),
+                  got: fields.skills.prefix(3).joined(separator: ", "),
                   expected: "any of: \(fixture.expectedSkillsAny.prefix(3).joined(separator: ", "))")
         }
         if !fixture.expectedRequirementsAny.isEmpty {
-            let reqText = requirements.joined(separator: " ").lowercased()
-            let hit = fixture.expectedRequirementsAny.contains { reqText.contains($0.lowercased()) }
+            let text = fields.requirements.joined(separator: " ").lowercased()
+            let hit = fixture.expectedRequirementsAny.contains { text.contains($0.lowercased()) }
             check("requirements (any-of)", hit,
-                  got: requirements.prefix(2).joined(separator: "; "),
+                  got: fields.requirements.prefix(2).joined(separator: "; "),
                   expected: "any of: \(fixture.expectedRequirementsAny.prefix(3).joined(separator: ", "))")
         }
-
-        return (passed, total)
     }
 }

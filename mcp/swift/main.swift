@@ -28,7 +28,7 @@ func discoverPort() -> Int? {
         request.timeoutInterval = 1.0
         var found = false
         let sem = DispatchSemaphore(value: 0)
-        let task = URLSession.shared.dataTask(with: request) { data, response, _ in
+        let task = URLSession.shared.dataTask(with: request) { _, response, _ in
             if let resp = response as? HTTPURLResponse, resp.statusCode == 200 {
                 found = true
             }
@@ -59,7 +59,7 @@ func postMCP(path: String, body: [String: Any], port: Int, token: String) -> (In
     var statusCode = 500
     var resultObj: Any?
     let sem = DispatchSemaphore(value: 0)
-    let task = URLSession.shared.dataTask(with: request) { data, response, error in
+    let task = URLSession.shared.dataTask(with: request) { data, response, _ in
         if let resp = response as? HTTPURLResponse {
             statusCode = resp.statusCode
         }
@@ -261,78 +261,58 @@ func textResult(_ value: Any) -> [String: Any] {
 }
 
 // swiftlint:disable:next cyclomatic_complexity
-func callTool(name: String, args: [String: Any], port: Int, token: String) -> Result<[String: Any], MCPError> {
-    let (path, body): (String, [String: Any])
-
+private func resolveToolRoute(name: String, args: [String: Any]) -> Result<(String, [String: Any]), MCPError> {
     switch name {
     case "jobs_list":
         var b: [String: Any] = [:]
         if let s = args["status"] { b["status"] = s }
         if let l = args["limit"] { b["limit"] = l }
-        (path, body) = ("/mcp/jobs/list", b)
-
+        return .success(("/mcp/jobs/list", b))
     case "job_get":
-        guard let num = args["job_number"] else {
-            return .failure(MCPError("job_number required"))
-        }
-        (path, body) = ("/mcp/jobs/get", ["job_number": num])
-
+        guard let num = args["job_number"] else { return .failure(MCPError("job_number required")) }
+        return .success(("/mcp/jobs/get", ["job_number": num]))
     case "add_capture":
         guard args["url"] != nil, args["page_title"] != nil else {
             return .failure(MCPError("url and page_title required"))
         }
-        (path, body) = ("/mcp/captures/add", args)
-
+        return .success(("/mcp/captures/add", args))
     case "update_job":
-        guard args["job_number"] != nil else {
-            return .failure(MCPError("job_number required"))
-        }
-        (path, body) = ("/mcp/jobs/update", args)
-
+        guard args["job_number"] != nil else { return .failure(MCPError("job_number required")) }
+        return .success(("/mcp/jobs/update", args))
     case "set_job_status":
         guard args["job_number"] != nil, args["status"] != nil else {
             return .failure(MCPError("job_number and status required"))
         }
-        (path, body) = ("/mcp/jobs/status", args)
-
+        return .success(("/mcp/jobs/status", args))
     case "add_job_note":
         guard args["job_number"] != nil, args["note"] != nil else {
             return .failure(MCPError("job_number and note required"))
         }
-        (path, body) = ("/mcp/jobs/note", args)
-
+        return .success(("/mcp/jobs/note", args))
     case "rerun_extraction":
-        guard args["job_number"] != nil else {
-            return .failure(MCPError("job_number required"))
-        }
-        (path, body) = ("/mcp/jobs/rerun", args)
-
-    case "list_sites":
-        (path, body) = ("/mcp/sites/list", [:])
-
+        guard args["job_number"] != nil else { return .failure(MCPError("job_number required")) }
+        return .success(("/mcp/jobs/rerun", args))
+    case "list_sites":   return .success(("/mcp/sites/list", [:]))
     case "add_site":
-        guard args["url"] != nil else {
-            return .failure(MCPError("url required"))
-        }
-        (path, body) = ("/mcp/sites/add", args)
-
+        guard args["url"] != nil else { return .failure(MCPError("url required")) }
+        return .success(("/mcp/sites/add", args))
     case "update_site":
-        guard args["id"] != nil else {
-            return .failure(MCPError("id required"))
-        }
-        (path, body) = ("/mcp/sites/update", args)
-
+        guard args["id"] != nil else { return .failure(MCPError("id required")) }
+        return .success(("/mcp/sites/update", args))
     case "delete_site":
-        guard args["id"] != nil else {
-            return .failure(MCPError("id required"))
-        }
-        (path, body) = ("/mcp/sites/delete", args)
+        guard args["id"] != nil else { return .failure(MCPError("id required")) }
+        return .success(("/mcp/sites/delete", args))
+    case "workflow_snapshot": return .success(("/mcp/snapshot", [:]))
+    default: return .failure(MCPError("unknown tool: \(name)"))
+    }
+}
 
-    case "workflow_snapshot":
-        (path, body) = ("/mcp/snapshot", [:])
-
-    default:
-        return .failure(MCPError("unknown tool: \(name)"))
+func callTool(name: String, args: [String: Any], port: Int, token: String) -> Result<[String: Any], MCPError> {
+    let routeResult = resolveToolRoute(name: name, args: args)
+    let (path, body): (String, [String: Any])
+    switch routeResult {
+    case .success(let r): (path, body) = r
+    case .failure(let e): return .failure(e)
     }
 
     let (status, result) = postMCP(path: path, body: body, port: port, token: token)

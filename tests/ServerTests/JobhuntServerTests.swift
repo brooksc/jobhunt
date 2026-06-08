@@ -1,4 +1,3 @@
-// swiftlint:disable force_unwrapping
 import XCTest
 import SwiftData
 @testable import JobhuntServer
@@ -25,6 +24,26 @@ private func makeTestServer() throws -> JobhuntServer {
     let jobService = JobService(store: store, queue: queue)
     let siteService = SiteService(store: store)
     return JobhuntServer(jobService: jobService, siteService: siteService, appVersion: "1.0.0-test", store: store)
+}
+
+// MARK: - Response decodables (file-scope to avoid nesting violations)
+
+private struct HealthBody: Decodable {
+    let isOK: Bool
+    enum CodingKeys: String, CodingKey { case isOK = "ok" }
+}
+
+private struct CaptureBody: Decodable {
+    let isOK: Bool
+    let captureID: String
+    let jobNumber: Int
+    let duplicate: Bool
+    enum CodingKeys: String, CodingKey {
+        case isOK = "ok"
+        case captureID = "capture_id"
+        case jobNumber = "job_number"
+        case duplicate
+    }
 }
 
 // MARK: - JobhuntServerTests
@@ -54,6 +73,7 @@ final class JobhuntServerTests: XCTestCase {
     // MARK: - Tests
 
     func testPingEndpoint() async throws {
+        // swiftlint:disable:next force_unwrapping
         let url = URL(string: await baseURL() + "/api/ping")!
         let (data, response) = try await URLSession.shared.data(from: url)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
@@ -67,20 +87,18 @@ final class JobhuntServerTests: XCTestCase {
     }
 
     func testHealthEndpoint() async throws {
+        // swiftlint:disable:next force_unwrapping
         let url = URL(string: await baseURL() + "/health")!
         let (data, response) = try await URLSession.shared.data(from: url)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 200)
 
-        struct HealthBody: Decodable {
-            let isOK: Bool
-            enum CodingKeys: String, CodingKey { case isOK = "ok" }
-        }
         let body = try JSONDecoder().decode(HealthBody.self, from: data)
         XCTAssertTrue(body.isOK)
     }
 
     func testCaptureEndpoint() async throws {
+        // swiftlint:disable:next force_unwrapping
         let url = URL(string: await baseURL() + "/captures")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -96,18 +114,6 @@ final class JobhuntServerTests: XCTestCase {
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 200)
 
-        struct CaptureBody: Decodable {
-            let isOK: Bool
-            let captureID: String
-            let jobNumber: Int
-            let duplicate: Bool
-            enum CodingKeys: String, CodingKey {
-                case isOK = "ok"
-                case captureID = "capture_id"
-                case jobNumber = "job_number"
-                case duplicate
-            }
-        }
         let body = try JSONDecoder().decode(CaptureBody.self, from: data)
         XCTAssertTrue(body.isOK)
         XCTAssertFalse(body.captureID.isEmpty)
@@ -116,6 +122,7 @@ final class JobhuntServerTests: XCTestCase {
     }
 
     func testCaptureValidation_missingURL() async throws {
+        // swiftlint:disable:next force_unwrapping
         let url = URL(string: await baseURL() + "/captures")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -137,6 +144,7 @@ final class JobhuntServerTests: XCTestCase {
     }
 
     func testCaptureValidation_missingText() async throws {
+        // swiftlint:disable:next force_unwrapping
         let url = URL(string: await baseURL() + "/captures")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -158,6 +166,7 @@ final class JobhuntServerTests: XCTestCase {
     }
 
     func testCORSPreflight() async throws {
+        // swiftlint:disable:next force_unwrapping
         let url = URL(string: await baseURL() + "/captures")!
         var req = URLRequest(url: url)
         req.httpMethod = "OPTIONS"
@@ -174,6 +183,7 @@ final class JobhuntServerTests: XCTestCase {
     }
 
     func testNotFoundReturns404() async throws {
+        // swiftlint:disable:next force_unwrapping
         let url = URL(string: await baseURL() + "/api/nonexistent")!
         let (_, response) = try await URLSession.shared.data(from: url)
         let http = try XCTUnwrap(response as? HTTPURLResponse)

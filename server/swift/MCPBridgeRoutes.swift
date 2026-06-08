@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 #if !MAS_BUILD
 import Foundation
 import SwiftData
@@ -191,8 +192,9 @@ private struct MCPSnapshotResponse: Encodable {
 
 // MARK: - MCP bridge routing (extends JobhuntServer routing)
 
-/// Call this from JobhuntServer.routeRequest to handle /mcp/* endpoints.
-/// Returns nil if the path is not a recognised MCP route.
+// Call this from JobhuntServer.routeRequest to handle /mcp/* endpoints.
+// Returns nil if the path is not a recognised MCP route.
+// swiftlint:disable:next cyclomatic_complexity
 func routeMCPRequest(
     _ request: HTTPRequest,
     jobService: JobService,

@@ -15,7 +15,6 @@ enum JobsSortLogic {
         }
     }
 
-    // swiftlint:disable:next cyclomatic_complexity
     private static func compare(_ a: Job, _ b: Job, key: JobsSortKey) -> ComparisonResult {
         switch key {
         case .jobNumber:
@@ -45,8 +44,7 @@ enum JobsSortLogic {
         case (nil, nil): return .orderedSame
         case (nil, _): return .orderedDescending   // a nil → a sorts after b (bottom)
         case (_, nil): return .orderedAscending    // b nil → b sorts after a (bottom)
-        case let (av, bv):
-            let av = av!, bv = bv!
+        case let (av?, bv?):
             if av < bv { return .orderedAscending }
             if av > bv { return .orderedDescending }
             return .orderedSame
@@ -59,8 +57,8 @@ enum JobsSortLogic {
         case (nil, nil): return .orderedSame
         case (nil, _): return .orderedDescending
         case (_, nil): return .orderedAscending
-        case let (av, bv):
-            return av!.compare(bv!)
+        case let (av?, bv?):
+            return av.compare(bv)
         }
     }
 

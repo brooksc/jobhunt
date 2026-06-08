@@ -8,7 +8,7 @@ struct KeyboardShortcutsTable: View {
         ("⎋", "Close panel / clear search"),
         ("⌘,", "Open Settings"),
         ("⌘N", "New capture (from browser)"),
-        ("⌘⇧E", "Export jobs to CSV"),
+        ("⌘⇧E", "Export jobs to CSV")
     ]
 
     var body: some View {

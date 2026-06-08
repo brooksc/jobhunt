@@ -4,6 +4,7 @@ import JobhuntCore
 
 // MARK: - JobsView
 
+// swiftlint:disable:next type_body_length
 struct JobsView: View {
     @Environment(Router.self) private var router
     @Environment(AppServices.self) private var appServices
@@ -141,6 +142,7 @@ struct JobsView: View {
         if pill.value == nil {
             return filterState.statusFilter == nil
         }
+        // swiftlint:disable:next force_unwrapping
         return filterState.statusFilter == [pill.value!]
     }
 
@@ -399,6 +401,7 @@ struct JobsView: View {
 
     @ViewBuilder
     private func salaryText(_ job: Job) -> some View {
+        // swiftlint:disable:next line_length
         let parts: [String] = [job.salaryMin.map { formatSalary($0) }, job.salaryMax.map { formatSalary($0) }].compactMap { $0 }
         if parts.isEmpty {
             if let note = job.salaryNote {

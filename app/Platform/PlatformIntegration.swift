@@ -105,10 +105,9 @@ public final class PlatformIntegration: NSObject, ObservableObject {
     }
 
     private func handleJobReady(jobNumber: Int?, title: String?, fitScore: Int?) {
-        let isStrongMatch = fitScore != nil && fitScore! >= 75
-        if isStrongMatch {
+        let isStrongMatch = (fitScore ?? 0) >= 75
+        if isStrongMatch, let score = fitScore {
             let jobTitle = title ?? "Job"
-            let score = fitScore!
             let body = "\(jobTitle) — Fit \(score)%"
             postNotification(
                 id: "job-ready-\(jobNumber ?? 0)",

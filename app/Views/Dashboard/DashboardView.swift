@@ -1,4 +1,3 @@
-// swiftlint:disable type_body_length
 import SwiftUI
 import SwiftData
 import Charts
@@ -90,7 +89,7 @@ struct DashboardView: View {
             ("Saved", .saved),
             ("Applied", .applied),
             ("Interview", .interview),
-            ("Offer", .offer),
+            ("Offer", .offer)
         ]
         let counts = stages.map { stage in
             (label: stage.label, status: stage.status, count: jobs.filter { $0.status == stage.status }.count)

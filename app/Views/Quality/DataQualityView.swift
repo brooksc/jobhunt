@@ -20,7 +20,7 @@ struct DataQualityView: View {
     }
 
     @State private var selectedJobIDs: Set<String> = []
-    @State private var filterKind: QualityIssueKind? = nil  // nil = all
+    @State private var filterKind: QualityIssueKind?  // nil = all
     @State private var showReviewed = false
     @State private var errorMessage: String?
 

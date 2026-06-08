@@ -1,4 +1,4 @@
-// swiftlint:disable file_length type_body_length
+// swiftlint:disable file_length
 import SwiftUI
 import SwiftData
 import JobhuntCore
@@ -450,11 +450,15 @@ struct ExtractedTabView: View {
         }
         return dict.sorted { $0.key < $1.key }.map { (key, value) in
             let strValue: String
-            if let str = value as? String { strValue = str }
-            else if let num = value as? NSNumber { strValue = num.stringValue }
-            else if let arr = value as? [Any] {
+            if let str = value as? String {
+                strValue = str
+            } else if let num = value as? NSNumber {
+                strValue = num.stringValue
+            } else if let arr = value as? [Any] {
                 strValue = arr.compactMap { $0 as? String }.joined(separator: ", ")
-            } else { strValue = String(describing: value) }
+            } else {
+                strValue = String(describing: value)
+            }
             return (key, strValue)
         }
     }
@@ -528,6 +532,7 @@ struct FitTabView: View {
         resumes.filter(\.active)
     }
 
+    // swiftlint:disable:next large_tuple
     private var fitDimensions: [(name: String, score: Int, rationale: String?)] {
         guard let json = job.fitScoreJSON,
               let data = json.data(using: .utf8),
@@ -606,6 +611,7 @@ struct FitTabView: View {
                                                 .fill(Color.secondary.opacity(0.2))
                                             RoundedRectangle(cornerRadius: 2)
                                                 .fill(fitColor(dim.score))
+                                                // swiftlint:disable:next line_length
                                                 .frame(width: geo.size.width * CGFloat(max(0, min(100, dim.score))) / 100)
                                         }
                                     }
@@ -626,6 +632,7 @@ struct FitTabView: View {
                             Text("Per Resume")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            // swiftlint:disable:next line_length
                             ForEach(job.fitScores.sorted { ($0.fitScore ?? 0) > ($1.fitScore ?? 0) }, id: \.self) { fitScore in
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {
@@ -1014,14 +1021,16 @@ struct CompareTabView: View {
     }
 
     @ViewBuilder
+    // swiftlint:disable:next function_body_length
     private func compareTable(original: Job) -> some View {
+        // swiftlint:disable:next large_tuple
         let rows: [(String, String, String)] = [
             ("Company", job.company ?? "—", original.company ?? "—"),
             ("Title", job.title ?? "—", original.title ?? "—"),
             ("Location", job.location ?? "—", original.location ?? "—"),
             ("Remote", job.remoteType?.displayName ?? "—", original.remoteType?.displayName ?? "—"),
             ("Status", job.status.rawValue, original.status.rawValue),
-            ("Rating", job.rating.map { "\($0)" } ?? "—", original.rating.map { "\($0)" } ?? "—"),
+            ("Rating", job.rating.map { "\($0)" } ?? "—", original.rating.map { "\($0)" } ?? "—")
         ]
 
         VStack(alignment: .leading, spacing: 0) {
@@ -1147,4 +1156,4 @@ extension RemoteType {
     }
 }
 
-// swiftlint:enable file_length type_body_length
+// swiftlint:enable file_length

@@ -367,5 +367,16 @@ public actor JobService {
             try await resetExtraction(jobID: jobID)
         }
     }
+
+    // MARK: - URL lookup (used by server /api/jobs/by-url)
+
+    /// Find the job_number for the first job whose capture URL matches the given URL.
+    /// Returns nil if no match found.
+    public func findJobNumber(byURL url: String) async throws -> Int? {
+        let captures = try await store.fetch(FetchDescriptor<Capture>())
+        guard let capture = captures.first(where: { $0.url == url }),
+              let job = capture.job else { return nil }
+        return job.jobNumber
+    }
 }
 // swiftlint:enable file_length type_body_length function_body_length

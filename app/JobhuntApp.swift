@@ -47,6 +47,7 @@ struct JobhuntApp: App {
                     platformIntegration.handleDeepLink(url)
                 }
         }
+        .defaultSize(width: 1200, height: 750)
         .modelContainer(modelContainer)
         .commands {
             CommandGroup(replacing: .newItem) {}

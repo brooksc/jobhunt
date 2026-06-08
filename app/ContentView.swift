@@ -1,3 +1,4 @@
+import AppKit
 import JobhuntCore
 import SwiftData
 import SwiftUI
@@ -20,6 +21,7 @@ struct ContentView: View {
             Sidebar(router: router, theme: theme)
         } content: {
             contentView(for: router.selectedSection)
+                .navigationSplitViewColumnWidth(min: 550, ideal: 700)
         } detail: {
             detailView(for: router.selectedSection)
         }
@@ -33,6 +35,15 @@ struct ContentView: View {
             DockBadgeUpdater(unreadCount: unreadJobs.count)
                 .frame(width: 0, height: 0)
         )
+        .onAppear {
+            guard let window = NSApp.mainWindow else { return }
+            window.minSize = NSSize(width: 900, height: 600)
+            guard window.frame.width < 1200 || window.frame.height < 750 else { return }
+            let newW = max(window.frame.width, 1200)
+            let newH = max(window.frame.height, 750)
+            let origin = window.frame.origin
+            window.setFrame(NSRect(x: origin.x, y: origin.y, width: newW, height: newH), display: true)
+        }
     }
 
     @ViewBuilder

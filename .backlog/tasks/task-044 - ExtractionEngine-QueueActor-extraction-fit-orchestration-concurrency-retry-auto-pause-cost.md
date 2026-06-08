@@ -3,9 +3,10 @@ id: TASK-044
 title: >-
   ExtractionEngine + QueueActor: extraction/fit orchestration, concurrency,
   retry, auto-pause, cost
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-07 22:46'
+updated_date: '2026-06-08 02:58'
 labels:
   - swift-rewrite
   - core

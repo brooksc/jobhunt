@@ -43,8 +43,7 @@ struct ContentView: View {
             Text("Sites coming soon")
                 .foregroundStyle(.secondary)
         case .duplicates:
-            Text("Duplicates coming soon")
-                .foregroundStyle(.secondary)
+            DuplicatesView()
         case .settings:
             Text("Settings coming soon")
                 .foregroundStyle(.secondary)

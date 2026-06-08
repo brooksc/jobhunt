@@ -150,7 +150,7 @@ struct DashboardView: View {
             sectionHeader("Daily Activity (30 days)")
 
             GroupBox {
-                if activity.isEmpty || activity.allSatisfy({ $0.count == 0 }) {
+                if activity.isEmpty || activity.allSatisfy({ $0.count == 0 }) { // swiftlint:disable:this empty_count
                     emptyState("No activity in the last 30 days", subtitle: nil)
                         .frame(height: 120)
                 } else {

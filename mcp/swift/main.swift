@@ -260,6 +260,7 @@ func textResult(_ value: Any) -> [String: Any] {
     return ["content": [["type": "text", "text": text]]]
 }
 
+// swiftlint:disable:next cyclomatic_complexity
 func callTool(name: String, args: [String: Any], port: Int, token: String) -> Result<[String: Any], MCPError> {
     let (path, body): (String, [String: Any])
 

@@ -1,9 +1,10 @@
 ---
 id: TASK-061
 title: 'Onboarding wizard: 6-step first-run setup'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-07 22:51'
+updated_date: '2026-06-08 03:35'
 labels:
   - swift-rewrite
   - ui

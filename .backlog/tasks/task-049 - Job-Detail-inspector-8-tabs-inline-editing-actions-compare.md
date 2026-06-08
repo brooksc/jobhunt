@@ -1,9 +1,10 @@
 ---
 id: TASK-049
 title: 'Job Detail inspector: 8 tabs, inline editing, actions, compare'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-07 22:48'
+updated_date: '2026-06-08 03:31'
 labels:
   - swift-rewrite
   - ui

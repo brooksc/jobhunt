@@ -3,6 +3,7 @@ name: Swift Build
 on:
   push:
     branches: [main, swift-rewrite]
+    tags-ignore: ['v*']
   pull_request:
     branches: [main]
 

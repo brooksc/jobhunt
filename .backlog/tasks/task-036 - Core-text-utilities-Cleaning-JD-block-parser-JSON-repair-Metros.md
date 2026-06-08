@@ -1,9 +1,11 @@
 ---
 id: TASK-036
 title: 'Core text utilities: Cleaning, JD block parser, JSON repair, Metros'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - claude
 created_date: '2026-06-07 22:44'
+updated_date: '2026-06-08 02:05'
 labels:
   - swift-rewrite
   - core

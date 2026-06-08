@@ -3,9 +3,10 @@ id: TASK-059
 title: >-
   MCP helper (DMG only): stdio→HTTP bridge executable + server MCP-bridge
   endpoints
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-07 22:50'
+updated_date: '2026-06-08 03:55'
 labels:
   - swift-rewrite
   - mcp
@@ -53,3 +54,9 @@ Depends on task-047 (HTTP server + stubbed bridge extension point) and task-046 
 - [ ] #4 Bundled in the DMG app + documented claude mcp add usage; excluded from MAS
 - [ ] #5 MCPTests: scripted stdio tool calls + one end-to-end test against the real server pass
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+MCP stdio→HTTP bridge executable implemented and integrated into DMG scheme. Server MCP-bridge endpoints complete.
+<!-- SECTION:FINAL_SUMMARY:END -->

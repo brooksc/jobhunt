@@ -76,6 +76,19 @@ let mcpTarget = Target.target(
     settings: .settings(base: sharedBase, configurations: projectConfigurations, defaultSettings: .recommended(excluding: []))
 )
 
+// MARK: - Migrator executable (DMG only — one-time dev tool, not shipped in app bundles)
+
+let migratorTarget = Target.target(
+    name: "JobhuntMigrator",
+    destinations: [.mac],
+    product: .commandLineTool,
+    bundleId: "\(bundleId).migrator",
+    deploymentTargets: deploymentTarget,
+    sources: ["tools/migrator/**/*.swift"],
+    dependencies: [.target(name: "JobhuntCore")],
+    settings: .settings(base: sharedBase, configurations: projectConfigurations, defaultSettings: .recommended(excluding: []))
+)
+
 // MARK: - App target
 
 let appInfoPlist: [String: Plist.Value] = [
@@ -174,6 +187,7 @@ let dmgScheme = Scheme.scheme(
         .target("JobhuntCore"),
         .target("JobhuntServer"),
         .target("JobhuntMCP"),
+        .target("JobhuntMigrator"),
     ]),
     testAction: .targets(
         [.testableTarget(target: .target("CoreTests")),
@@ -219,6 +233,7 @@ let project = Project(
         coreTarget, coreTestsTarget,
         serverTarget, serverTestsTarget,
         mcpTarget, mcpTestsTarget,
+        migratorTarget,
         appTarget, appUITestsTarget,
     ],
     schemes: [dmgScheme, masScheme]

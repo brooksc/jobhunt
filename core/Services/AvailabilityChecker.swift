@@ -44,9 +44,12 @@ public enum AvailabilityChecker {
 
     // MARK: - URL normalization helpers
 
-    /// Strips fragment, sorts query params, removes trailing slash from path. Returns nil on parse error.
+    /// Strips fragment, sorts query params, removes trailing slash from path.
+    /// Returns nil if the URL has no scheme or host (i.e. is not an absolute HTTP URL).
     static func normalizedURL(_ rawURL: String) -> URL? {
-        guard var components = URLComponents(string: rawURL) else { return nil }
+        guard var components = URLComponents(string: rawURL),
+              let scheme = components.scheme, !scheme.isEmpty,
+              let host = components.host, !host.isEmpty else { return nil }
         components.fragment = nil
         if let items = components.queryItems {
             components.queryItems = items.sorted { $0.name < $1.name }
@@ -286,24 +289,18 @@ public enum AvailabilityChecker {
     ) async -> (checked: Int, unavailable: Int, marked: Int) {
         let cutoff = Date().addingTimeInterval(-Double(max(1, staleDays)) * 86400)
 
-        // Fetch all active jobs, then filter in memory (SwiftData predicates don't support
-        // enum member access like .archived in macOS 15; use raw values instead).
-        let archivedRaw = JobStatus.archived.rawValue
-        let notAvailableRaw = JobStatus.notAvailable.rawValue
-
+        // Fetch all jobs, then filter in memory.
+        // SwiftData predicates on macOS 15 don't reliably support enum rawValue comparisons.
         let jobs: [Job]
         do {
             var descriptor = FetchDescriptor<Job>(
-                predicate: #Predicate { job in
-                    job.status.rawValue != archivedRaw &&
-                    job.status.rawValue != notAvailableRaw
-                },
                 sortBy: [SortDescriptor(\Job.createdAt, order: .forward)]
             )
-            descriptor.fetchLimit = limit * 4 // Over-fetch, then filter by capturedAt.
+            descriptor.fetchLimit = limit * 10 // Over-fetch, then filter.
             let fetched = try await store.fetch(descriptor)
-            // Filter to those with captures older than cutoff.
+            // Keep active jobs whose captures are older than the cutoff.
             jobs = fetched.filter { job in
+                guard job.status != .archived, job.status != .notAvailable else { return false }
                 guard let capturedAt = job.capture?.capturedAt else { return false }
                 return capturedAt <= cutoff
             }.prefix(limit).map { $0 }

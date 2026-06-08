@@ -3,11 +3,11 @@ id: TASK-037
 title: >-
   Extraction field normalization: salary, remote type, location, company
   inference
-status: In Progress
+status: Done
 assignee:
   - claude
 created_date: '2026-06-07 22:44'
-updated_date: '2026-06-08 02:05'
+updated_date: '2026-06-08 02:16'
 labels:
   - swift-rewrite
   - core
@@ -51,9 +51,28 @@ Depends on task-033. Independent of models (operates on dicts/strings). Consumed
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Salary normalization matches extract.js (bands, hourly→annual, currency) on shared fixtures
-- [ ] #2 Remote-type inference reproduces URL-param + heuristic results for LinkedIn/Indeed/Levels
-- [ ] #3 Location inference and company backfill match legacy behavior
-- [ ] #4 JobFieldNormalizer composes the pieces into normalized Job fields
-- [ ] #5 Ported extract.test.js + transform.test.js pass as XCTest; module imports no SwiftData/SwiftUI
+- [x] #1 Salary normalization matches extract.js (bands, hourly→annual, currency) on shared fixtures
+- [x] #2 Remote-type inference reproduces URL-param + heuristic results for LinkedIn/Indeed/Levels
+- [x] #3 Location inference and company backfill match legacy behavior
+- [x] #4 JobFieldNormalizer composes the pieces into normalized Job fields
+- [x] #5 Ported extract.test.js + transform.test.js pass as XCTest; module imports no SwiftData/SwiftUI
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented extraction field normalization in Swift (pure Foundation, no SwiftData/SwiftUI).
+
+**Files created:**
+- `core/LLM/LLMConstants.swift` — `LLMConstants.maxDescriptionChars = 32_000`, `maxResumeChars = 12_000`
+- `core/LLM/Normalization.swift` — Five normalizers:
+  - `SalaryNormalizer`: Parses salary bands from text, hourly→annual (×2080), currency detection (USD/CAD/EUR/GBP), multi-band selection by preferred location, Workday format (no $ sign), USD/CAD mixing
+  - `RemoteTypeInferer`: URL param signals (LinkedIn f_WT=2, Indeed remotejob=1, Levels.fyi perkIds=58, Glassdoor remoteWorkType=1) + description heuristics (Remote/Hybrid language, 0-days-in-office, TELECOMMUTE JSON-LD)
+  - `LocationInferer`: "based in" pattern, metadata label extraction, title-context line matching, Remote country context
+  - `CompanyBackfiller`: JSON-LD hiringOrganization name extraction
+  - `DisplayNormalizer`: mapStatus/mapRemote/mapEmployment/mapExtractionStatus/toStringArray from transform.js
+  - `JobFieldNormalizer`: Composes all passes from raw extracted dict + source context
+- `tests/CoreTests/NormalizationTests.swift` — 84 XCTest cases ported from extract.test.js + transform.test.js
+
+All 84 tests pass. Build succeeds on Jobhunt-DMG scheme.
+<!-- SECTION:FINAL_SUMMARY:END -->

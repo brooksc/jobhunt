@@ -133,8 +133,8 @@ public actor SiteService {
 private extension URL {
     /// Returns the scheme + "://" + host (+ optional port) string, matching the browser's `location.origin`.
     var origin: String? {
-        guard let scheme = self.scheme, let host = self.host else { return nil }
-        if let port = self.port {
+        guard let scheme, let host else { return nil }
+        if let port {
             return "\(scheme)://\(host):\(port)"
         }
         return "\(scheme)://\(host)"

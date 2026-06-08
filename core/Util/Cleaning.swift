@@ -97,7 +97,7 @@ private func decodeNumericEntities(_ text: String) -> String {
     // Use NSString replacements to handle &#NNN; and &#xHHH; entities
     var result = text
 
-    // Process all numeric entity matches and replace them
+    /// Process all numeric entity matches and replace them
     func replaceEntities(pattern: String, extractor: (String) -> Int?) {
         guard let entityRegex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return }
         // Collect all matches first, then process in reverse order to preserve offsets

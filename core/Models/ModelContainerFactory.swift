@@ -1,9 +1,8 @@
-// swiftlint:disable line_length
 import Foundation
 import SwiftData
 
 public enum ModelContainerFactory {
-    // Production container stored in the app's Application Support directory.
+    /// Production container stored in the app's Application Support directory.
     public static func production() throws -> ModelContainer {
         let schema = Schema(SchemaV1.models)
         let url = productionStoreURL()
@@ -11,7 +10,7 @@ public enum ModelContainerFactory {
         return try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
     }
 
-    // In-memory container for unit tests — isolated, never touches disk.
+    /// In-memory container for unit tests — isolated, never touches disk.
     public static func inMemory() throws -> ModelContainer {
         let schema = Schema(SchemaV1.models)
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
@@ -20,7 +19,8 @@ public enum ModelContainerFactory {
 
     private static func productionStoreURL() -> URL {
         // urls(for:in:) returns an empty array only on simulator/tests; guard is a safety net.
-        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        else {
             return URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("Jobhunt/jobhunt.store")
         }
         let dir = appSupport.appendingPathComponent("Jobhunt", isDirectory: true)
@@ -28,4 +28,3 @@ public enum ModelContainerFactory {
         return dir.appendingPathComponent("jobhunt.store")
     }
 }
-// swiftlint:enable line_length

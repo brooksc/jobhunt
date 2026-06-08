@@ -15,7 +15,6 @@ public enum QueueEvent: Sendable {
 // MARK: - QueueActor
 
 public actor QueueActor {
-
     // MARK: - Public API stream
 
     public let events: AsyncStream<QueueEvent>
@@ -25,9 +24,9 @@ public actor QueueActor {
 
     private let store: BackgroundStore
     private let providerFactory: @Sendable () -> any LLMProvider
-    // nonisolated(unsafe) because SettingsStore is @Observable (not Sendable) but
-    // all access goes through the actor's serialized execution context.
-    nonisolated(unsafe) private let settings: SettingsStore
+    /// nonisolated(unsafe) because SettingsStore is @Observable (not Sendable) but
+    /// all access goes through the actor's serialized execution context.
+    private nonisolated(unsafe) let settings: SettingsStore
 
     // MARK: - State
 
@@ -51,8 +50,8 @@ public actor QueueActor {
         self.settings = settings
         self.providerFactory = providerFactory
         var cont: AsyncStream<QueueEvent>.Continuation!
-        self.events = AsyncStream { cont = $0 }
-        self.continuation = cont
+        events = AsyncStream { cont = $0 }
+        continuation = cont
     }
 
     // MARK: - Public API
@@ -97,7 +96,8 @@ public actor QueueActor {
 
     /// Cancel a specific request by id.
     public func cancelRequest(id: String) async throws {
-        try await store.update(LLMRequest.self,
+        try await store.update(
+            LLMRequest.self,
             predicate: #Predicate { $0.id == id }
         ) { req in
             req.status = .cancelled
@@ -117,7 +117,8 @@ public actor QueueActor {
 
     /// Reset a failed request back to queued so it can be retried.
     public func resetRequest(id: String) async throws {
-        try await store.update(LLMRequest.self,
+        try await store.update(
+            LLMRequest.self,
             predicate: #Predicate { $0.id == id }
         ) { req in
             req.status = .queued
@@ -178,7 +179,7 @@ public actor QueueActor {
 
     // MARK: - Private processing
 
-    private struct ProcessResult: Sendable {
+    private struct ProcessResult {
         let succeeded: Bool
     }
 
@@ -210,7 +211,8 @@ public actor QueueActor {
         // Mark as running
         let itemID = item.id
         do {
-            try await store.update(LLMRequest.self,
+            try await store.update(
+                LLMRequest.self,
                 predicate: #Predicate { $0.id == itemID }
             ) { req in
                 req.status = .running
@@ -268,7 +270,8 @@ public actor QueueActor {
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
 
             // Persist extraction result
-            try await store.update(Job.self,
+            try await store.update(
+                Job.self,
                 predicate: #Predicate { $0.id == jobID }
             ) { job in
                 job.extractedJSON = result.extractedJSON
@@ -307,7 +310,8 @@ public actor QueueActor {
             try await store.insert(finishedAttempt)
 
             // Mark request succeeded
-            try await store.update(LLMRequest.self,
+            try await store.update(
+                LLMRequest.self,
                 predicate: #Predicate { $0.id == itemID }
             ) { req in
                 req.status = .succeeded
@@ -335,14 +339,16 @@ public actor QueueActor {
             try await store.insert(failedAttempt)
 
             if item.attempt >= Self.maxRetries {
-                try await store.update(LLMRequest.self,
+                try await store.update(
+                    LLMRequest.self,
                     predicate: #Predicate { $0.id == itemID }
                 ) { req in
                     req.status = .retryExhausted
                     req.finishedAt = Date()
                     req.error = errorStr
                 }
-                try await store.update(Job.self,
+                try await store.update(
+                    Job.self,
                     predicate: #Predicate { $0.id == jobID }
                 ) { job in
                     job.extractionStatus = .failed
@@ -351,9 +357,10 @@ public actor QueueActor {
                 }
             } else {
                 // Backoff then re-queue
-                let backoffMs = min(Int(pow(2.0, Double(item.attempt))) * 1000, 30_000)
+                let backoffMs = min(Int(pow(2.0, Double(item.attempt))) * 1000, 30000)
                 try await Task.sleep(nanoseconds: UInt64(backoffMs) * 1_000_000)
-                try await store.update(LLMRequest.self,
+                try await store.update(
+                    LLMRequest.self,
                     predicate: #Predicate { $0.id == itemID }
                 ) { req in
                     req.status = .queued
@@ -388,7 +395,8 @@ public actor QueueActor {
         guard let resume = resumes.first,
               !resume.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             let errMsg = resumes.isEmpty ? "Resume no longer exists." : "Resume has no text to score against."
-            try await store.update(LLMRequest.self,
+            try await store.update(
+                LLMRequest.self,
                 predicate: #Predicate { $0.id == itemID }
             ) { req in
                 req.status = .failed
@@ -403,7 +411,8 @@ public actor QueueActor {
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
 
             let fitJSON = FitScorer.encode(fitResult)
-            try await store.update(Job.self,
+            try await store.update(
+                Job.self,
                 predicate: #Predicate { $0.id == jobID }
             ) { job in
                 job.fitScore = fitResult.overall
@@ -423,7 +432,8 @@ public actor QueueActor {
             )
             try await store.insert(finishedAttempt)
 
-            try await store.update(LLMRequest.self,
+            try await store.update(
+                LLMRequest.self,
                 predicate: #Predicate { $0.id == itemID }
             ) { req in
                 req.status = .succeeded
@@ -453,23 +463,26 @@ public actor QueueActor {
             try await store.insert(failedAttempt)
 
             if item.attempt >= Self.maxRetries {
-                try await store.update(LLMRequest.self,
+                try await store.update(
+                    LLMRequest.self,
                     predicate: #Predicate { $0.id == itemID }
                 ) { req in
                     req.status = .retryExhausted
                     req.finishedAt = Date()
                     req.error = errorStr
                 }
-                try await store.update(Job.self,
+                try await store.update(
+                    Job.self,
                     predicate: #Predicate { $0.id == jobID }
                 ) { job in
                     job.fitStatus = .failed
                     job.updatedAt = Date()
                 }
             } else {
-                let backoffMs = min(Int(pow(2.0, Double(item.attempt))) * 1000, 30_000)
+                let backoffMs = min(Int(pow(2.0, Double(item.attempt))) * 1000, 30000)
                 try await Task.sleep(nanoseconds: UInt64(backoffMs) * 1_000_000)
-                try await store.update(LLMRequest.self,
+                try await store.update(
+                    LLMRequest.self,
                     predicate: #Predicate { $0.id == itemID }
                 ) { req in
                     req.status = .queued
@@ -482,10 +495,11 @@ public actor QueueActor {
         }
     }
 
-    private func markRequestFailed(item: QueuedItem, error: Error, startedAt: Date) async {
+    private func markRequestFailed(item: QueuedItem, error: Error, startedAt _: Date) async {
         let itemID = item.id
         let errorStr = error.localizedDescription
-        try? await store.update(LLMRequest.self,
+        try? await store.update(
+            LLMRequest.self,
             predicate: #Predicate { $0.id == itemID }
         ) { req in
             req.status = .failed
@@ -495,7 +509,8 @@ public actor QueueActor {
     }
 
     private func markRequestCancelled(id: String) async {
-        try? await store.update(LLMRequest.self,
+        try? await store.update(
+            LLMRequest.self,
             predicate: #Predicate { $0.id == id }
         ) { req in
             req.status = .cancelled
@@ -507,7 +522,7 @@ public actor QueueActor {
 // MARK: - QueuedItem
 
 /// Lightweight value type for items fetched from the queue.
-private struct QueuedItem: Sendable {
+private struct QueuedItem {
     let id: String
     let requestType: LLMRequestType
     let attempt: Int
@@ -516,4 +531,5 @@ private struct QueuedItem: Sendable {
     let jobTitle: String?
     let resumeID: String?
 }
+
 // swiftlint:enable file_length function_body_length type_body_length

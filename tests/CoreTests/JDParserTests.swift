@@ -1,10 +1,9 @@
-// swiftlint:disable line_length force_unwrapping
+// swiftlint:disable line_length
 // JDParserTests.swift — port of tests/unit/jd-parser.test.js
 import XCTest
 @testable import JobhuntCore
 
 final class JDParserTests: XCTestCase {
-
     // MARK: - Empty / nil input
 
     func testReturnsEmptyArrayForEmptyString() {
@@ -18,7 +17,8 @@ final class JDParserTests: XCTestCase {
     // MARK: - Paragraphs
 
     func testProducesAParagraphBlockForPlainProse() {
-        let blocks = parseJdBlocks("We are looking for an experienced engineer to join our team and build great products.")
+        let blocks =
+            parseJdBlocks("We are looking for an experienced engineer to join our team and build great products.")
         XCTAssertEqual(blocks.count, 1)
         if case .paragraph = blocks[0] { } else { XCTFail("Expected paragraph, got \(blocks[0])") }
     }
@@ -27,7 +27,7 @@ final class JDParserTests: XCTestCase {
         let blocks = parseJdBlocks("Line one that is long enough to qualify.\nLine two continues the thought here.")
         let paras = blocks.filter { if case .paragraph = $0 { return true }; return false }
         XCTAssertEqual(paras.count, 1)
-        if case .paragraph(let text) = paras[0] {
+        if case let .paragraph(text) = paras[0] {
             XCTAssertTrue(text.contains("Line one"))
             XCTAssertTrue(text.contains("Line two"))
         }
@@ -41,20 +41,20 @@ final class JDParserTests: XCTestCase {
 
     // MARK: - Headings
 
-    func testDetectsAllCapsLineAsHeading() {
+    func testDetectsAllCapsLineAsHeading() throws {
         let blocks = parseJdBlocks("We are hiring a great engineer.\n\nREQUIREMENTS\n\nSome requirement here.")
         let heading = blocks.first(where: { if case .heading = $0 { return true }; return false })
         XCTAssertNotNil(heading, "expected a heading block")
-        if case .heading(let text) = heading! {
+        if case let .heading(text) = try XCTUnwrap(heading) {
             XCTAssertEqual(text, "REQUIREMENTS")
         }
     }
 
-    func testDetectsLineEndingInColonAsHeading() {
+    func testDetectsLineEndingInColonAsHeading() throws {
         let blocks = parseJdBlocks("We are hiring.\n\nWhat you will do:\n\nLead the team.")
         let heading = blocks.first(where: { if case .heading = $0 { return true }; return false })
         XCTAssertNotNil(heading)
-        if case .heading(let text) = heading! {
+        if case let .heading(text) = try XCTUnwrap(heading) {
             XCTAssertEqual(text, "What you will do")
         }
     }
@@ -67,30 +67,30 @@ final class JDParserTests: XCTestCase {
 
     // MARK: - Lists
 
-    func testDetectsBulletLinesStartingWithBulletChar() {
+    func testDetectsBulletLinesStartingWithBulletChar() throws {
         let blocks = parseJdBlocks("Requirements:\n• Five years experience\n• Strong communication")
         let list = blocks.first(where: { if case .list = $0 { return true }; return false })
         XCTAssertNotNil(list)
-        if case .list(let items) = list! {
+        if case let .list(items) = try XCTUnwrap(list) {
             XCTAssertEqual(items.count, 2)
             XCTAssertEqual(items[0], "Five years experience")
         }
     }
 
-    func testDetectsBulletLinesStartingWithDash() {
+    func testDetectsBulletLinesStartingWithDash() throws {
         let blocks = parseJdBlocks("Skills:\n- Python\n- SQL")
         let list = blocks.first(where: { if case .list = $0 { return true }; return false })
         XCTAssertNotNil(list)
-        if case .list(let items) = list! {
+        if case let .list(items) = try XCTUnwrap(list) {
             XCTAssertEqual(items.count, 2)
         }
     }
 
-    func testDetectsNumberedListItems() {
+    func testDetectsNumberedListItems() throws {
         let blocks = parseJdBlocks("Steps:\n1. Do this first\n2. Then do this")
         let list = blocks.first(where: { if case .list = $0 { return true }; return false })
         XCTAssertNotNil(list)
-        if case .list(let items) = list! {
+        if case let .list(items) = try XCTUnwrap(list) {
             XCTAssertEqual(items[0], "Do this first")
         }
     }
@@ -99,7 +99,7 @@ final class JDParserTests: XCTestCase {
 
     private var linkedInJD: String {
         // Inline the fixture so tests don't need file I/O
-        return """
+        """
         0 notifications
         Skip to search
         Skip to main content
@@ -173,19 +173,22 @@ final class JDParserTests: XCTestCase {
 
     func testSkipsLinkedInProfileChromeBeforeActualPost() {
         let blocks = parseJdBlocks(linkedInJD)
-        let firstText: String
-        if case .paragraph(let txt) = blocks.first { firstText = txt } else if case .heading(let txt) = blocks.first { firstText = txt } else { firstText = "" }
-        XCTAssertFalse(firstText.contains("Technical Program Manager @ Meta"),
-                       "First block should not be user profile header, got: \(firstText.prefix(80))")
+        // swiftlint:disable:next statement_position
+        let firstText: String = if case let .paragraph(txt) = blocks.first { txt }
+        else if case let .heading(txt) = blocks.first { txt } else { "" }
+        XCTAssertFalse(
+            firstText.contains("Technical Program Manager @ Meta"),
+            "First block should not be user profile header, got: \(firstText.prefix(80))"
+        )
     }
 
     func testIncludesActualJobTitleAsHeadingOrFirstContent() {
         let blocks = parseJdBlocks(linkedInJD)
         let allText = blocks.map { block -> String in
             switch block {
-            case .paragraph(let txt): return txt
-            case .heading(let txt): return txt
-            case .list(let items): return items.joined(separator: " ")
+            case let .paragraph(txt): return txt
+            case let .heading(txt): return txt
+            case let .list(items): return items.joined(separator: " ")
             case .horizontalRule: return ""
             }
         }.joined(separator: " ")
@@ -195,7 +198,7 @@ final class JDParserTests: XCTestCase {
     func testStripsTheConcatenatedDuplicateParagraphAtTheBottom() {
         let blocks = parseJdBlocks(linkedInJD)
         let allText = blocks.compactMap { block -> String? in
-            if case .paragraph(let txt) = block { return txt }
+            if case let .paragraph(txt) = block { return txt }
             return nil
         }.joined(separator: "\n")
         XCTAssertFalse(allText.contains("Feed postIT Recruiter"), "concatenated LinkedIn duplicate should be stripped")
@@ -211,12 +214,12 @@ final class JDParserTests: XCTestCase {
     func testIncludesJobRequirementsAsListItems() {
         let blocks = parseJdBlocks(linkedInJD)
         let lists = blocks.compactMap { block -> [String]? in
-            if case .list(let items) = block { return items }
+            if case let .list(items) = block { return items }
             return nil
         }
-        let allItems = lists.flatMap { $0 }
+        let allItems = lists.flatMap(\.self)
         XCTAssertTrue(allItems.contains(where: { $0.contains("years") }), "requirements list items should be present")
     }
 }
 
-// swiftlint:enable line_length force_unwrapping
+// swiftlint:enable line_length

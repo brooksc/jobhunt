@@ -1,5 +1,5 @@
-import XCTest
 import SwiftData
+import XCTest
 @testable import JobhuntCore
 
 final class ModelRoundTripTests: XCTestCase {
@@ -61,7 +61,7 @@ final class ModelRoundTripTests: XCTestCase {
         XCTAssertFalse(fetched.first?.unread ?? true)
     }
 
-    func testJobDefaultsMatchLegacy() throws {
+    func testJobDefaultsMatchLegacy() {
         let job = Job()
         XCTAssertEqual(job.status, .saved)
         XCTAssertEqual(job.extractionStatus, .pending)

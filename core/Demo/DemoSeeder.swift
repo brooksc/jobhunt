@@ -4,9 +4,9 @@ import SwiftData
 
 // MARK: - ModelContainerFactory demo extension
 
-extension ModelContainerFactory {
+public extension ModelContainerFactory {
     /// In-memory container pre-seeded with demo data — isolated from the user store.
-    public static func demo() async throws -> ModelContainer {
+    static func demo() async throws -> ModelContainer {
         let container = try inMemory()
         let store = BackgroundStore(modelContainer: container)
         try await DemoSeeder.seedDemo(into: store)
@@ -19,7 +19,6 @@ extension ModelContainerFactory {
 /// Seeds a representative dataset into a SwiftData container for demo mode.
 /// Ported from server/demo.js `seedDemoDb` / `reseedDemoDb`.
 public enum DemoSeeder {
-
     // MARK: - Public API
 
     /// Insert ~15 sample jobs, 3 sites, 2 resumes, and assorted events into the given store.
@@ -38,7 +37,6 @@ public enum DemoSeeder {
 // MARK: - BackgroundStore seeding helpers
 
 extension BackgroundStore {
-
     // MARK: Internal helpers
 
     func seedIfEmpty() throws {
@@ -398,7 +396,7 @@ extension BackgroundStore {
         // Insert captures, jobs, and events
         for seed in jobs {
             let visibleText = [seed.title, seed.company, seed.location, seed.summary, seed.requirements]
-                .compactMap { $0 }
+                .compactMap(\.self)
                 .joined(separator: "\n")
 
             let rawHash = "demo_hash_\(seed.capId)"
@@ -493,9 +491,27 @@ extension BackgroundStore {
         let nextReview = Date(timeIntervalSinceNow: 7 * 86400)
 
         let sites: [(id: String, url: String, origin: String, title: String, interval: Int)] = [
-            ("site_001", "https://www.linkedin.com/jobs/search/?keywords=technical+program+manager&f_WT=2", "https://www.linkedin.com", "LinkedIn Jobs — TPM Remote", 7),
-            ("site_002", "https://www.builtinseattle.com/jobs/remote", "https://www.builtinseattle.com", "Built In Seattle — Remote", 7),
-            ("site_003", "https://levels.fyi/jobs?title=Technical+Program+Manager", "https://levels.fyi", "Levels.fyi — TPM Jobs", 14)
+            (
+                "site_001",
+                "https://www.linkedin.com/jobs/search/?keywords=technical+program+manager&f_WT=2",
+                "https://www.linkedin.com",
+                "LinkedIn Jobs — TPM Remote",
+                7
+            ),
+            (
+                "site_002",
+                "https://www.builtinseattle.com/jobs/remote",
+                "https://www.builtinseattle.com",
+                "Built In Seattle — Remote",
+                7
+            ),
+            (
+                "site_003",
+                "https://levels.fyi/jobs?title=Technical+Program+Manager",
+                "https://levels.fyi",
+                "Levels.fyi — TPM Jobs",
+                14
+            )
         ]
 
         for siteData in sites {

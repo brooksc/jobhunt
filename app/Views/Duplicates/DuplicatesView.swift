@@ -1,13 +1,13 @@
-import SwiftUI
-import SwiftData
 import JobhuntCore
+import SwiftData
+import SwiftUI
 
 // MARK: - DuplicatesView
 
 struct DuplicatesView: View {
     @Environment(\.modelContext) private var modelContext
 
-    // All jobs — used to compute pairs and to look up originals by ID
+    /// All jobs — used to compute pairs and to look up originals by ID
     @Query(sort: \Job.createdAt, order: .forward) private var allJobs: [Job]
 
     @State private var searchText: String = ""
@@ -232,7 +232,6 @@ private struct PairRow: View {
         .padding(.vertical, 4)
     }
 
-    @ViewBuilder
     private func jobSummaryLine(label: String, company: String?, title: String?) -> some View {
         HStack(spacing: 6) {
             Text(label)

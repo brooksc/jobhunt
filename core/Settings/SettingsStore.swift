@@ -2,7 +2,7 @@ import Foundation
 import Observation
 import SwiftData
 
-// Mirrors SETTINGS_DEFAULTS from server/db.js exactly.
+/// Mirrors SETTINGS_DEFAULTS from server/db.js exactly.
 private let settingsDefaults: [String: String] = [
     SettingsKey.llmProvider: "lmstudio",
     SettingsKey.llmBaseURL: "http://127.0.0.1:1234",

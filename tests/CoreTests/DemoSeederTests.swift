@@ -1,9 +1,8 @@
-import XCTest
 import SwiftData
+import XCTest
 @testable import JobhuntCore
 
 final class DemoSeederTests: XCTestCase {
-
     // MARK: - Helpers
 
     func makeStore() throws -> (ModelContainer, BackgroundStore) {
@@ -110,7 +109,7 @@ final class DemoSeederTests: XCTestCase {
     func testSeedDemoIdempotent() async throws {
         let (container, store) = try makeStore()
         try await DemoSeeder.seedDemo(into: store)
-        try await DemoSeeder.seedDemo(into: store)  // second call should be a no-op
+        try await DemoSeeder.seedDemo(into: store) // second call should be a no-op
 
         let ctx = ModelContext(container)
         let jobs = try ctx.fetch(FetchDescriptor<Job>())

@@ -1,8 +1,9 @@
+import JobhuntCore
+import PDFKit
+import SwiftData
+
 // swiftlint:disable file_length
 import SwiftUI
-import SwiftData
-import PDFKit
-import JobhuntCore
 
 // MARK: - OnboardingView
 
@@ -19,10 +20,10 @@ struct OnboardingView: View {
             Group {
                 switch onboardingManager.currentStep {
                 case 0: WelcomeStep(
-                    settings: settings,
-                    modelContainer: modelContainer,
-                    onboardingManager: onboardingManager
-                )
+                        settings: settings,
+                        modelContainer: modelContainer,
+                        onboardingManager: onboardingManager
+                    )
                 case 1: ChromeExtensionStep()
                 case 2: AIProviderStep(settings: settings)
                 case 3: LocationStep(settings: settings)
@@ -52,10 +53,10 @@ struct OnboardingView: View {
 
                 // Step dots
                 HStack(spacing: 6) {
-                    ForEach(0..<totalSteps, id: \.self) { index in
+                    ForEach(0 ..< totalSteps, id: \.self) { index in
                         Circle()
-                            // swiftlint:disable:next line_length
-                            .fill(index == onboardingManager.currentStep ? Color.accentColor : Color.secondary.opacity(0.3))
+                            .fill(index == onboardingManager.currentStep ? Color.accentColor : Color.secondary
+                                .opacity(0.3))
                             .frame(width: 7, height: 7)
                     }
                 }
@@ -173,9 +174,9 @@ private struct WelcomeStep: View {
 // MARK: - Step 2: Chrome Extension
 
 private struct ChromeExtensionStep: View {
-    // Real Chrome Web Store URL for the Jobhunt extension (placeholder if not published)
+    /// Real Chrome Web Store URL for the Jobhunt extension (placeholder if not published)
     private let storeURL = "https://chrome.google.com/webstore/detail/jobhunt-capture/placeholder"
-    // Extension folder path for manual install
+    /// Extension folder path for manual install
     private let extensionPath = "~/code/jobhunt/extension"
 
     var body: some View {
@@ -259,10 +260,30 @@ private struct AIProviderStep: View {
 
         static let all: [ProviderOption] = [
             ProviderOption(id: "lmstudio", label: "LM Studio", isCloud: false, privacyURL: nil),
-            ProviderOption(id: "openai", label: "OpenAI", isCloud: true, privacyURL: "https://openai.com/policies/privacy-policy"),
-            ProviderOption(id: "anthropic", label: "Anthropic", isCloud: true, privacyURL: "https://www.anthropic.com/privacy"),
-            ProviderOption(id: "google", label: "Google", isCloud: true, privacyURL: "https://policies.google.com/privacy"),
-            ProviderOption(id: "openrouter", label: "OpenRouter", isCloud: true, privacyURL: "https://openrouter.ai/privacy"),
+            ProviderOption(
+                id: "openai",
+                label: "OpenAI",
+                isCloud: true,
+                privacyURL: "https://openai.com/policies/privacy-policy"
+            ),
+            ProviderOption(
+                id: "anthropic",
+                label: "Anthropic",
+                isCloud: true,
+                privacyURL: "https://www.anthropic.com/privacy"
+            ),
+            ProviderOption(
+                id: "google",
+                label: "Google",
+                isCloud: true,
+                privacyURL: "https://policies.google.com/privacy"
+            ),
+            ProviderOption(
+                id: "openrouter",
+                label: "OpenRouter",
+                isCloud: true,
+                privacyURL: "https://openrouter.ai/privacy"
+            ),
             ProviderOption(id: "custom", label: "Custom", isCloud: false, privacyURL: nil),
             ProviderOption(id: "apple", label: "Apple Intelligence", isCloud: false, privacyURL: nil)
         ]
@@ -357,10 +378,10 @@ private struct AIProviderStep: View {
     private var connectionStatusView: some View {
         switch connectionStatus {
         case .idle, .testing: EmptyView()
-        case .success(let msg):
+        case let .success(msg):
             Label(msg, systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green).font(.callout)
-        case .failure(let msg):
+        case let .failure(msg):
             Label(msg, systemImage: "xmark.circle.fill")
                 .foregroundStyle(.red).font(.callout).lineLimit(2)
         }
@@ -563,7 +584,7 @@ private struct ResumeStep: View {
                     importError = "Could not read PDF."
                     return
                 }
-                text = (0..<doc.pageCount)
+                text = (0 ..< doc.pageCount)
                     .compactMap { doc.page(at: $0)?.string }
                     .joined(separator: "\n")
             } else {

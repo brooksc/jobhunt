@@ -36,6 +36,6 @@ public final class Resume {
         self.sortOrder = sortOrder
         self.createdAt = createdAt
         self.updatedAt = updatedAt
-        self.fitScores = []
+        fitScores = []
     }
 }

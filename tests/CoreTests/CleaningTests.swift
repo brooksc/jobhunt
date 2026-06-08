@@ -4,7 +4,6 @@ import XCTest
 @testable import JobhuntCore
 
 final class CleaningTests: XCTestCase {
-
     func testReturnsSelectedText() {
         let result = cleanDescription(selectedText: "Selected portion", visibleText: "Full page text")
         XCTAssertEqual(result, "Selected portion")
@@ -48,17 +47,26 @@ final class CleaningTests: XCTestCase {
     func testAppendsHTMLStrippedJsonLdDescriptionAfterVisibleText() {
         let result = cleanDescription(
             visibleText: "Job title\nAbout the role",
-            structuredData: [["@type": "JobPosting", "description": "<p>Full job description with <b>important details</b>.</p>"]]
+            structuredData: [[
+                "@type": "JobPosting",
+                "description": "<p>Full job description with <b>important details</b>.</p>"
+            ]]
         )
         XCTAssertTrue(result.contains("About the role"), "visible text included")
-        XCTAssertTrue(result.contains("Full job description with important details"), "JSON-LD description included without HTML tags")
+        XCTAssertTrue(
+            result.contains("Full job description with important details"),
+            "JSON-LD description included without HTML tags"
+        )
         XCTAssertFalse(result.contains("<"), "no HTML tags in output")
     }
 
     func testStripsHTMLEntitiesFromJsonLdDescription() {
         let result = cleanDescription(
             visibleText: "Visible",
-            structuredData: [["@type": "JobPosting", "description": "Pay: &lt;$100k &amp; $200k&gt; &quot;annually&quot;"]]
+            structuredData: [[
+                "@type": "JobPosting",
+                "description": "Pay: &lt;$100k &amp; $200k&gt; &quot;annually&quot;"
+            ]]
         )
         XCTAssertTrue(result.contains("Pay: <$100k & $200k> \"annually\""))
     }
@@ -66,7 +74,10 @@ final class CleaningTests: XCTestCase {
     func testConvertsBlockLevelHTMLTagsToNewlines() {
         let result = cleanDescription(
             visibleText: "Job title",
-            structuredData: [["@type": "JobPosting", "description": "<p><b>San Francisco Bay Area:</b></p>133,400 - 226,600 USD Annual<p><b>All Other US Locations:</b></p>116,000 - 197,000 USD Annual"]]
+            structuredData: [[
+                "@type": "JobPosting",
+                "description": "<p><b>San Francisco Bay Area:</b></p>133,400 - 226,600 USD Annual<p><b>All Other US Locations:</b></p>116,000 - 197,000 USD Annual"
+            ]]
         )
         XCTAssertTrue(result.contains("San Francisco Bay Area:"), "SF Bay Area label present")
         XCTAssertTrue(result.contains("All Other US Locations:"), "All Other US label present")
@@ -84,7 +95,10 @@ final class CleaningTests: XCTestCase {
     func testIncludesWorkdayJsonLdSalaryWhenAbsentFromVisibleText() {
         let result = cleanDescription(
             visibleText: "Technical Program Manager\nRemote - USA\nFull time",
-            structuredData: [["@type": "JobPosting", "description": "Job duties. San Francisco Bay Area: 133,400 - 226,600 USD Annual All Other US Locations: 116,000 - 197,000 USD Annual"]]
+            structuredData: [[
+                "@type": "JobPosting",
+                "description": "Job duties. San Francisco Bay Area: 133,400 - 226,600 USD Annual All Other US Locations: 116,000 - 197,000 USD Annual"
+            ]]
         )
         XCTAssertTrue(result.contains("133,400 - 226,600 USD Annual"))
         XCTAssertTrue(result.contains("116,000 - 197,000 USD Annual"))
@@ -127,7 +141,11 @@ final class CleaningTests: XCTestCase {
     func testPrependsWorkArrangementRemoteWhenTelecommute() {
         let result = cleanDescription(
             visibleText: "Some visible content",
-            structuredData: [["@type": "JobPosting", "jobLocationType": "TELECOMMUTE", "description": "Job details here."]]
+            structuredData: [[
+                "@type": "JobPosting",
+                "jobLocationType": "TELECOMMUTE",
+                "description": "Job details here."
+            ]]
         )
         XCTAssertTrue(result.contains("Work arrangement: Remote"), "remote line present")
         XCTAssertTrue(result.contains("Job details here"), "description still included")
@@ -144,7 +162,10 @@ final class CleaningTests: XCTestCase {
     func testIncludesJobPostingDescriptionEvenWhenVisibleTextAlreadyHasContent() {
         let result = cleanDescription(
             visibleText: "Salary: 116K-227K Annually",
-            structuredData: [["@type": "JobPosting", "description": "San Francisco Bay Area: 133,400 - 226,600 USD Annual All Other US Locations: 116,000 - 197,000 USD Annual"]]
+            structuredData: [[
+                "@type": "JobPosting",
+                "description": "San Francisco Bay Area: 133,400 - 226,600 USD Annual All Other US Locations: 116,000 - 197,000 USD Annual"
+            ]]
         )
         XCTAssertTrue(result.contains("116K-227K Annually"), "visible text salary badge present")
         XCTAssertTrue(result.contains("San Francisco Bay Area:"), "JSON-LD band label present")

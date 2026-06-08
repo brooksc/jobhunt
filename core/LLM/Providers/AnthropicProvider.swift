@@ -48,7 +48,7 @@ public final class AnthropicProvider: LLMProvider, @unchecked Sendable {
 
         let (data, response) = try await session.data(for: urlRequest)
         guard let http = response as? HTTPURLResponse else { throw LLMProviderError.noResponse }
-        guard (200..<300).contains(http.statusCode) else {
+        guard (200 ..< 300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
             throw LLMProviderError.httpError(statusCode: http.statusCode, body: body)
         }
@@ -88,4 +88,5 @@ private struct AnthropicResponse: Decodable {
         }
     }
 }
+
 // swiftlint:enable nesting

@@ -1,5 +1,5 @@
-import SwiftUI
 import JobhuntCore
+import SwiftUI
 
 struct StatusChip: View {
     let status: JobStatus
@@ -19,14 +19,14 @@ struct StatusChip: View {
 private extension JobStatus {
     var displayName: String {
         switch self {
-        case .saved: return "Saved"
-        case .applied: return "Applied"
-        case .interview: return "Interview"
-        case .offer: return "Offer"
-        case .rejected: return "Rejected"
-        case .archived: return "Archived"
-        case .notAvailable: return "Not Available"
-        case .duplicate: return "Duplicate"
+        case .saved: "Saved"
+        case .applied: "Applied"
+        case .interview: "Interview"
+        case .offer: "Offer"
+        case .rejected: "Rejected"
+        case .archived: "Archived"
+        case .notAvailable: "Not Available"
+        case .duplicate: "Duplicate"
         }
     }
 }

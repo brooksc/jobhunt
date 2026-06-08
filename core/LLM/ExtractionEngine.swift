@@ -26,7 +26,6 @@ public struct ExtractionResult: Sendable {
 // MARK: - ExtractionEngine
 
 public enum ExtractionEngine {
-
     // MARK: - Extract
 
     /// Extract job fields from a capture via LLM.
@@ -62,7 +61,7 @@ public enum ExtractionEngine {
             locationContext: locationContext
         )
 
-        let promptText = messages.map { $0.content }.joined()
+        let promptText = messages.map(\.content).joined()
         let promptChars = promptText.count
 
         let request = ChatRequest(messages: messages, model: settings.llmModel)
@@ -232,12 +231,13 @@ public enum ExtractionEngineError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .noCaptureText:
-            return "Job has no capture text to extract from"
+            "Job has no capture text to extract from"
         case .emptyResumeText:
-            return "Resume has no text to score against"
-        case .invalidJSON(let json):
-            return "LLM response could not be parsed as JSON: \(json.prefix(200))"
+            "Resume has no text to score against"
+        case let .invalidJSON(json):
+            "LLM response could not be parsed as JSON: \(json.prefix(200))"
         }
     }
 }
+
 // swiftlint:enable function_body_length

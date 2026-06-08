@@ -1,6 +1,5 @@
-// swiftlint:disable line_length
-import XCTest
 import SwiftData
+import XCTest
 @testable import JobhuntCore
 
 // MARK: - Stub providers for testing
@@ -11,7 +10,7 @@ private struct AlwaysFailProvider: LLMProvider {
     let concurrencyLimit: Int = 1
     let error: Error
 
-    func complete(_ request: ChatRequest) async throws -> ChatResponse {
+    func complete(_: ChatRequest) async throws -> ChatResponse {
         throw error
     }
 }
@@ -30,7 +29,7 @@ private final class CountingProvider: LLMProvider, @unchecked Sendable {
         self.successResponse = successResponse
     }
 
-    func complete(_ request: ChatRequest) async throws -> ChatResponse {
+    func complete(_: ChatRequest) async throws -> ChatResponse {
         let count: Int = lock.withLock {
             callCount += 1
             return callCount
@@ -49,7 +48,6 @@ private final class CountingProvider: LLMProvider, @unchecked Sendable {
 // MARK: - ExtractionEngineTests
 
 final class ExtractionEngineTests: XCTestCase {
-
     // MARK: - CostEstimator token math
 
     func testCostEstimateTokenMath() {
@@ -157,7 +155,7 @@ final class ExtractionEngineTests: XCTestCase {
 
         // Create 3 jobs with captures and enqueue extraction requests
         var jobIDs: [String] = []
-        for idx in 0..<3 {
+        for idx in 0 ..< 3 {
             let capture = Capture(
                 url: "https://example.com/job\(idx)",
                 pageTitle: "Job \(idx)",
@@ -177,7 +175,10 @@ final class ExtractionEngineTests: XCTestCase {
         await queue.startProcessing()
 
         // Queue should be paused after consecutive failures
-        XCTAssertTrue(settings.llmQueuePaused, "Queue should auto-pause after \(QueueActor.autoPauseThreshold) consecutive failures")
+        XCTAssertTrue(
+            settings.llmQueuePaused,
+            "Queue should auto-pause after \(QueueActor.autoPauseThreshold) consecutive failures"
+        )
     }
 
     // MARK: - QueueActor retry (attempt tracking)
@@ -244,4 +245,3 @@ final class ExtractionEngineTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(attempts.count, 1)
     }
 }
-// swiftlint:enable line_length

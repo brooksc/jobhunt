@@ -1,17 +1,17 @@
 import AppKit
-import UserNotifications
-import SwiftData
 import JobhuntCore
+import SwiftData
+import UserNotifications
 
-// Observes engine events + unread count changes; drives macOS integration.
+/// Observes engine events + unread count changes; drives macOS integration.
 @MainActor
 public final class PlatformIntegration: NSObject, ObservableObject {
     private let router: Router
     private let modelContainer: ModelContainer
     private var eventTask: Task<Void, Never>?
 
-    // Track whether we're currently in a batch so we can suppress individual
-    // notifications and summarise at .processingComplete instead.
+    /// Track whether we're currently in a batch so we can suppress individual
+    /// notifications and summarise at .processingComplete instead.
     private var processingBatchCount = 0
 
     public init(router: Router, modelContainer: ModelContainer) {
@@ -20,7 +20,7 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         super.init()
     }
 
-    // Call once on app launch.
+    /// Call once on app launch.
     public func start(queue: QueueActor) {
         requestNotificationAuthorization()
         registerNotificationDelegate()
@@ -33,12 +33,12 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         }
     }
 
-    // Update dock badge to unread job count.
+    /// Update dock badge to unread job count.
     public func updateDockBadge(count: Int) {
         NSApp.dockTile.badgeLabel = count > 0 ? "\(count)" : ""
     }
 
-    // Handle jobhunt://jobs/N deep link.
+    /// Handle jobhunt://jobs/N deep link.
     public func handleDeepLink(_ url: URL) {
         guard url.scheme == "jobhunt",
               url.host == "jobs",
@@ -47,7 +47,7 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         router.navigateToJob(number: jobNumber)
     }
 
-    // Handle /api/app/focus notification from HTTP server (task-047).
+    /// Handle /api/app/focus notification from HTTP server (task-047).
     @objc public func handleFocusRequest(_ notification: Notification) {
         NSApp.activate(ignoringOtherApps: true)
         if let userInfo = notification.userInfo,
@@ -174,17 +174,17 @@ public final class PlatformIntegration: NSObject, ObservableObject {
 // MARK: - UNUserNotificationCenterDelegate
 
 extension PlatformIntegration: UNUserNotificationCenterDelegate {
-    // Show notifications even when app is in foreground.
+    /// Show notifications even when app is in foreground.
     public nonisolated func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification
+        _: UNUserNotificationCenter,
+        willPresent _: UNNotification
     ) async -> UNNotificationPresentationOptions {
         [.banner, .sound]
     }
 
-    // Handle notification click.
+    /// Handle notification click.
     public nonisolated func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
+        _: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
         let userInfo = response.notification.request.content.userInfo

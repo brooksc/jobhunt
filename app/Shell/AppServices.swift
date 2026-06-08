@@ -1,6 +1,6 @@
 import Foundation
-import SwiftData
 import JobhuntCore
+import SwiftData
 
 /// Observable container for app-level services, injected into the SwiftUI environment.
 /// Constructed once in JobhuntApp and passed via .environment(appServices).
@@ -20,9 +20,9 @@ final class AppServices: @unchecked Sendable {
             settings: settingsStore,
             providerFactory: { LLMProviderFactory.makeProvider(settings: settingsStore) }
         )
-        self.jobService = JobService(store: store, queue: queue)
-        self.siteService = SiteService(store: store)
-        self.queueActor = queue
-        self.settings = settingsStore
+        jobService = JobService(store: store, queue: queue)
+        siteService = SiteService(store: store)
+        queueActor = queue
+        settings = settingsStore
     }
 }

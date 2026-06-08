@@ -1,6 +1,6 @@
-import SwiftUI
-import SwiftData
 import JobhuntCore
+import SwiftData
+import SwiftUI
 
 struct ContentView: View {
     var router: Router

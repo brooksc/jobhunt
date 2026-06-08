@@ -3,10 +3,10 @@ import Foundation
 
 // MARK: - SalaryNormalizer
 
+// swiftlint:disable type_body_length
 /// Mirrors normalizeSalaryFromSource() and helpers from server/extract.js.
 /// Pure functions — no I/O, no SwiftData.
 public enum SalaryNormalizer {
-
     // MARK: - Public entry point
 
     /// Normalizes salary fields from a raw extracted dict + optional source context.
@@ -25,7 +25,11 @@ public enum SalaryNormalizer {
             let filteredSrc = salaryTextForCurrency(src, currency: currency)
             var out = extracted
             out["salary_currency"] = currency as Any?
-            if let band = selectSalaryBand(salaryBands(filteredSrc), preferredLocations: preferredLocations, note: filteredSrc) {
+            if let band = selectSalaryBand(
+                salaryBands(filteredSrc),
+                preferredLocations: preferredLocations,
+                note: filteredSrc
+            ) {
                 out["salary_min"] = Int(band.min) as Any?
                 out["salary_max"] = Int(band.max) as Any?
                 return out
@@ -58,7 +62,11 @@ public enum SalaryNormalizer {
             let specificTerms = specificPreferredTerms(preferredLocations)
             if !specificTerms.isEmpty {
                 let sourceSalaryText = salaryTextForCurrency(src, currency: currency)
-                if let band = selectSalaryBand(salaryBands(sourceSalaryText), preferredLocations: preferredLocations, note: sourceSalaryText) {
+                if let band = selectSalaryBand(
+                    salaryBands(sourceSalaryText),
+                    preferredLocations: preferredLocations,
+                    note: sourceSalaryText
+                ) {
                     var out = extracted
                     out["salary_currency"] = currency as Any?
                     out["salary_min"] = Int(band.min) as Any?
@@ -69,7 +77,11 @@ public enum SalaryNormalizer {
         }
 
         // Salary note band selection
-        if let band = selectSalaryBand(salaryBands(salaryText), preferredLocations: preferredLocations, note: salaryText) {
+        if let band = selectSalaryBand(
+            salaryBands(salaryText),
+            preferredLocations: preferredLocations,
+            note: salaryText
+        ) {
             var out = extracted
             out["salary_currency"] = currency as Any?
             out["salary_min"] = Int(band.min) as Any?
@@ -104,7 +116,8 @@ public enum SalaryNormalizer {
         let numStr = (text as NSString).substring(with: match.range(at: 1)).replacingOccurrences(of: ",", with: "")
         guard let value = Double(numStr), value.isFinite else { return nil }
         let suffixRange = match.range(at: 2)
-        if suffixRange.location != NSNotFound, let suffixRangeResult = Range(suffixRange, in: text), !text[suffixRangeResult].isEmpty {
+        if suffixRange.location != NSNotFound, let suffixRangeResult = Range(suffixRange, in: text),
+           !text[suffixRangeResult].isEmpty {
             return value * 1000
         }
         return value
@@ -117,11 +130,20 @@ public enum SalaryNormalizer {
         // Range patterns (return pairs)
         let rangePatterns: [(String, Int)] = [
             // currency-prefix range: "USD $133,400 - $226,600" or "USD 133,400 - 226,600"
-            (#"(?:USD|CAD|EUR|GBP)\s*\$?\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\s*\$?\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?"#, 4),
+            (
+                #"(?:USD|CAD|EUR|GBP)\s*\$?\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\s*\$?\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?"#,
+                4
+            ),
             // symbol prefix range: "$133,400 - $226,600"
-            (#"[$€£]\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\s*(?:[$€£]\s*)?(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?"#, 4),
+            (
+                #"[$€£]\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\s*(?:[$€£]\s*)?(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?"#,
+                4
+            ),
             // currency-suffix range: "133,400 - 226,600 USD"
-            (#"\b(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*(?:USD|CAD|EUR|GBP)\b"#, 4)
+            (
+                #"\b(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*(?:USD|CAD|EUR|GBP)\b"#,
+                4
+            )
         ]
         for (pattern, _) in rangePatterns {
             guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { continue }
@@ -165,7 +187,8 @@ public enum SalaryNormalizer {
     static func hourlyAmounts(_ text: String) -> [Double] {
         let hrPattern = #"\b(?:hr|hour|hourly)\b|/\s*(?:hr|hour)"#
         guard (try? NSRegularExpression(pattern: hrPattern, options: .caseInsensitive))?.firstMatch(
-            in: text, range: NSRange(text.startIndex..., in: text)) != nil else { return [] }
+            in: text, range: NSRange(text.startIndex..., in: text)
+        ) != nil else { return [] }
 
         var amounts = moneyAmounts(text).filter { $0 > 0 && $0 < 1000 }
 
@@ -184,7 +207,7 @@ public enum SalaryNormalizer {
     }
 
     static func minMax(_ values: [Double]) -> (min: Double, max: Double)? {
-        let nums = values.filter { $0.isFinite }
+        let nums = values.filter(\.isFinite)
         guard !nums.isEmpty, let minVal = nums.min(), let maxVal = nums.max() else { return nil }
         return (min: minVal, max: maxVal)
     }
@@ -193,7 +216,9 @@ public enum SalaryNormalizer {
 
     static func currencyFromSalaryNote(_ note: String) -> String? {
         // USD/CAD or CAD/USD → USD
-        if note.range(of: #"\bUSD\s*/\s*CAD\b|\bCAD\s*/\s*USD\b"#, options: [.regularExpression, .caseInsensitive]) != nil { return "USD" }
+        if note
+            .range(of: #"\bUSD\s*/\s*CAD\b|\bCAD\s*/\s*USD\b"#, options: [.regularExpression, .caseInsensitive]) !=
+            nil { return "USD" }
         if note.range(of: #"\bUSD\b|\$"#, options: [.regularExpression, .caseInsensitive]) != nil { return "USD" }
         if note.range(of: #"\bEUR\b|€"#, options: [.regularExpression, .caseInsensitive]) != nil { return "EUR" }
         if note.range(of: #"\bGBP\b|£"#, options: [.regularExpression, .caseInsensitive]) != nil { return "GBP" }
@@ -209,7 +234,7 @@ public enum SalaryNormalizer {
 
     /// Filter salary text to only lines/parts relevant to the target currency.
     static func salaryTextForCurrency(_ text: String, currency: String?) -> String {
-        guard let currency = currency else { return text }
+        guard let currency else { return text }
         let otherCurrencies: [String: String] = [
             "USD": #"\b(?:CAD|EUR|GBP)\b|[€£]"#,
             "CAD": #"\b(?:USD|EUR|GBP)\b|[$€£]"#,
@@ -226,17 +251,23 @@ public enum SalaryNormalizer {
               let otherPattern = otherCurrencies[currency] else { return text }
         // Only filter if other currencies actually appear
         guard text.range(of: otherPattern, options: [.regularExpression, .caseInsensitive]) != nil else { return text }
-        let parts = text.components(separatedBy: CharacterSet(charactersIn: ";\n")).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let parts = text.components(separatedBy: CharacterSet(charactersIn: ";\n"))
+            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         let filtered = parts.filter {
             $0.range(of: ownPattern, options: [.regularExpression, .caseInsensitive]) != nil &&
-            $0.range(of: otherPattern, options: [.regularExpression, .caseInsensitive]) == nil
+                $0.range(of: otherPattern, options: [.regularExpression, .caseInsensitive]) == nil
         }
         return filtered.isEmpty ? text : filtered.joined(separator: "\n")
     }
 
     // MARK: - Salary band parsing
 
-    static func salaryRangeValue(_ first: String, _ firstSuffix: String, _ second: String, _ secondSuffix: String) -> (min: Double, max: Double)? {
+    static func salaryRangeValue(
+        _ first: String,
+        _ firstSuffix: String,
+        _ second: String,
+        _ secondSuffix: String
+    ) -> (min: Double, max: Double)? {
         let suffix = secondSuffix.isEmpty ? firstSuffix : secondSuffix
         guard let low = parseSalaryAmount(first + (firstSuffix.isEmpty ? suffix : firstSuffix)),
               let high = parseSalaryAmount(second + suffix),
@@ -268,22 +299,31 @@ public enum SalaryNormalizer {
 
     static func sentenceForIndex(_ text: String, _ index: Int) -> String {
         let nsText = text as NSString
-        let startNl = nsText.range(of: "\n", options: .backwards, range: NSRange(0..<index)).location
-        let startDot = nsText.range(of: ".", options: .backwards, range: NSRange(0..<index)).location
+        let startNl = nsText.range(of: "\n", options: .backwards, range: NSRange(0 ..< index)).location
+        let startDot = nsText.range(of: ".", options: .backwards, range: NSRange(0 ..< index)).location
         let start = (startNl == NSNotFound && startDot == NSNotFound) ? 0
             : (startNl == NSNotFound ? startDot : (startDot == NSNotFound ? startNl : Swift.max(startNl, startDot))) + 1
-        let remaining = NSRange(start..<nsText.length)
+        let remaining = NSRange(start ..< nsText.length)
         let endNl = nsText.range(of: "\n", range: remaining).location
         let endDot = nsText.range(of: ".", range: remaining).location
         let end: Int
-        if endNl == NSNotFound && endDot == NSNotFound { end = nsText.length } else if endNl == NSNotFound { end = endDot } else if endDot == NSNotFound { end = endNl } else { end = Swift.min(endNl, endDot) }
-        return nsText.substring(with: NSRange(start..<end)).trimmingCharacters(in: .whitespaces)
+        if endNl == NSNotFound && endDot == NSNotFound {
+            end = nsText.length
+        } else if endNl == NSNotFound {
+            end = endDot
+        } else if endDot == NSNotFound {
+            end = endNl
+        } else {
+            end = Swift.min(endNl, endDot)
+        }
+        return nsText.substring(with: NSRange(start ..< end)).trimmingCharacters(in: .whitespaces)
     }
 
     /// Parse multi-band salary ranges from text (line-by-line + inline regex).
     public static func salaryBands(_ text: String) -> [SalaryRange] {
         var bands: [SalaryRange] = []
-        let lines = text.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let lines = text.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
         for (idx, line) in lines.enumerated() {
             guard let range = lineRange(line) else { continue }
             let previous = (idx > 0 && lineRange(lines[idx - 1]) == nil) ? lines[idx - 1] : ""
@@ -330,14 +370,20 @@ public enum SalaryNormalizer {
         let allOtherUSPattern = #"\bacross the U\.?S\.?\b|\ball (?:other )?U\.?S\.? locations\b|\bUnited States\b"#
         // When user has specific location preferences but none matched, use "All Other US" band
         if !terms.isEmpty {
-            if let allOtherUS = bands.first(where: { $0.label.range(of: allOtherUSPattern, options: [.regularExpression, .caseInsensitive]) != nil }) {
+            if let allOtherUS = bands.first(where: { $0.label.range(
+                of: allOtherUSPattern,
+                options: [.regularExpression, .caseInsensitive]
+            ) != nil }) {
                 return allOtherUS
             }
         }
 
         // "different range" note → use "All Other US" band
         if note.range(of: "different range applicable to specific work locations", options: .caseInsensitive) != nil {
-            return bands.first(where: { $0.label.range(of: allOtherUSPattern, options: [.regularExpression, .caseInsensitive]) != nil }) ?? nil
+            return bands.first(where: { $0.label.range(
+                of: allOtherUSPattern,
+                options: [.regularExpression, .caseInsensitive]
+            ) != nil }) ?? nil
         }
 
         return nil
@@ -349,7 +395,6 @@ public enum SalaryNormalizer {
 /// Mirrors normalizeRemoteTypeFromSource() from server/extract.js.
 /// Pure functions — no I/O, no SwiftData.
 public enum RemoteTypeInferer {
-
     // MARK: - Public entry point
 
     /// Returns updated extracted dict with corrected remote_type.
@@ -397,7 +442,8 @@ public enum RemoteTypeInferer {
             #"\bTelecommute\b"#,
             #""jobLocationType"\s*:\s*"TELECOMMUTE""#
         ]
-        for pattern in inlinePatterns where text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil {
+        for pattern in inlinePatterns
+            where text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil {
             return true
         }
         return false
@@ -409,7 +455,10 @@ public enum RemoteTypeInferer {
               let parsedURL = URL(string: urlStr),
               let components = URLComponents(url: parsedURL, resolvingAgainstBaseURL: false) else { return false }
         let host = parsedURL.host ?? ""
-        let params = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item -> (String, String)? in
+        let params = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item -> (
+            String,
+            String
+        )? in
             guard let value = item.value else { return nil }
             return (item.name, value)
         })
@@ -436,15 +485,17 @@ public enum RemoteTypeInferer {
 /// Mirrors normalizeLocationFromSource() from server/extract.js.
 /// Pure functions — no I/O, no SwiftData.
 public enum LocationInferer {
-
     // MARK: - Public entry point
 
     public static func normalize(extracted: [String: Any?], description: String?) -> [String: Any?] {
         let remoteLocation = remoteLocationFromSource(description)
         let loc = (extracted["location"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
-        let isBareCountry = loc.range(of: #"^(USA|United States|U\.S\.A?\.?|US)$"#, options: [.regularExpression, .caseInsensitive]) != nil
+        let isBareCountry = loc.range(
+            of: #"^(USA|United States|U\.S\.A?\.?|US)$"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
 
-        if let remoteLocation = remoteLocation, loc.isEmpty || loc.lowercased() == "remote" || isBareCountry {
+        if let remoteLocation, loc.isEmpty || loc.lowercased() == "remote" || isBareCountry {
             var out = extracted
             out["location"] = remoteLocation as Any?
             return out
@@ -485,7 +536,11 @@ public enum LocationInferer {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { return nil }
         let nsText = text as NSString
-        return nsText.substring(with: match.range(at: 1)).trimmingCharacters(in: .whitespaces).replacingOccurrences(of: #"\s*,\s*$"#, with: "", options: .regularExpression)
+        return nsText.substring(with: match.range(at: 1)).trimmingCharacters(in: .whitespaces).replacingOccurrences(
+            of: #"\s*,\s*$"#,
+            with: "",
+            options: .regularExpression
+        )
     }
 
     static func metadataValue(_ lines: [String], label: String) -> String? {
@@ -499,18 +554,20 @@ public enum LocationInferer {
     }
 
     static func sourceLocationFromTitle(_ description: String?, title: String?) -> String? {
-        guard let title = title, !title.isEmpty else { return nil }
-        let lines = (description ?? "").components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        guard let title, !title.isEmpty else { return nil }
+        let lines = (description ?? "").components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
         let normalizedTitle = title.trimmingCharacters(in: .whitespaces).lowercased()
 
         if let metaLoc = metadataValue(lines, label: "Location") { return metaLoc }
         if let basedIn = locationFromBasedIn(description) { return basedIn }
 
-        for idx in 0..<(lines.count - 1) {
+        for idx in 0 ..< (lines.count - 1) {
             guard lines[idx].lowercased() == normalizedTitle else { continue }
             let candidate = lines[idx + 1]
             // Match "City, State + N more" pattern (Microsoft style)
-            if candidate.range(of: #"\bUnited States\b"#, options: .regularExpression) != nil && candidate.contains(",") {
+            if candidate.range(of: #"\bUnited States\b"#, options: .regularExpression) != nil && candidate
+                .contains(",") {
                 return candidate.replacingOccurrences(of: #"\s+\+\s*"#, with: " + ", options: .regularExpression)
             }
             // Match "City, ST" pattern
@@ -527,7 +584,6 @@ public enum LocationInferer {
 /// Mirrors normalizeCompanyFromSource() from server/extract.js.
 /// Pure functions — no I/O, no SwiftData.
 public enum CompanyBackfiller {
-
     /// Returns updated extracted dict with company filled from JSON-LD if originally nil.
     public static func normalize(extracted: [String: Any?], description: String?) -> [String: Any?] {
         if let company = extracted["company"] as? String, !company.isEmpty { return extracted }
@@ -550,7 +606,6 @@ public enum CompanyBackfiller {
 
 /// Mirrors mapStatus/mapRemote/mapEmployment/mapExtractionStatus from static/transform.js.
 public enum DisplayNormalizer {
-
     public static func mapStatus(_ statusStr: String?) -> String {
         guard let statusStr else { return "" }
         let map: [String: String] = [
@@ -572,7 +627,7 @@ public enum DisplayNormalizer {
     }
 
     public static func mapEmployment(_ raw: String?) -> String {
-        guard let raw = raw, !raw.isEmpty else { return "—" }
+        guard let raw, !raw.isEmpty else { return "—" }
         let map: [String: String] = [
             "full_time": "Full-time", "fulltime": "Full-time", "full-time": "Full-time",
             "part_time": "Part-time", "parttime": "Part-time", "part-time": "Part-time",
@@ -607,7 +662,6 @@ public enum DisplayNormalizer {
 /// Composes SalaryNormalizer, RemoteTypeInferer, LocationInferer, CompanyBackfiller.
 /// Takes a raw extracted dict + source capture context → normalized field values.
 public struct JobFieldNormalizer {
-
     public init() {}
 
     /// Run all normalization passes and return the final normalized dict.
@@ -618,7 +672,11 @@ public struct JobFieldNormalizer {
         preferredLocations: String? = nil
     ) -> [String: Any?] {
         var result = extracted
-        result = SalaryNormalizer.normalize(extracted: result, preferredLocations: preferredLocations, sourceText: sourceText)
+        result = SalaryNormalizer.normalize(
+            extracted: result,
+            preferredLocations: preferredLocations,
+            sourceText: sourceText
+        )
         result = CompanyBackfiller.normalize(extracted: result, description: sourceText)
         result = LocationInferer.normalize(extracted: result, description: sourceText)
         result = RemoteTypeInferer.normalize(extracted: result, description: sourceText, url: url)
@@ -641,7 +699,12 @@ private let stateAbbrevToName: [String: String] = [
     "tn": "tennessee", "tx": "texas", "ut": "utah", "vt": "vermont", "va": "virginia",
     "wa": "washington", "wv": "west virginia", "wi": "wisconsin", "wy": "wyoming"
 ]
-private let stateNameToAbbrev: [String: String] = Dictionary(uniqueKeysWithValues: stateAbbrevToName.map { (abbr, name) in (name, abbr) })
+private let stateNameToAbbrev: [String: String] = Dictionary(uniqueKeysWithValues: stateAbbrevToName.map { abbr, name in
+    (
+        name,
+        abbr
+    )
+})
 
 func parsePreferredLocations(_ preferredLocations: String?) -> [String] {
     guard let pref = preferredLocations, !pref.isEmpty else { return [] }
@@ -670,7 +733,8 @@ func parsePreferredLocations(_ preferredLocations: String?) -> [String] {
 }
 
 func normalizeForMatch(_ value: String) -> String {
-    value.lowercased().replacingOccurrences(of: #"[^a-z0-9]+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
+    value.lowercased().replacingOccurrences(of: #"[^a-z0-9]+"#, with: " ", options: .regularExpression)
+        .trimmingCharacters(in: .whitespaces)
 }
 
 func termMatches(_ location: String, term: String) -> Bool {
@@ -685,4 +749,5 @@ func termMatches(_ location: String, term: String) -> Bool {
     return haystack.contains(needle)
 }
 
-// swiftlint:enable line_length file_length function_body_length
+// swiftlint:enable line_length function_body_length
+// swiftlint:enable type_body_length

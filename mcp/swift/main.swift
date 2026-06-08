@@ -8,7 +8,9 @@ import Foundation
 
 struct MCPError: Error {
     let message: String
-    init(_ message: String) { self.message = message }
+    init(_ message: String) {
+        self.message = message
+    }
 }
 
 // MARK: - Token & port discovery
@@ -250,12 +252,11 @@ let tools: [[String: Any]] = [
 // MARK: - Tool dispatch
 
 func textResult(_ value: Any) -> [String: Any] {
-    let text: String
-    if let data = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted]),
-       let str = String(data: data, encoding: .utf8) {
-        text = str
+    let text: String = if let data = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted]),
+                          let str = String(data: data, encoding: .utf8) {
+        str
     } else {
-        text = "\(value)"
+        "\(value)"
     }
     return ["content": [["type": "text", "text": text]]]
 }
@@ -292,7 +293,7 @@ private func resolveToolRoute(name: String, args: [String: Any]) -> Result<(Stri
     case "rerun_extraction":
         guard args["job_number"] != nil else { return .failure(MCPError("job_number required")) }
         return .success(("/mcp/jobs/rerun", args))
-    case "list_sites":   return .success(("/mcp/sites/list", [:]))
+    case "list_sites": return .success(("/mcp/sites/list", [:]))
     case "add_site":
         guard args["url"] != nil else { return .failure(MCPError("url required")) }
         return .success(("/mcp/sites/add", args))
@@ -311,17 +312,16 @@ func callTool(name: String, args: [String: Any], port: Int, token: String) -> Re
     let routeResult = resolveToolRoute(name: name, args: args)
     let (path, body): (String, [String: Any])
     switch routeResult {
-    case .success(let r): (path, body) = r
-    case .failure(let e): return .failure(e)
+    case let .success(r): (path, body) = r
+    case let .failure(e): return .failure(e)
     }
 
     let (status, result) = postMCP(path: path, body: body, port: port, token: token)
     if status >= 400 {
-        let msg: String
-        if let obj = result as? [String: Any], let err = obj["error"] as? String {
-            msg = err
+        let msg: String = if let obj = result as? [String: Any], let err = obj["error"] as? String {
+            err
         } else {
-            msg = "HTTP \(status)"
+            "HTTP \(status)"
         }
         return .failure(MCPError(msg))
     }
@@ -378,9 +378,9 @@ while let line = readLine() {
         let toolArgs = params["arguments"] as? [String: Any] ?? [:]
 
         switch callTool(name: toolName, args: toolArgs, port: port, token: token) {
-        case .success(let result):
+        case let .success(result):
             writeResponse(successResponse(id: id, result: result))
-        case .failure(let err):
+        case let .failure(err):
             writeResponse(successResponse(id: id, result: [
                 "isError": true,
                 "content": [["type": "text", "text": err.message]]

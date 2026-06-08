@@ -10,31 +10,31 @@ public enum QualityIssueKind: String, CaseIterable, Sendable {
     case missingSalary
     case extractionFailed
     case extractionPending
-    case shortRawText      // <1000B raw text
-    case shortCleanedText  // <700B cleaned text
-    case staleExtraction   // >21 days since extraction
+    case shortRawText // <1000B raw text
+    case shortCleanedText // <700B cleaned text
+    case staleExtraction // >21 days since extraction
 
     public var label: String {
         switch self {
-        case .missingCompany:    return "Missing company"
-        case .missingTitle:      return "Missing title"
-        case .missingLocation:   return "Missing location"
-        case .missingWorkMode:   return "Missing work mode"
-        case .missingSalary:     return "Missing salary"
-        case .extractionFailed:  return "Extraction failed"
-        case .extractionPending: return "Extraction pending"
-        case .shortRawText:      return "Short capture"
-        case .shortCleanedText:  return "Short cleaned text"
-        case .staleExtraction:   return "Stale extraction"
+        case .missingCompany: "Missing company"
+        case .missingTitle: "Missing title"
+        case .missingLocation: "Missing location"
+        case .missingWorkMode: "Missing work mode"
+        case .missingSalary: "Missing salary"
+        case .extractionFailed: "Extraction failed"
+        case .extractionPending: "Extraction pending"
+        case .shortRawText: "Short capture"
+        case .shortCleanedText: "Short cleaned text"
+        case .staleExtraction: "Stale extraction"
         }
     }
 
     public var isHighSeverity: Bool {
         switch self {
         case .missingCompany, .missingTitle, .missingLocation, .extractionFailed:
-            return true
+            true
         default:
-            return false
+            false
         }
     }
 }
@@ -45,10 +45,12 @@ public struct QualityIssue: Identifiable, Sendable {
     public let id: UUID
     public let jobID: String
     public let kinds: [QualityIssueKind]
-    public var severity: Int { kinds.count }
+    public var severity: Int {
+        kinds.count
+    }
 
     public init(jobID: String, kinds: [QualityIssueKind]) {
-        self.id = UUID()
+        id = UUID()
         self.jobID = jobID
         self.kinds = kinds
     }

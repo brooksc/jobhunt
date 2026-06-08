@@ -16,7 +16,7 @@ public extension Notification.Name {
     static let jobUnavailable = Notification.Name("jobhunt.jobUnavailable")
 }
 
-// Keys for jobUnavailable notification userInfo.
+/// Keys for jobUnavailable notification userInfo.
 public enum JobUnavailableKey {
     public static let jobID = "jobID"
     public static let jobNumber = "jobNumber"
@@ -28,7 +28,6 @@ public enum JobUnavailableKey {
 
 /// Ports server/availability.js: URL liveness detection + stale-job scheduler.
 public enum AvailabilityChecker {
-
     // MARK: - Constants (mirroring JS)
 
     static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -56,7 +55,9 @@ public enum AvailabilityChecker {
             components.queryItems = items.sorted { $0.name < $1.name }
         }
         var path = components.path
-        while path.hasSuffix("/") && path.count > 1 { path = String(path.dropLast()) }
+        while path.hasSuffix("/") && path.count > 1 {
+            path = String(path.dropLast())
+        }
         if path.isEmpty { path = "/" }
         components.path = path
         return components.url
@@ -64,14 +65,15 @@ public enum AvailabilityChecker {
 
     /// True when `title` has ≥3 meaningful words (mirrors isMeaningfulTitle).
     static func isMeaningfulTitle(_ title: String) -> Bool {
-        normalizedText(title).split(separator: " ").filter { !$0.isEmpty }.count >= 3
+        normalizedText(title).split(separator: " ").count(where: { !$0.isEmpty }) >= 3
     }
 
     static func normalizedText(_ value: String) -> String {
         let lower = value.lowercased()
         let cleaned = lower.unicodeScalars.map { scalar -> Character in
             let codePoint = scalar.value
-            if (codePoint >= 97 && codePoint <= 122) || (codePoint >= 48 && codePoint <= 57) { return Character(scalar) } // a-z, 0-9
+            if (codePoint >= 97 && codePoint <= 122) ||
+                (codePoint >= 48 && codePoint <= 57) { return Character(scalar) } // a-z, 0-9
             return " "
         }
         return String(cleaned).split(separator: " ").joined(separator: " ")
@@ -180,8 +182,8 @@ public enum AvailabilityChecker {
 
     // MARK: - checkJobs
 
-    // Lightweight value type for communicating check results across async boundaries.
-    private struct CheckedJob: Sendable {
+    /// Lightweight value type for communicating check results across async boundaries.
+    private struct CheckedJob {
         let jobID: String
         let jobNumber: Int?
         let title: String
@@ -247,10 +249,10 @@ public enum AvailabilityChecker {
 
         // Mark gone jobs.
         var markedCount = 0
-        let unavailableCount = checkedJobs.filter { if case .gone = $0.result { return true }; return false }.count
+        let unavailableCount = checkedJobs.count(where: { if case .gone = $0.result { return true }; return false })
 
         for checked in checkedJobs {
-            if case .gone(let reason) = checked.result {
+            if case let .gone(reason) = checked.result {
                 do {
                     let idToMatch = checked.jobID
                     try await store.update(Job.self, predicate: #Predicate { $0.id == idToMatch }) { job in
@@ -302,7 +304,7 @@ public enum AvailabilityChecker {
                 guard job.status != .archived, job.status != .notAvailable else { return false }
                 guard let capturedAt = job.capture?.capturedAt else { return false }
                 return capturedAt <= cutoff
-            }.prefix(limit).map { $0 }
+            }.prefix(limit).map(\.self)
         } catch {
             return (0, 0, 0)
         }
@@ -344,7 +346,13 @@ public enum AvailabilityChecker {
             userInfo: ["timestamp": ISO8601DateFormatter().string(from: Date())]
         )
 
-        return (skipped: false, reason: nil, checked: result.checked, unavailable: result.unavailable, marked: result.marked)
+        return (
+            skipped: false,
+            reason: nil,
+            checked: result.checked,
+            unavailable: result.unavailable,
+            marked: result.marked
+        )
     }
 }
 
@@ -353,4 +361,5 @@ public extension Notification.Name {
     /// The app layer should listen and update SettingsKey.availabilityLastAutoCheckAt.
     static let availabilityCheckCompleted = Notification.Name("jobhunt.availabilityCheckCompleted")
 }
+
 // swiftlint:enable line_length cyclomatic_complexity function_body_length large_tuple

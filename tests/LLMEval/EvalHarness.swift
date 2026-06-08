@@ -3,6 +3,7 @@ import XCTest
 
 // MARK: - LLMEvalHarness
 
+// swiftlint:disable type_body_length
 /// Eval harness for LLM extraction accuracy.
 ///
 /// Run with a local provider:
@@ -11,7 +12,6 @@ import XCTest
 /// The test skips gracefully when no provider is configured.
 /// It prints a field-by-field accuracy report but does NOT fail on low accuracy.
 final class LLMEvalHarness: XCTestCase {
-
     // MARK: - Fixtures
 
     /// Synthetic extraction fixtures ported from tests/llm-eval/eval-llm.js.
@@ -97,7 +97,7 @@ final class LLMEvalHarness: XCTestCase {
             expectedCompany: "PayWorks",
             expectedTitleContains: "Technical Program Manager",
             expectedRemoteType: "hybrid",
-            expectedSalaryMin: nil,   // hourly conversion varies by normalizer
+            expectedSalaryMin: nil, // hourly conversion varies by normalizer
             expectedSalaryMax: nil,
             expectedSalaryCurrency: "USD",
             expectedSkillsAny: ["payments", "fintech", "vendor", "launch", "risk", "SQL"],
@@ -166,7 +166,7 @@ final class LLMEvalHarness: XCTestCase {
                 print("  Score: \(passed)/\(total) (\(pct)%)\n")
             } catch {
                 print("  ERROR: \(error.localizedDescription)\n")
-                totalChecks += 1  // count as a failed check
+                totalChecks += 1 // count as a failed check
             }
         }
 
@@ -228,7 +228,7 @@ final class LLMEvalHarness: XCTestCase {
         // Find first { ... }
         if let start = stripped.firstIndex(of: "{"),
            let end = stripped.lastIndex(of: "}") {
-            return String(stripped[start...end])
+            return String(stripped[start ... end])
         }
         return stripped
     }
@@ -271,54 +271,94 @@ final class LLMEvalHarness: XCTestCase {
     private func scoreScalarFields(
         fixture: ExtractionFixture,
         // swiftlint:disable:next large_tuple
-        fields: (company: String, title: String, remoteType: String, salaryMin: Int?,
-                 salaryMax: Int?, currency: String, skills: [String], requirements: [String]),
+        fields: (
+            company: String,
+            title: String,
+            remoteType: String,
+            salaryMin: Int?,
+            salaryMax: Int?,
+            currency: String,
+            skills: [String],
+            requirements: [String]
+        ),
         check: (String, Bool, String, String) -> Void
     ) {
         if let exp = fixture.expectedCompany {
             check("company", fields.company.lowercased().contains(exp.lowercased()), got: fields.company, expected: exp)
         }
         if let exp = fixture.expectedTitleContains {
-            check("title", fields.title.lowercased().contains(exp.lowercased()),
-                  got: fields.title, expected: "contains '\(exp)'")
+            check(
+                "title",
+                fields.title.lowercased().contains(exp.lowercased()),
+                got: fields.title,
+                expected: "contains '\(exp)'"
+            )
         }
         if let exp = fixture.expectedRemoteType {
             check("remote_type", fields.remoteType == exp, got: fields.remoteType, expected: exp)
         }
         if let exp = fixture.expectedSalaryMin {
-            check("salary_min", fields.salaryMin == exp,
-                  got: fields.salaryMin.map(String.init) ?? "nil", expected: "\(exp)")
+            check(
+                "salary_min",
+                fields.salaryMin == exp,
+                got: fields.salaryMin.map(String.init) ?? "nil",
+                expected: "\(exp)"
+            )
         }
         if let exp = fixture.expectedSalaryMax {
-            check("salary_max", fields.salaryMax == exp,
-                  got: fields.salaryMax.map(String.init) ?? "nil", expected: "\(exp)")
+            check(
+                "salary_max",
+                fields.salaryMax == exp,
+                got: fields.salaryMax.map(String.init) ?? "nil",
+                expected: "\(exp)"
+            )
         }
         if let exp = fixture.expectedSalaryCurrency {
-            check("salary_currency", fields.currency.lowercased() == exp.lowercased(),
-                  got: fields.currency, expected: exp)
+            check(
+                "salary_currency",
+                fields.currency.lowercased() == exp.lowercased(),
+                got: fields.currency,
+                expected: exp
+            )
         }
     }
 
     private func scoreListFields(
         fixture: ExtractionFixture,
         // swiftlint:disable:next large_tuple
-        fields: (company: String, title: String, remoteType: String, salaryMin: Int?,
-                 salaryMax: Int?, currency: String, skills: [String], requirements: [String]),
+        fields: (
+            company: String,
+            title: String,
+            remoteType: String,
+            salaryMin: Int?,
+            salaryMax: Int?,
+            currency: String,
+            skills: [String],
+            requirements: [String]
+        ),
         check: (String, Bool, String, String) -> Void
     ) {
         if !fixture.expectedSkillsAny.isEmpty {
             let text = fields.skills.joined(separator: " ").lowercased()
             let hit = fixture.expectedSkillsAny.contains { text.contains($0.lowercased()) }
-            check("skills (any-of)", hit,
-                  got: fields.skills.prefix(3).joined(separator: ", "),
-                  expected: "any of: \(fixture.expectedSkillsAny.prefix(3).joined(separator: ", "))")
+            check(
+                "skills (any-of)",
+                hit,
+                got: fields.skills.prefix(3).joined(separator: ", "),
+                expected: "any of: \(fixture.expectedSkillsAny.prefix(3).joined(separator: ", "))"
+            )
         }
         if !fixture.expectedRequirementsAny.isEmpty {
             let text = fields.requirements.joined(separator: " ").lowercased()
             let hit = fixture.expectedRequirementsAny.contains { text.contains($0.lowercased()) }
-            check("requirements (any-of)", hit,
-                  got: fields.requirements.prefix(2).joined(separator: "; "),
-                  expected: "any of: \(fixture.expectedRequirementsAny.prefix(3).joined(separator: ", "))")
+            check(
+                "requirements (any-of)",
+                hit,
+                got: fields.requirements.prefix(2).joined(separator: "; "),
+                expected: "any of: \(fixture.expectedRequirementsAny.prefix(3).joined(separator: ", "))"
+            )
         }
     }
 }
+
+// swiftlint:enable type_body_length

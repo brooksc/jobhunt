@@ -1,7 +1,7 @@
 import Foundation
+import JobhuntCore
 import Network
 import SwiftData
-import JobhuntCore
 
 // MARK: - Request/Response Codable types
 
@@ -109,8 +109,8 @@ public actor JobhuntServer {
     private let appVersion: String
     private let isDemo: Bool
     #if !MAS_BUILD
-    private let store: BackgroundStore
-    private let mcpToken: String
+        private let store: BackgroundStore
+        private let mcpToken: String
     #endif
 
     public init(
@@ -126,8 +126,8 @@ public actor JobhuntServer {
         self.appVersion = appVersion
         self.isDemo = isDemo
         #if !MAS_BUILD
-        self.store = store
-        self.mcpToken = mcpToken
+            self.store = store
+            self.mcpToken = mcpToken
         #endif
     }
 
@@ -154,7 +154,9 @@ public actor JobhuntServer {
         port = 0
     }
 
-    public var listeningPort: UInt16 { port }
+    public var listeningPort: UInt16 {
+        port
+    }
 
     // MARK: - Private
 
@@ -179,7 +181,7 @@ public actor JobhuntServer {
                 switch state {
                 case .ready:
                     resume(.success(()))
-                case .failed(let error):
+                case let .failed(error):
                     resume(.failure(error))
                 case .cancelled:
                     resume(.failure(ServerError.listenerCancelled))
@@ -215,7 +217,7 @@ public actor JobhuntServer {
                 }
             } else if !isComplete {
                 // If we didn't get data and it's not complete, try reading more
-                self.receiveRequest(on: connection)
+                receiveRequest(on: connection)
             } else {
                 connection.cancel()
             }
@@ -248,17 +250,17 @@ public actor JobhuntServer {
 
         // MCP bridge routes (DMG builds only)
         #if !MAS_BUILD
-        if request.path.hasPrefix("/mcp/") {
-            if let response = await routeMCPRequest(
-                request,
-                jobService: jobService,
-                siteService: siteService,
-                store: store,
-                mcpToken: mcpToken
-            ) {
-                return response
+            if request.path.hasPrefix("/mcp/") {
+                if let response = await routeMCPRequest(
+                    request,
+                    jobService: jobService,
+                    siteService: siteService,
+                    store: store,
+                    mcpToken: mcpToken
+                ) {
+                    return response
+                }
             }
-        }
         #endif
 
         switch (request.method, request.path) {
@@ -378,18 +380,17 @@ public actor JobhuntServer {
     private func findJobNumber(byURL url: String) async throws -> Int? {
         // We use the jobService's store via a workaround — fetch all captures and find matching URL
         // This is done by delegating to a helper on the service
-        return try await jobService.findJobNumber(byURL: url)
+        try await jobService.findJobNumber(byURL: url)
     }
 
     private func handleFocus(_ request: HTTPRequest) async -> HTTPResponse {
         let focusReq = try? request.decodeBody(as: FocusRequest.self)
         let jobNumber = focusReq?.jobNumber
 
-        let userInfo: [AnyHashable: Any]
-        if let jobNumber {
-            userInfo = ["jobNumber": jobNumber]
+        let userInfo: [AnyHashable: Any] = if let jobNumber {
+            ["jobNumber": jobNumber]
         } else {
-            userInfo = [:]
+            [:]
         }
 
         NotificationCenter.default.post(

@@ -13,29 +13,29 @@ public enum SidebarSection: String, CaseIterable, Hashable {
 
     var title: String {
         switch self {
-        case .dashboard: return "Dashboard"
-        case .jobs: return "Jobs"
-        case .dataQuality: return "Data Quality"
-        case .needsAction: return "Needs Action"
-        case .llmQueue: return "LLM Queue"
-        case .sites: return "Sites"
-        case .duplicates: return "Duplicates"
-        case .settings: return "Settings"
-        case .help: return "Help"
+        case .dashboard: "Dashboard"
+        case .jobs: "Jobs"
+        case .dataQuality: "Data Quality"
+        case .needsAction: "Needs Action"
+        case .llmQueue: "LLM Queue"
+        case .sites: "Sites"
+        case .duplicates: "Duplicates"
+        case .settings: "Settings"
+        case .help: "Help"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .dashboard: return "chart.bar"
-        case .jobs: return "briefcase"
-        case .dataQuality: return "checkmark.shield"
-        case .needsAction: return "bell"
-        case .llmQueue: return "cpu"
-        case .sites: return "globe"
-        case .duplicates: return "doc.on.doc"
-        case .settings: return "gear"
-        case .help: return "questionmark.circle"
+        case .dashboard: "chart.bar"
+        case .jobs: "briefcase"
+        case .dataQuality: "checkmark.shield"
+        case .needsAction: "bell"
+        case .llmQueue: "cpu"
+        case .sites: "globe"
+        case .duplicates: "doc.on.doc"
+        case .settings: "gear"
+        case .help: "questionmark.circle"
         }
     }
 }
@@ -50,7 +50,7 @@ public final class Router {
 
     public init() {}
 
-    public func navigateToJob(number: Int) {
+    public func navigateToJob(number _: Int) {
         selectedSection = .jobs
         // selectedJobID will be set by the jobs list when it finds the matching job
         selectedJobID = nil

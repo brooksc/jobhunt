@@ -1,6 +1,6 @@
-import SwiftUI
-import SwiftData
 import JobhuntCore
+import SwiftData
+import SwiftUI
 
 struct SiteDetailView: View {
     let site: Site
@@ -195,8 +195,7 @@ struct SiteDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private func siteField<Content: View>(label: String, @ViewBuilder content: () -> Content) -> some View {
+    private func siteField(label: String, @ViewBuilder content: () -> some View) -> some View {
         HStack(alignment: .center, spacing: 8) {
             Text(label)
                 .font(.caption)

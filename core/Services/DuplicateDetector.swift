@@ -1,6 +1,7 @@
-// swiftlint:disable line_length cyclomatic_complexity function_body_length type_body_length large_tuple
-import Foundation
 import CryptoKit
+
+// swiftlint:disable file_length line_length cyclomatic_complexity function_body_length type_body_length large_tuple
+import Foundation
 import SwiftData
 
 // MARK: - Public types
@@ -46,23 +47,23 @@ public struct JobSnapshot: Sendable {
     public let extractionStatus: String
 
     init(job: Job, capture: Capture) {
-        self.id = job.id
-        self.jobNumber = job.jobNumber
-        self.company = job.company
-        self.title = job.title
-        self.location = job.location
-        self.remoteType = job.remoteType?.rawValue
-        self.salaryMin = job.salaryMin
-        self.salaryMax = job.salaryMax
-        self.salaryCurrency = job.salaryCurrency
-        self.employmentType = job.employmentType
-        self.seniority = job.seniority
-        self.status = job.status.rawValue
-        self.cleanedDescription = capture.cleanedDescription
-        self.cleanedHash = capture.cleanedHash
-        self.sourceURL = capture.canonicalURL ?? capture.url
-        self.duplicateOfJobID = job.duplicateOfJobID
-        self.extractionStatus = job.extractionStatus.rawValue
+        id = job.id
+        jobNumber = job.jobNumber
+        company = job.company
+        title = job.title
+        location = job.location
+        remoteType = job.remoteType?.rawValue
+        salaryMin = job.salaryMin
+        salaryMax = job.salaryMax
+        salaryCurrency = job.salaryCurrency
+        employmentType = job.employmentType
+        seniority = job.seniority
+        status = job.status.rawValue
+        cleanedDescription = capture.cleanedDescription
+        cleanedHash = capture.cleanedHash
+        sourceURL = capture.canonicalURL ?? capture.url
+        duplicateOfJobID = job.duplicateOfJobID
+        extractionStatus = job.extractionStatus.rawValue
     }
 }
 
@@ -74,7 +75,6 @@ public struct JobSnapshot: Sendable {
 /// Mutating the DB (setting duplicate_of_job_id) is the caller's responsibility
 /// (e.g. JobService calls this after extraction, Duplicates screen calls this for the badge count).
 public struct DuplicateDetector {
-
     public init() {}
 
     // MARK: - Public API
@@ -172,7 +172,7 @@ public struct DuplicateDetector {
             .joined(separator: " ")
     }
 
-    // Tokens that carry no signal for company identity (matches db.js COMPANY_STOP_WORDS)
+    /// Tokens that carry no signal for company identity (matches db.js COMPANY_STOP_WORDS)
     static let companyStopWords: Set<String> = [
         "the", "a", "an", "of", "for", "and", "or", "in", "at", "by", "to", "its", "with",
         "inc", "corp", "corporation", "co", "ltd", "llc", "llp", "lp", "plc",
@@ -298,7 +298,8 @@ public struct DuplicateDetector {
             let rightKnown = knownValue(rightVal)
             if !leftKnown.isEmpty && !rightKnown.isEmpty && leftKnown != rightKnown { fieldConflicts.append(field) }
         }
-        if let leftCurrency = left.salaryCurrency, let rightCurrency = right.salaryCurrency, leftCurrency != rightCurrency {
+        if let leftCurrency = left.salaryCurrency, let rightCurrency = right.salaryCurrency,
+           leftCurrency != rightCurrency {
             fieldConflicts.append("salary_currency")
         }
 
@@ -314,7 +315,7 @@ public struct DuplicateDetector {
 
     static func clusterByCompany(_ jobs: [JobSnapshot], threshold: Double = 0.5) -> [[JobSnapshot]] {
         let count = jobs.count
-        var parent = Array(0..<count)
+        var parent = Array(0 ..< count)
         func find(_ nodeIdx: Int) -> Int {
             var nodeIdx = nodeIdx
             while parent[nodeIdx] != nodeIdx {
@@ -323,14 +324,15 @@ public struct DuplicateDetector {
             }
             return nodeIdx
         }
-        for idx in 0..<count {
-            for jdx in (idx+1)..<count where companyJaccard(jobs[idx].company ?? "", jobs[jdx].company ?? "") >= threshold {
+        for idx in 0 ..< count {
+            for jdx in (idx + 1) ..< count
+                where companyJaccard(jobs[idx].company ?? "", jobs[jdx].company ?? "") >= threshold {
                 let parentI = find(idx), parentJ = find(jdx)
                 if parentI != parentJ { parent[parentI] = parentJ }
             }
         }
         var clusters: [Int: [JobSnapshot]] = [:]
-        for idx in 0..<count {
+        for idx in 0 ..< count {
             let root = find(idx)
             clusters[root, default: []].append(jobs[idx])
         }
@@ -342,9 +344,9 @@ public struct DuplicateDetector {
     func detectDomainDuplicates(snapshots: [JobSnapshot], resolvedHashes: Set<String>) -> [DuplicatePair] {
         let active = snapshots.filter {
             $0.extractionStatus == "succeeded" &&
-            !($0.company?.trimmingCharacters(in: .whitespaces).isEmpty ?? true) &&
-            !($0.title?.trimmingCharacters(in: .whitespaces).isEmpty ?? true) &&
-            !["archived", "not_available"].contains($0.status)
+                !($0.company?.trimmingCharacters(in: .whitespaces).isEmpty ?? true) &&
+                !($0.title?.trimmingCharacters(in: .whitespaces).isEmpty ?? true) &&
+                !["archived", "not_available"].contains($0.status)
         }
 
         // Group by normalised title
@@ -360,7 +362,8 @@ public struct DuplicateDetector {
 
         for titleGroup in byTitle.values where titleGroup.count >= 2 {
             for cluster in DuplicateDetector.clusterByCompany(titleGroup) where cluster.count >= 2 {
-                let hostnames = Set(cluster.map { DuplicateDetector.sourceHostname(urlString: $0.sourceURL) }.filter { !$0.isEmpty })
+                let hostnames = Set(cluster.map { DuplicateDetector.sourceHostname(urlString: $0.sourceURL) }
+                    .filter { !$0.isEmpty })
                 guard hostnames.count >= 2 else { continue }
 
                 // Sort by domain score desc, then id asc (stable tie-break)
@@ -390,11 +393,10 @@ public struct DuplicateDetector {
                     let domainConfidence = 0.65 + (Double(keepScore - candidateScore) / 100.0) * 0.24
                     let descWeight = evidence.descSimilarity == nil ? 0.0
                         : min(1.0, Double(evidence.descTokenCount) / 30.0)
-                    let descAdj: Double
-                    if let sim = evidence.descSimilarity {
-                        descAdj = descWeight * (sim - 0.5) * 0.3
+                    let descAdj: Double = if let sim = evidence.descSimilarity {
+                        descWeight * (sim - 0.5) * 0.3
                     } else {
-                        descAdj = 0.0
+                        0.0
                     }
                     let fieldPenalty = Double(evidence.fieldConflicts.count) * 0.08
                     let confidence = min(0.99, max(0.01, domainConfidence + descAdj - fieldPenalty))
@@ -402,7 +404,10 @@ public struct DuplicateDetector {
                     let candidateHostname = DuplicateDetector.sourceHostname(urlString: candidate.sourceURL)
                     var reasonParts = ["preferred \(keepHostname) over \(candidateHostname)"]
                     if let sim = evidence.descSimilarity {
-                        reasonParts.append("description similarity \(String(format: "%.2f", sim)) (\(evidence.descTokenCount) tokens)")
+                        reasonParts
+                            .append(
+                                "description similarity \(String(format: "%.2f", sim)) (\(evidence.descTokenCount) tokens)"
+                            )
                     }
                     if !evidence.fieldConflicts.isEmpty {
                         reasonParts.append("field conflicts: \(evidence.fieldConflicts.joined(separator: ", "))")
@@ -483,7 +488,7 @@ public struct DuplicateDetector {
             case 0x0A: result += "\\n"
             case 0x0D: result += "\\r"
             case 0x09: result += "\\t"
-            case 0x00..<0x20:
+            case 0x00 ..< 0x20:
                 result += String(format: "\\u%04x", scalar.value)
             default:
                 result.unicodeScalars.append(scalar)
@@ -493,4 +498,5 @@ public struct DuplicateDetector {
         return result
     }
 }
-// swiftlint:enable line_length cyclomatic_complexity function_body_length type_body_length large_tuple
+
+// swiftlint:enable file_length line_length cyclomatic_complexity function_body_length type_body_length large_tuple

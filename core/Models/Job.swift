@@ -122,11 +122,11 @@ public final class Job {
         self.unread = unread
         self.createdAt = createdAt
         self.updatedAt = updatedAt
-        self.events = []
-        self.actions = []
-        self.contacts = []
-        self.coverLetters = []
-        self.fitScores = []
-        self.llmRequests = []
+        events = []
+        actions = []
+        contacts = []
+        coverLetters = []
+        fitScores = []
+        llmRequests = []
     }
 }

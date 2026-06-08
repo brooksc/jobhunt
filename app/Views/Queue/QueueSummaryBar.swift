@@ -1,6 +1,6 @@
-import SwiftUI
-import SwiftData
 import JobhuntCore
+import SwiftData
+import SwiftUI
 
 /// Small summary bar showing queue counts and a Pause/Resume toggle.
 struct QueueSummaryBar: View {
@@ -8,10 +8,16 @@ struct QueueSummaryBar: View {
     let isPaused: Bool
     let onTogglePause: () async -> Void
 
-    private var queued: Int { requests.filter { $0.status == .queued }.count }
-    private var running: Int { requests.filter { $0.status == .running }.count }
+    private var queued: Int {
+        requests.count(where: { $0.status == .queued })
+    }
+
+    private var running: Int {
+        requests.count(where: { $0.status == .running })
+    }
+
     private var failed: Int {
-        requests.filter { $0.status == .failed || $0.status == .retryExhausted }.count
+        requests.count(where: { $0.status == .failed || $0.status == .retryExhausted })
     }
 
     var body: some View {

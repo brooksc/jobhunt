@@ -93,14 +93,14 @@ public enum LLMProviderError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .httpError(let code, let body):
-            return "LLM HTTP \(code): \(body.prefix(500))"
-        case .timeout(let seconds):
-            return "LLM request timed out after \(seconds)s"
+        case let .httpError(code, body):
+            "LLM HTTP \(code): \(body.prefix(500))"
+        case let .timeout(seconds):
+            "LLM request timed out after \(seconds)s"
         case .noResponse:
-            return "LLM produced no response"
-        case .unavailable(let reason):
-            return "LLM provider unavailable: \(reason)"
+            "LLM produced no response"
+        case let .unavailable(reason):
+            "LLM provider unavailable: \(reason)"
         }
     }
 }

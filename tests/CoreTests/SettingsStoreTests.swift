@@ -1,5 +1,5 @@
-import XCTest
 import SwiftData
+import XCTest
 @testable import JobhuntCore
 
 final class SettingsStoreTests: XCTestCase {

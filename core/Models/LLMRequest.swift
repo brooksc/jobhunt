@@ -15,7 +15,7 @@ public final class LLMRequest {
 
     public var job: Job?
 
-    // resume is optional (only for fit-scoring requests)
+    /// resume is optional (only for fit-scoring requests)
     public var resume: Resume?
 
     @Relationship(deleteRule: .cascade, inverse: \LLMRequestAttempt.request)
@@ -41,6 +41,6 @@ public final class LLMRequest {
         self.createdAt = createdAt
         self.startedAt = startedAt
         self.finishedAt = finishedAt
-        self.attempts = []
+        attempts = []
     }
 }

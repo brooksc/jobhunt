@@ -1,7 +1,7 @@
 import Foundation
 
-// Localhost / on-device providers are always consented — no data leaves the device.
-// Cloud providers require explicit user opt-in (App Store 5.1.2(i)).
+/// Localhost / on-device providers are always consented — no data leaves the device.
+/// Cloud providers require explicit user opt-in (App Store 5.1.2(i)).
 public enum ConsentHelper {
     private static let localhostProviders: Set<String> = ["lmstudio", "foundation_models", "custom"]
 

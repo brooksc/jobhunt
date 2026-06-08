@@ -39,7 +39,7 @@ public func parseJdBlocks(_ text: String?) -> [JDBlock] {
 
     var start = searchFrom
     let searchLimit = min(lines.count, searchFrom + 30)
-    for idx in searchFrom..<searchLimit {
+    for idx in searchFrom ..< searchLimit {
         let line = lines[idx].trimmingCharacters(in: .whitespaces)
         let nsStr = line as NSString
         let range = NSRange(location: 0, length: nsStr.length)
@@ -67,14 +67,17 @@ public func parseJdBlocks(_ text: String?) -> [JDBlock] {
         }
 
         // Stop at LinkedIn concatenated duplicate — long run-on starting with "Feed post" + non-space
-        if line.hasPrefix("Feed post") && line.count > "Feed post".count && !line[line.index(line.startIndex, offsetBy: "Feed post".count)].isWhitespace {
+        if line.hasPrefix("Feed post") && line.count > "Feed post".count && !line[line.index(
+            line.startIndex,
+            offsetBy: "Feed post".count
+        )].isWhitespace {
             flush()
             break
         }
 
         // Bullet / list item
         if let bulletContent = extractBulletContent(line) {
-            if case .list(let items) = current {
+            if case let .list(items) = current {
                 current = .list(items: items + [bulletContent])
             } else {
                 flush()
@@ -105,7 +108,7 @@ public func parseJdBlocks(_ text: String?) -> [JDBlock] {
         }
 
         // Paragraph — merge consecutive lines
-        if case .paragraph(let existing) = current {
+        if case let .paragraph(existing) = current {
             current = .paragraph(text: existing + " " + line)
         } else {
             flush()
@@ -141,18 +144,18 @@ private func extractBulletContent(_ line: String) -> String? {
 
 private func isHorizontalRule(_ line: String) -> Bool {
     guard line.count >= 3 else { return false }
-    return line.allSatisfy({ $0 == "-" }) || line.allSatisfy({ $0 == "=" })
+    return line.allSatisfy { $0 == "-" } || line.allSatisfy { $0 == "=" }
 }
 
 private func isHeadingLine(_ line: String, matchesHeader: Bool, matchesEmoji: Bool) -> Bool {
     let isAllCaps = line.count < 80
         && line == line.uppercased()
-        && line.contains(where: { $0.isUppercase })
+        && line.contains(where: \.isUppercase)
         && line.contains(where: { $0.isLetter && $0.isUppercase })
         // Must have at least 3 uppercase letters
-        && line.filter({ $0.isUppercase }).count >= 3
+        && line.count(where: { $0.isUppercase }) >= 3
         && !line.contains(",") && !line.contains(";") && !line.contains("(")
-        && !line.contains(")") && !line.contains(where: { $0.isNumber })
+        && !line.contains(")") && !line.contains(where: \.isNumber)
 
     let endsWithColon = line.hasSuffix(":")
         && line.count < 70
@@ -163,4 +166,5 @@ private func isHeadingLine(_ line: String, matchesHeader: Bool, matchesEmoji: Bo
 
     return isAllCaps || endsWithColon || isKnownHeader || isEmojiLed
 }
+
 // swiftlint:enable line_length cyclomatic_complexity function_body_length

@@ -18,21 +18,21 @@ enum JobsSortLogic {
     private static func compare(_ a: Job, _ b: Job, key: JobsSortKey) -> ComparisonResult {
         switch key {
         case .jobNumber:
-            return compareOptionalInt(a.jobNumber, b.jobNumber)
+            compareOptionalInt(a.jobNumber, b.jobNumber)
         case .company:
-            return compareOptionalString(a.company, b.company)
+            compareOptionalString(a.company, b.company)
         case .title:
-            return compareOptionalString(a.title, b.title)
+            compareOptionalString(a.title, b.title)
         case .status:
-            return compareString(a.status.rawValue, b.status.rawValue)
+            compareString(a.status.rawValue, b.status.rawValue)
         case .fitScore:
-            return compareOptionalInt(a.fitScore, b.fitScore)
+            compareOptionalInt(a.fitScore, b.fitScore)
         case .rating:
-            return compareOptionalInt(a.rating, b.rating)
+            compareOptionalInt(a.rating, b.rating)
         case .capturedAt:
-            return compareDate(a.createdAt, b.createdAt)
+            compareDate(a.createdAt, b.createdAt)
         case .extractedAt:
-            return compareOptionalDate(a.extractedAt, b.extractedAt)
+            compareOptionalDate(a.extractedAt, b.extractedAt)
         }
     }
 
@@ -42,8 +42,8 @@ enum JobsSortLogic {
     private static func compareOptionalInt(_ a: Int?, _ b: Int?) -> ComparisonResult {
         switch (a, b) {
         case (nil, nil): return .orderedSame
-        case (nil, _): return .orderedDescending   // a nil → a sorts after b (bottom)
-        case (_, nil): return .orderedAscending    // b nil → b sorts after a (bottom)
+        case (nil, _): return .orderedDescending // a nil → a sorts after b (bottom)
+        case (_, nil): return .orderedAscending // b nil → b sorts after a (bottom)
         case let (av?, bv?):
             if av < bv { return .orderedAscending }
             if av > bv { return .orderedDescending }
@@ -54,11 +54,11 @@ enum JobsSortLogic {
     /// Date: nil → bottom.
     private static func compareOptionalDate(_ a: Date?, _ b: Date?) -> ComparisonResult {
         switch (a, b) {
-        case (nil, nil): return .orderedSame
-        case (nil, _): return .orderedDescending
-        case (_, nil): return .orderedAscending
+        case (nil, nil): .orderedSame
+        case (nil, _): .orderedDescending
+        case (_, nil): .orderedAscending
         case let (av?, bv?):
-            return av.compare(bv)
+            av.compare(bv)
         }
     }
 

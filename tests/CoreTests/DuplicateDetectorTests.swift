@@ -1,12 +1,12 @@
-// swiftlint:disable line_length force_unwrapping
-import XCTest
 import SwiftData
+
+// swiftlint:disable line_length
+import XCTest
 @testable import JobhuntCore
 
 // MARK: - Pure-logic unit tests (no SwiftData required)
 
 final class DuplicateDetectorTests: XCTestCase {
-
     // MARK: - Text normalisation
 
     func testNormalizeDuplicateText() {
@@ -62,21 +62,21 @@ final class DuplicateDetectorTests: XCTestCase {
         XCTAssertNil(result, "Expected nil when fewer than 8 tokens on either side")
     }
 
-    func testDescriptionSimilarityIdentical() {
+    func testDescriptionSimilarityIdentical() throws {
         let text = "senior software engineer distributed systems kubernetes platform reliability scalable infrastructure"
         let result = DuplicateDetector.descriptionSimilarity(left: text, right: text)
         XCTAssertNotNil(result)
-        XCTAssertEqual(result!.similarity, 1.0, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(result?.similarity), 1.0, accuracy: 0.001)
     }
 
-    func testDescriptionSimilarityPartial() {
-        let left  = "engineer distributed systems kubernetes platform reliability scalable infrastructure backend"
+    func testDescriptionSimilarityPartial() throws {
+        let left = "engineer distributed systems kubernetes platform reliability scalable infrastructure backend"
         let right = "engineer distributed systems kubernetes platform reliability scalable infrastructure frontend"
         let result = DuplicateDetector.descriptionSimilarity(left: left, right: right)
         XCTAssertNotNil(result)
         // 8 shared tokens out of 9 minimum: 8/9 ≈ 0.889
-        XCTAssertGreaterThan(result!.similarity, 0.8)
-        XCTAssertLessThan(result!.similarity, 1.0)
+        XCTAssertGreaterThan(try XCTUnwrap(result?.similarity), 0.8)
+        XCTAssertLessThan(try XCTUnwrap(result?.similarity), 1.0)
     }
 
     func testDescriptionSimilarityNilWhenOneEmpty() {
@@ -89,15 +89,24 @@ final class DuplicateDetectorTests: XCTestCase {
 
     func testDomainScoreExactRegistrable() {
         // registrable matches companyCompact
-        XCTAssertEqual(DuplicateDetector.companyDomainScore(company: "google", urlString: "https://google.com/jobs"), 100)
+        XCTAssertEqual(
+            DuplicateDetector.companyDomainScore(company: "google", urlString: "https://google.com/jobs"),
+            100
+        )
     }
 
     func testDomainScoreATSPlatform() {
-        XCTAssertEqual(DuplicateDetector.companyDomainScore(company: "Acme Corp", urlString: "https://jobs.greenhouse.io/acme"), 45)
+        XCTAssertEqual(
+            DuplicateDetector.companyDomainScore(company: "Acme Corp", urlString: "https://jobs.greenhouse.io/acme"),
+            45
+        )
     }
 
     func testDomainScoreNoMatch() {
-        XCTAssertEqual(DuplicateDetector.companyDomainScore(company: "Acme", urlString: "https://linkedin.com/jobs/12345"), 0)
+        XCTAssertEqual(
+            DuplicateDetector.companyDomainScore(company: "Acme", urlString: "https://linkedin.com/jobs/12345"),
+            0
+        )
     }
 
     func testDomainScoreNilCompany() {
@@ -127,8 +136,20 @@ final class DuplicateDetectorTests: XCTestCase {
     }
 
     func testRawHashIsDeterministic() {
-        let hash1 = DuplicateDetector.rawHash(url: "https://example.com", canonicalURL: nil, selectedText: "text", visibleText: "visible", structuredData: [])
-        let hash2 = DuplicateDetector.rawHash(url: "https://example.com", canonicalURL: nil, selectedText: "text", visibleText: "visible", structuredData: [])
+        let hash1 = DuplicateDetector.rawHash(
+            url: "https://example.com",
+            canonicalURL: nil,
+            selectedText: "text",
+            visibleText: "visible",
+            structuredData: []
+        )
+        let hash2 = DuplicateDetector.rawHash(
+            url: "https://example.com",
+            canonicalURL: nil,
+            selectedText: "text",
+            visibleText: "visible",
+            structuredData: []
+        )
         XCTAssertEqual(hash1, hash2)
     }
 
@@ -195,14 +216,14 @@ final class DuplicateDetectorTests: XCTestCase {
         XCTAssertNotNil(evidence, "Expected evidence (not blocked) when salary bands are within 10%")
     }
 
-    func testEvidenceMatchFieldConflicts() {
+    func testEvidenceMatchFieldConflicts() throws {
         var left = makeSnapshot(id: "A", company: "Acme", title: "SWE")
         var right = makeSnapshot(id: "B", company: "Acme", title: "SWE")
         left = left.withRemoteType("remote")
         right = right.withRemoteType("onsite")
         let evidence = DuplicateDetector.evidenceMatch(left: left, right: right)
         XCTAssertNotNil(evidence)
-        XCTAssertTrue(evidence!.fieldConflicts.contains("remote_type"))
+        XCTAssertTrue(try XCTUnwrap(evidence?.fieldConflicts.contains("remote_type")))
     }
 
     // MARK: - duplicateGroups integration (requires SwiftData)
@@ -212,7 +233,10 @@ final class DuplicateDetectorTests: XCTestCase {
         let container = try makeTestContainer()
         let ctx = container.mainContext
 
-        let hash = DuplicateDetector.cleanedHash(from: "Senior engineer posting at Acme building distributed systems infrastructure reliability")
+        let hash = DuplicateDetector
+            .cleanedHash(
+                from: "Senior engineer posting at Acme building distributed systems infrastructure reliability"
+            )
 
         let cap1 = Capture(url: "https://acme.com/jobs/1", pageTitle: "SWE", rawHash: "raw1", cleanedHash: hash)
         cap1.cleanedDescription = "Senior engineer posting at Acme building distributed systems infrastructure reliability"
@@ -221,7 +245,12 @@ final class DuplicateDetectorTests: XCTestCase {
         ctx.insert(cap1)
         ctx.insert(job1)
 
-        let cap2 = Capture(url: "https://greenhouse.io/acme/jobs/1", pageTitle: "SWE", rawHash: "raw2", cleanedHash: hash)
+        let cap2 = Capture(
+            url: "https://greenhouse.io/acme/jobs/1",
+            pageTitle: "SWE",
+            rawHash: "raw2",
+            cleanedHash: hash
+        )
         cap2.cleanedDescription = "Senior engineer posting at Acme building distributed systems infrastructure reliability"
         let job2 = Job(company: "Acme", title: "SWE", extractionStatus: .succeeded)
         job2.capture = cap2
@@ -243,7 +272,10 @@ final class DuplicateDetectorTests: XCTestCase {
         let container = try makeTestContainer()
         let ctx = container.mainContext
 
-        let hash = DuplicateDetector.cleanedHash(from: "Senior engineer posting at Acme building distributed systems infrastructure reliability")
+        let hash = DuplicateDetector
+            .cleanedHash(
+                from: "Senior engineer posting at Acme building distributed systems infrastructure reliability"
+            )
 
         let cap1 = Capture(url: "https://acme.com/jobs/1", pageTitle: "SWE", rawHash: "raw1", cleanedHash: hash)
         let job1 = Job(company: "Acme", title: "SWE", extractionStatus: .succeeded)
@@ -251,7 +283,12 @@ final class DuplicateDetectorTests: XCTestCase {
         ctx.insert(cap1)
         ctx.insert(job1)
 
-        let cap2 = Capture(url: "https://greenhouse.io/acme/jobs/1", pageTitle: "SWE", rawHash: "raw2", cleanedHash: hash)
+        let cap2 = Capture(
+            url: "https://greenhouse.io/acme/jobs/1",
+            pageTitle: "SWE",
+            rawHash: "raw2",
+            cleanedHash: hash
+        )
         let job2 = Job(company: "Acme", title: "SWE", extractionStatus: .succeeded)
         job2.capture = cap2
         ctx.insert(cap2)
@@ -314,7 +351,7 @@ final class DuplicateDetectorTests: XCTestCase {
         let pairs = try detector.duplicateGroups(context: ctx)
 
         XCTAssertFalse(pairs.isEmpty, "Expected at least one near-duplicate pair")
-        let pair = pairs.first!
+        let pair = try XCTUnwrap(pairs.first)
         XCTAssertEqual(pair.kind, .similarHash)
         XCTAssertGreaterThan(pair.confidence, 0.0)
         XCTAssertLessThanOrEqual(pair.confidence, 0.99)
@@ -328,10 +365,16 @@ final class DuplicateDetectorTests: XCTestCase {
         let ctx = container.mainContext
 
         // 3 jobs with same cleaned hash → 2 pairs (groupSize - 1 = 2)
-        let hash = DuplicateDetector.cleanedHash(from: "unique posting text with enough distinct tokens for hash detection of duplication")
+        let hash = DuplicateDetector
+            .cleanedHash(from: "unique posting text with enough distinct tokens for hash detection of duplication")
 
-        for idx in 1...3 {
-            let cap = Capture(url: "https://source\(idx).com/job", pageTitle: "Dev", rawHash: "rh\(idx)", cleanedHash: hash)
+        for idx in 1 ... 3 {
+            let cap = Capture(
+                url: "https://source\(idx).com/job",
+                pageTitle: "Dev",
+                rawHash: "rh\(idx)",
+                cleanedHash: hash
+            )
             cap.cleanedDescription = "unique posting text with enough distinct tokens for hash detection of duplication"
             let job = Job(jobNumber: idx, company: "Corp", title: "Dev", extractionStatus: .succeeded)
             job.capture = cap
@@ -372,40 +415,40 @@ private func makeSnapshot(id: String, company: String, title: String) -> JobSnap
 private extension JobSnapshot {
     func withSalary(min: Int, max: Int) -> JobSnapshot {
         // Rebuild via Job + Capture with salary values set
-        let cap = Capture(url: self.sourceURL, pageTitle: "", rawHash: self.id, cleanedHash: self.cleanedHash)
-        cap.cleanedDescription = self.cleanedDescription
+        let cap = Capture(url: sourceURL, pageTitle: "", rawHash: id, cleanedHash: cleanedHash)
+        cap.cleanedDescription = cleanedDescription
         let job = Job(
-            id: self.id,
-            jobNumber: self.jobNumber,
-            company: self.company,
-            title: self.title,
-            remoteType: self.remoteType.flatMap(RemoteType.init),
+            id: id,
+            jobNumber: jobNumber,
+            company: company,
+            title: title,
+            remoteType: remoteType.flatMap(RemoteType.init),
             salaryMin: min,
             salaryMax: max,
-            salaryCurrency: self.salaryCurrency,
-            employmentType: self.employmentType,
-            seniority: self.seniority,
-            extractionStatus: ExtractionStatus(rawValue: self.extractionStatus) ?? .succeeded
+            salaryCurrency: salaryCurrency,
+            employmentType: employmentType,
+            seniority: seniority,
+            extractionStatus: ExtractionStatus(rawValue: extractionStatus) ?? .succeeded
         )
         job.capture = cap
         return JobSnapshot(job: job, capture: cap)
     }
 
     func withRemoteType(_ remoteType: String) -> JobSnapshot {
-        let cap = Capture(url: self.sourceURL, pageTitle: "", rawHash: self.id, cleanedHash: self.cleanedHash)
-        cap.cleanedDescription = self.cleanedDescription
+        let cap = Capture(url: sourceURL, pageTitle: "", rawHash: id, cleanedHash: cleanedHash)
+        cap.cleanedDescription = cleanedDescription
         let job = Job(
-            id: self.id,
-            company: self.company,
-            title: self.title,
+            id: id,
+            company: company,
+            title: title,
             remoteType: RemoteType(rawValue: remoteType),
-            salaryMin: self.salaryMin,
-            salaryMax: self.salaryMax,
-            extractionStatus: ExtractionStatus(rawValue: self.extractionStatus) ?? .succeeded
+            salaryMin: salaryMin,
+            salaryMax: salaryMax,
+            extractionStatus: ExtractionStatus(rawValue: extractionStatus) ?? .succeeded
         )
         job.capture = cap
         return JobSnapshot(job: job, capture: cap)
     }
 }
 
-// swiftlint:enable line_length force_unwrapping
+// swiftlint:enable line_length

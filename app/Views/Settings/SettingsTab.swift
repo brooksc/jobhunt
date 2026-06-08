@@ -1,5 +1,5 @@
-import SwiftUI
 import JobhuntCore
+import SwiftUI
 
 // MARK: - Provider model
 
@@ -11,10 +11,25 @@ private struct ProviderOption: Identifiable, Hashable {
 
     static let all: [ProviderOption] = [
         ProviderOption(id: "lmstudio", label: "LM Studio", isCloud: false, privacyURL: nil),
-        ProviderOption(id: "openai", label: "OpenAI", isCloud: true, privacyURL: "https://openai.com/policies/privacy-policy"),
-        ProviderOption(id: "anthropic", label: "Anthropic", isCloud: true, privacyURL: "https://www.anthropic.com/privacy"),
+        ProviderOption(
+            id: "openai",
+            label: "OpenAI",
+            isCloud: true,
+            privacyURL: "https://openai.com/policies/privacy-policy"
+        ),
+        ProviderOption(
+            id: "anthropic",
+            label: "Anthropic",
+            isCloud: true,
+            privacyURL: "https://www.anthropic.com/privacy"
+        ),
         ProviderOption(id: "google", label: "Google", isCloud: true, privacyURL: "https://policies.google.com/privacy"),
-        ProviderOption(id: "openrouter", label: "OpenRouter", isCloud: true, privacyURL: "https://openrouter.ai/privacy"),
+        ProviderOption(
+            id: "openrouter",
+            label: "OpenRouter",
+            isCloud: true,
+            privacyURL: "https://openrouter.ai/privacy"
+        ),
         ProviderOption(id: "custom", label: "Custom", isCloud: false, privacyURL: nil),
         ProviderOption(id: "apple", label: "Apple Intelligence", isCloud: false, privacyURL: nil)
     ]
@@ -32,10 +47,10 @@ struct SettingsTab: View {
     @State private var pendingProviderID: String?
     @State private var showingConsentSheet = false
 
-    // Local mirror for the provider picker (to allow reverting on Cancel)
+    /// Local mirror for the provider picker (to allow reverting on Cancel)
     @State private var selectedProviderID: String = "lmstudio"
 
-    // API key fields (not persisted until edited)
+    /// API key fields (not persisted until edited)
     @State private var apiKeyText: String = ""
 
     // Connection test
@@ -89,7 +104,6 @@ struct SettingsTab: View {
 
     // MARK: - Provider section
 
-    @ViewBuilder
     private var providerSection: some View {
         Section("LLM Provider") {
             Picker("Provider", selection: Binding(
@@ -177,7 +191,7 @@ struct SettingsTab: View {
                     get: { settings.llmTimeout },
                     set: { settings.llmTimeout = $0 }
                 ),
-                in: 10...600,
+                in: 10 ... 600,
                 step: 10
             )
         }
@@ -229,7 +243,7 @@ struct SettingsTab: View {
                     get: { settings.siteReviewIntervalDays },
                     set: { settings.siteReviewIntervalDays = $0 }
                 ),
-                in: 1...90
+                in: 1 ... 90
             )
 
             Stepper(
@@ -238,7 +252,7 @@ struct SettingsTab: View {
                     get: { settings.followupDefaultDays },
                     set: { settings.followupDefaultDays = $0 }
                 ),
-                in: 1...60
+                in: 1 ... 60
             )
         }
     }
@@ -247,17 +261,17 @@ struct SettingsTab: View {
 
     private var needsAPIKey: Bool {
         switch selectedProviderID {
-        case "openai", "anthropic", "google", "openrouter", "custom": return true
-        default: return false
+        case "openai", "anthropic", "google", "openrouter", "custom": true
+        default: false
         }
     }
 
     private var canFetchModels: Bool {
         // Only show Fetch Models for providers where we can hit an API
         switch selectedProviderID {
-        case "openrouter": return !apiKeyText.isEmpty
-        case "lmstudio", "custom": return !baseURLText.isEmpty
-        default: return false
+        case "openrouter": !apiKeyText.isEmpty
+        case "lmstudio", "custom": !baseURLText.isEmpty
+        default: false
         }
     }
 
@@ -273,11 +287,11 @@ struct SettingsTab: View {
         switch connectionStatus {
         case .idle, .testing:
             EmptyView()
-        case .success(let msg):
+        case let .success(msg):
             Label(msg, systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green)
                 .font(.callout)
-        case .failure(let msg):
+        case let .failure(msg):
             Label(msg, systemImage: "xmark.circle.fill")
                 .foregroundStyle(.red)
                 .font(.callout)

@@ -1,17 +1,23 @@
-// swiftlint:disable force_unwrapping line_length
-import XCTest
 import SwiftData
+
+// swiftlint:disable force_unwrapping
+import XCTest
 @testable import JobhuntCore
 
 // MARK: - MockURLProtocol
 
 /// URLProtocol subclass for mocking HTTP responses in tests.
 final class MockURLProtocol: URLProtocol {
-    // Map from URL string pattern → handler closure.
+    /// Map from URL string pattern → handler closure.
     static var handlers: [(String, (URLRequest) -> (HTTPURLResponse, Data))] = []
 
-    override static func canInit(with request: URLRequest) -> Bool { true }
-    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override static func canInit(with _: URLRequest) -> Bool {
+        true
+    }
+
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         let urlString = request.url?.absoluteString ?? ""
@@ -31,7 +37,9 @@ final class MockURLProtocol: URLProtocol {
 
     override func stopLoading() {}
 
-    static func reset() { handlers = [] }
+    static func reset() {
+        handlers = []
+    }
 
     static func makeSession() -> URLSession {
         let config = URLSessionConfiguration.ephemeral
@@ -84,136 +92,142 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
 
     // MARK: Status code detection
 
-    func testReturnsGoneFor404() async {
-        MockURLProtocol.handlers = [("example.com/job/1", { _ in makeResponse(url: "https://example.com/job/1", status: 404, body: "not found") })]
-        let result = await AvailabilityChecker.checkURL(
-            URL(string: "https://example.com/job/1")!,
+    func testReturnsGoneFor404() async throws {
+        MockURLProtocol.handlers = [(
+            "example.com/job/1",
+            { _ in makeResponse(url: "https://example.com/job/1", status: 404, body: "not found") }
+        )]
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: "https://example.com/job/1")),
             title: "Engineer",
             session: session
         )
-        guard case .gone(let reason) = result else { XCTFail("Expected .gone"); return }
+        guard case let .gone(reason) = result else { XCTFail("Expected .gone"); return }
         XCTAssertTrue(reason.contains("404"), "reason should contain 404, got: \(reason)")
     }
 
-    func testReturnsGoneFor410() async {
-        MockURLProtocol.handlers = [("example.com/job/2", { _ in makeResponse(url: "https://example.com/job/2", status: 410, body: "gone") })]
-        let result = await AvailabilityChecker.checkURL(
-            URL(string: "https://example.com/job/2")!,
+    func testReturnsGoneFor410() async throws {
+        MockURLProtocol.handlers = [(
+            "example.com/job/2",
+            { _ in makeResponse(url: "https://example.com/job/2", status: 410, body: "gone") }
+        )]
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: "https://example.com/job/2")),
             title: "Engineer",
             session: session
         )
-        guard case .gone(let reason) = result else { XCTFail("Expected .gone"); return }
+        guard case let .gone(reason) = result else { XCTFail("Expected .gone"); return }
         XCTAssertTrue(reason.contains("410"), "reason should contain 410, got: \(reason)")
     }
 
     // MARK: Body pattern detection
 
-    func testReturnsGoneWhenBodyContainsGonePattern() async {
+    func testReturnsGoneWhenBodyContainsGonePattern() async throws {
         MockURLProtocol.handlers = [("example.com/job/4", { _ in
             makeResponse(url: "https://example.com/job/4", status: 200, body: "sorry, this job is no longer available.")
         })]
-        let result = await AvailabilityChecker.checkURL(
-            URL(string: "https://example.com/job/4")!,
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: "https://example.com/job/4")),
             title: "Software Engineering Role Here",
             session: session
         )
-        guard case .gone(let reason) = result else { XCTFail("Expected .gone"); return }
+        guard case let .gone(reason) = result else { XCTFail("Expected .gone"); return }
         XCTAssertTrue(reason.hasPrefix("body:"), "reason should start with 'body:', got: \(reason)")
     }
 
     // MARK: Redirect heuristics
 
-    func testGoneWhenRedirectedToCompanyPage() async {
+    func testGoneWhenRedirectedToCompanyPage() async throws {
         let originalURL = "https://www.builtinseattle.com/job/technical-program-manager/123"
         let finalURL = "https://www.builtinseattle.com/company/deepgram"
         MockURLProtocol.handlers = [(originalURL, { _ in
             makeResponse(url: finalURL, status: 200, body: "Deepgram Seattle Office: Careers, Perks + Culture")
         })]
-        let result = await AvailabilityChecker.checkURL(
-            URL(string: originalURL)!,
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: originalURL)),
             title: "Technical Program Manager",
             session: session
         )
-        guard case .gone(let reason) = result else { XCTFail("Expected .gone"); return }
+        guard case let .gone(reason) = result else { XCTFail("Expected .gone"); return }
         XCTAssertTrue(reason.contains("redirected to non-job page"), "reason: \(reason)")
     }
 
-    func testGoneWhenRedirectedAndMissingTitle() async {
+    func testGoneWhenRedirectedAndMissingTitle() async throws {
         let originalURL = "https://jobs.example.com/postings/123"
         let finalURL = "https://jobs.example.com/postings/456"
         MockURLProtocol.handlers = [(originalURL, { _ in
             makeResponse(url: finalURL, status: 200, body: "Senior Product Manager Apply now")
         })]
-        let result = await AvailabilityChecker.checkURL(
-            URL(string: originalURL)!,
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: originalURL)),
             title: "Principal Technical Program Manager",
             session: session
         )
-        guard case .gone(let reason) = result else { XCTFail("Expected .gone"); return }
+        guard case let .gone(reason) = result else { XCTFail("Expected .gone"); return }
         XCTAssertTrue(reason.contains("missing title"), "reason: \(reason)")
     }
 
-    func testAvailableWhenCanonicalRedirectHasTitle() async {
+    func testAvailableWhenCanonicalRedirectHasTitle() async throws {
         let originalURL = "https://jobs.example.com/postings/123?src=board"
         let finalURL = "https://jobs.example.com/postings/123"
         MockURLProtocol.handlers = [(originalURL, { _ in
             makeResponse(url: finalURL, status: 200, body: "Principal Technical Program Manager Apply now")
         })]
-        let result = await AvailabilityChecker.checkURL(
-            URL(string: originalURL)!,
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: originalURL)),
             title: "Principal Technical Program Manager",
             session: session
         )
-        if case .gone(let goneReason) = result { XCTFail("Expected .available but got .gone(\(goneReason))") }
+        if case let .gone(goneReason) = result { XCTFail("Expected .available but got .gone(\(goneReason))") }
     }
 
-    func testGoneWhenRedirectedToSearchPage() async {
+    func testGoneWhenRedirectedToSearchPage() async throws {
         let originalURL = "https://careers.example.com/jobs/postings/456"
         let finalURL = "https://careers.example.com/careers/search"
         MockURLProtocol.handlers = [(originalURL, { _ in
             makeResponse(url: finalURL, status: 200, body: "Data Engineer posting here")
         })]
-        let result = await AvailabilityChecker.checkURL(
-            URL(string: originalURL)!,
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: originalURL)),
             title: "Data Engineer",
             session: session
         )
-        guard case .gone(let reason) = result else { XCTFail("Expected .gone"); return }
+        guard case let .gone(reason) = result else { XCTFail("Expected .gone"); return }
         XCTAssertTrue(reason.contains("redirected"), "reason: \(reason)")
     }
 
-    func testAvailableForCrossDomainRedirectWithTitle() async {
+    func testAvailableForCrossDomainRedirectWithTitle() async throws {
         let originalURL = "https://board.example.com/job/123"
         let finalURL = "https://company.example.org/jobs/123"
         MockURLProtocol.handlers = [(originalURL, { _ in
             makeResponse(url: finalURL, status: 200, body: "Senior Software Engineer Role open position apply now")
         })]
-        let result = await AvailabilityChecker.checkURL(
-            URL(string: originalURL)!,
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: originalURL)),
             title: "Senior Software Engineer Role",
             session: session
         )
-        if case .gone(let goneReason) = result { XCTFail("Expected .available but got .gone(\(goneReason))") }
+        if case let .gone(goneReason) = result { XCTFail("Expected .available but got .gone(\(goneReason))") }
     }
 
-    func testGoneForLevelsFyiJobsPageRedirect() async {
+    func testGoneForLevelsFyiJobsPageRedirect() async throws {
         let originalURL = "https://www.levels.fyi/jobs/title/technical-program-manager?jobId=138073367340032710"
         let finalURL = "https://www.levels.fyi/jobs/title/technical-program-manager"
         MockURLProtocol.handlers = [(originalURL, { _ in
             makeResponse(url: finalURL, status: 200, body: "Technical Program Manager Jobs Search filters")
         })]
-        let result = await AvailabilityChecker.checkURL(
-            URL(string: originalURL)!,
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: originalURL)),
             title: "Sr. Staff Technical Program Manager - DoW",
             session: session
         )
-        guard case .gone(let reason) = result else { XCTFail("Expected .gone"); return }
+        guard case let .gone(reason) = result else { XCTFail("Expected .gone"); return }
         XCTAssertTrue(reason.contains("missing title"), "reason: \(reason)")
     }
 
     // MARK: Error handling
 
-    func testReturnsErrorOnNetworkFailure() async {
+    func testReturnsErrorOnNetworkFailure() {
         // No mock handler → MockURLProtocol default returns 200, but we can simulate error
         // by using an unreachable URL and a custom protocol that throws.
         // Instead, test via the .error case using a custom session that raises.
@@ -291,9 +305,11 @@ final class AvailabilityCheckerTitleTests: XCTestCase {
 
     func testBodyContainsTitleWorksForLongTitle() {
         XCTAssertTrue(AvailabilityChecker.bodyContainsTitle(
-            "Principal Technical Program Manager Apply now", title: "Principal Technical Program Manager"))
+            "Principal Technical Program Manager Apply now", title: "Principal Technical Program Manager"
+        ))
         XCTAssertFalse(AvailabilityChecker.bodyContainsTitle(
-            "Senior Product Manager Apply now", title: "Principal Technical Program Manager"))
+            "Senior Product Manager Apply now", title: "Principal Technical Program Manager"
+        ))
     }
 }
 
@@ -316,7 +332,12 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         store = nil
     }
 
-    func makeJobWithCapture(url: String, title: String, status: JobStatus = .saved, capturedAt: Date = Date()) throws -> Job {
+    func makeJobWithCapture(
+        url: String,
+        title: String,
+        status: JobStatus = .saved,
+        capturedAt: Date = Date()
+    ) throws -> Job {
         let context = ModelContext(container)
         let capture = Capture(url: url, pageTitle: title, rawHash: UUID().uuidString, capturedAt: capturedAt)
         let job = Job(title: title, status: status)
@@ -327,7 +348,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         return job
     }
 
-    func testCheckJobsReturnsZeroForNoJobs() async throws {
+    func testCheckJobsReturnsZeroForNoJobs() async {
         let result = await AvailabilityChecker.checkJobs([], store: store, session: session)
         XCTAssertEqual(result.checked, 0)
         XCTAssertEqual(result.unavailable, 0)
@@ -335,8 +356,16 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
     }
 
     func testCheckJobsSkipsArchivedAndNotAvailable() async throws {
-        let archived = try makeJobWithCapture(url: "https://example.com/job/a", title: "Archived Job", status: .archived)
-        let notAvail = try makeJobWithCapture(url: "https://example.com/job/b", title: "Not Available Job", status: .notAvailable)
+        let archived = try makeJobWithCapture(
+            url: "https://example.com/job/a",
+            title: "Archived Job",
+            status: .archived
+        )
+        let notAvail = try makeJobWithCapture(
+            url: "https://example.com/job/b",
+            title: "Not Available Job",
+            status: .notAvailable
+        )
 
         let result = await AvailabilityChecker.checkJobs([archived, notAvail], store: store, session: session)
         XCTAssertEqual(result.checked, 0) // All skipped.
@@ -344,8 +373,18 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
 
     func testCheckJobsMarksGoneJobAsNotAvailable() async throws {
         MockURLProtocol.handlers = [
-            ("check-gone.example.com", { _ in makeResponse(url: "https://check-gone.example.com/job/2", status: 404, body: "not found") }),
-            ("check-available.example.com", { _ in makeResponse(url: "https://check-available.example.com/job/1", status: 200, body: "Job posting available") })
+            (
+                "check-gone.example.com",
+                { _ in makeResponse(url: "https://check-gone.example.com/job/2", status: 404, body: "not found") }
+            ),
+            (
+                "check-available.example.com",
+                { _ in makeResponse(
+                    url: "https://check-available.example.com/job/1",
+                    status: 200,
+                    body: "Job posting available"
+                ) }
+            )
         ]
 
         let goodJob = try makeJobWithCapture(url: "https://check-available.example.com/job/1", title: "Good Job")
@@ -368,7 +407,10 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         // Stale job (captured 30 days ago).
         let staleDate = Date().addingTimeInterval(-30 * 86400)
         MockURLProtocol.handlers = [
-            ("stale.example.com", { _ in makeResponse(url: "https://stale.example.com/job/1", status: 404, body: "gone") })
+            (
+                "stale.example.com",
+                { _ in makeResponse(url: "https://stale.example.com/job/1", status: 404, body: "gone") }
+            )
         ]
 
         let staleJob = try makeJobWithCapture(
@@ -396,7 +438,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         _ = staleJob
     }
 
-    func testMaybeRunStaleCheckSkipsWhenDisabled() async throws {
+    func testMaybeRunStaleCheckSkipsWhenDisabled() async {
         let context = ModelContext(container)
         let settings = SettingsStore(modelContext: context)
         settings.setBool(false, forKey: SettingsKey.availabilityAutoCheckEnabled)
@@ -406,7 +448,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         XCTAssertEqual(result.reason, "disabled")
     }
 
-    func testMaybeRunStaleCheckSkipsWhenIntervalNotElapsed() async throws {
+    func testMaybeRunStaleCheckSkipsWhenIntervalNotElapsed() async {
         let context = ModelContext(container)
         let settings = SettingsStore(modelContext: context)
         settings.setBool(true, forKey: SettingsKey.availabilityAutoCheckEnabled)
@@ -418,7 +460,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         XCTAssertEqual(result.reason, "interval")
     }
 
-    func testMaybeRunStaleCheckRunsWhenEnabledAndIntervalElapsed() async throws {
+    func testMaybeRunStaleCheckRunsWhenEnabledAndIntervalElapsed() async {
         let context = ModelContext(container)
         let settings = SettingsStore(modelContext: context)
         settings.setBool(true, forKey: SettingsKey.availabilityAutoCheckEnabled)
@@ -433,4 +475,4 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
     }
 }
 
-// swiftlint:enable force_unwrapping line_length
+// swiftlint:enable force_unwrapping

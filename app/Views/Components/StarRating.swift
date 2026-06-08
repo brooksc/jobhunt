@@ -5,7 +5,7 @@ struct StarRating: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            ForEach(1...5, id: \.self) { star in
+            ForEach(1 ... 5, id: \.self) { star in
                 Image(systemName: starSymbol(for: star))
                     .font(.caption)
                     .foregroundStyle(starColor(for: star))

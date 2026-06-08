@@ -1,11 +1,11 @@
-import SwiftUI
 import JobhuntCore
+import SwiftUI
 
 struct Sidebar: View {
     var router: Router
     var theme: Theme
 
-    // Quick-filter status options shown as pills
+    /// Quick-filter status options shown as pills
     private let quickFilters: [(label: String, value: String?)] = [
         ("All", nil),
         ("Saved", JobStatus.saved.rawValue),

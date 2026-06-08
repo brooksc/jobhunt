@@ -2,7 +2,6 @@ import XCTest
 @testable import JobhuntCore
 
 final class FitScorerTests: XCTestCase {
-
     // MARK: - Helpers
 
     /// Build a full-weight dimension set with each value = score.
@@ -96,8 +95,20 @@ final class FitScorerTests: XCTestCase {
     }
 
     func testAllDomainGapKeywordsRecognized() {
-        let keywords = ["asic", "fpga", "rtl", "tapeout", "tape-out", "silicon",
-                        "emulation", "hyperscaler", "cloud service", "soc ", "vlsi", "gds"]
+        let keywords = [
+            "asic",
+            "fpga",
+            "rtl",
+            "tapeout",
+            "tape-out",
+            "silicon",
+            "emulation",
+            "hyperscaler",
+            "cloud service",
+            "soc ",
+            "vlsi",
+            "gds"
+        ]
         for keyword in keywords {
             let result = FitScorer.computeScore(
                 dimensions: allDimensions(100),
@@ -109,7 +120,7 @@ final class FitScorerTests: XCTestCase {
 
     func testPenaltyCappedAt50() {
         // 11 generic items × 5 = 55 → capped at 50
-        let notMet = (0..<11).map { "requirement \($0)" }
+        let notMet = (0 ..< 11).map { "requirement \($0)" }
         let result = FitScorer.computeScore(
             dimensions: allDimensions(100),
             requirementsNotMet: notMet
@@ -119,7 +130,7 @@ final class FitScorerTests: XCTestCase {
 
     func testPenaltyCappedAt50WithDomainGaps() {
         // 6 domain-gap items × 10 = 60 → capped at 50
-        let notMet = (0..<6).map { "requires fpga \($0)" }
+        let notMet = (0 ..< 6).map { "requires fpga \($0)" }
         let result = FitScorer.computeScore(
             dimensions: allDimensions(100),
             requirementsNotMet: notMet
@@ -129,7 +140,7 @@ final class FitScorerTests: XCTestCase {
 
     func testOverallFlooredAtZero() {
         // base = 10, penalty capped at 50 → 10 - 50 = -40 → floored to 0
-        let notMet = (0..<11).map { "requirement \($0)" }
+        let notMet = (0 ..< 11).map { "requirement \($0)" }
         let result = FitScorer.computeScore(
             dimensions: allDimensions(10),
             requirementsNotMet: notMet

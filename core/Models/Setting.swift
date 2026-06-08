@@ -14,7 +14,7 @@ public final class Setting {
     }
 }
 
-// Mirrors SETTINGS_DEFAULTS from server/db.js — keys only; defaults are in SettingsStore (task-035).
+/// Mirrors SETTINGS_DEFAULTS from server/db.js — keys only; defaults are in SettingsStore (task-035).
 public enum SettingsKey {
     public static let llmProvider = "llm_provider"
     public static let llmBaseURL = "llm_base_url"
@@ -49,7 +49,7 @@ public enum SettingsKey {
     public static let llmConsentOpenRouter = "llm_consent_openrouter"
     public static let llmConsentOpenAI = "llm_consent_openai"
 
-    // API key settings that must live in Keychain, not SwiftData (App Store hygiene).
+    /// API key settings that must live in Keychain, not SwiftData (App Store hygiene).
     public static let keychainKeys: Set<String> = [
         llmAPIKey, llmAPIKeyOpenAI, llmAPIKeyAnthropic,
         llmAPIKeyGoogle, llmAPIKeyOpenRouter, llmAPIKeyCustom

@@ -1,5 +1,5 @@
-import SwiftUI
 import JobhuntCore
+import SwiftUI
 
 struct ExtractionChip: View {
     let status: ExtractionStatus
@@ -29,21 +29,21 @@ struct ExtractionChip: View {
 private extension ExtractionStatus {
     var displayName: String {
         switch self {
-        case .pending: return "Pending"
-        case .running: return "Extracting"
-        case .succeeded: return "Extracted"
-        case .failed: return "Failed"
-        case .skipped: return "Skipped"
+        case .pending: "Pending"
+        case .running: "Extracting"
+        case .succeeded: "Extracted"
+        case .failed: "Failed"
+        case .skipped: "Skipped"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .pending: return "clock"
-        case .running: return "arrow.trianglehead.2.clockwise"
-        case .succeeded: return "checkmark.circle"
-        case .failed: return "xmark.circle"
-        case .skipped: return "forward.circle"
+        case .pending: "clock"
+        case .running: "arrow.trianglehead.2.clockwise"
+        case .succeeded: "checkmark.circle"
+        case .failed: "xmark.circle"
+        case .skipped: "forward.circle"
         }
     }
 }

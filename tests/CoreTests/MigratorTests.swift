@@ -1,7 +1,8 @@
-// swiftlint:disable line_length file_length cyclomatic_complexity function_body_length type_body_length
-import XCTest
 import SQLite3
 import SwiftData
+
+// swiftlint:disable file_length cyclomatic_complexity function_body_length type_body_length
+import XCTest
 @testable import JobhuntCore
 
 /// Tests for the JobhuntMigrator logic.
@@ -10,7 +11,6 @@ import SwiftData
 /// inserting fixture rows, running the migration helpers, and asserting the resulting SwiftData
 /// context contains the expected models.
 final class MigratorTests: XCTestCase {
-
     // MARK: - Helpers
 
     /// Creates a temporary SQLite DB at a temp path, runs `setup`, returns the path.
@@ -275,7 +275,7 @@ final class MigratorTests: XCTestCase {
     }
 
     /// An empty legacy DB (all tables present, no rows) should produce a 0-row SwiftData store.
-    func testEmptyDBProducesZeroRows() async throws {
+    func testEmptyDBProducesZeroRows() throws {
         let dbPath = try makeTempDB { dbHandle in createMinimalSchema(dbHandle) }
         defer { try? FileManager.default.removeItem(atPath: dbPath) }
 
@@ -294,7 +294,11 @@ final class MigratorTests: XCTestCase {
         let outputURL = URL(fileURLWithPath: outputPath)
         let schema = Schema(SchemaV1.models)
         let config = ModelConfiguration(schema: schema, url: outputURL, cloudKitDatabase: .none)
-        let container = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
+        let container = try ModelContainer(
+            for: schema,
+            migrationPlan: JobhuntMigrationPlan.self,
+            configurations: config
+        )
         let context = ModelContext(container)
 
         // Use the same migration helpers (replicated inline for testability)
@@ -312,7 +316,7 @@ final class MigratorTests: XCTestCase {
             while sqlite3_step(stmt) == SQLITE_ROW {
                 var row: [String: String?] = [:]
                 let count = sqlite3_column_count(stmt)
-                for col in 0..<count {
+                for col in 0 ..< count {
                     let name = String(cString: sqlite3_column_name(stmt, col))
                     if sqlite3_column_type(stmt, col) == SQLITE_NULL {
                         row[name] = .some(nil)
@@ -350,7 +354,7 @@ final class MigratorTests: XCTestCase {
     }
 
     /// A DB with fixture rows should produce matching row counts in the SwiftData store.
-    func testFixtureDBRowCountsMatch() async throws {
+    func testFixtureDBRowCountsMatch() throws {
         let now = "2024-01-15T12:00:00Z"
 
         let dbPath = try makeTempDB { dbHandle in
@@ -416,10 +420,14 @@ final class MigratorTests: XCTestCase {
         let outputURL = URL(fileURLWithPath: outputPath)
         let schema = Schema(SchemaV1.models)
         let config = ModelConfiguration(schema: schema, url: outputURL, cloudKitDatabase: .none)
-        let container = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
+        let container = try ModelContainer(
+            for: schema,
+            migrationPlan: JobhuntMigrationPlan.self,
+            configurations: config
+        )
         let context = ModelContext(container)
 
-        // Replicate the migration logic inline for the key tables
+        /// Replicate the migration logic inline for the key tables
         func queryRows(_ dbHandle: OpaquePointer, _ sql: String) -> [[String: String?]] {
             var stmt: OpaquePointer?
             guard sqlite3_prepare_v2(dbHandle, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
@@ -428,7 +436,7 @@ final class MigratorTests: XCTestCase {
             while sqlite3_step(stmt) == SQLITE_ROW {
                 var row: [String: String?] = [:]
                 let colCount = sqlite3_column_count(stmt)
-                for col in 0..<colCount {
+                for col in 0 ..< colCount {
                     let name = String(cString: sqlite3_column_name(stmt, col))
                     if sqlite3_column_type(stmt, col) == SQLITE_NULL {
                         row[name] = .some(nil)
@@ -447,14 +455,27 @@ final class MigratorTests: XCTestCase {
             guard let outer = row[key] else { return nil }
             return outer
         }
-        func req(_ row: [String: String?], _ key: String, fallback: String = "") -> String { str(row, key) ?? fallback }
-        func intVal(_ row: [String: String?], _ key: String) -> Int? { str(row, key).flatMap(Int.init) }
-        func boolVal(_ row: [String: String?], _ key: String) -> Bool { str(row, key).flatMap(Int.init).map { $0 != 0 } ?? false }
+        func req(_ row: [String: String?], _ key: String, fallback: String = "") -> String {
+            str(row, key) ?? fallback
+        }
+        func intVal(_ row: [String: String?], _ key: String) -> Int? {
+            str(row, key).flatMap(Int.init)
+        }
+        func boolVal(
+            _ row: [String: String?],
+            _ key: String
+        ) -> Bool {
+            str(row, key).flatMap(Int.init).map { $0 != 0 } ?? false
+        }
 
         let isoBasic = ISO8601DateFormatter()
         isoBasic.formatOptions = [.withInternetDateTime]
-        func parseDate(_ dateStr: String?) -> Date? { dateStr.flatMap { isoBasic.date(from: $0) } }
-        func dateOrNow(_ row: [String: String?], _ key: String) -> Date { parseDate(row[key] ?? nil) ?? Date() }
+        func parseDate(_ dateStr: String?) -> Date? {
+            dateStr.flatMap { isoBasic.date(from: $0) }
+        }
+        func dateOrNow(_ row: [String: String?], _ key: String) -> Date {
+            parseDate(row[key] ?? nil) ?? Date()
+        }
 
         // Migrate captures
         for row in queryRows(srcDB, "SELECT * FROM captures") {
@@ -467,7 +488,9 @@ final class MigratorTests: XCTestCase {
         }
 
         var captureMap: [String: Capture] = [:]
-        for cap in (try? context.fetch(FetchDescriptor<Capture>())) ?? [] { captureMap[cap.id] = cap }
+        for cap in (try? context.fetch(FetchDescriptor<Capture>())) ?? [] {
+            captureMap[cap.id] = cap
+        }
 
         // Migrate jobs
         for row in queryRows(srcDB, "SELECT * FROM jobs") {
@@ -491,13 +514,19 @@ final class MigratorTests: XCTestCase {
         }
 
         var jobMap: [String: Job] = [:]
-        for jobFetched in (try? context.fetch(FetchDescriptor<Job>())) ?? [] { jobMap[jobFetched.id] = jobFetched }
+        for jobFetched in (try? context.fetch(FetchDescriptor<Job>())) ?? [] {
+            jobMap[jobFetched.id] = jobFetched
+        }
 
         // Migrate events
         for row in queryRows(srcDB, "SELECT * FROM events") {
             guard let id = str(row, "id"), let jobId = str(row, "job_id") else { continue }
-            let evObj = JobEvent(id: id, eventType: req(row, "event_type"), occurredAt: dateOrNow(row, "occurred_at"),
-                              createdAt: dateOrNow(row, "created_at"))
+            let evObj = JobEvent(
+                id: id,
+                eventType: req(row, "event_type"),
+                occurredAt: dateOrNow(row, "occurred_at"),
+                createdAt: dateOrNow(row, "created_at")
+            )
             evObj.job = jobMap[jobId]
             context.insert(evObj)
         }
@@ -559,7 +588,11 @@ final class MigratorTests: XCTestCase {
         let job = try XCTUnwrap(jobs.first)
         XCTAssertEqual(job.jobNumber, 42, "jobNumber should be preserved verbatim")
         XCTAssertEqual(job.company, "Acme Corp", "company should be preserved")
-        XCTAssertEqual(job.extractedJSON, "{\"title\":\"Senior Engineer\"}", "extractedJSON should be preserved verbatim")
+        XCTAssertEqual(
+            job.extractedJSON,
+            "{\"title\":\"Senior Engineer\"}",
+            "extractedJSON should be preserved verbatim"
+        )
         XCTAssertEqual(job.status, .saved)
 
         let capture = try XCTUnwrap(captures.first)
@@ -574,4 +607,4 @@ final class MigratorTests: XCTestCase {
     }
 }
 
-// swiftlint:enable line_length file_length cyclomatic_complexity function_body_length type_body_length
+// swiftlint:enable file_length cyclomatic_complexity function_body_length type_body_length

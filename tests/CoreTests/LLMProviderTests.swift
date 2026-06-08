@@ -11,8 +11,13 @@ final class LLMMockURLProtocol: URLProtocol {
     static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
     static var capturedRequests: [URLRequest] = []
 
-    override static func canInit(with request: URLRequest) -> Bool { true }
-    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override static func canInit(with _: URLRequest) -> Bool {
+        true
+    }
+
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         LLMMockURLProtocol.capturedRequests.append(request)
@@ -203,7 +208,7 @@ final class AnthropicProviderTests: XCTestCase {
         )
         let result = try await provider.complete(req)
 
-        let captured = LLMMockURLProtocol.capturedRequests.first!
+        let captured = try XCTUnwrap(LLMMockURLProtocol.capturedRequests.first)
         XCTAssertEqual(captured.url?.absoluteString, "https://api.anthropic.com/v1/messages")
         XCTAssertEqual(captured.value(forHTTPHeaderField: "x-api-key"), "ant-key")
         XCTAssertEqual(captured.value(forHTTPHeaderField: "anthropic-version"), "2023-06-01")
@@ -269,7 +274,7 @@ final class GoogleProviderTests: XCTestCase {
         )
         _ = try await provider.complete(req)
 
-        let url = LLMMockURLProtocol.capturedRequests.first!.url!
+        let url = try XCTUnwrap(LLMMockURLProtocol.capturedRequests.first?.url)
         XCTAssertTrue(url.absoluteString.contains("gemini-2.5-flash:generateContent"))
         XCTAssertTrue(url.absoluteString.contains("key=gkey"))
     }
@@ -364,7 +369,7 @@ final class OpenRouterProviderTests: XCTestCase {
         _ = try await provider.complete(
             ChatRequest(messages: [ChatMessage(role: "user", content: "go")], model: "openai/gpt-4o")
         )
-        let captured = LLMMockURLProtocol.capturedRequests.first!
+        let captured = try XCTUnwrap(LLMMockURLProtocol.capturedRequests.first)
         XCTAssertEqual(captured.url?.absoluteString, "https://openrouter.ai/api/v1/chat/completions")
         XCTAssertNotNil(captured.value(forHTTPHeaderField: "HTTP-Referer"))
         XCTAssertNotNil(captured.value(forHTTPHeaderField: "X-Title"))
@@ -415,7 +420,7 @@ final class FoundationModelsProviderTests: XCTestCase {
     func testIsAvailableReturnsBool() {
         // Just assert it doesn't crash and returns a Bool
         let available = FoundationModelsProvider.isAvailable()
-        XCTAssertNotNil(available)  // always passes — value varies per OS
+        XCTAssertNotNil(available) // always passes — value varies per OS
     }
 
     func testConcurrencyLimitIsOne() {
@@ -435,7 +440,7 @@ final class FoundationModelsProviderTests: XCTestCase {
             } catch {
                 // Expected — unavailable error
                 XCTAssertTrue(error.localizedDescription.lowercased().contains("macOS 26".lowercased()) ||
-                              error.localizedDescription.lowercased().contains("unavailable"))
+                    error.localizedDescription.lowercased().contains("unavailable"))
             }
         } else {
             // On macOS 26+ the call may succeed or fail — both are OK for this test
@@ -522,7 +527,7 @@ final class LLMProviderErrorTests: XCTestCase {
             )
             XCTFail("Should have thrown")
         } catch let err as LLMProviderError {
-            if case .httpError(let code, _) = err {
+            if case let .httpError(code, _) = err {
                 XCTAssertEqual(code, 500)
             } else {
                 XCTFail("Wrong error type: \(err)")

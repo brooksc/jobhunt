@@ -1,6 +1,6 @@
-import SwiftUI
-import SwiftData
 import JobhuntCore
+import SwiftData
+import SwiftUI
 
 // MARK: - Due date bucket
 
@@ -30,14 +30,16 @@ private enum StatusFilterOption: String, CaseIterable, Identifiable {
     case applied = "Applied"
     case interview = "Interview"
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     func matches(_ status: JobStatus) -> Bool {
         switch self {
-        case .all: return true
-        case .active: return status == .saved
-        case .applied: return status == .applied
-        case .interview: return status == .interview
+        case .all: true
+        case .active: status == .saved
+        case .applied: status == .applied
+        case .interview: status == .interview
         }
     }
 }
@@ -47,7 +49,9 @@ private enum StatusFilterOption: String, CaseIterable, Identifiable {
 struct NeedsActionView: View {
     @Environment(Router.self) private var router
     @Environment(AppServices.self) private var appServices
-    private var jobService: JobService { appServices.jobService }
+    private var jobService: JobService {
+        appServices.jobService
+    }
 
     @Query(
         filter: #Predicate<JobAction> { $0.completedAt == nil },
@@ -59,7 +63,7 @@ struct NeedsActionView: View {
     @State private var isSnoozeAllConfirming: Bool = false
     @State private var errorMessage: String?
 
-    // Actions that are not snoozed into the future
+    /// Actions that are not snoozed into the future
     private var activeActions: [JobAction] {
         let now = Date()
         return actions.filter { action in
@@ -246,10 +250,8 @@ struct NeedsActionView: View {
 
     // MARK: - Section headers
 
-    @ViewBuilder
     private func sectionHeader(_ title: String, color: Color, count: Int) -> some View {
-        Section {
-        } header: {
+        Section {} header: {
             HStack {
                 Image(systemName: "circle.fill")
                     .font(.system(size: 8))
@@ -269,7 +271,6 @@ struct NeedsActionView: View {
 
     // MARK: - Swipe / context menu actions
 
-    @ViewBuilder
     private func completeButton(for action: JobAction) -> some View {
         Button {
             complete(action)
@@ -279,7 +280,6 @@ struct NeedsActionView: View {
         .tint(.green)
     }
 
-    @ViewBuilder
     private func snoozeButton(for action: JobAction) -> some View {
         Button {
             snooze(action)
@@ -289,7 +289,6 @@ struct NeedsActionView: View {
         .tint(.orange)
     }
 
-    @ViewBuilder
     private func viewJobButton(for action: JobAction) -> some View {
         Button {
             viewJob(for: action)
@@ -324,7 +323,6 @@ struct NeedsActionView: View {
 
     // MARK: - Empty state
 
-    @ViewBuilder
     private func emptyState(icon: String, title: String, subtitle: String) -> some View {
         VStack(spacing: 12) {
             Image(systemName: icon)
@@ -394,7 +392,9 @@ struct NeedsActionView: View {
 private struct ActionRow: View {
     let action: JobAction
 
-    private var job: Job? { action.job }
+    private var job: Job? {
+        action.job
+    }
 
     private var dueDateText: String {
         let cal = Calendar.current
@@ -411,10 +411,10 @@ private struct ActionRow: View {
 
     private var dueDateColor: Color {
         switch action.bucket {
-        case .overdue: return .red
-        case .today: return .orange
-        case .upcoming: return .secondary
-        case .noDueDate: return .secondary
+        case .overdue: .red
+        case .today: .orange
+        case .upcoming: .secondary
+        case .noDueDate: .secondary
         }
     }
 

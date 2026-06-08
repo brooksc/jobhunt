@@ -7,9 +7,9 @@
 // NOT shipped in the app. DMG scheme only.
 
 import Foundation
+import JobhuntCore
 import SQLite3
 import SwiftData
-import JobhuntCore
 
 // MARK: - Argument Parsing
 
@@ -97,7 +97,7 @@ func queryRows(_ db: DBHandle, _ sql: String) -> [[String: String?]] {
     while sqlite3_step(stmt) == SQLITE_ROW {
         var row: [String: String?] = [:]
         let count = sqlite3_column_count(stmt)
-        for col in 0..<count {
+        for col in 0 ..< count {
             let name = String(cString: sqlite3_column_name(stmt, col))
             if sqlite3_column_type(stmt, col) == SQLITE_NULL {
                 row[name] = .some(nil)
@@ -137,18 +137,36 @@ func parseDateOrNow(_ s: String?) -> Date {
 
 // MARK: - Row field helpers
 
-extension Dictionary where Key == String, Value == String? {
-    // Returns the value, flattening the double-optional from subscripting [Key: Value?]
+extension [String: String?] {
+    /// Returns the value, flattening the double-optional from subscripting [Key: Value?]
     func str(_ key: String) -> String? {
         guard let outer = self[key] else { return nil }
         return outer
     }
-    func req(_ key: String, fallback: String = "") -> String { str(key) ?? fallback }
-    func int(_ key: String) -> Int? { str(key).flatMap(Int.init) }
-    func dbl(_ key: String) -> Double? { str(key).flatMap(Double.init) }
-    func bool(_ key: String) -> Bool { str(key).flatMap(Int.init).map { $0 != 0 } ?? false }
-    func date(_ key: String) -> Date? { parseDate(str(key)) }
-    func dateOrNow(_ key: String) -> Date { parseDateOrNow(str(key)) }
+
+    func req(_ key: String, fallback: String = "") -> String {
+        str(key) ?? fallback
+    }
+
+    func int(_ key: String) -> Int? {
+        str(key).flatMap(Int.init)
+    }
+
+    func dbl(_ key: String) -> Double? {
+        str(key).flatMap(Double.init)
+    }
+
+    func bool(_ key: String) -> Bool {
+        str(key).flatMap(Int.init).map { $0 != 0 } ?? false
+    }
+
+    func date(_ key: String) -> Date? {
+        parseDate(str(key))
+    }
+
+    func dateOrNow(_ key: String) -> Date {
+        parseDateOrNow(str(key))
+    }
 }
 
 // MARK: - Migration Summary
@@ -203,7 +221,9 @@ func migrate(src: DBHandle, context: ModelContext) -> MigrationSummary {
     // Build capture lookup for linking jobs
     var captureMap: [String: Capture] = [:]
     if let all = try? context.fetch(FetchDescriptor<Capture>()) {
-        for c in all { captureMap[c.id] = c }
+        for c in all {
+            captureMap[c.id] = c
+        }
     }
 
     // jobs
@@ -254,7 +274,9 @@ func migrate(src: DBHandle, context: ModelContext) -> MigrationSummary {
     // Build job lookup for linking related rows
     var jobMap: [String: Job] = [:]
     if let all = try? context.fetch(FetchDescriptor<Job>()) {
-        for j in all { jobMap[j.id] = j }
+        for j in all {
+            jobMap[j.id] = j
+        }
     }
 
     // events (legacy table name is "events", mapped to JobEvent)

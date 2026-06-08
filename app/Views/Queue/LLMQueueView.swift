@@ -1,6 +1,6 @@
-import SwiftUI
-import SwiftData
 import JobhuntCore
+import SwiftData
+import SwiftUI
 
 // MARK: - Filter enums
 
@@ -22,49 +22,52 @@ private enum StatusFilter: String, CaseIterable {
 
 struct LLMQueueView: View {
     // MARK: Dependencies
+
     let queueActor: QueueActor
     let settings: SettingsStore
 
     // MARK: Query — all requests, newest first
+
     @Query(sort: \LLMRequest.createdAt, order: .reverse)
     private var allRequests: [LLMRequest]
 
     // MARK: Filter state
+
     @State private var typeFilter: TypeFilter = .all
     @State private var statusFilter: StatusFilter = .all
 
     // MARK: Selection
+
     @State private var selection: Set<String> = []
 
     // MARK: Pause state (mirrors settings, kept in sync via event stream)
+
     @State private var isPaused: Bool = false
 
     // MARK: Expanded rows (showing attempt detail)
+
     @State private var expandedIDs: Set<String> = []
 
     // MARK: Error toast
+
     @State private var errorMessage: String?
 
     // MARK: - Computed
 
     private var filteredRequests: [LLMRequest] {
         allRequests.filter { req in
-            let typeOK: Bool = {
-                switch typeFilter {
-                case .all: return true
-                case .extract: return req.requestType == .extract
-                case .fit: return req.requestType == .fit
-                }
-            }()
-            let statusOK: Bool = {
-                switch statusFilter {
-                case .all: return true
-                case .queued: return req.status == .queued
-                case .running: return req.status == .running
-                case .succeeded: return req.status == .succeeded
-                case .failed: return req.status == .failed || req.status == .retryExhausted
-                }
-            }()
+            let typeOK: Bool = switch typeFilter {
+            case .all: true
+            case .extract: req.requestType == .extract
+            case .fit: req.requestType == .fit
+            }
+            let statusOK: Bool = switch statusFilter {
+            case .all: true
+            case .queued: req.status == .queued
+            case .running: req.status == .running
+            case .succeeded: req.status == .succeeded
+            case .failed: req.status == .failed || req.status == .retryExhausted
+            }
             return typeOK && statusOK
         }
     }
@@ -267,12 +270,12 @@ struct LLMQueueView: View {
 
     private func statusInfo(_ status: LLMRequestStatus) -> (String, Color) {
         switch status {
-        case .queued: return ("Queued", .blue)
-        case .running: return ("Running", .green)
-        case .succeeded: return ("Done", .green)
-        case .failed: return ("Failed", .red)
-        case .retryExhausted: return ("Exhausted", .red)
-        case .cancelled: return ("Cancelled", .secondary)
+        case .queued: ("Queued", .blue)
+        case .running: ("Running", .green)
+        case .succeeded: ("Done", .green)
+        case .failed: ("Failed", .red)
+        case .retryExhausted: ("Exhausted", .red)
+        case .cancelled: ("Cancelled", .secondary)
         }
     }
 

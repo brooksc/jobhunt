@@ -1,4 +1,3 @@
-// swiftlint:disable line_length
 import Foundation
 
 /// Apple Foundation Models provider — calls LanguageModelSession in-process.
@@ -40,7 +39,7 @@ public final class FoundationModelsProvider: LLMProvider, @unchecked Sendable {
         let systemContent = request.messages.first(where: { $0.role == "system" })?.content
             ?? "You are a helpful assistant. Follow the user's instructions precisely."
         let userMsgs = request.messages.filter { $0.role == "user" }
-        let prompt = userMsgs.map { $0.content }.joined(separator: "\n")
+        let prompt = userMsgs.map(\.content).joined(separator: "\n")
 
         // Use the FoundationModels framework (macOS 26+).
         // Dynamic symbol lookup avoids a hard compile-time framework dependency
@@ -103,7 +102,8 @@ enum FoundationModelsBridge {
         // Call respond(to:) — this is async in the real API, so we use a callback shim
         let respondSel = NSSelectorFromString("respondTo:completionHandler:")
         guard initializedSession.responds(to: respondSel) else {
-            throw LLMProviderError.unavailable(reason: "LanguageModelSession does not respond to respondTo:completionHandler:")
+            throw LLMProviderError
+                .unavailable(reason: "LanguageModelSession does not respond to respondTo:completionHandler:")
         }
 
         return try await withCheckedThrowingContinuation { continuation in
@@ -122,4 +122,3 @@ enum FoundationModelsBridge {
         }
     }
 }
-// swiftlint:enable line_length

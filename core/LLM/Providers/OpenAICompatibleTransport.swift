@@ -6,14 +6,13 @@ import Foundation
 /// Mirrors postOpenAICompatibleCompletion() from server/extract.js including
 /// the json_schema → json_object → text format-negotiation ladder.
 enum OpenAICompatibleTransport {
-
     /// Sends a chat-completion request using the negotiation ladder.
     /// On HTTP 400, tries the next format level; throws on other errors.
     static func complete(
         request: ChatRequest,
         baseURL: String,
         apiKey: String,
-        providerID: String,
+        providerID _: String,
         extraHeaders: [String: String] = [:],
         session: URLSession = .shared,
         timeoutSeconds: Int = 300
@@ -22,11 +21,13 @@ enum OpenAICompatibleTransport {
             throw LLMProviderError.httpError(statusCode: 0, body: "Invalid base URL: \(baseURL)")
         }
 
-        var headers: [String: String] = ["Content-Type": "application/json"]
+        var headers = ["Content-Type": "application/json"]
         if !apiKey.isEmpty {
             headers["Authorization"] = "Bearer \(apiKey)"
         }
-        for (headerKey, headerVal) in extraHeaders { headers[headerKey] = headerVal }
+        for (headerKey, headerVal) in extraHeaders {
+            headers[headerKey] = headerVal
+        }
 
         // Build the format negotiation ladder: preferred → json_object → nil (text)
         var formats: [ResponseFormat?] = [nil, nil, nil]
@@ -47,7 +48,9 @@ enum OpenAICompatibleTransport {
             var urlRequest = URLRequest(url: url)
             urlRequest.httpMethod = "POST"
             urlRequest.timeoutInterval = Double(timeoutSeconds)
-            for (headerKey, headerVal) in headers { urlRequest.setValue(headerVal, forHTTPHeaderField: headerKey) }
+            for (headerKey, headerVal) in headers {
+                urlRequest.setValue(headerVal, forHTTPHeaderField: headerKey)
+            }
             urlRequest.httpBody = body
 
             let (data, response) = try await session.data(for: urlRequest)
@@ -65,7 +68,7 @@ enum OpenAICompatibleTransport {
                 let body = String(data: data, encoding: .utf8) ?? ""
                 throw LLMProviderError.httpError(statusCode: 429, body: body)
             }
-            guard (200..<300).contains(http.statusCode) else {
+            guard (200 ..< 300).contains(http.statusCode) else {
                 let body = String(data: data, encoding: .utf8) ?? ""
                 throw LLMProviderError.httpError(statusCode: http.statusCode, body: body)
             }
@@ -107,7 +110,7 @@ enum OpenAICompatibleTransport {
 
     static func responseFormatJSON(_ fmt: ResponseFormat) -> [String: Any] {
         switch fmt {
-        case .jsonSchema(let name, let schema):
+        case let .jsonSchema(name, schema):
             // Parse schema string back to JSON object for embedding
             let schemaObj = (try? JSONSerialization.jsonObject(with: Data(schema.utf8))) ?? [String: Any]()
             return [
@@ -151,4 +154,5 @@ struct OpenAIChatResponse: Decodable {
         }
     }
 }
+
 // swiftlint:enable cyclomatic_complexity function_body_length nesting

@@ -1,6 +1,7 @@
 import Foundation
 
 // MARK: - DashboardMetrics
+
 // Pure helpers — no SwiftData, no side effects. Ported from counts.js buildDailyActivity.
 
 public enum DashboardMetrics {

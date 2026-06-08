@@ -1,6 +1,6 @@
-import SwiftUI
-import SwiftData
 import JobhuntCore
+import SwiftData
+import SwiftUI
 
 struct DebugTab: View {
     let settings: SettingsStore
@@ -106,7 +106,7 @@ struct DebugTab: View {
                         get: { settings.int(forKey: SettingsKey.availabilityAutoCheckIntervalDays) },
                         set: { settings.setInt($0, forKey: SettingsKey.availabilityAutoCheckIntervalDays) }
                     ),
-                    in: 1...30
+                    in: 1 ... 30
                 )
             }
 

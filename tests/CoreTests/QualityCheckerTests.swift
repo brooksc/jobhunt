@@ -1,12 +1,11 @@
-import XCTest
 import SwiftData
+import XCTest
 @testable import JobhuntCore
 
 final class QualityCheckerTests: XCTestCase {
-
     // MARK: - testMissingCompany
 
-    func testMissingCompany() throws {
+    func testMissingCompany() {
         let job = Job(company: nil, title: "Engineer", location: "Remote")
         job.remoteType = .remote
         job.salaryMin = 100_000
@@ -17,28 +16,28 @@ final class QualityCheckerTests: XCTestCase {
         XCTAssertFalse(kinds.contains(.missingTitle), "Should not flag title when present")
     }
 
-    func testMissingCompanyEmptyString() throws {
+    func testMissingCompanyEmptyString() {
         let job = Job(company: "", title: "Engineer", location: "SF")
         job.remoteType = .onsite
-        job.salaryMin = 80_000
+        job.salaryMin = 80000
         job.extractionStatus = .succeeded
 
         let kinds = QualityChecker.issues(for: job)
         XCTAssertTrue(kinds.contains(.missingCompany))
     }
 
-    func testMissingCompanyUnknownValue() throws {
+    func testMissingCompanyUnknownValue() {
         // "unknown" should count as missing
         let job = Job(company: "unknown", title: "Engineer", location: "SF")
         job.remoteType = .onsite
-        job.salaryMin = 80_000
+        job.salaryMin = 80000
         job.extractionStatus = .succeeded
 
         let kinds = QualityChecker.issues(for: job)
         XCTAssertTrue(kinds.contains(.missingCompany))
     }
 
-    func testNoIssuesWhenDataComplete() throws {
+    func testNoIssuesWhenDataComplete() {
         let job = Job(
             company: "Acme Corp",
             title: "Staff Engineer",
@@ -58,7 +57,7 @@ final class QualityCheckerTests: XCTestCase {
 
     // MARK: - testShortText
 
-    func testShortRawText() throws {
+    func testShortRawText() {
         // No capture → raw size = 0 < 1000
         let job = Job(company: "Acme", title: "Engineer", location: "Remote")
         job.remoteType = .remote
@@ -133,7 +132,7 @@ final class QualityCheckerTests: XCTestCase {
 
     // MARK: - testExtractionFailed
 
-    func testExtractionFailed() throws {
+    func testExtractionFailed() {
         let job = Job(
             company: "Acme",
             title: "Engineer",
@@ -148,7 +147,7 @@ final class QualityCheckerTests: XCTestCase {
         XCTAssertFalse(kinds.contains(.extractionPending))
     }
 
-    func testExtractionPending() throws {
+    func testExtractionPending() {
         let job = Job(
             company: "Acme",
             title: "Engineer",
@@ -163,7 +162,7 @@ final class QualityCheckerTests: XCTestCase {
         XCTAssertFalse(kinds.contains(.extractionFailed))
     }
 
-    func testExtractionSucceededNotFlagged() throws {
+    func testExtractionSucceededNotFlagged() {
         let job = Job(
             company: "Acme",
             title: "Engineer",
@@ -204,7 +203,7 @@ final class QualityCheckerTests: XCTestCase {
 
     // MARK: - testMissingWorkMode
 
-    func testMissingWorkModeWhenNil() throws {
+    func testMissingWorkModeWhenNil() {
         let job = Job(company: "Acme", title: "Engineer", location: "Remote")
         job.remoteType = nil
         job.salaryMin = 100_000
@@ -214,7 +213,7 @@ final class QualityCheckerTests: XCTestCase {
         XCTAssertTrue(kinds.contains(.missingWorkMode))
     }
 
-    func testMissingWorkModeWhenUnknown() throws {
+    func testMissingWorkModeWhenUnknown() {
         let job = Job(company: "Acme", title: "Engineer", location: "Remote")
         job.remoteType = .unknown
         job.salaryMin = 100_000
@@ -224,7 +223,7 @@ final class QualityCheckerTests: XCTestCase {
         XCTAssertTrue(kinds.contains(.missingWorkMode))
     }
 
-    func testWorkModeNotFlaggedWhenSet() throws {
+    func testWorkModeNotFlaggedWhenSet() {
         let job = Job(company: "Acme", title: "Engineer", location: "Remote")
         job.remoteType = .remote
         job.salaryMin = 100_000
@@ -236,7 +235,7 @@ final class QualityCheckerTests: XCTestCase {
 
     // MARK: - testMissingSalary
 
-    func testMissingSalaryWhenAllNil() throws {
+    func testMissingSalaryWhenAllNil() {
         let job = Job(company: "Acme", title: "Engineer", location: "Remote")
         job.remoteType = .remote
         job.extractionStatus = .succeeded
@@ -246,7 +245,7 @@ final class QualityCheckerTests: XCTestCase {
         XCTAssertTrue(kinds.contains(.missingSalary))
     }
 
-    func testSalaryNotFlaggedWhenMinSet() throws {
+    func testSalaryNotFlaggedWhenMinSet() {
         let job = Job(company: "Acme", title: "Engineer", location: "Remote", salaryMin: 120_000)
         job.remoteType = .remote
         job.extractionStatus = .succeeded
@@ -255,7 +254,7 @@ final class QualityCheckerTests: XCTestCase {
         XCTAssertFalse(kinds.contains(.missingSalary))
     }
 
-    func testSalaryNotFlaggedWhenNoteSet() throws {
+    func testSalaryNotFlaggedWhenNoteSet() {
         let job = Job(company: "Acme", title: "Engineer", location: "Remote", salaryNote: "Competitive")
         job.remoteType = .remote
         job.extractionStatus = .succeeded
@@ -266,7 +265,7 @@ final class QualityCheckerTests: XCTestCase {
 
     // MARK: - testStaleExtraction
 
-    func testStaleExtraction() throws {
+    func testStaleExtraction() {
         let job = Job(company: "Acme", title: "Engineer", location: "Remote", extractionStatus: .succeeded)
         job.remoteType = .remote
         job.salaryMin = 100_000
@@ -277,7 +276,7 @@ final class QualityCheckerTests: XCTestCase {
         XCTAssertTrue(kinds.contains(.staleExtraction), "30 days old should flag staleExtraction")
     }
 
-    func testNotStaleWhenRecent() throws {
+    func testNotStaleWhenRecent() {
         let job = Job(company: "Acme", title: "Engineer", location: "Remote", extractionStatus: .succeeded)
         job.remoteType = .remote
         job.salaryMin = 100_000

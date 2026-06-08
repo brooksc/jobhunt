@@ -1,10 +1,8 @@
-// swiftlint:disable force_unwrapping
 // MetrosTests.swift — tests for Metros utility
 import XCTest
 @testable import JobhuntCore
 
 final class MetrosTests: XCTestCase {
-
     // MARK: - parsePreferredMetros
 
     func testParsePreferredMetrosReturnsEmptyForNil() {
@@ -66,7 +64,7 @@ final class MetrosTests: XCTestCase {
     func testExpandMetrosDeduplicatesCities() {
         // Seattle appears only once even with multiple metros that overlap (none in this data, but verify no dups)
         let result = expandMetros("wa:seattle")
-        let seattleCount = result.filter { $0 == "Seattle" }.count
+        let seattleCount = result.count(where: { $0 == "Seattle" })
         XCTAssertEqual(seattleCount, 1)
     }
 
@@ -82,9 +80,9 @@ final class MetrosTests: XCTestCase {
 
     func testExpandMetrosAddsStateOnceForMultipleMetrosInSameState() {
         let result = expandMetros("ca:bay-area,ca:la")
-        let caCount = result.filter { $0 == "CA" }.count
+        let caCount = result.count(where: { $0 == "CA" })
         XCTAssertEqual(caCount, 1, "State abbreviation added only once per state")
-        let californiaCount = result.filter { $0 == "California" }.count
+        let californiaCount = result.count(where: { $0 == "California" })
         XCTAssertEqual(californiaCount, 1, "Full state name added only once per state")
     }
 
@@ -105,9 +103,9 @@ final class MetrosTests: XCTestCase {
         XCTAssertEqual(metroData["wa"]?.metros["seattle"]?.label, "Seattle Metro")
     }
 
-    func testMetroDataContainsBayArea() {
+    func testMetroDataContainsBayArea() throws {
         XCTAssertNotNil(metroData["ca"]?.metros["bay-area"])
-        XCTAssertTrue(metroData["ca"]!.metros["bay-area"]!.cities.contains("San Francisco"))
+        XCTAssertTrue(try XCTUnwrap(metroData["ca"]?.metros["bay-area"]?.cities.contains("San Francisco")))
     }
 
     func testStateAbbrevToFullMapping() {
@@ -116,5 +114,3 @@ final class MetrosTests: XCTestCase {
         XCTAssertEqual(stateAbbrevToFull["ny"], "New York")
     }
 }
-
-// swiftlint:enable force_unwrapping

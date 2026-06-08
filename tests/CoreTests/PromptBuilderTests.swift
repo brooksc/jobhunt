@@ -1,9 +1,7 @@
-// swiftlint:disable line_length
 import XCTest
 @testable import JobhuntCore
 
 final class PromptBuilderTests: XCTestCase {
-
     // MARK: - Extraction prompts
 
     func testExtractionPromptHasSystemAndUserMessages() {
@@ -65,7 +63,10 @@ final class PromptBuilderTests: XCTestCase {
         let repeatedAs = String(repeating: "a", count: LLMConstants.maxDescriptionChars)
         XCTAssertTrue(messages[1].content.contains(repeatedAs))
         // Should NOT contain the extra characters
-        XCTAssertFalse(messages[1].content.contains(String(repeating: "a", count: LLMConstants.maxDescriptionChars + 1)))
+        XCTAssertFalse(messages[1].content.contains(String(
+            repeating: "a",
+            count: LLMConstants.maxDescriptionChars + 1
+        )))
     }
 
     func testDescriptionUnderLimitNotTruncated() {
@@ -85,16 +86,33 @@ final class PromptBuilderTests: XCTestCase {
             pageTitle: "t"
         )
         let user = messages[1].content
-        let requiredKeys = ["company", "title", "location", "remote_type", "salary_min",
-                            "salary_max", "employment_type", "skills", "requirements",
-                            "nice_to_haves", "benefits", "application_url", "confidence"]
+        let requiredKeys = [
+            "company",
+            "title",
+            "location",
+            "remote_type",
+            "salary_min",
+            "salary_max",
+            "employment_type",
+            "skills",
+            "requirements",
+            "nice_to_haves",
+            "benefits",
+            "application_url",
+            "confidence"
+        ]
         for key in requiredKeys {
             XCTAssertTrue(user.contains(key), "Missing key: \(key)")
         }
     }
 
     func testLocationContextIncludedInPrompt() {
-        let ctx = LocationContext(preferredLocations: "Seattle, WA", allowRemote: true, allowHybrid: false, allowOnsite: true)
+        let ctx = LocationContext(
+            preferredLocations: "Seattle, WA",
+            allowRemote: true,
+            allowHybrid: false,
+            allowOnsite: true
+        )
         let messages = PromptBuilder.buildExtractionPrompt(
             description: "d",
             url: "u",
@@ -204,4 +222,3 @@ final class PromptBuilderTests: XCTestCase {
         XCTAssertGreaterThan(withCtx.extractChars, noCtx.extractChars)
     }
 }
-// swiftlint:enable line_length

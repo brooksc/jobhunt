@@ -1,6 +1,6 @@
 import Foundation
-import Observation
 import JobhuntCore
+import Observation
 
 @Observable
 final class OnboardingManager {

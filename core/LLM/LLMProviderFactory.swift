@@ -1,10 +1,9 @@
-// swiftlint:disable line_length nesting
+// swiftlint:disable nesting
 import Foundation
 
 /// Builds an LLMProvider from the current SettingsStore values.
 /// Mirrors makeExtractorFromSettings() / makeScorerFromSettings() in server/extract.js.
 public enum LLMProviderFactory {
-
     /// Returns the appropriate provider for the given settings.
     /// API keys are read from the Keychain via SettingsStore.
     public static func makeProvider(settings: SettingsStore, session: URLSession = .shared) -> any LLMProvider {
@@ -26,11 +25,23 @@ public enum LLMProviderFactory {
             return FoundationModelsProvider()
         case "custom":
             let baseURL = settings.llmBaseURL
-            return CustomProvider(baseURL: baseURL, apiKey: apiKey, model: model, timeoutSeconds: timeout, session: session)
+            return CustomProvider(
+                baseURL: baseURL,
+                apiKey: apiKey,
+                model: model,
+                timeoutSeconds: timeout,
+                session: session
+            )
         default:
             // Default: LM Studio (local OpenAI-compatible)
             let baseURL = settings.llmBaseURL
-            return LMStudioProvider(baseURL: baseURL, apiKey: apiKey, model: model, timeoutSeconds: timeout, session: session)
+            return LMStudioProvider(
+                baseURL: baseURL,
+                apiKey: apiKey,
+                model: model,
+                timeoutSeconds: timeout,
+                session: session
+            )
         }
     }
 
@@ -38,10 +49,10 @@ public enum LLMProviderFactory {
     /// Mirrors resolveProviderBaseUrl() from server/extract.js.
     public static func resolveBaseURL(provider: String, customBaseURL: String) -> String {
         switch provider {
-        case "openai":    return "https://api.openai.com"
+        case "openai": return "https://api.openai.com"
         case "openrouter": return "https://openrouter.ai/api"
         case "anthropic": return "https://api.anthropic.com"
-        case "google":    return "https://generativelanguage.googleapis.com"
+        case "google": return "https://generativelanguage.googleapis.com"
         default:
             let base = customBaseURL.isEmpty ? "http://127.0.0.1:1234" : customBaseURL
             return base.hasSuffix("/") ? String(base.dropLast()) : base
@@ -56,7 +67,7 @@ public enum LLMProviderFactory {
 public actor OpenRouterRotationPool {
     public static let shared = OpenRouterRotationPool()
 
-    private let ttl: TimeInterval = 3600  // 1 hour
+    private let ttl: TimeInterval = 3600 // 1 hour
     private var modelIDs: [String] = []
     private var fetchedAt: Date = .distantPast
     private var counter: Int = 0
@@ -64,7 +75,9 @@ public actor OpenRouterRotationPool {
     private init() {}
 
     /// Returns the current pool (may be stale — call `refresh` to update).
-    public var ids: [String] { modelIDs }
+    public var ids: [String] {
+        modelIDs
+    }
 
     /// Pick the next model round-robin.
     public func next() -> String? {
@@ -95,7 +108,7 @@ public actor OpenRouterRotationPool {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
         let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
             throw LLMProviderError.noResponse
         }
         let decoded = try JSONDecoder().decode(OpenRouterModelsResponse.self, from: data)
@@ -111,7 +124,8 @@ public actor OpenRouterRotationPool {
             guard isFree else { return nil }
 
             let supportedParams = model.supportedParameters ?? []
-            let hasStructured = supportedParams.contains("structured_outputs") || supportedParams.contains("response_format")
+            let hasStructured = supportedParams.contains("structured_outputs") || supportedParams
+                .contains("response_format")
             guard hasStructured else { return nil }
 
             // Text-only output check (exclude audio/image generation models)
@@ -155,4 +169,5 @@ private struct OpenRouterModel: Decodable {
         }
     }
 }
-// swiftlint:enable line_length nesting
+
+// swiftlint:enable nesting

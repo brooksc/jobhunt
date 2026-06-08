@@ -1,14 +1,14 @@
-import XCTest
 import SwiftData
-@testable import JobhuntServer
+import XCTest
 @testable import JobhuntCore
+@testable import JobhuntServer
 
 // MARK: - Stub LLM provider
 
 private struct NoOpProvider: LLMProvider {
     let id: String = "noop"
     let concurrencyLimit: Int = 1
-    func complete(_ request: ChatRequest) async throws -> ChatResponse {
+    func complete(_: ChatRequest) async throws -> ChatResponse {
         throw LLMProviderError.httpError(statusCode: 503, body: "no-op")
     }
 }
@@ -74,7 +74,7 @@ final class JobhuntServerTests: XCTestCase {
 
     func testPingEndpoint() async throws {
         // swiftlint:disable:next force_unwrapping
-        let url = URL(string: await baseURL() + "/api/ping")!
+        let url = await URL(string: baseURL() + "/api/ping")!
         let (data, response) = try await URLSession.shared.data(from: url)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 200)
@@ -88,7 +88,7 @@ final class JobhuntServerTests: XCTestCase {
 
     func testHealthEndpoint() async throws {
         // swiftlint:disable:next force_unwrapping
-        let url = URL(string: await baseURL() + "/health")!
+        let url = await URL(string: baseURL() + "/health")!
         let (data, response) = try await URLSession.shared.data(from: url)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 200)
@@ -99,7 +99,7 @@ final class JobhuntServerTests: XCTestCase {
 
     func testCaptureEndpoint() async throws {
         // swiftlint:disable:next force_unwrapping
-        let url = URL(string: await baseURL() + "/captures")!
+        let url = await URL(string: baseURL() + "/captures")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -123,7 +123,7 @@ final class JobhuntServerTests: XCTestCase {
 
     func testCaptureValidation_missingURL() async throws {
         // swiftlint:disable:next force_unwrapping
-        let url = URL(string: await baseURL() + "/captures")!
+        let url = await URL(string: baseURL() + "/captures")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -145,7 +145,7 @@ final class JobhuntServerTests: XCTestCase {
 
     func testCaptureValidation_missingText() async throws {
         // swiftlint:disable:next force_unwrapping
-        let url = URL(string: await baseURL() + "/captures")!
+        let url = await URL(string: baseURL() + "/captures")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -167,7 +167,7 @@ final class JobhuntServerTests: XCTestCase {
 
     func testCORSPreflight() async throws {
         // swiftlint:disable:next force_unwrapping
-        let url = URL(string: await baseURL() + "/captures")!
+        let url = await URL(string: baseURL() + "/captures")!
         var req = URLRequest(url: url)
         req.httpMethod = "OPTIONS"
         req.setValue("chrome-extension://abc123", forHTTPHeaderField: "Origin")
@@ -184,7 +184,7 @@ final class JobhuntServerTests: XCTestCase {
 
     func testNotFoundReturns404() async throws {
         // swiftlint:disable:next force_unwrapping
-        let url = URL(string: await baseURL() + "/api/nonexistent")!
+        let url = await URL(string: baseURL() + "/api/nonexistent")!
         let (_, response) = try await URLSession.shared.data(from: url)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 404)

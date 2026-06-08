@@ -5,7 +5,7 @@ struct HTTPResponse {
     let headers: [String: String]
     let body: Data
 
-    static func ok<T: Encodable>(_ value: T) -> HTTPResponse {
+    static func ok(_ value: some Encodable) -> HTTPResponse {
         let encoder = JSONEncoder()
         let data = (try? encoder.encode(value)) ?? Data("{}".utf8)
         return HTTPResponse(
@@ -48,13 +48,13 @@ struct HTTPResponse {
 
     private static func statusText(for code: Int) -> String {
         switch code {
-        case 200: return "OK"
-        case 201: return "Created"
-        case 204: return "No Content"
-        case 400: return "Bad Request"
-        case 404: return "Not Found"
-        case 500: return "Internal Server Error"
-        default: return "Unknown"
+        case 200: "OK"
+        case 201: "Created"
+        case 204: "No Content"
+        case 400: "Bad Request"
+        case 404: "Not Found"
+        case 500: "Internal Server Error"
+        default: "Unknown"
         }
     }
 }

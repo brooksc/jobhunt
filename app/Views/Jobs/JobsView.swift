@@ -1,6 +1,6 @@
-import SwiftUI
-import SwiftData
 import JobhuntCore
+import SwiftData
+import SwiftUI
 
 // MARK: - JobsView
 
@@ -9,7 +9,9 @@ struct JobsView: View {
     @Environment(Router.self) private var router
     @Environment(AppServices.self) private var appServices
 
-    private var jobService: JobService { appServices.jobService }
+    private var jobService: JobService {
+        appServices.jobService
+    }
 
     @Query(sort: \Job.createdAt, order: .reverse)
     private var allJobs: [Job]
@@ -20,7 +22,7 @@ struct JobsView: View {
     @State private var showFilterPopover = false
     @State private var showStatusPicker = false
 
-    // Status filter pills shown at top
+    /// Status filter pills shown at top
     private let statusPills: [(label: String, value: JobStatus?)] = [
         ("All", nil),
         ("Saved", .saved),
@@ -293,9 +295,11 @@ struct JobsView: View {
             .pickerStyle(.menu)
             .labelsHidden()
 
-            Toggle(filterState.sortAscending ? "Ascending" : "Descending",
-                   isOn: $filterState.sortAscending)
-                .font(.callout)
+            Toggle(
+                filterState.sortAscending ? "Ascending" : "Descending",
+                isOn: $filterState.sortAscending
+            )
+            .font(.callout)
         }
         .padding(16)
         .frame(minWidth: 200)
@@ -350,7 +354,7 @@ struct JobsView: View {
                 let qLow = q.lowercased()
                 let matchNum = qLow.hasPrefix("#") ? String(qLow.dropFirst()) : qLow
                 let textMatch = [job.company, job.title, job.location]
-                    .compactMap { $0 }
+                    .compactMap(\.self)
                     .joined(separator: " ")
                     .lowercased()
                     .contains(qLow)
@@ -401,8 +405,8 @@ struct JobsView: View {
 
     @ViewBuilder
     private func salaryText(_ job: Job) -> some View {
-        // swiftlint:disable:next line_length
-        let parts: [String] = [job.salaryMin.map { formatSalary($0) }, job.salaryMax.map { formatSalary($0) }].compactMap { $0 }
+        let parts: [String] = [job.salaryMin.map { formatSalary($0) }, job.salaryMax.map { formatSalary($0) }]
+            .compactMap(\.self)
         if parts.isEmpty {
             if let note = job.salaryNote {
                 Text(note).font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -422,7 +426,7 @@ struct JobsView: View {
     private func ratingView(_ rating: Int?) -> some View {
         if let rating, rating > 0 {
             HStack(spacing: 2) {
-                ForEach(1...5, id: \.self) { i in
+                ForEach(1 ... 5, id: \.self) { i in
                     Image(systemName: i <= rating ? "star.fill" : "star")
                         .font(.system(size: 9))
                         .foregroundStyle(i <= rating ? Color.yellow : Color.secondary.opacity(0.3))
@@ -461,14 +465,14 @@ struct JobsView: View {
 private extension JobsSortKey {
     var displayName: String {
         switch self {
-        case .jobNumber: return "Job #"
-        case .company: return "Company"
-        case .title: return "Title"
-        case .status: return "Status"
-        case .fitScore: return "Fit Score"
-        case .rating: return "Rating"
-        case .capturedAt: return "Date Captured"
-        case .extractedAt: return "Date Extracted"
+        case .jobNumber: "Job #"
+        case .company: "Company"
+        case .title: "Title"
+        case .status: "Status"
+        case .fitScore: "Fit Score"
+        case .rating: "Rating"
+        case .capturedAt: "Date Captured"
+        case .extractedAt: "Date Extracted"
         }
     }
 }

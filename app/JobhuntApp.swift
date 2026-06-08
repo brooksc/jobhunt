@@ -1,6 +1,6 @@
-import SwiftUI
-import SwiftData
 import JobhuntCore
+import SwiftData
+import SwiftUI
 
 @main
 struct JobhuntApp: App {
@@ -51,11 +51,11 @@ struct JobhuntApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             #if !MAS_BUILD
-            CommandGroup(after: .appInfo) {
-                Button("Check for Updates…") {
-                    SparkleUpdater.checkForUpdates()
+                CommandGroup(after: .appInfo) {
+                    Button("Check for Updates…") {
+                        SparkleUpdater.checkForUpdates()
+                    }
                 }
-            }
             #endif
         }
     }

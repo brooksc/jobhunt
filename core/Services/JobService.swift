@@ -1,6 +1,6 @@
+import CryptoKit
 import Foundation
 import SwiftData
-import CryptoKit
 
 // MARK: - Public types
 
@@ -86,13 +86,13 @@ public actor JobService {
         }
 
         // 2. Clean
-        let structuredData: [[String: Any]]
-        if let jsonStr = payload.structuredDataJSON,
-           let data = jsonStr.data(using: .utf8),
-           let parsed = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-            structuredData = parsed
+        let structuredData: [[String: Any]] = if let jsonStr = payload.structuredDataJSON,
+                                                 let data = jsonStr.data(using: .utf8),
+                                                 let parsed = try? JSONSerialization
+                                                 .jsonObject(with: data) as? [[String: Any]] {
+            parsed
         } else {
-            structuredData = []
+            []
         }
         let cleanedDescription = cleanDescription(
             selectedText: payload.selectedText ?? "",
@@ -132,8 +132,8 @@ public actor JobService {
             let canonicalURL = payload.canonicalURL
             if let dupCapture = existingCaptures.first(where: { cap in
                 cap.cleanedHash == cHash &&
-                cap.url != url &&
-                (cap.canonicalURL ?? "") != (canonicalURL ?? "")
+                    cap.url != url &&
+                    (cap.canonicalURL ?? "") != (canonicalURL ?? "")
             }) {
                 duplicateOfJobID = dupCapture.job?.id
             }
@@ -182,6 +182,7 @@ public actor JobService {
             isDuplicate: false
         )
     }
+
     // swiftlint:enable function_body_length
 
     // MARK: - Job mutations
@@ -343,7 +344,7 @@ public actor JobService {
                 }
             }
             // Delete via the job's inverse relationship
-            _ = review  // silence unused-variable warning; deletion happens via cascade or explicit delete
+            _ = review // silence unused-variable warning; deletion happens via cascade or explicit delete
             try await store.delete(DataQualityReview.self, predicate: nil)
         }
     }

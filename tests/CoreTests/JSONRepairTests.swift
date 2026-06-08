@@ -1,10 +1,8 @@
-// swiftlint:disable force_unwrapping
 // JSONRepairTests.swift — tests for JSONRepair utility
 import XCTest
 @testable import JobhuntCore
 
 final class JSONRepairTests: XCTestCase {
-
     // MARK: - extractJSON
 
     func testExtractJSONStripsJsonFence() {
@@ -27,21 +25,21 @@ final class JSONRepairTests: XCTestCase {
     func testRepairRemovesTrailingCommaInObject() throws {
         let input = "{\"key\": \"value\",}"
         let result = try repairJSON(input)
-        let data = result.data(using: .utf8)!
+        let data = try XCTUnwrap(result.data(using: .utf8))
         XCTAssertNotNil(try? JSONSerialization.jsonObject(with: data))
     }
 
     func testRepairRemovesTrailingCommaInArray() throws {
         let input = "[1, 2, 3,]"
         let result = try repairJSON(input)
-        let data = result.data(using: .utf8)!
+        let data = try XCTUnwrap(result.data(using: .utf8))
         XCTAssertNotNil(try? JSONSerialization.jsonObject(with: data))
     }
 
     func testRepairRemovesTrailingCommaWithWhitespace() throws {
         let input = "{\n  \"a\": 1,\n  \"b\": 2,\n}"
         let result = try repairJSON(input)
-        let data = result.data(using: .utf8)!
+        let data = try XCTUnwrap(result.data(using: .utf8))
         XCTAssertNotNil(try? JSONSerialization.jsonObject(with: data))
     }
 
@@ -50,8 +48,8 @@ final class JSONRepairTests: XCTestCase {
     func testRepairQuotesUnquotedKeys() throws {
         let input = "{name: \"Alice\", age: 30}"
         let result = try repairJSON(input)
-        let data = result.data(using: .utf8)!
-        let obj = (try JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        let data = try XCTUnwrap(result.data(using: .utf8))
+        let obj = try (JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         XCTAssertEqual(obj["name"] as? String, "Alice")
         XCTAssertEqual(obj["age"] as? Int, 30)
     }
@@ -61,8 +59,8 @@ final class JSONRepairTests: XCTestCase {
     func testRepairConvertsSingleQuotedStrings() throws {
         let input = "{'key': 'value'}"
         let result = try repairJSON(input)
-        let data = result.data(using: .utf8)!
-        let obj = (try JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        let data = try XCTUnwrap(result.data(using: .utf8))
+        let obj = try (JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         XCTAssertEqual(obj["key"] as? String, "value")
     }
 
@@ -71,8 +69,8 @@ final class JSONRepairTests: XCTestCase {
     func testRepairHandlesFencedJsonBlock() throws {
         let input = "```json\n{\"title\": \"Engineer\", \"salary\": 100000}\n```"
         let result = try repairJSON(input)
-        let data = result.data(using: .utf8)!
-        let obj = (try JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        let data = try XCTUnwrap(result.data(using: .utf8))
+        let obj = try (JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         XCTAssertEqual(obj["title"] as? String, "Engineer")
     }
 
@@ -81,7 +79,7 @@ final class JSONRepairTests: XCTestCase {
     func testRepairPassesThroughValidJSON() throws {
         let input = "{\"a\": 1, \"b\": [1, 2, 3]}"
         let result = try repairJSON(input)
-        let data = result.data(using: .utf8)!
+        let data = try XCTUnwrap(result.data(using: .utf8))
         XCTAssertNotNil(try? JSONSerialization.jsonObject(with: data))
     }
 
@@ -91,10 +89,8 @@ final class JSONRepairTests: XCTestCase {
         // Fenced + trailing comma + unquoted key
         let input = "```json\n{name: 'Alice', age: 30,}\n```"
         let result = try repairJSON(input)
-        let data = result.data(using: .utf8)!
-        let obj = (try JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        let data = try XCTUnwrap(result.data(using: .utf8))
+        let obj = try (JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         XCTAssertEqual(obj["name"] as? String, "Alice")
     }
 }
-
-// swiftlint:enable force_unwrapping

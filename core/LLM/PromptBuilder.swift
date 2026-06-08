@@ -6,7 +6,6 @@ import Foundation
 /// Builds system + user chat messages for extraction and fit-score prompts.
 /// Mirrors server/extract.js systemPrompt(), userPrompt(), fitSystemPrompt(), fitUserPrompt().
 public enum PromptBuilder {
-
     // MARK: - Extraction prompt
 
     /// Build messages for job-extraction LLM call.
@@ -21,7 +20,7 @@ public enum PromptBuilder {
         pageTitle: String,
         locationContext: LocationContext = .none
     ) -> [ChatMessage] {
-        return [
+        [
             ChatMessage(role: "system", content: systemPrompt()),
             ChatMessage(role: "user", content: userPrompt(
                 description: description,
@@ -40,7 +39,7 @@ public enum PromptBuilder {
         extractedJob: ExtractedJobContext,
         resumeText: String
     ) -> [ChatMessage] {
-        return [
+        [
             ChatMessage(role: "system", content: fitSystemPrompt()),
             ChatMessage(role: "user", content: fitUserPrompt(
                 extractedJob: extractedJob,
@@ -52,7 +51,8 @@ public enum PromptBuilder {
     // MARK: - Overhead measurement
 
     /// Returns the number of chars in an empty extraction + fit prompt (overhead above JD / resume).
-    public static func promptOverheadChars(locationContext: LocationContext = .none) -> (extractChars: Int, fitChars: Int) {
+    public static func promptOverheadChars(locationContext: LocationContext = .none)
+        -> (extractChars: Int, fitChars: Int) {
         let extractChars = systemPrompt().count +
             userPrompt(description: "", url: "", pageTitle: "", locationContext: locationContext).count
         let fitChars = fitSystemPrompt().count +
@@ -74,78 +74,79 @@ public enum PromptBuilder {
     ) -> String {
         let locationRules = """
 
-Location and remote_type rules:
-- Set location to the raw location(s) listed in the posting (city, state, region, or "Multiple Locations").
-- Infer remote_type from the work arrangement, NOT the location field:
-  - "remote" → posting says remote, WFH, work from home, 0 days in office, fully remote, telecommute.
-  - "hybrid" → posting specifies a mix (e.g. "2 days/week in office", "hybrid").
-  - "onsite" → posting requires in-person / in-office with no remote option.
-  - "unknown" → no work arrangement information found.
-- Examples: "Work site 0 days/week in-office – remote" → remote_type="remote". "Work site 3 days/week in-office" → remote_type="hybrid".
-"""
+        Location and remote_type rules:
+        - Set location to the raw location(s) listed in the posting (city, state, region, or "Multiple Locations").
+        - Infer remote_type from the work arrangement, NOT the location field:
+          - "remote" → posting says remote, WFH, work from home, 0 days in office, fully remote, telecommute.
+          - "hybrid" → posting specifies a mix (e.g. "2 days/week in office", "hybrid").
+          - "onsite" → posting requires in-person / in-office with no remote option.
+          - "unknown" → no work arrangement information found.
+        - Examples: "Work site 0 days/week in-office – remote" → remote_type="remote". "Work site 3 days/week in-office" → remote_type="hybrid".
+        """
         let locationPrefRules = locationPreferencePrompt(locationContext)
         let truncated = String(description.prefix(LLMConstants.maxDescriptionChars))
 
         return """
-Extract job information from the posting below.
+        Extract job information from the posting below.
 
-Return JSON with exactly these keys:
-- company: string or null
-- title: string or null
-- location: string or null
-- remote_type: one of "remote", "hybrid", "onsite", "unknown"
-- salary_min: integer or null
-- salary_max: integer or null
-- salary_hourly_min: number or null
-- salary_hourly_max: number or null
-- salary_currency: string or null
-- salary_note: string or null
-- employment_type: one of "full_time", "part_time", "contract", "internship", "temporary", "unknown"
-- seniority: string or null
-- skills: array of strings
-- summary: string or null
-- requirements: array of strings
-- nice_to_haves: array of strings
-- benefits: array of strings
-- application_url: string or null
-- application_instructions: string or null — verbatim text of any explicit submission instructions the posting gives about HOW to apply (e.g. "include phrase X at the top of your resume", "submit via this link", "include your salary expectations"). These are submission mechanics, NOT job qualifications. Null when no special submission instructions are present.
-- confidence: object mapping field names to confidence numbers from 0 to 1
+        Return JSON with exactly these keys:
+        - company: string or null
+        - title: string or null
+        - location: string or null
+        - remote_type: one of "remote", "hybrid", "onsite", "unknown"
+        - salary_min: integer or null
+        - salary_max: integer or null
+        - salary_hourly_min: number or null
+        - salary_hourly_max: number or null
+        - salary_currency: string or null
+        - salary_note: string or null
+        - employment_type: one of "full_time", "part_time", "contract", "internship", "temporary", "unknown"
+        - seniority: string or null
+        - skills: array of strings
+        - summary: string or null
+        - requirements: array of strings
+        - nice_to_haves: array of strings
+        - benefits: array of strings
+        - application_url: string or null
+        - application_instructions: string or null — verbatim text of any explicit submission instructions the posting gives about HOW to apply (e.g. "include phrase X at the top of your resume", "submit via this link", "include your salary expectations"). These are submission mechanics, NOT job qualifications. Null when no special submission instructions are present.
+        - confidence: object mapping field names to confidence numbers from 0 to 1
 
-Salary rules:
-- ALWAYS extract salary_min and salary_max when any numeric pay range appears in the posting.
-- If hourly pay appears, extract the raw hourly rate range into salary_hourly_min and salary_hourly_max.
-- Store values as annual integers (e.g. 119800, not "119,800" or "$119,800").
-- Some job boards (e.g. Workday) express annual salary without a $ sign: "133,400 - 226,600 USD Annual". Treat these as annual USD amounts.
-- If the posting lists an hourly rate, convert to annual using exactly 2,080 hours/year:
-  hourly × 40 hours/week × 52 weeks/year = hourly × 2080.
-  Do not subtract holidays, PTO, unpaid time, or use any other annual-hours estimate.
-  Examples: $75/hr → salary_min=156000; $75–$95/hr → salary_min=156000, salary_max=197600.
-  Example: $85/hr–$105/hr → salary_min=176800, salary_max=218400.
-- When the posting lists multiple annual salary bands, include all salary bands in salary_note.
-  The application verifies salary_min/salary_max from salary_note and uses the lowest and highest salary values found there.
-- When multiple bands exist for seniority or job family (not location), use the absolute lowest/highest.
-- Always put the original salary text in salary_note, including any location-specific bands omitted from salary_min/max.
-- If salary bands differ by location, preserve each location label with its range in salary_note, such as "WA: $205,000-$216,500 USD".
-- If salary bands differ by currency, preserve each currency label and range in salary_note; do not combine currencies into one range.
+        Salary rules:
+        - ALWAYS extract salary_min and salary_max when any numeric pay range appears in the posting.
+        - If hourly pay appears, extract the raw hourly rate range into salary_hourly_min and salary_hourly_max.
+        - Store values as annual integers (e.g. 119800, not "119,800" or "$119,800").
+        - Some job boards (e.g. Workday) express annual salary without a $ sign: "133,400 - 226,600 USD Annual". Treat these as annual USD amounts.
+        - If the posting lists an hourly rate, convert to annual using exactly 2,080 hours/year:
+          hourly × 40 hours/week × 52 weeks/year = hourly × 2080.
+          Do not subtract holidays, PTO, unpaid time, or use any other annual-hours estimate.
+          Examples: $75/hr → salary_min=156000; $75–$95/hr → salary_min=156000, salary_max=197600.
+          Example: $85/hr–$105/hr → salary_min=176800, salary_max=218400.
+        - When the posting lists multiple annual salary bands, include all salary bands in salary_note.
+          The application verifies salary_min/salary_max from salary_note and uses the lowest and highest salary values found there.
+        - When multiple bands exist for seniority or job family (not location), use the absolute lowest/highest.
+        - Always put the original salary text in salary_note, including any location-specific bands omitted from salary_min/max.
+        - If salary bands differ by location, preserve each location label with its range in salary_note, such as "WA: $205,000-$216,500 USD".
+        - If salary bands differ by currency, preserve each currency label and range in salary_note; do not combine currencies into one range.
 
-List extraction rules:
-- Extract every distinct concrete skill, technology, tool, or domain named anywhere in the posting (responsibilities, requirements, role scope, and team/charter description), even when there is no "Skills" heading. Aim for completeness (typically 6-15); do not stop at a handful. Do not invent skills that are not in the posting.
-- Extract hard requirements into requirements. If the posting lists qualifications without separating "required" from "preferred" (e.g. a single "What we're looking for", "Qualifications", or "Minimum qualifications" list), treat every bullet in that list as a requirement and capture them all.
-- Extract preferred qualifications and useful background signals into nice_to_haves. When the posting has no explicit "Preferred" or "Nice to have" section, mine the responsibilities, role summary, and required qualifications for domain signals: technologies, industry verticals, cross-functional partner teams (e.g. "engineering, design, research"), and products or platforms mentioned as context. Even a single mention is enough — nice_to_haves must not be empty when the posting names any relevant domain, partner, product, or technology.
-- Use concise noun phrases copied or closely paraphrased from the posting.
-\(locationRules)
-\(locationPrefRules)
-Known metadata:
-URL: \(url)
-Page title: \(pageTitle)
+        List extraction rules:
+        - Extract every distinct concrete skill, technology, tool, or domain named anywhere in the posting (responsibilities, requirements, role scope, and team/charter description), even when there is no "Skills" heading. Aim for completeness (typically 6-15); do not stop at a handful. Do not invent skills that are not in the posting.
+        - Extract hard requirements into requirements. If the posting lists qualifications without separating "required" from "preferred" (e.g. a single "What we're looking for", "Qualifications", or "Minimum qualifications" list), treat every bullet in that list as a requirement and capture them all.
+        - Extract preferred qualifications and useful background signals into nice_to_haves. When the posting has no explicit "Preferred" or "Nice to have" section, mine the responsibilities, role summary, and required qualifications for domain signals: technologies, industry verticals, cross-functional partner teams (e.g. "engineering, design, research"), and products or platforms mentioned as context. Even a single mention is enough — nice_to_haves must not be empty when the posting names any relevant domain, partner, product, or technology.
+        - Use concise noun phrases copied or closely paraphrased from the posting.
+        \(locationRules)
+        \(locationPrefRules)
+        Known metadata:
+        URL: \(url)
+        Page title: \(pageTitle)
 
-Job description:
-\(truncated)
-"""
+        Job description:
+        \(truncated)
+        """
     }
 
     static func locationPreferencePrompt(_ ctx: LocationContext) -> String {
-        let terms = ctx.preferredLocations.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let terms = ctx.preferredLocations.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
         if terms.isEmpty && ctx.allowRemote && ctx.allowHybrid && ctx.allowOnsite {
             return "\nLocation preference context:\n- No location preferences configured. Extract all location/remote values present in the source.\n"
         }
@@ -157,12 +158,12 @@ Job description:
         let allowedText = allowed.joined(separator: ", ")
         return """
 
-Location preference context:
-- Preferred locations: \(termsText)
-- Allowed remote modes: \(allowedText)
-- Keep state abbreviations and city names as they appear in source text (e.g. "WA", "Seattle", "Redmond"), and prefer exact string matches.
-- If the posting has one of the preferred locations, keep that location text and mark remote_type accordingly.
-"""
+        Location preference context:
+        - Preferred locations: \(termsText)
+        - Allowed remote modes: \(allowedText)
+        - Keep state abbreviations and city names as they appear in source text (e.g. "WA", "Seattle", "Redmond"), and prefer exact string matches.
+        - If the posting has one of the preferred locations, keep that location text and mark remote_type accordingly.
+        """
     }
 
     static func fitSystemPrompt() -> String {
@@ -173,7 +174,13 @@ Location preference context:
         extractedJob: ExtractedJobContext,
         resumeText: String
     ) -> String {
-        let fitDimensions = ["required_qualifications", "preferred_qualifications", "skills", "experience_level", "domain_fit"]
+        let fitDimensions = [
+            "required_qualifications",
+            "preferred_qualifications",
+            "skills",
+            "experience_level",
+            "domain_fit"
+        ]
         let fitDimensionGuide: [String: String] = [
             "required_qualifications": "how well the resume satisfies the job's hard requirements / must-haves",
             "preferred_qualifications": "how well the resume satisfies the nice-to-have / preferred qualifications",
@@ -201,7 +208,10 @@ Location preference context:
             listBlock("Skills", extractedJob.skills)
         ]
         if let appInstructions = extractedJob.applicationInstructions {
-            jobParts.append("Application instructions (submission mechanics — DO NOT factor into scores): \(appInstructions)")
+            jobParts
+                .append(
+                    "Application instructions (submission mechanics — DO NOT factor into scores): \(appInstructions)"
+                )
         }
 
         let jobSection = jobParts.joined(separator: "\n")
@@ -213,36 +223,36 @@ Location preference context:
         let truncatedResume = String(resumeText.prefix(LLMConstants.maxResumeChars))
 
         return """
-Score how well the candidate fits this job.
+        Score how well the candidate fits this job.
 
-IMPORTANT: Application instructions (labeled "submission mechanics" in the job posting below) describe HOW to apply — e.g. "include phrase X at the top of your resume". These are NOT job qualifications. Never include them in requirements_met or requirements_not_met, and never penalize any dimension for the candidate not following them.
+        IMPORTANT: Application instructions (labeled "submission mechanics" in the job posting below) describe HOW to apply — e.g. "include phrase X at the top of your resume". These are NOT job qualifications. Never include them in requirements_met or requirements_not_met, and never penalize any dimension for the candidate not following them.
 
-Return JSON with exactly these keys:
-- summary: string — 1-3 sentences explaining the overall fit
-- requirements_met: array of concise strings naming job qualifications the resume clearly satisfies; include evidence when useful; exclude any submission mechanics
-- requirements_not_met: array of concise strings naming important job qualifications with weak, missing, or unclear evidence in the resume; exclude any submission mechanics
-- dimensions: array of exactly \(fitDimensions.count) objects, one per dimension, each with:
-  - name: one of \(dimensionNames)
-  - score: integer 0-100
-  - rationale: string — one sentence justifying the score
+        Return JSON with exactly these keys:
+        - summary: string — 1-3 sentences explaining the overall fit
+        - requirements_met: array of concise strings naming job qualifications the resume clearly satisfies; include evidence when useful; exclude any submission mechanics
+        - requirements_not_met: array of concise strings naming important job qualifications with weak, missing, or unclear evidence in the resume; exclude any submission mechanics
+        - dimensions: array of exactly \(fitDimensions.count) objects, one per dimension, each with:
+          - name: one of \(dimensionNames)
+          - score: integer 0-100
+          - rationale: string — one sentence justifying the score
 
-Dimensions to evaluate (use these exact names):
-\(dimensionLines)
+        Dimensions to evaluate (use these exact names):
+        \(dimensionLines)
 
-Scoring guidance:
-- 0 = no evidence of fit; 50 = partial / mixed fit; 100 = clearly exceeds what the role needs.
-- If the job omits information for a dimension, score conservatively and say so in the rationale.
-- Do not provide an overall score. The application computes it from the dimension scores.
-- For requirements_met and requirements_not_met, focus on concrete job requirements, not generic praise.
-- If evidence is mixed or absent, put the item in requirements_not_met and explain what is missing.
-- Application instructions (labeled above as "submission mechanics") describe HOW to apply, not whether the candidate is qualified. Do NOT include them in requirements_met or requirements_not_met. Do NOT penalize any dimension score for them — they can be acted on at application time.
+        Scoring guidance:
+        - 0 = no evidence of fit; 50 = partial / mixed fit; 100 = clearly exceeds what the role needs.
+        - If the job omits information for a dimension, score conservatively and say so in the rationale.
+        - Do not provide an overall score. The application computes it from the dimension scores.
+        - For requirements_met and requirements_not_met, focus on concrete job requirements, not generic praise.
+        - If evidence is mixed or absent, put the item in requirements_not_met and explain what is missing.
+        - Application instructions (labeled above as "submission mechanics") describe HOW to apply, not whether the candidate is qualified. Do NOT include them in requirements_met or requirements_not_met. Do NOT penalize any dimension score for them — they can be acted on at application time.
 
-Job posting:
-\(jobSection)
+        Job posting:
+        \(jobSection)
 
-Candidate resume:
-\(truncatedResume)
-"""
+        Candidate resume:
+        \(truncatedResume)
+        """
     }
 }
 
@@ -255,7 +265,12 @@ public struct LocationContext: Sendable {
     public let allowHybrid: Bool
     public let allowOnsite: Bool
 
-    public static let none = LocationContext(preferredLocations: "", allowRemote: true, allowHybrid: true, allowOnsite: true)
+    public static let none = LocationContext(
+        preferredLocations: "",
+        allowRemote: true,
+        allowHybrid: true,
+        allowOnsite: true
+    )
 
     public init(
         preferredLocations: String = "",

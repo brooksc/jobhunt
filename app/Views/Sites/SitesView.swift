@@ -1,6 +1,6 @@
-import SwiftUI
-import SwiftData
 import JobhuntCore
+import SwiftData
+import SwiftUI
 
 /// List pane for the Sites section. Displayed in ContentView's content column.
 /// SiteDetailView is displayed in the detail column when router.selectedSiteID is set.
@@ -189,17 +189,17 @@ private struct SiteStateBadge: View {
 
     private var label: String {
         switch state {
-        case .notReviewed: return "Not Reviewed"
-        case .reviewed: return "Reviewed"
-        case .exclude: return "Excluded"
+        case .notReviewed: "Not Reviewed"
+        case .reviewed: "Reviewed"
+        case .exclude: "Excluded"
         }
     }
 
     private var color: Color {
         switch state {
-        case .notReviewed: return .secondary
-        case .reviewed: return .green
-        case .exclude: return .red
+        case .notReviewed: .secondary
+        case .reviewed: .green
+        case .exclude: .red
         }
     }
 }

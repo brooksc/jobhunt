@@ -36,7 +36,6 @@ public struct OpenRouterModelPrice: Sendable, Codable {
 
 /// Mirrors /api/llm-cost logic from server/api.js.
 public enum CostEstimator {
-
     // MARK: - Token estimation
 
     /// Rough token estimate: chars / 4 (standard LLM approximation).
@@ -59,16 +58,16 @@ public enum CostEstimator {
         resumeCharCount: Int,
         priceInputPer1M: Double,
         priceOutputPer1M: Double,
-        settings: SettingsStore
+        settings _: SettingsStore
     ) -> CostEstimate {
         let overhead = PromptBuilder.promptOverheadChars()
 
         // Estimated chars for a typical job description (truncated at maxDescriptionChars but usually shorter)
-        let typicalDescChars = min(LLMConstants.maxDescriptionChars, 8_000)
+        let typicalDescChars = min(LLMConstants.maxDescriptionChars, 8000)
         // Estimated extraction response JSON
-        let extractionResponseChars = 1_000
+        let extractionResponseChars = 1000
         // Estimated extracted JSON reused in fit prompt context
-        let extractedJSONChars = 1_000
+        let extractedJSONChars = 1000
         // Estimated fit response JSON
         let fitResponseChars = 800
 
@@ -107,7 +106,7 @@ public enum CostEstimator {
         var request = URLRequest(url: URL(string: "https://openrouter.ai/api/v1/models")!)
         request.timeoutInterval = 10
         let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+        guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
             throw CostEstimatorError.httpError
         }
         let decoded = try JSONDecoder().decode(OpenRouterModelsResponse.self, from: data)

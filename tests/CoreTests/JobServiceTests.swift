@@ -1,5 +1,5 @@
-import XCTest
 import SwiftData
+import XCTest
 @testable import JobhuntCore
 
 // MARK: - Stub LLM provider (never actually called in these tests)
@@ -7,7 +7,7 @@ import SwiftData
 private struct NoOpProvider: LLMProvider {
     let id: String = "noop"
     let concurrencyLimit: Int = 1
-    func complete(_ request: ChatRequest) async throws -> ChatResponse {
+    func complete(_: ChatRequest) async throws -> ChatResponse {
         throw LLMProviderError.httpError(statusCode: 503, body: "no-op")
     }
 }
@@ -27,7 +27,6 @@ private func makeQueue(_ container: ModelContainer) -> QueueActor {
 // MARK: - JobServiceTests
 
 final class JobServiceTests: XCTestCase {
-
     // MARK: - testIngestNewCapture
 
     func testIngestNewCapture() async throws {
@@ -123,7 +122,12 @@ final class JobServiceTests: XCTestCase {
         let queue = makeQueue(container)
         let svc = JobService(store: store, queue: queue)
 
-        let payload = CapturePayload(url: "https://example.com", pageTitle: "Title", selectedText: nil, visibleText: nil)
+        let payload = CapturePayload(
+            url: "https://example.com",
+            pageTitle: "Title",
+            selectedText: nil,
+            visibleText: nil
+        )
         do {
             _ = try await svc.ingestCapture(payload)
             XCTFail("Expected error")
@@ -138,7 +142,12 @@ final class JobServiceTests: XCTestCase {
         let queue = makeQueue(container)
         let svc = JobService(store: store, queue: queue)
 
-        let payload = CapturePayload(url: "https://example.com", pageTitle: "Title", selectedText: "  ", visibleText: "  ")
+        let payload = CapturePayload(
+            url: "https://example.com",
+            pageTitle: "Title",
+            selectedText: "  ",
+            visibleText: "  "
+        )
         do {
             _ = try await svc.ingestCapture(payload)
             XCTFail("Expected error")

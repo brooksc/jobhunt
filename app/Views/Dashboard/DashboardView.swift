@@ -1,18 +1,18 @@
-import SwiftUI
-import SwiftData
 import Charts
 import JobhuntCore
+import SwiftData
+import SwiftUI
 
 // MARK: - DashboardView
 
 struct DashboardView: View {
     @Environment(Router.self) private var router
 
-    // All jobs — used for stat cards, opportunities, pipeline, quality
+    /// All jobs — used for stat cards, opportunities, pipeline, quality
     @Query private var jobs: [Job]
-    // All captures in last 30 days — used for daily activity chart
+    /// All captures in last 30 days — used for daily activity chart
     @Query private var recentCaptures: [Capture]
-    // Sites sorted by addedAt — filtered/sorted for schedule in computed property
+    /// Sites sorted by addedAt — filtered/sorted for schedule in computed property
     @Query(sort: \Site.addedAt) private var sites: [Site]
 
     init() {
@@ -44,9 +44,9 @@ struct DashboardView: View {
 
     private var statCardsSection: some View {
         let total = jobs.count
-        let active = jobs.filter { [.saved, .applied, .interview].contains($0.status) }.count
-        let interviews = jobs.filter { $0.status == .interview }.count
-        let offers = jobs.filter { $0.status == .offer }.count
+        let active = jobs.count(where: { [.saved, .applied, .interview].contains($0.status) })
+        let interviews = jobs.count(where: { $0.status == .interview })
+        let offers = jobs.count(where: { $0.status == .offer })
 
         return HStack(spacing: 12) {
             StatCard(label: "Total Jobs", value: total, systemImage: "briefcase")
@@ -92,7 +92,7 @@ struct DashboardView: View {
             ("Offer", .offer)
         ]
         let counts = stages.map { stage in
-            (label: stage.label, status: stage.status, count: jobs.filter { $0.status == stage.status }.count)
+            (label: stage.label, status: stage.status, count: jobs.count(where: { $0.status == stage.status }))
         }
 
         return VStack(alignment: .leading, spacing: 10) {
@@ -111,7 +111,7 @@ struct DashboardView: View {
                 }
                 .frame(height: 160)
                 .chartXAxis(.automatic)
-                .onTapGesture { } // handled per-bar below
+                .onTapGesture {} // handled per-bar below
             }
 
             // Tappable label row for navigation
@@ -185,7 +185,7 @@ struct DashboardView: View {
             }
             .sorted { $0.site.nextReviewAt ?? now < $1.site.nextReviewAt ?? now }
             .prefix(5)
-            .map { $0 }
+            .map(\.self)
 
         return VStack(alignment: .leading, spacing: 10) {
             sectionHeader("Site Check-in Schedule")
@@ -235,8 +235,8 @@ struct DashboardView: View {
     private var qualitySummarySection: some View {
         let issueJobs = jobs.filter { job in
             job.extractionStatus == .failed ||
-            job.company == nil ||
-            job.title == nil
+                job.company == nil ||
+                job.title == nil
         }
 
         return QualitySummarySection(issueCount: issueJobs.count)

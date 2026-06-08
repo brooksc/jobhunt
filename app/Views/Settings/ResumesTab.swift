@@ -1,7 +1,7 @@
-import SwiftUI
-import SwiftData
-import PDFKit
 import JobhuntCore
+import PDFKit
+import SwiftData
+import SwiftUI
 
 struct ResumesTab: View {
     let settings: SettingsStore
@@ -229,6 +229,6 @@ private struct ResumeEditSheet: View {
 
     private func extractPDFText(from url: URL) -> String {
         guard let doc = PDFDocument(url: url) else { return "" }
-        return (0..<doc.pageCount).compactMap { doc.page(at: $0)?.string }.joined(separator: "\n")
+        return (0 ..< doc.pageCount).compactMap { doc.page(at: $0)?.string }.joined(separator: "\n")
     }
 }

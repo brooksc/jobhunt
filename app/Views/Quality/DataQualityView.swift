@@ -1,6 +1,6 @@
-import SwiftUI
-import SwiftData
 import JobhuntCore
+import SwiftData
+import SwiftUI
 
 // MARK: - DataQualityView
 
@@ -14,13 +14,13 @@ struct DataQualityView: View {
     private var activeJobs: [Job] {
         allJobs.filter {
             $0.status != .archived &&
-            $0.status != .notAvailable &&
-            $0.status != .duplicate
+                $0.status != .notAvailable &&
+                $0.status != .duplicate
         }
     }
 
     @State private var selectedJobIDs: Set<String> = []
-    @State private var filterKind: QualityIssueKind?  // nil = all
+    @State private var filterKind: QualityIssueKind? // nil = all
     @State private var showReviewed = false
     @State private var errorMessage: String?
 
@@ -54,14 +54,16 @@ struct DataQualityView: View {
         }
     }
 
-    private var totalIssueCount: Int { issueRows.count }
+    private var totalIssueCount: Int {
+        issueRows.count
+    }
 
     private var highSeverityCount: Int {
-        issueRows.filter { $0.issue.severity >= 3 }.count
+        issueRows.count(where: { $0.issue.severity >= 3 })
     }
 
     private func kindCount(_ kind: QualityIssueKind) -> Int {
-        issueRows.filter { $0.issue.kinds.contains(kind) }.count
+        issueRows.count(where: { $0.issue.kinds.contains(kind) })
     }
 
     // MARK: - Body
@@ -93,13 +95,17 @@ struct DataQualityView: View {
             Divider().frame(height: 32)
             summaryMetric(label: "High severity (3+)", value: highSeverityCount, warning: highSeverityCount > 0)
             Divider().frame(height: 32)
-            summaryMetric(label: "Extraction failed",
-                          value: kindCount(.extractionFailed),
-                          warning: true)
+            summaryMetric(
+                label: "Extraction failed",
+                value: kindCount(.extractionFailed),
+                warning: true
+            )
             Divider().frame(height: 32)
-            summaryMetric(label: "Missing location",
-                          value: kindCount(.missingLocation),
-                          warning: false)
+            summaryMetric(
+                label: "Missing location",
+                value: kindCount(.missingLocation),
+                warning: false
+            )
             Spacer()
         }
         .padding(.horizontal, 16)
@@ -157,7 +163,8 @@ struct DataQualityView: View {
                 .clipShape(Capsule())
                 .overlay(Capsule().strokeBorder(
                     isActive ? Theme.accent.opacity(0.4) : Color.secondary.opacity(0.3),
-                    lineWidth: 1))
+                    lineWidth: 1
+                ))
         }
         .buttonStyle(.plain)
     }
@@ -171,8 +178,8 @@ struct DataQualityView: View {
                 "No Data Quality Issues",
                 systemImage: "checkmark.shield",
                 description: Text(filterKind == nil
-                                  ? "All jobs have complete data."
-                                  : "No jobs match this filter.")
+                    ? "All jobs have complete data."
+                    : "No jobs match this filter.")
             )
         } else if filterKind != nil {
             List(selection: Binding(
@@ -248,7 +255,8 @@ struct DataQualityView: View {
                     .clipShape(Capsule())
                     .overlay(Capsule().strokeBorder(
                         kind.isHighSeverity ? Color.red.opacity(0.3) : Color.orange.opacity(0.25),
-                        lineWidth: 0.5))
+                        lineWidth: 0.5
+                    ))
             }
         }
     }
@@ -341,7 +349,7 @@ struct DataQualityView: View {
 private struct FlowLayout: Layout {
     var spacing: CGFloat = 4
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout Void) -> CGSize {
         let maxWidth = proposal.width ?? .infinity
         var x: CGFloat = 0
         var y: CGFloat = 0
@@ -359,7 +367,7 @@ private struct FlowLayout: Layout {
         return CGSize(width: maxWidth, height: y + rowHeight)
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
+    func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout Void) {
         var x = bounds.minX
         var y = bounds.minY
         var rowHeight: CGFloat = 0

@@ -2,8 +2,7 @@ import Foundation
 
 /// Exports jobs to CSV. Ports server/export.js exactly.
 public enum ExportService {
-
-    // The 19 CSV columns in order, matching export.js CSV_COLUMNS.
+    /// The 19 CSV columns in order, matching export.js CSV_COLUMNS.
     static let columns = [
         "job_number", "capture_id", "job_id", "status", "rating", "extraction_status",
         "company", "title", "location", "remote_type", "salary_min", "salary_max",

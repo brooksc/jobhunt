@@ -1,4 +1,3 @@
-// swiftlint:disable line_length
 import Foundation
 
 // MARK: - Types
@@ -16,7 +15,13 @@ public struct FitScoreResult: Codable, Sendable {
     /// Score weights used during computation (for audit / rescore).
     public let scoreWeights: [String: Double]
 
-    public init(overall: Int, breakdown: [String: Double], penalty: Int, penaltyReasons: [String], scoreWeights: [String: Double]) {
+    public init(
+        overall: Int,
+        breakdown: [String: Double],
+        penalty: Int,
+        penaltyReasons: [String],
+        scoreWeights: [String: Double]
+    ) {
         self.overall = overall
         self.breakdown = breakdown
         self.penalty = penalty
@@ -30,7 +35,6 @@ public struct FitScoreResult: Codable, Sendable {
 /// Pure, deterministic fit-score math ported from server/extract.js and server/rescore.js.
 /// No SwiftData, no SwiftUI, no networking — safe to call from any context.
 public enum FitScorer {
-
     // MARK: Dimension weights (must total 1.0)
 
     public static let dimensionWeights: [String: Double] = [
@@ -77,11 +81,10 @@ public enum FitScorer {
             totalWeight += weight
         }
 
-        let baseScore: Int
-        if totalWeight > 0 {
-            baseScore = Int((weightedSum / totalWeight).rounded())
+        let baseScore = if totalWeight > 0 {
+            Int((weightedSum / totalWeight).rounded())
         } else {
-            baseScore = 0
+            0
         }
 
         // Penalty
@@ -162,4 +165,3 @@ public enum FitScorer {
         return try? JSONDecoder().decode(FitScoreResult.self, from: data)
     }
 }
-// swiftlint:enable line_length

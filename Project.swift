@@ -22,7 +22,12 @@ let sharedBase = SettingsDictionary()
 
 // MARK: - Target factory helpers
 
-func frameworkTarget(name: String, bundleSuffix: String, sources: SourceFilesList, deps: [TargetDependency] = []) -> Target {
+func frameworkTarget(
+    name: String,
+    bundleSuffix: String,
+    sources: SourceFilesList,
+    deps: [TargetDependency] = []
+) -> Target {
     Target.target(
         name: name,
         destinations: [.mac],
@@ -31,7 +36,11 @@ func frameworkTarget(name: String, bundleSuffix: String, sources: SourceFilesLis
         deploymentTargets: deploymentTarget,
         sources: sources,
         dependencies: deps,
-        settings: .settings(base: sharedBase, configurations: projectConfigurations, defaultSettings: .recommended(excluding: []))
+        settings: .settings(
+            base: sharedBase,
+            configurations: projectConfigurations,
+            defaultSettings: .recommended(excluding: [])
+        )
     )
 }
 
@@ -44,7 +53,11 @@ func testTarget(name: String, bundleSuffix: String, sources: SourceFilesList, de
         deploymentTargets: deploymentTarget,
         sources: sources,
         dependencies: deps,
-        settings: .settings(base: sharedBase, configurations: projectConfigurations, defaultSettings: .recommended(excluding: []))
+        settings: .settings(
+            base: sharedBase,
+            configurations: projectConfigurations,
+            defaultSettings: .recommended(excluding: [])
+        )
     )
 }
 
@@ -73,7 +86,11 @@ let mcpTarget = Target.target(
     deploymentTargets: deploymentTarget,
     sources: ["mcp/swift/**/*.swift"],
     dependencies: [.target(name: "JobhuntCore")],
-    settings: .settings(base: sharedBase, configurations: projectConfigurations, defaultSettings: .recommended(excluding: []))
+    settings: .settings(
+        base: sharedBase,
+        configurations: projectConfigurations,
+        defaultSettings: .recommended(excluding: [])
+    )
 )
 
 // MARK: - Migrator executable (DMG only — one-time dev tool, not shipped in app bundles)
@@ -86,7 +103,11 @@ let migratorTarget = Target.target(
     deploymentTargets: deploymentTarget,
     sources: ["tools/migrator/**/*.swift"],
     dependencies: [.target(name: "JobhuntCore")],
-    settings: .settings(base: sharedBase, configurations: projectConfigurations, defaultSettings: .recommended(excluding: []))
+    settings: .settings(
+        base: sharedBase,
+        configurations: projectConfigurations,
+        defaultSettings: .recommended(excluding: [])
+    )
 )
 
 // MARK: - App target
@@ -105,10 +126,10 @@ let appInfoPlist: [String: Plist.Value] = [
         .dictionary([
             "CFBundleURLName": .string(bundleId),
             "CFBundleURLSchemes": .array(["jobhunt"]),
-        ])
+        ]),
     ]),
     "NSAppTransportSecurity": .dictionary([
-        "NSAllowsLocalNetworking": true
+        "NSAllowsLocalNetworking": true,
     ]),
 ]
 
@@ -185,7 +206,6 @@ let llmEvalTarget = testTarget(
     deps: [.target(name: "JobhuntCore")]
 )
 
-
 // MARK: - Schemes
 
 let dmgScheme = Scheme.scheme(
@@ -198,8 +218,10 @@ let dmgScheme = Scheme.scheme(
         .target("JobhuntMigrator"),
     ]),
     testAction: .targets(
-        [.testableTarget(target: .target("CoreTests")),
-         .testableTarget(target: .target("ServerTests"))],
+        [
+            .testableTarget(target: .target("CoreTests")),
+            .testableTarget(target: .target("ServerTests")),
+        ],
         configuration: "Debug-DMG"
     ),
     runAction: .runAction(configuration: "Debug-DMG", executable: .target("Jobhunt")),
@@ -215,8 +237,10 @@ let masScheme = Scheme.scheme(
         // JobhuntMCP intentionally excluded from MAS scheme
     ]),
     testAction: .targets(
-        [.testableTarget(target: .target("CoreTests")),
-         .testableTarget(target: .target("ServerTests"))],
+        [
+            .testableTarget(target: .target("CoreTests")),
+            .testableTarget(target: .target("ServerTests")),
+        ],
         configuration: "Debug-MAS"
     ),
     runAction: .runAction(configuration: "Debug-MAS", executable: .target("Jobhunt")),

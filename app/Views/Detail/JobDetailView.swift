@@ -1,7 +1,8 @@
+import JobhuntCore
+import SwiftData
+
 // swiftlint:disable file_length
 import SwiftUI
-import SwiftData
-import JobhuntCore
 
 // MARK: - JobDetailView
 
@@ -81,7 +82,7 @@ struct JobDetailView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onKeyPress(.leftArrow) {
-            router.selectedJobID = nil  // handled by list selection — post notification
+            router.selectedJobID = nil // handled by list selection — post notification
             NotificationCenter.default.post(name: .navigatePreviousJob, object: nil)
             return .handled
         }
@@ -419,8 +420,7 @@ struct DetailsTabView: View {
         }
     }
 
-    @ViewBuilder
-    private func detailRow<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
+    private func detailRow(_ label: String, @ViewBuilder content: () -> some View) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Text(label)
                 .font(.caption)
@@ -448,16 +448,15 @@ struct ExtractedTabView: View {
               let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return []
         }
-        return dict.sorted { $0.key < $1.key }.map { (key, value) in
-            let strValue: String
-            if let str = value as? String {
-                strValue = str
+        return dict.sorted { $0.key < $1.key }.map { key, value in
+            let strValue: String = if let str = value as? String {
+                str
             } else if let num = value as? NSNumber {
-                strValue = num.stringValue
+                num.stringValue
             } else if let arr = value as? [Any] {
-                strValue = arr.compactMap { $0 as? String }.joined(separator: ", ")
+                arr.compactMap { $0 as? String }.joined(separator: ", ")
             } else {
-                strValue = String(describing: value)
+                String(describing: value)
             }
             return (key, strValue)
         }
@@ -611,8 +610,8 @@ struct FitTabView: View {
                                                 .fill(Color.secondary.opacity(0.2))
                                             RoundedRectangle(cornerRadius: 2)
                                                 .fill(fitColor(dim.score))
-                                                // swiftlint:disable:next line_length
-                                                .frame(width: geo.size.width * CGFloat(max(0, min(100, dim.score))) / 100)
+                                                .frame(width: geo.size
+                                                    .width * CGFloat(max(0, min(100, dim.score))) / 100)
                                         }
                                     }
                                     .frame(height: 4)
@@ -632,8 +631,10 @@ struct FitTabView: View {
                             Text("Per Resume")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            // swiftlint:disable:next line_length
-                            ForEach(job.fitScores.sorted { ($0.fitScore ?? 0) > ($1.fitScore ?? 0) }, id: \.self) { fitScore in
+                            ForEach(
+                                job.fitScores.sorted { ($0.fitScore ?? 0) > ($1.fitScore ?? 0) },
+                                id: \.self
+                            ) { fitScore in
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(fitScore.model ?? "Unknown model")
@@ -677,12 +678,12 @@ struct FitTabView: View {
 
     private func dimensionLabel(_ name: String) -> String {
         switch name {
-        case "required_qualifications": return "Required Quals"
-        case "preferred_qualifications": return "Preferred Quals"
-        case "skills": return "Skills"
-        case "experience_level": return "Experience"
-        case "domain_fit": return "Domain Fit"
-        default: return name.replacingOccurrences(of: "_", with: " ").capitalized
+        case "required_qualifications": "Required Quals"
+        case "preferred_qualifications": "Preferred Quals"
+        case "skills": "Skills"
+        case "experience_level": "Experience"
+        case "domain_fit": "Domain Fit"
+        default: name.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
 }
@@ -825,14 +826,14 @@ private struct TimelineEventRow: View {
 
     private var icon: String {
         switch event.eventType {
-        case "capture": return "tray.and.arrow.down"
-        case "note": return "note.text"
-        case "status": return "tag"
-        case "applied": return "paperplane"
-        case "interview": return "calendar"
-        case "offer": return "star"
-        case "rejected": return "xmark.circle"
-        default: return "clock"
+        case "capture": "tray.and.arrow.down"
+        case "note": "note.text"
+        case "status": "tag"
+        case "applied": "paperplane"
+        case "interview": "calendar"
+        case "offer": "star"
+        case "rejected": "xmark.circle"
+        default: "clock"
         }
     }
 
@@ -926,17 +927,17 @@ struct RawTabView: View {
     @ViewBuilder
     private func blockView(_ block: JDBlock) -> some View {
         switch block {
-        case .heading(let text):
+        case let .heading(text):
             Text(text)
                 .font(.caption)
                 .fontWeight(.semibold)
                 .padding(.top, 6)
-        case .paragraph(let text):
+        case let .paragraph(text):
             Text(text)
                 .font(.caption)
                 .lineSpacing(3)
                 .textSelection(.enabled)
-        case .list(let items):
+        case let .list(items):
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     HStack(alignment: .top, spacing: 4) {
@@ -954,7 +955,6 @@ struct RawTabView: View {
         }
     }
 
-    @ViewBuilder
     private func rawMetaRow(_ label: String, value: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Text(label)
@@ -1094,7 +1094,7 @@ private struct InteractiveStarRating: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            ForEach(1...5, id: \.self) { star in
+            ForEach(1 ... 5, id: \.self) { star in
                 Image(systemName: star <= rating ? "star.fill" : "star")
                     .font(.caption)
                     .foregroundStyle(star <= rating ? Color.yellow : Color.secondary.opacity(0.4))
@@ -1148,10 +1148,10 @@ private struct EditableTextField: View {
 extension RemoteType {
     var displayName: String {
         switch self {
-        case .remote: return "Remote"
-        case .hybrid: return "Hybrid"
-        case .onsite: return "On-site"
-        case .unknown: return "Unknown"
+        case .remote: "Remote"
+        case .hybrid: "Hybrid"
+        case .onsite: "On-site"
+        case .unknown: "Unknown"
         }
     }
 }

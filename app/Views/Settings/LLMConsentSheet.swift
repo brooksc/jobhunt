@@ -1,5 +1,5 @@
-import SwiftUI
 import JobhuntCore
+import SwiftUI
 
 struct LLMConsentSheet: View {
     let providerName: String
@@ -24,7 +24,7 @@ struct LLMConsentSheet: View {
 
             Text(
                 "Job descriptions and resume data will be sent to \(providerName)'s servers for AI processing. " +
-                "This data may include job titles, company names, salary information, and your resume content."
+                    "This data may include job titles, company names, salary information, and your resume content."
             )
             .foregroundStyle(.secondary)
             .multilineTextAlignment(.center)

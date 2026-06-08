@@ -3,9 +3,10 @@ id: TASK-048
 title: >-
   Jobs screen: dense table, filters, sort, columns, saved views, batch ops,
   search
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-07 22:48'
+updated_date: '2026-06-08 03:31'
 labels:
   - swift-rewrite
   - ui

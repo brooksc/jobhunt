@@ -1,11 +1,11 @@
 ---
 id: TASK-035
 title: SettingsStore + Keychain + BackgroundStore ModelActor
-status: In Progress
+status: Done
 assignee:
   - claude
 created_date: '2026-06-07 22:44'
-updated_date: '2026-06-08 01:46'
+updated_date: '2026-06-08 01:47'
 labels:
   - swift-rewrite
   - core
@@ -44,11 +44,11 @@ Depends on task-034 (models: Setting). Consumed by the LLM engine, all bulk oper
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 SettingsStore exposes every legacy setting key with matching defaults
-- [ ] #2 API keys stored in Keychain via KeychainStore, never in SwiftData
-- [ ] #3 BackgroundStore @ModelActor performs batched background writes; UI @Query views update without manual refresh
-- [ ] #4 Consent helper: cloud providers require explicit consent, localhost providers auto-consented
-- [ ] #5 CoreTests cover defaults, round-trip, Keychain, consent logic, and an off-main-actor batched write
+- [x] #1 SettingsStore exposes every legacy setting key with matching defaults
+- [x] #2 API keys stored in Keychain via KeychainStore, never in SwiftData
+- [x] #3 BackgroundStore @ModelActor performs batched background writes; UI @Query views update without manual refresh
+- [x] #4 Consent helper: cloud providers require explicit consent, localhost providers auto-consented
+- [x] #5 CoreTests cover defaults, round-trip, Keychain, consent logic, and an off-main-actor batched write
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -60,3 +60,9 @@ Depends on task-034 (models: Setting). Consumed by the LLM engine, all bulk oper
 4. core/Services/BackgroundStore.swift — @ModelActor owning a background ModelContext; batchInsert, batchSave helpers
 5. Tests/CoreTests/SettingsStoreTests.swift — defaults, set/get, Keychain, consent, off-main-actor write
 <!-- SECTION:PLAN:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented SettingsStore, KeychainStore, ConsentHelper, and BackgroundStore. KeychainStore.swift wraps Security framework (set/get/delete by service+account). SettingsStore (@Observable) backed by Setting SwiftData model; cache-on-load for reads; typed accessors for all 31 legacy settings with exact SETTINGS_DEFAULTS values; API keys (SettingsKey.keychainKeys) routed to Keychain, never SwiftData. ConsentHelper.isConsented: localhost providers (lmstudio, foundation_models, custom) always true; cloud providers read llm_consent_<provider> flag. BackgroundStore @ModelActor provides insert, insertBatch, update, delete, fetch, save helpers — UI @Query updates automatically via SwiftData change tracking. 20 new CoreTests (+ 18 existing = 38 total), all passing: defaults, set/get, Keychain round-trip, API key not in SwiftData, consent grant/revoke, BackgroundStore async insert and batch insert."
+<!-- SECTION:FINAL_SUMMARY:END -->

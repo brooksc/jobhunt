@@ -1,0 +1,82 @@
+import SwiftUI
+import SwiftData
+import JobhuntCore
+
+struct ContentView: View {
+    var router: Router
+    @State private var theme = Theme()
+    @Environment(AppServices.self) private var appServices
+
+    @Query private var sites: [Site]
+    @Query(filter: #Predicate<Job> { $0.unread == true }) private var unreadJobs: [Job]
+
+    private var selectedSite: Site? {
+        guard let id = router.selectedSiteID else { return nil }
+        return sites.first { $0.id == id }
+    }
+
+    var body: some View {
+        NavigationSplitView {
+            Sidebar(router: router, theme: theme)
+        } content: {
+            contentView(for: router.selectedSection)
+        } detail: {
+            detailView(for: router.selectedSection)
+        }
+        .environment(router)
+        .environment(theme)
+        .preferredColorScheme(
+            theme.colorSchemePreference == .auto ? nil :
+                theme.colorSchemePreference == .dark ? .dark : .light
+        )
+        .background(
+            DockBadgeUpdater(unreadCount: unreadJobs.count)
+                .frame(width: 0, height: 0)
+        )
+    }
+
+    @ViewBuilder
+    func contentView(for section: SidebarSection) -> some View {
+        switch section {
+        case .jobs:
+            JobsView()
+        case .dashboard:
+            DashboardView()
+        case .dataQuality:
+            DataQualityView()
+        case .needsAction:
+            NeedsActionView()
+        case .llmQueue:
+            LLMQueueView(queueActor: appServices.queueActor, settings: appServices.settings)
+        case .sites:
+            SitesView(siteService: appServices.siteService)
+        case .duplicates:
+            DuplicatesView()
+        case .settings:
+            SettingsView()
+        case .help:
+            Text("Help coming soon")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    func detailView(for section: SidebarSection) -> some View {
+        switch section {
+        case .sites:
+            if let site = selectedSite {
+                SiteDetailView(site: site, siteService: appServices.siteService)
+            } else {
+                ContentUnavailableView(
+                    "No Site Selected",
+                    systemImage: "globe",
+                    description: Text("Select a site to view details.")
+                )
+            }
+        default:
+            JobDetailPlaceholder()
+        }
+    }
+}
+
+// Preview requires a real ModelContainer (for AppServices) so is omitted here.

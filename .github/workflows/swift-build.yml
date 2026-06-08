@@ -1,0 +1,54 @@
+name: Swift Build
+
+on:
+  push:
+    branches: [main, swift-rewrite]
+    tags-ignore: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tuist
+        run: brew install tuist
+
+      - name: Install swiftlint / swiftformat
+        run: brew install swiftlint swiftformat
+
+      - name: Generate Xcode project
+        run: tuist generate --no-open
+
+      - name: Build DMG scheme
+        run: |
+          xcodebuild -scheme Jobhunt-DMG \
+            -configuration Debug-DMG \
+            -destination 'platform=macOS' \
+            build \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Build MAS scheme
+        run: |
+          xcodebuild -scheme Jobhunt-MAS \
+            -configuration Debug-MAS \
+            -destination 'platform=macOS' \
+            build \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Run Core tests
+        run: |
+          xcodebuild -scheme Jobhunt-DMG \
+            -configuration Debug-DMG \
+            -destination 'platform=macOS' \
+            -only-testing CoreTests \
+            test \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: SwiftLint
+        run: swiftlint lint --strict
+
+      - name: SwiftFormat check
+        run: swiftformat --lint app core server/swift mcp/swift Tests

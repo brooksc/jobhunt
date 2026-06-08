@@ -1,0 +1,81 @@
+name: Release DMG
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build-dmg:
+    runs-on: macos-latest
+    env:
+      DEVELOPER_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Import Developer ID certificate
+        run: |
+          echo "${{ secrets.DEVELOPER_ID_CERT_BASE64 }}" | base64 --decode > cert.p12
+          security create-keychain -p "" build.keychain
+          security import cert.p12 -k build.keychain -P "${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+          security list-keychains -d user -s build.keychain
+
+      - name: Install Tuist
+        run: curl -Ls https://install.tuist.io | bash
+
+      - name: Install dependencies
+        run: tuist install || true
+
+      - name: Generate project
+        run: tuist generate --no-open
+
+      - name: Run tests
+        run: nice xcodebuild test -project Jobhunt.xcodeproj -scheme Jobhunt-DMG -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
+
+      - name: Archive
+        run: |
+          nice xcodebuild archive \
+            -project Jobhunt.xcodeproj \
+            -scheme Jobhunt-DMG \
+            -configuration Release-DMG \
+            -archivePath build/Jobhunt-DMG.xcarchive \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Export archive (Developer ID)
+        run: |
+          cat > export-options-dmg.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>developer-id</string>
+            <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath build/Jobhunt-DMG.xcarchive \
+            -exportPath build/export-dmg \
+            -exportOptionsPlist export-options-dmg.plist
+
+      - name: Create DMG
+        run: |
+          hdiutil create -volname Jobhunt \
+            -srcfolder build/export-dmg/Jobhunt.app \
+            -ov -format UDZO \
+            build/Jobhunt-${{ github.ref_name }}.dmg
+
+      - name: Notarize
+        run: |
+          xcrun notarytool submit build/Jobhunt-${{ github.ref_name }}.dmg \
+            --apple-id "${{ secrets.APPLE_ID }}" \
+            --password "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" \
+            --team-id "${{ secrets.APPLE_TEAM_ID }}" \
+            --wait
+          xcrun stapler staple build/Jobhunt-${{ github.ref_name }}.dmg
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/Jobhunt-${{ github.ref_name }}.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

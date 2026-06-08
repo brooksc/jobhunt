@@ -45,8 +45,7 @@ struct ContentView: View {
             Text("Needs Action coming soon")
                 .foregroundStyle(.secondary)
         case .llmQueue:
-            Text("LLM Queue coming soon")
-                .foregroundStyle(.secondary)
+            LLMQueueView(queueActor: appServices.queueActor, settings: appServices.settings)
         case .sites:
             SitesView(siteService: appServices.siteService)
         case .duplicates:

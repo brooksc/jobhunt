@@ -1,9 +1,11 @@
 ---
 id: TASK-040
 title: 'DemoSeeder: sample-data store for demo mode'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - claude
 created_date: '2026-06-07 22:45'
+updated_date: '2026-06-08 02:05'
 labels:
   - swift-rewrite
   - core

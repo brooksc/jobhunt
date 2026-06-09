@@ -1,9 +1,10 @@
 ---
 id: TASK-070
 title: 'HIG-8: Replace generic "Error" alert titles with descriptive messages'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-09 03:00'
+updated_date: '2026-06-09 03:18'
 labels:
   - hig
   - moderate

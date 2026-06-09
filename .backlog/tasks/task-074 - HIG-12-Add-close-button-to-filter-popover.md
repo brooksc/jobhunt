@@ -1,9 +1,10 @@
 ---
 id: TASK-074
 title: 'HIG-12: Add close button to filter popover'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-09 03:00'
+updated_date: '2026-06-09 03:18'
 labels:
   - hig
   - moderate

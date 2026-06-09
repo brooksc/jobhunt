@@ -1,9 +1,10 @@
 ---
 id: TASK-066
 title: 'HIG-2: Move Settings to a dedicated Settings scene with ⌘,'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-09 02:59'
+updated_date: '2026-06-09 03:18'
 labels:
   - hig
   - critical

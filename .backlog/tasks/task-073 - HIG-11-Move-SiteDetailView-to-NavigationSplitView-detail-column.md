@@ -1,9 +1,10 @@
 ---
 id: TASK-073
 title: 'HIG-11: Move SiteDetailView to NavigationSplitView detail column'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-09 03:00'
+updated_date: '2026-06-09 03:18'
 labels:
   - hig
   - moderate

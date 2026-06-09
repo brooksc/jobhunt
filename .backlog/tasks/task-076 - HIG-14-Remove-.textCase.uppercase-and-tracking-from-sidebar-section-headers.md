@@ -1,9 +1,10 @@
 ---
 id: TASK-076
 title: 'HIG-14: Remove .textCase(.uppercase) and tracking from sidebar section headers'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-09 03:00'
+updated_date: '2026-06-09 03:18'
 labels:
   - hig
   - minor

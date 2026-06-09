@@ -1,9 +1,10 @@
 ---
 id: TASK-080
 title: 'HIG-19: Add accessibility annotations to unread indicator dot in job rows'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-09 03:00'
+updated_date: '2026-06-09 03:18'
 labels:
   - hig
   - minor

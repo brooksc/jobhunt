@@ -1,9 +1,10 @@
 ---
 id: TASK-078
 title: 'HIG-16: Remove hardcoded profile header from sidebar'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-09 03:00'
+updated_date: '2026-06-09 03:18'
 labels:
   - hig
   - minor

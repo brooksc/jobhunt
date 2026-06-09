@@ -1,9 +1,10 @@
 ---
 id: TASK-075
 title: 'HIG-13: Increase sidebar nav label font from .caption to system body size'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-09 03:00'
+updated_date: '2026-06-09 03:18'
 labels:
   - hig
   - minor

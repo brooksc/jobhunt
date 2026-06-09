@@ -1,9 +1,10 @@
 ---
 id: TASK-068
 title: 'HIG-5: Replace custom tab bar in JobDetailView with system TabView'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-09 02:59'
+updated_date: '2026-06-09 03:18'
 labels:
   - hig
   - moderate

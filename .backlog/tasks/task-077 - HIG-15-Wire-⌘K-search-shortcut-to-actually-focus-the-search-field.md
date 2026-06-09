@@ -1,9 +1,10 @@
 ---
 id: TASK-077
 title: 'HIG-15: Wire ⌘K search shortcut to actually focus the search field'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-09 03:00'
+updated_date: '2026-06-09 03:18'
 labels:
   - hig
   - minor

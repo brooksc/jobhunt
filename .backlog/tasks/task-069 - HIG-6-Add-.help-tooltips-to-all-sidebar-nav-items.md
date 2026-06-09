@@ -1,9 +1,10 @@
 ---
 id: TASK-069
 title: 'HIG-6: Add .help() tooltips to all sidebar nav items'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-09 03:00'
+updated_date: '2026-06-09 03:18'
 labels:
   - hig
   - moderate

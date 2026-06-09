@@ -1,9 +1,10 @@
 ---
 id: TASK-065
 title: 'HIG-1: Replace custom VStack sidebar with native List + .listStyle(.sidebar)'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-09 02:59'
+updated_date: '2026-06-09 03:18'
 labels:
   - hig
   - critical

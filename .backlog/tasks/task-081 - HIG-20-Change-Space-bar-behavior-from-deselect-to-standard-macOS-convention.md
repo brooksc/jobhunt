@@ -1,9 +1,10 @@
 ---
 id: TASK-081
 title: 'HIG-20: Change Space bar behavior from deselect to standard macOS convention'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-09 03:00'
+updated_date: '2026-06-09 03:18'
 labels:
   - hig
   - minor

@@ -1,9 +1,10 @@
 ---
 id: TASK-072
 title: 'HIG-10: Replace hardcoded hex colors with adaptive light/dark variants'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-09 03:00'
+updated_date: '2026-06-09 03:18'
 labels:
   - hig
   - moderate

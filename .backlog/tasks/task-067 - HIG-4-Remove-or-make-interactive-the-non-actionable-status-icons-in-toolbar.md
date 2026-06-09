@@ -1,9 +1,10 @@
 ---
 id: TASK-067
 title: 'HIG-4: Remove or make interactive the non-actionable status icons in toolbar'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-09 02:59'
+updated_date: '2026-06-09 03:18'
 labels:
   - hig
   - critical

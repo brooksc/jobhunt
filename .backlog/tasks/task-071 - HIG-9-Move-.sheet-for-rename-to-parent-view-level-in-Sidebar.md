@@ -1,9 +1,10 @@
 ---
 id: TASK-071
 title: 'HIG-9: Move .sheet for rename to parent view level in Sidebar'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-09 03:00'
+updated_date: '2026-06-09 03:18'
 labels:
   - hig
   - moderate

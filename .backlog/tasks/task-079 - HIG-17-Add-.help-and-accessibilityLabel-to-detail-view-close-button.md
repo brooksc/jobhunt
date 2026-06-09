@@ -1,9 +1,10 @@
 ---
 id: TASK-079
 title: 'HIG-17: Add .help() and accessibilityLabel to detail view close button'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-09 03:00'
+updated_date: '2026-06-09 03:18'
 labels:
   - hig
   - minor

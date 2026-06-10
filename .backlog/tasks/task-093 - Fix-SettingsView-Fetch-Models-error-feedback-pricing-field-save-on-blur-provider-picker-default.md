@@ -3,9 +3,10 @@ id: TASK-093
 title: >-
   Fix SettingsView: Fetch Models error feedback, pricing field save on blur,
   provider picker default
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-10 07:32'
+updated_date: '2026-06-10 22:24'
 labels:
   - bug
   - ui-audit

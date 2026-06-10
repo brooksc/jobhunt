@@ -3,9 +3,10 @@ id: TASK-095
 title: >-
   Fix Sidebar: double applySelection on every tap, no confirmation for saved
   search delete
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-10 07:32'
+updated_date: '2026-06-10 22:24'
 labels:
   - bug
   - ui-audit

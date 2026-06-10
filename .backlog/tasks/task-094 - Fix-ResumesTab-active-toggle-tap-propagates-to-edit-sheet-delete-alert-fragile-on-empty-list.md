@@ -3,9 +3,10 @@ id: TASK-094
 title: >-
   Fix ResumesTab: active toggle tap propagates to edit sheet; delete alert
   fragile on empty list
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-10 07:32'
+updated_date: '2026-06-10 22:24'
 labels:
   - bug
   - ui-audit

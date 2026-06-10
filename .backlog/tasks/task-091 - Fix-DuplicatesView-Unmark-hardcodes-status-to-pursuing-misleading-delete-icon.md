@@ -3,9 +3,10 @@ id: TASK-091
 title: >-
   Fix DuplicatesView: Unmark hardcodes status to pursuing, misleading delete
   icon
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-10 07:31'
+updated_date: '2026-06-10 22:24'
 labels:
   - bug
   - ui-audit

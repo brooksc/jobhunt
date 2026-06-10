@@ -3,9 +3,10 @@ id: TASK-085
 title: >-
   Fix environment key injection: jobService and queueActor nil in Inspector, fix
   hardcoded extension status
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-10 07:31'
+updated_date: '2026-06-10 22:24'
 labels:
   - bug
   - ui-audit

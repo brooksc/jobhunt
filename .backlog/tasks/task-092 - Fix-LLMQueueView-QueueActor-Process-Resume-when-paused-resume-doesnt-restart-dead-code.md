@@ -3,9 +3,10 @@ id: TASK-092
 title: >-
   Fix LLMQueueView + QueueActor: Process/Resume when paused, resume doesn't
   restart, dead code
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-10 07:31'
+updated_date: '2026-06-10 22:24'
 labels:
   - bug
   - ui-audit

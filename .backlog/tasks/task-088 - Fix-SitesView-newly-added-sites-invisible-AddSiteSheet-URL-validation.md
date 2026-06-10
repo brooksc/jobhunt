@@ -1,9 +1,10 @@
 ---
 id: TASK-088
 title: 'Fix SitesView: newly added sites invisible; AddSiteSheet URL validation'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-10 07:31'
+updated_date: '2026-06-10 22:24'
 labels:
   - bug
   - ui-audit

@@ -3,9 +3,10 @@ id: TASK-083
 title: >-
   Fix JobsView: multi-select delete, missing confirmation, and searchText not
   synced to filterState
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-10 07:30'
+updated_date: '2026-06-10 22:24'
 labels:
   - bug
   - ui-audit

@@ -1,9 +1,10 @@
 ---
 id: TASK-082
 title: 'Fix AddJobSheet: jobService never injected + CapturePayload empty title'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-10 07:30'
+updated_date: '2026-06-10 22:24'
 labels:
   - bug
   - ui-audit

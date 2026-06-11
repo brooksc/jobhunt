@@ -5,21 +5,10 @@ import SwiftUI
 // MARK: - SettingsView
 
 struct SettingsView: View {
-    @Environment(\.modelContext) private var modelContext
-    @State private var settings: SettingsStore?
+    @Environment(AppServices.self) private var appServices
 
     var body: some View {
-        Group {
-            if let settings {
-                SettingsTabView(settings: settings)
-            } else {
-                ProgressView("Loading settings…")
-                    .onAppear { settings = SettingsStore(modelContext: modelContext) }
-            }
-        }
-        .onAppear {
-            if settings == nil { settings = SettingsStore(modelContext: modelContext) }
-        }
+        SettingsTabView(settings: appServices.settings)
     }
 }
 

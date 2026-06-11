@@ -1,9 +1,10 @@
 ---
 id: TASK-187
 title: 'Release: Package and publish the Chrome extension with app releases'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 23:40'
+updated_date: '2026-06-11 23:54'
 labels:
   - audit
   - release
@@ -26,7 +27,13 @@ The browser extension is core to the capture workflow and has a packaging script
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Release workflow produces a versioned extension zip or explicitly invokes a documented Chrome Web Store publication step.
-- [ ] #2 The packaged extension version matches the app release version policy.
-- [ ] #3 Release documentation lists the extension artifact/publication step and owner.
+- [x] #1 Release workflow produces a versioned extension zip or explicitly invokes a documented Chrome Web Store publication step.
+- [x] #2 The packaged extension version matches the app release version policy.
+- [x] #3 Release documentation lists the extension artifact/publication step and owner.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added `Package Chrome extension` step to release-dmg.yml that runs `./scripts/package-extension.sh`. The `Upload to GitHub Release` step now attaches both the DMG and `chromestore/jobhunt-capture-*.zip`. A comment documents the manual Chrome Web Store upload step and the requirement to keep `extension/manifest.json` version in sync with MARKETING_VERSION.
+<!-- SECTION:FINAL_SUMMARY:END -->

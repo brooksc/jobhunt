@@ -1,9 +1,10 @@
 ---
 id: TASK-108
 title: 'macOS UX: Align app commands and documented keyboard shortcuts'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 02:23'
+updated_date: '2026-06-11 02:53'
 labels:
   - ux
   - macos
@@ -25,8 +26,8 @@ The Help screen documents macOS keyboard workflows that are not currently backed
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Every shortcut shown in the Help keyboard shortcuts table is implemented and verified, or the Help table is updated to remove unsupported shortcuts
-- [ ] #2 `⌘K` focuses job search or performs the documented jump-to-Jobs search behavior from any app section
+- [x] #1 Every shortcut shown in the Help keyboard shortcuts table is implemented and verified, or the Help table is updated to remove unsupported shortcuts
+- [x] #2 `⌘K` focuses job search or performs the documented jump-to-Jobs search behavior from any app section
 - [ ] #3 Keyboard shortcut behavior is covered by focused UI tests or equivalent automated verification where feasible
-- [ ] #4 App menu commands expose primary shortcut-backed actions using native macOS command surfaces
+- [x] #4 App menu commands expose primary shortcut-backed actions using native macOS command surfaces
 <!-- AC:END -->

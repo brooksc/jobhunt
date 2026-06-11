@@ -3,10 +3,10 @@ id: TASK-123
 title: >-
   Security: Require non-empty MCP token and wire token generation into
   app/server startup
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 03:01'
-updated_date: '2026-06-11 04:33'
+updated_date: '2026-06-11 18:45'
 labels:
   - security
   - mcp
@@ -45,3 +45,9 @@ MCP route authorization can fail open when the configured token is empty because
 <!-- SECTION:NOTES:BEGIN -->
 Security/privacy audit addendum: `MCPTokenManager.generateAndWrite()` writes `~/.jobhunt-mcp-token` via `String.write`, so file permissions depend on process umask. The token file should be created/read only when owned by the current user and mode-restricted.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+1. MCPTokenManager.generateAndWrite() now sets file permissions to 0600 after writing; read() rejects files with group/other bits set (returns nil). 2. MCPBridgeRoutes.routeMCPRequest() fails closed: empty server mcpToken returns 503 "MCP not configured"; missing/wrong request token returns 401. 3. AppServices now imports JobhuntServer, generates a fresh UUID token via MCPTokenManager.generateAndWrite() on init, passes it to JobhuntServer, and starts the server via Task. 4. ServerTests: added testMCPUnauthorizedWithEmptyToken, testMCPAuthorizedWithCorrectToken, testMCPServerWithEmptyTokenRejects503. CoreTests: added MCPTokenManagerTests (4 tests covering permissions validation). All tests pass.
+<!-- SECTION:FINAL_SUMMARY:END -->

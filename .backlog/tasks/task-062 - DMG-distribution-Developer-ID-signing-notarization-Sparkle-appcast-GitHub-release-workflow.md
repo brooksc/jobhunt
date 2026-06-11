@@ -6,7 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-06-07 22:51'
-updated_date: '2026-06-08 03:55'
+updated_date: '2026-06-11 03:39'
 labels:
   - swift-rewrite
   - dist
@@ -54,7 +54,15 @@ Depends on task-033 (project + CI skeleton + DMG entitlements) and task-060 (Spa
 - [ ] #3 bump-version.sh updates Xcode version settings + extension manifest in lockstep
 - [ ] #4 Tests + coverage gate run as required pre-release step
 - [ ] #5 Verified: clean-machine DMG passes Gatekeeper; Sparkle vN→vN+1 update works
+- [ ] #6 DMG release workflow generates and publishes a Sparkle EdDSA-signed appcast alongside the DMG, or Sparkle is intentionally deferred and the app command is disabled.
+- [ ] #7 Only one active DMG release workflow responds to `v*` tags after Electron cleanup.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Release audit follow-up: current `.github/workflows/release-dmg.yml` notarizes and uploads the DMG, but no Sparkle appcast generation/signing was found. Existing `.github/workflows/release.yml` is still Electron-era and also triggers on `v*` tags.
+<!-- SECTION:NOTES:END -->
 
 ## Final Summary
 

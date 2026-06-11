@@ -1,9 +1,10 @@
 ---
 id: TASK-120
 title: 'Persistence: Define SwiftData schema evolution and migrator policy'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 02:47'
+updated_date: '2026-06-11 03:30'
 labels:
   - persistence
   - migration
@@ -32,3 +33,9 @@ priority: medium
 - [ ] #4 Current `SchemaV1` behavior and existing migrator tests continue to pass
 - [ ] #5 Untracked/split migrator files are reconciled into the intended project structure or explicitly documented as follow-up work
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added schema evolution policy documentation to Schema.swift covering when to create VersionedSchema, how to add SchemaV2, and the standalone migrator's role. Created SchemaEvolutionTests.swift with 5 tests: V1 round-trip, all model types insertable, migration plan structure invariants. Fixed compile error: Site init uses `origin:` not `name:`.
+<!-- SECTION:FINAL_SUMMARY:END -->

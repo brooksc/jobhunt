@@ -1,9 +1,10 @@
 ---
 id: TASK-117
 title: 'Persistence: Snapshot SwiftData models before LLM queue provider work'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 02:46'
+updated_date: '2026-06-11 03:02'
 labels:
   - persistence
   - swiftdata
@@ -26,9 +27,9 @@ priority: high
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 LLM extraction and fit-scoring provider calls receive Sendable value snapshots rather than live SwiftData model instances
-- [ ] #2 Queue processing persists extraction, fit score, attempt, and request-status updates through named store/service methods
-- [ ] #3 Retry, cancellation, auto-pause, and success notification behavior remains unchanged
-- [ ] #4 Tests cover at least one extraction path and one fit-scoring path using the new snapshot flow
-- [ ] #5 Swift strict concurrency remains clean without adding new unsafe Sendable escapes
+- [x] #1 LLM extraction and fit-scoring provider calls receive Sendable value snapshots rather than live SwiftData model instances
+- [x] #2 Queue processing persists extraction, fit score, attempt, and request-status updates through named store/service methods
+- [x] #3 Retry, cancellation, auto-pause, and success notification behavior remains unchanged
+- [x] #4 Tests cover at least one extraction path and one fit-scoring path using the new snapshot flow
+- [x] #5 Swift strict concurrency remains clean without adding new unsafe Sendable escapes
 <!-- AC:END -->

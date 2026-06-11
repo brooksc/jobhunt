@@ -112,44 +112,13 @@ public actor JobService {
             ? nil
             : DuplicateDetector.cleanedHash(from: cleanedDescription)
 
-        // 4. Dedup: check raw_hash first, then cleaned_hash
-        let existingCaptures = try await store.fetch(FetchDescriptor<Capture>())
-
-        // Check for raw hash collision (same content, different URL)
-        if let existing = existingCaptures.first(where: { $0.rawHash == rawHashValue }),
-           let existingJob = existing.job {
-            return IngestResult(
-                captureID: existing.id,
-                jobNumber: existingJob.jobNumber ?? 0,
-                isDuplicate: true
-            )
-        }
-
-        // Find duplicate job via cleaned hash (same content, different URL)
-        var duplicateOfJobID: String?
-        if let cHash = cleanedHashValue {
-            let url = payload.url
-            let canonicalURL = payload.canonicalURL
-            if let dupCapture = existingCaptures.first(where: { cap in
-                cap.cleanedHash == cHash &&
-                    cap.url != url &&
-                    (cap.canonicalURL ?? "") != (canonicalURL ?? "")
-            }) {
-                duplicateOfJobID = dupCapture.job?.id
-            }
-        }
-
-        // 5. Auto job_number: max + 1
-        let allJobs = try await store.fetch(FetchDescriptor<Job>())
-        let maxJobNumber = allJobs.compactMap(\.jobNumber).max() ?? 0
-        let jobNumber = maxJobNumber + 1
-
-        // 6. Create Capture + Job
+        // 4-7. Atomic dedup check, job number assignment, and insert of Capture + Job + LLMRequest
         let captureID = "cap-\(UUID().uuidString)"
         let jobID = "job-\(UUID().uuidString)"
 
-        let capture = Capture(
-            id: captureID,
+        let input = AtomicIngestInput(
+            captureID: captureID,
+            jobID: jobID,
             url: payload.url,
             canonicalURL: payload.canonicalURL,
             pageTitle: payload.pageTitle,
@@ -161,25 +130,13 @@ public actor JobService {
             rawHash: rawHashValue,
             cleanedHash: cleanedHashValue
         )
-
-        let job = Job(
-            id: jobID,
-            jobNumber: jobNumber,
-            duplicateOfJobID: duplicateOfJobID
-        )
-        job.capture = capture
-
-        try await store.insert(capture)
-        try await store.insert(job)
-
-        // 7. Enqueue extraction
-        try await queue.enqueue(jobIDs: [job.id], mode: .extract)
+        let atomic = try await store.insertCaptureAtomically(input)
 
         // 8. Return result
         return IngestResult(
-            captureID: captureID,
-            jobNumber: jobNumber,
-            isDuplicate: false
+            captureID: atomic.captureID,
+            jobNumber: atomic.jobNumber,
+            isDuplicate: atomic.isDuplicate
         )
     }
 

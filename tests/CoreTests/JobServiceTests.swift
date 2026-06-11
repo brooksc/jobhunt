@@ -333,6 +333,57 @@ final class JobServiceTests: XCTestCase {
         XCTAssertNil(record)
     }
 
+    func testConcurrentIngest_assignsDistinctJobNumbers() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let queue = makeQueue(container)
+        let svc = JobService(store: store, queue: queue)
+
+        let payloads = (1...5).map { i in
+            CapturePayload(
+                url: "https://example.com/j/\(i)",
+                pageTitle: "Job \(i)",
+                visibleText: "description \(i)"
+            )
+        }
+
+        // Launch all 5 ingestions concurrently
+        let results = try await withThrowingTaskGroup(of: IngestResult.self) { group in
+            for p in payloads { group.addTask { try await svc.ingestCapture(p) } }
+            var out: [IngestResult] = []
+            for try await r in group { out.append(r) }
+            return out
+        }
+
+        let numbers = results.filter { !$0.isDuplicate }.map(\.jobNumber)
+        XCTAssertEqual(Set(numbers).count, numbers.count, "Every concurrent ingest must get a unique jobNumber")
+        XCTAssertEqual(numbers.count, 5)
+    }
+
+    func testAtomicIngest_createsCaptureJobAndLLMRequest() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let queue = makeQueue(container)
+        let svc = JobService(store: store, queue: queue)
+
+        let payload = CapturePayload(
+            url: "https://example.com/atomic",
+            pageTitle: "Atomic Job",
+            visibleText: "some text"
+        )
+        _ = try await svc.ingestCapture(payload)
+
+        let ctx = ModelContext(container)
+        let jobs = try ctx.fetch(FetchDescriptor<Job>())
+        let captures = try ctx.fetch(FetchDescriptor<Capture>())
+        let requests = try ctx.fetch(FetchDescriptor<LLMRequest>())
+
+        XCTAssertEqual(jobs.count, 1)
+        XCTAssertEqual(captures.count, 1)
+        XCTAssertEqual(requests.count, 1, "Extraction LLMRequest must be created atomically with Capture+Job")
+        XCTAssertEqual(requests.first?.job?.id, jobs.first?.id)
+    }
+
     func testWorkflowSnapshot_countsJobsAndSites() async throws {
         let container = try ModelContainerFactory.inMemory()
         let store = makeStore(container)

@@ -1,9 +1,10 @@
 ---
 id: TASK-172
 title: 'Error handling: Preserve duplicate-resolution state when mutations fail'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 21:44'
+updated_date: '2026-06-11 22:20'
 labels:
   - audit
   - error-handling
@@ -28,3 +29,9 @@ Duplicate-resolution actions clear `selectedPairID`, suppress service errors, an
 - [ ] #2 The selected duplicate pair is not cleared before a failed mutation is handled.
 - [ ] #3 Tests or previewable view-state coverage verify success and failure behavior for duplicate actions.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed `DuplicatesView.handleUnmark` and `handleDelete` to clear `selectedPairID` only after a successful mutation. Added `@State private var actionError: String?` and a `.safeAreaInset(edge: .top)` error banner that mirrors the pattern used in LLMQueueView. If mutation throws, the pair stays selected and the error is shown inline. On success, `actionError` is also cleared.
+<!-- SECTION:FINAL_SUMMARY:END -->

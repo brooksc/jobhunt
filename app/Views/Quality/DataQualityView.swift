@@ -7,7 +7,6 @@ import SwiftUI
 struct DataQualityView: View {
     @Environment(Router.self) private var router
     @Environment(AppServices.self) private var appServices
-    @Environment(\.modelContext) private var modelContext
 
     @Query(sort: \Job.createdAt, order: .reverse)
     private var allJobs: [Job]
@@ -291,63 +290,47 @@ struct DataQualityView: View {
         }
     }
 
-    // MARK: - Actions (main-context writes)
+    // MARK: - Actions (routed through JobService)
 
     private func markReviewedSelected() {
-        let selectedJobs = activeJobs.filter { selectedJobIDs.contains($0.id) }
-        do {
-            for job in selectedJobs {
-                if let existing = job.qualityReview {
-                    existing.reviewedAt = Date()
-                    existing.note = ""
-                } else {
-                    let review = DataQualityReview(reviewedAt: Date(), note: "")
-                    review.job = job
-                    modelContext.insert(review)
-                }
+        let ids = Array(selectedJobIDs)
+        selectedJobIDs = []
+        let svc = appServices.jobService
+        Task {
+            do {
+                for id in ids { try await svc.markDataQualityReviewed(jobID: id, notes: nil) }
+            } catch {
+                await MainActor.run { errorMessage = error.localizedDescription }
             }
-            try modelContext.save()
-            selectedJobIDs = []
-        } catch {
-            errorMessage = error.localizedDescription
         }
     }
 
     private func clearReviewSelected() {
-        let selectedJobs = activeJobs.filter { selectedJobIDs.contains($0.id) }
-        do {
-            for job in selectedJobs {
-                if let review = job.qualityReview {
-                    modelContext.delete(review)
-                }
+        let ids = Array(selectedJobIDs)
+        selectedJobIDs = []
+        let svc = appServices.jobService
+        Task {
+            do {
+                for id in ids { try await svc.clearDataQualityReview(jobID: id) }
+            } catch {
+                await MainActor.run { errorMessage = error.localizedDescription }
             }
-            try modelContext.save()
-            selectedJobIDs = []
-        } catch {
-            errorMessage = error.localizedDescription
         }
     }
 
     private func queueReextractionSelected() {
-        let selectedJobs = activeJobs.filter { selectedJobIDs.contains($0.id) }
-        do {
-            for job in selectedJobs {
-                job.extractionStatus = .pending
-                job.extractionError = nil
-                job.extractedAt = nil
-                job.updatedAt = Date()
-                let request = LLMRequest(requestType: .extract)
-                request.job = job
-                modelContext.insert(request)
-            }
-            try modelContext.save()
-            selectedJobIDs = []
-        } catch {
-            errorMessage = error.localizedDescription
-            return
-        }
+        let ids = Array(selectedJobIDs)
+        selectedJobIDs = []
+        let svc = appServices.jobService
         let queue = appServices.queueActor
-        Task { await queue.startProcessing() }
+        Task {
+            do {
+                try await svc.enqueueLLM(jobIDs: ids, mode: .extract)
+                await queue.startProcessing()
+            } catch {
+                await MainActor.run { errorMessage = error.localizedDescription }
+            }
+        }
     }
 }
 

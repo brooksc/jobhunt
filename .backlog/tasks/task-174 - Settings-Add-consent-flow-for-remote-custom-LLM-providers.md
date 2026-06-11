@@ -1,9 +1,10 @@
 ---
 id: TASK-174
 title: 'Settings: Add consent flow for remote custom LLM providers'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 22:12'
+updated_date: '2026-06-11 22:30'
 labels:
   - audit
   - settings

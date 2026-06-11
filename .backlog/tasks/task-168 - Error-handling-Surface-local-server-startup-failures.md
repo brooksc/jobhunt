@@ -1,9 +1,10 @@
 ---
 id: TASK-168
 title: 'Error handling: Surface local server startup failures'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 21:43'
+updated_date: '2026-06-11 22:19'
 labels:
   - audit
   - error-handling
@@ -29,3 +30,9 @@ priority: high
 - [ ] #2 The user can see whether the local server is running or failed, including a useful error message.
 - [ ] #3 There is a retry or documented recovery path, with tests or a stubbed startup failure check.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Changed `AppServices` server start from `Task { try? await localServer.start() }` to a `@MainActor` task that sets `serverRunning = true` on success and `serverError = error.localizedDescription` on failure. Added `serverRunning: Bool` and `serverError: String?` observable properties. Surfaced status in `ContentView`'s service-status toolbar menu with three states (running/failed/starting) and a Retry button that re-attempts `server.start()` and updates state accordingly.
+<!-- SECTION:FINAL_SUMMARY:END -->

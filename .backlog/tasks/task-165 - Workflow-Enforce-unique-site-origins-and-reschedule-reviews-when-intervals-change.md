@@ -3,9 +3,10 @@ id: TASK-165
 title: >-
   Workflow: Enforce unique site origins and reschedule reviews when intervals
   change
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 20:57'
+updated_date: '2026-06-11 21:41'
 labels:
   - audit
   - workflow
@@ -31,3 +32,9 @@ priority: medium
 - [ ] #2 Changing review interval updates `nextReviewAt` according to the chosen scheduling rule.
 - [ ] #3 Tests cover duplicate origin handling and interval-change scheduling.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed two issues in SiteService: (1) `createSite` now fetches existing sites and returns the existing ID (updating companyName if provided) when a duplicate origin is detected, preventing extra rows. (2) `updateSite` now recomputes `nextReviewAt = lastReviewedAt + newIntervalDays` (falling back to `now + newIntervalDays` when never reviewed) whenever `intervalDays` is changed. Added `testCreateSite_duplicateOrigin_returnsExistingID` and `testUpdateSite_intervalChange_recomputesNextReviewAt` in JobServiceTests.
+<!-- SECTION:FINAL_SUMMARY:END -->

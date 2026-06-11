@@ -6,7 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-06-07 22:50'
-updated_date: '2026-06-08 03:55'
+updated_date: '2026-06-11 03:39'
 labels:
   - swift-rewrite
   - mcp
@@ -53,7 +53,16 @@ Depends on task-047 (HTTP server + stubbed bridge extension point) and task-046 
 - [ ] #3 Helper discovers the app port (8765–8769 + /api/ping) and authenticates with the per-launch token
 - [ ] #4 Bundled in the DMG app + documented claude mcp add usage; excluded from MAS
 - [ ] #5 MCPTests: scripted stdio tool calls + one end-to-end test against the real server pass
+- [ ] #6 DMG app bundle contains the MCP helper at the documented `Contents/Helpers/jobhunt-mcp` path after archive/export.
+- [ ] #7 Release verification runs `codesign --verify --deep --strict` on the app bundle and confirms the embedded MCP helper is signed.
+- [ ] #8 README MCP command path is checked against the actual exported DMG contents before completion.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Release audit follow-up: README documents `/Applications/Jobhunt.app/Contents/Helpers/jobhunt-mcp`, but the current Tuist app target does not appear to embed `JobhuntMCP` into `Jobhunt.app/Contents/Helpers`; the current built Debug-DMG app has no `Contents/Helpers` directory. This task should explicitly add and verify the app-bundle copy/signing step, not only build the command-line target.
+<!-- SECTION:NOTES:END -->
 
 ## Final Summary
 

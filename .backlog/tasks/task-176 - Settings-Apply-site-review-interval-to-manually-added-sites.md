@@ -1,9 +1,10 @@
 ---
 id: TASK-176
 title: 'Settings: Apply site review interval to manually added sites'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 22:12'
+updated_date: '2026-06-11 22:30'
 labels:
   - audit
   - settings

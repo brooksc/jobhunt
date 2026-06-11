@@ -57,4 +57,44 @@ public actor BackgroundStore {
     public func save() throws {
         try modelContext.save()
     }
+
+    /// Update job fit fields AND create/update the JobFitScore record for a (job, resume) pair.
+    /// Call this instead of a bare `update(Job.self...)` after fit scoring so the FitTab has data.
+    public func saveFitScore(
+        jobID: String,
+        resumeID: String,
+        overall: Int,
+        fitJSON: String?,
+        model: String?,
+        scoredAt: Date
+    ) throws {
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
+        guard let job = jobs.first else { return }
+
+        job.fitScore = overall
+        job.fitStatus = .succeeded
+        job.fitScoreJSON = fitJSON
+        job.updatedAt = Date()
+
+        let existing = job.fitScores.first { $0.resume?.id == resumeID }
+        let record: JobFitScore
+        if let existing {
+            record = existing
+        } else {
+            record = JobFitScore()
+            modelContext.insert(record)
+            record.job = job
+            let resumes = try modelContext.fetch(FetchDescriptor<Resume>(predicate: #Predicate { $0.id == resumeID }))
+            record.resume = resumes.first
+        }
+        record.fitScore = overall
+        record.fitStatus = .succeeded
+        record.fitScoreJSON = fitJSON
+        record.model = model
+        record.scoredAt = scoredAt
+        record.updatedAt = Date()
+
+        try modelContext.save()
+    }
+
 }

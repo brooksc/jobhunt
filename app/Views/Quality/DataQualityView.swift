@@ -6,6 +6,7 @@ import SwiftUI
 
 struct DataQualityView: View {
     @Environment(Router.self) private var router
+    @Environment(AppServices.self) private var appServices
     @Environment(\.modelContext) private var modelContext
 
     @Query(sort: \Job.createdAt, order: .reverse)
@@ -13,8 +14,9 @@ struct DataQualityView: View {
 
     private var activeJobs: [Job] {
         allJobs.filter {
-            $0.status != .archived &&
-                $0.status != .notAvailable &&
+            $0.status != .passed &&
+                $0.status != .archived &&
+                $0.status != .closed &&
                 $0.status != .duplicate
         }
     }
@@ -77,7 +79,9 @@ struct DataQualityView: View {
             jobList
         }
         .toolbar { toolbarContent }
-        .alert("Error", isPresented: Binding(
+        .onChange(of: filterKind) { _, _ in selectedJobIDs = [] }
+        .onChange(of: showReviewed) { _, _ in selectedJobIDs = [] }
+        .alert("Action Failed", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )) {
@@ -237,7 +241,7 @@ struct DataQualityView: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture {
+        .onTapGesture(count: 2) {
             router.selectedJobID = job.id
             router.navigateToSection(.jobs)
         }
@@ -340,7 +344,10 @@ struct DataQualityView: View {
             selectedJobIDs = []
         } catch {
             errorMessage = error.localizedDescription
+            return
         }
+        let queue = appServices.queueActor
+        Task { await queue.startProcessing() }
     }
 }
 

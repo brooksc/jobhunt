@@ -9,6 +9,7 @@ struct JobhuntApp: App {
     let onboardingManager: OnboardingManager
     let router: Router
     let platformIntegration: PlatformIntegration
+    let theme = Theme()
 
     init() {
         do {
@@ -31,7 +32,7 @@ struct JobhuntApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView(router: router)
+            ContentView(router: router, theme: theme)
                 .environment(appServices)
                 .sheet(isPresented: Binding(
                     get: { onboardingManager.isPresented },
@@ -50,7 +51,23 @@ struct JobhuntApp: App {
         .defaultSize(width: 1200, height: 750)
         .modelContainer(modelContainer)
         .commands {
-            CommandGroup(replacing: .newItem) {}
+            // ⌘N — Add Job (HIG-7)
+            CommandGroup(replacing: .newItem) {
+                Button("Add Job…") {
+                    router.navigateToSection(.jobs)
+                    router.showAddJobSheet = true
+                }
+                .keyboardShortcut("n", modifiers: .command)
+            }
+
+            // ⌘⇧E — Export CSV (HIG-18)
+            CommandGroup(after: .importExport) {
+                Button("Export Jobs to CSV…") {
+                    router.triggerExport = true
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+            }
+
             #if !MAS_BUILD
                 CommandGroup(after: .appInfo) {
                     Button("Check for Updates…") {
@@ -58,6 +75,14 @@ struct JobhuntApp: App {
                     }
                 }
             #endif
+        }
+
+        // HIG-2: Dedicated Settings scene — opened via ⌘, from the app menu
+        Settings {
+            SettingsView()
+                .environment(appServices)
+                .environment(theme)
+                .modelContainer(modelContainer)
         }
     }
 }

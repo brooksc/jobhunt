@@ -7,8 +7,8 @@ import SwiftUI
 private enum DueBucket: String, CaseIterable {
     case overdue = "Overdue"
     case today = "Today"
-    case upcoming = "Upcoming"
-    case noDueDate = "No Due Date"
+    case thisWeek = "This week"
+    case later = "Later"
 }
 
 private extension JobAction {
@@ -16,9 +16,11 @@ private extension JobAction {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         let due = cal.startOfDay(for: dueDate)
+        let days = cal.dateComponents([.day], from: today, to: due).day ?? 0
         if due < today { return .overdue }
         if due == today { return .today }
-        return .upcoming
+        if days <= 7 { return .thisWeek }
+        return .later
     }
 }
 
@@ -37,7 +39,7 @@ private enum StatusFilterOption: String, CaseIterable, Identifiable {
     func matches(_ status: JobStatus) -> Bool {
         switch self {
         case .all: true
-        case .active: status == .saved
+        case .active: status == .pursuing
         case .applied: status == .applied
         case .interview: status == .interview
         }
@@ -106,8 +108,13 @@ struct NeedsActionView: View {
             .sorted { $0.dueDate < $1.dueDate }
     }
 
-    private var upcomingActions: [JobAction] {
-        filteredActions.filter { $0.bucket == .upcoming }
+    private var thisWeekActions: [JobAction] {
+        filteredActions.filter { $0.bucket == .thisWeek }
+            .sorted { $0.dueDate < $1.dueDate }
+    }
+
+    private var laterActions: [JobAction] {
+        filteredActions.filter { $0.bucket == .later }
             .sorted { $0.dueDate < $1.dueDate }
     }
 
@@ -130,63 +137,27 @@ struct NeedsActionView: View {
                     subtitle: "No follow-ups match the current filters."
                 )
             } else {
-                List {
-                    if !overdueActions.isEmpty {
-                        sectionHeader("Overdue", color: .red, count: overdueActions.count)
-                        ForEach(overdueActions, id: \.id) { action in
-                            ActionRow(action: action)
-                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                    completeButton(for: action)
-                                }
-                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                    snoozeButton(for: action)
-                                    viewJobButton(for: action)
-                                }
-                                .contextMenu {
-                                    contextMenuItems(for: action)
-                                }
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 20) {
+                        if !overdueActions.isEmpty {
+                            needsGroup(label: "Overdue", icon: "clock", color: .red, actions: overdueActions)
+                        }
+                        if !todayActions.isEmpty {
+                            needsGroup(label: "Today", icon: "scope", color: .orange, actions: todayActions)
+                        }
+                        if !thisWeekActions.isEmpty {
+                            needsGroup(label: "This week", icon: "calendar", color: .accentColor, actions: thisWeekActions)
+                        }
+                        if !laterActions.isEmpty {
+                            needsGroup(label: "Later", icon: "flag", color: .secondary, actions: laterActions)
                         }
                     }
-
-                    if !todayActions.isEmpty {
-                        sectionHeader("Today", color: .orange, count: todayActions.count)
-                        ForEach(todayActions, id: \.id) { action in
-                            ActionRow(action: action)
-                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                    completeButton(for: action)
-                                }
-                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                    snoozeButton(for: action)
-                                    viewJobButton(for: action)
-                                }
-                                .contextMenu {
-                                    contextMenuItems(for: action)
-                                }
-                        }
-                    }
-
-                    if !upcomingActions.isEmpty {
-                        sectionHeader("Upcoming", color: .secondary, count: upcomingActions.count)
-                        ForEach(upcomingActions, id: \.id) { action in
-                            ActionRow(action: action)
-                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                    completeButton(for: action)
-                                }
-                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                    snoozeButton(for: action)
-                                    viewJobButton(for: action)
-                                }
-                                .contextMenu {
-                                    contextMenuItems(for: action)
-                                }
-                        }
-                    }
+                    .padding(16)
                 }
-                .listStyle(.inset)
             }
         }
         .navigationTitle("Needs Action")
-        .alert("Error", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+        .alert("Action Failed", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
@@ -235,90 +206,72 @@ struct NeedsActionView: View {
             // Snooze All Overdue button
             if !overdueActions.isEmpty {
                 Button {
-                    snoozeAllOverdue()
+                    isSnoozeAllConfirming = true
                 } label: {
-                    Label("Snooze All Overdue", systemImage: "moon.zzz")
+                    Label("Snooze \(overdueActions.count) Overdue", systemImage: "moon.zzz")
                         .font(.subheadline)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
                 .controlSize(.small)
+                .confirmationDialog(
+                    "Snooze Overdue Actions",
+                    isPresented: $isSnoozeAllConfirming,
+                    titleVisibility: .visible
+                ) {
+                    Button("Snooze All (\(overdueActions.count))", role: .destructive) {
+                        snoozeAllOverdue()
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    let filterNote = (statusFilter != .all || !searchText.isEmpty) ? " matching the current filter" : ""
+                    Text("Snooze all \(overdueActions.count) overdue follow-up\(overdueActions.count == 1 ? "" : "s")\(filterNote) for 7 days?")
+                }
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
     }
 
-    // MARK: - Section headers
+    // MARK: - Group section
 
-    private func sectionHeader(_ title: String, color: Color, count: Int) -> some View {
-        Section {} header: {
-            HStack {
-                Image(systemName: "circle.fill")
-                    .font(.system(size: 8))
+    private func needsGroup(label: String, icon: String, color: Color, actions: [JobAction]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Section header
+            HStack(spacing: 7) {
+                Image(systemName: icon)
+                    .font(.caption)
                     .foregroundStyle(color)
-                Text(title)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("\(count)")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .monospacedDigit()
+                Text(label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text("\(actions.count)")
+                    .font(.caption2.monospacedDigit())
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(color.opacity(0.12))
+                    .foregroundStyle(color)
+                    .clipShape(Capsule())
             }
-        }
-    }
 
-    // MARK: - Swipe / context menu actions
-
-    private func completeButton(for action: JobAction) -> some View {
-        Button {
-            complete(action)
-        } label: {
-            Label("Complete", systemImage: "checkmark")
-        }
-        .tint(.green)
-    }
-
-    private func snoozeButton(for action: JobAction) -> some View {
-        Button {
-            snooze(action)
-        } label: {
-            Label("Snooze 7d", systemImage: "moon.zzz")
-        }
-        .tint(.orange)
-    }
-
-    private func viewJobButton(for action: JobAction) -> some View {
-        Button {
-            viewJob(for: action)
-        } label: {
-            Label("View Job", systemImage: "briefcase")
-        }
-        .tint(.blue)
-    }
-
-    @ViewBuilder
-    private func contextMenuItems(for action: JobAction) -> some View {
-        Button {
-            complete(action)
-        } label: {
-            Label("Complete", systemImage: "checkmark")
-        }
-
-        Button {
-            snooze(action)
-        } label: {
-            Label("Snooze 7 Days", systemImage: "moon.zzz")
-        }
-
-        Divider()
-
-        Button {
-            viewJob(for: action)
-        } label: {
-            Label("View Job", systemImage: "briefcase")
+            // Card
+            VStack(spacing: 0) {
+                ForEach(actions, id: \.id) { action in
+                    NeedsActionRow(action: action) {
+                        complete(action)
+                    } onSnooze: {
+                        snooze(action)
+                    } onSelectJob: {
+                        viewJob(for: action)
+                    }
+                    if action.id != actions.last?.id {
+                        Divider()
+                    }
+                }
+            }
+            .background(Color(NSColor.controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.12), lineWidth: 0.5))
         }
     }
 
@@ -388,25 +341,24 @@ struct NeedsActionView: View {
     }
 }
 
-// MARK: - Action row
+// MARK: - Needs action row
 
-private struct ActionRow: View {
+private struct NeedsActionRow: View {
     let action: JobAction
+    let onDone: () -> Void
+    let onSnooze: () -> Void
+    let onSelectJob: () -> Void
 
-    private var job: Job? {
-        action.job
-    }
+    private var job: Job? { action.job }
 
-    private var dueDateText: String {
+    private var dueDateLabel: String {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         let due = cal.startOfDay(for: action.dueDate)
         let days = cal.dateComponents([.day], from: today, to: due).day ?? 0
-
+        if days < 0 { return "\(-days)d overdue" }
         if days == 0 { return "Today" }
         if days == 1 { return "Tomorrow" }
-        if days == -1 { return "Yesterday" }
-        if days < 0 { return "\(-days)d overdue" }
         return "in \(days)d"
     }
 
@@ -414,51 +366,84 @@ private struct ActionRow: View {
         switch action.bucket {
         case .overdue: .red
         case .today: .orange
-        case .upcoming: .secondary
-        case .noDueDate: .secondary
+        case .thisWeek: .accentColor
+        case .later: .secondary
         }
     }
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Due date badge
-            VStack(spacing: 2) {
-                Image(systemName: "clock")
-                    .font(.caption2)
-                Text(dueDateText)
-                    .font(.caption2)
-                    .fontWeight(.medium)
-                    .monospacedDigit()
-            }
-            .foregroundStyle(dueDateColor)
-            .frame(width: 60, alignment: .center)
+        Button(action: onSelectJob) {
+            HStack(spacing: 12) {
+                // Due date column (fixed 96pt)
+                Text(dueDateLabel)
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(dueDateColor)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(dueDateColor.opacity(0.1))
+                    .clipShape(Capsule())
+                    .frame(width: 96, alignment: .center)
 
-            // Company + title
-            VStack(alignment: .leading, spacing: 2) {
-                Text(job?.company ?? "Unknown Company")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .lineLimit(1)
-                Text(job?.title ?? "—")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .frame(minWidth: 120, alignment: .leading)
+                // Company mark
+                CompanyMarkView(name: job?.company, size: 22)
 
-            // Action note
-            Text(action.note)
-                .font(.subheadline)
-                .foregroundStyle(.primary)
-                .lineLimit(2)
+                // Action note + subtitle
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(action.note)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    HStack(spacing: 3) {
+                        Text(job?.company ?? "—")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text("·")
+                            .font(.caption2)
+                            .foregroundStyle(.quaternary)
+                        Text(job?.title ?? "—")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Status chip
-            if let job {
-                StatusChip(status: job.status)
+                // Status
+                if let job {
+                    StatusChip(status: job.status)
+                }
+
+                // Inline Done + Snooze
+                HStack(spacing: 4) {
+                    Button {
+                        onDone()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text("Done")
+                                .font(.caption)
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    Button {
+                        onSnooze()
+                    } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 12))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Snooze 7 days")
+                }
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 4)
+        .buttonStyle(.plain)
     }
 }
 

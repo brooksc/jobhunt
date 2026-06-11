@@ -335,7 +335,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
     func makeJobWithCapture(
         url: String,
         title: String,
-        status: JobStatus = .saved,
+        status: JobStatus = .pursuing,
         capturedAt: Date = Date()
     ) throws -> Job {
         let context = ModelContext(container)
@@ -359,12 +359,12 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         let archived = try makeJobWithCapture(
             url: "https://example.com/job/a",
             title: "Archived Job",
-            status: .archived
+            status: .passed
         )
         let notAvail = try makeJobWithCapture(
             url: "https://example.com/job/b",
             title: "Not Available Job",
-            status: .notAvailable
+            status: .closed
         )
 
         let result = await AvailabilityChecker.checkJobs([archived, notAvail], store: store, session: session)

@@ -92,6 +92,7 @@ public actor QueueActor {
     public func resumeQueue() async {
         settings.llmQueuePaused = false
         failureStreak = 0
+        await startProcessing()
     }
 
     /// Cancel a specific request by id.
@@ -113,6 +114,17 @@ public actor QueueActor {
             req.status = .cancelled
             req.finishedAt = Date()
         }
+    }
+
+    /// Permanently delete specific requests by ID.
+    public func deleteRequests(ids: [String]) async throws {
+        let set = Set(ids)
+        try await store.delete(LLMRequest.self, predicate: #Predicate { set.contains($0.id) })
+    }
+
+    /// Permanently delete all requests (all statuses).
+    public func deleteAll() async throws {
+        try await store.delete(LLMRequest.self, predicate: nil)
     }
 
     /// Reset a failed request back to queued so it can be retried.
@@ -411,15 +423,15 @@ public actor QueueActor {
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
 
             let fitJSON = FitScorer.encode(fitResult)
-            try await store.update(
-                Job.self,
-                predicate: #Predicate { $0.id == jobID }
-            ) { job in
-                job.fitScore = fitResult.overall
-                job.fitStatus = .succeeded
-                job.fitScoreJSON = fitJSON
-                job.updatedAt = Date()
-            }
+            let scoredAt = Date()
+            try await store.saveFitScore(
+                jobID: jobID,
+                resumeID: resumeID,
+                overall: fitResult.overall,
+                fitJSON: fitJSON,
+                model: provider.id,
+                scoredAt: scoredAt
+            )
 
             let finishedAttempt = LLMRequestAttempt(
                 requestType: .fit,

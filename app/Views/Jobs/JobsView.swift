@@ -1,363 +1,412 @@
+import AppKit
 import JobhuntCore
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - JobsView
 
-// swiftlint:disable:next type_body_length
 struct JobsView: View {
+    @Binding var selectedJobIDs: Set<String>
+
     @Environment(Router.self) private var router
     @Environment(AppServices.self) private var appServices
 
-    private var jobService: JobService {
-        appServices.jobService
-    }
+    @Query(sort: \Job.createdAt, order: .reverse) private var allJobs: [Job]
+    @Query(sort: \SavedSearch.sortOrder) private var savedSearches: [SavedSearch]
 
-    @Query(sort: \Job.createdAt, order: .reverse)
-    private var allJobs: [Job]
-
+    @State private var searchText = ""
+    @State private var searchTokens: [JobSearchToken] = []
     @State private var filterState = JobsFilterState()
-    @State private var selection: Set<String> = []
-    @FocusState private var searchFieldFocused: Bool
     @State private var showFilterPopover = false
-    @State private var showStatusPicker = false
-
-    /// Status filter pills shown at top
-    private let statusPills: [(label: String, value: JobStatus?)] = [
-        ("All", nil),
-        ("Saved", .saved),
-        ("Applied", .applied),
-        ("Interview", .interview),
-        ("Offer", .offer),
-        ("Rejected", .rejected)
-    ]
+    @State private var showSaveSheet = false
+    @State private var showAddJobSheet = false
+    @State private var jobIDsToDelete: [String] = []
+    // Mirror of router.sidebarJobFilter as @State so SwiftUI reliably re-renders.
+    @State private var localSidebarFilter: JobStatus?
 
     var body: some View {
-        VStack(spacing: 0) {
-            toolbarBar
-            Divider()
-            statusPillBar
-            Divider()
-            jobTable
+        jobList
+        .searchable(text: $searchText, tokens: $searchTokens, prompt: "Search jobs…") { token in
+            Label(token.label, systemImage: token.systemImage)
         }
-        .navigationTitle("Jobs")
-        .toolbar { batchToolbar }
-        .onKeyPress(.init("k")) {
-            searchFieldFocused = true
-            return .handled
+        .searchSuggestions {
+            JobSearchSuggestions(searchText: searchText)
+        }
+        .toolbar { toolbarItems }
+        .navigationTitle(navTitle)
+        .sheet(isPresented: $showAddJobSheet) { AddJobSheet() }
+        .sheet(isPresented: $showSaveSheet) { SaveSearchSheet(filterState: filterState) }
+        .confirmationDialog(
+            "Delete \(jobIDsToDelete.count == 1 ? "Job" : "\(jobIDsToDelete.count) Jobs")?",
+            isPresented: .init(get: { !jobIDsToDelete.isEmpty }, set: { if !$0 { jobIDsToDelete = [] } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                let ids = jobIDsToDelete
+                let svc = appServices.jobService
+                Task { for id in ids { try? await svc.delete(jobID: id) } }
+                jobIDsToDelete = []
+                selectedJobIDs = []
+            }
+            Button("Cancel", role: .cancel) { jobIDsToDelete = [] }
+        } message: {
+            Text("This will permanently delete the job and all related data.")
+        }
+        .onChange(of: router.activeSavedSearchID) { _, id in
+            guard let id, let search = savedSearches.first(where: { $0.id == id }) else { return }
+            applySearchToTokens(search)
+        }
+        .onChange(of: router.sidebarJobFilter) { _, status in
+            localSidebarFilter = status
+            router.activeSavedSearchID = nil
+            searchTokens = []
+        }
+        .onAppear { localSidebarFilter = router.sidebarJobFilter }
+        .onChange(of: searchTokens) { _, _ in
+            router.activeSavedSearchID = nil
+        }
+        .onChange(of: filteredJobIDs) { _, newIDs in
+            // Remove stale selections when filter changes
+            selectedJobIDs = selectedJobIDs.intersection(newIDs)
+        }
+        .onChange(of: selectedJobIDs) { _, newIDs in
+            // Mark opened when exactly one job is selected
+            if newIDs.count == 1, let id = newIDs.first {
+                let svc = appServices.jobService
+                Task { try? await svc.markOpened(jobID: id) }
+            }
+        }
+        // HIG-20: Space is not used for deselect (macOS convention)
+        .onChange(of: router.showAddJobSheet) { _, show in
+            if show { showAddJobSheet = true; router.showAddJobSheet = false }
+        }
+        .onChange(of: router.triggerExport) { _, trigger in
+            if trigger { exportCSV(); router.triggerExport = false }
         }
     }
 
-    // MARK: - Search + Filter Bar
+    // MARK: - Toolbar
 
-    private var toolbarBar: some View {
-        HStack(spacing: 8) {
-            // Search field
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                    .font(.caption)
-                TextField("Search company, title, location, #id…", text: $filterState.searchText)
-                    .textFieldStyle(.plain)
-                    .focused($searchFieldFocused)
-                    .font(.callout)
-                if !filterState.searchText.isEmpty {
-                    Button {
-                        filterState.searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-                Text("⌘K")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 2)
-                    .background(Color.secondary.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: 3))
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(Color.secondary.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-
-            // Filter button
+    @ToolbarContentBuilder
+    private var toolbarItems: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
             Button {
-                showFilterPopover.toggle()
+                showAddJobSheet = true
             } label: {
-                Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
-                    .font(.callout)
+                Image(systemName: "plus")
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
+            .help("Add job by URL")
+
+            if hasActiveFilters {
+                Button {
+                    showSaveSheet = true
+                } label: {
+                    Image(systemName: "bookmark")
+                }
+                .help("Save current search")
+            }
+
+            Menu {
+                ForEach(JobsSortKey.allCases, id: \.self) { key in
+                    Button {
+                        if filterState.sortKey == key {
+                            filterState.sortAscending.toggle()
+                        } else {
+                            filterState.sortKey = key
+                            filterState.sortAscending = false
+                        }
+                    } label: {
+                        HStack {
+                            Text(key.displayName)
+                            if filterState.sortKey == key {
+                                Image(systemName: filterState.sortAscending ? "chevron.up" : "chevron.down")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 2) {
+                    Image(systemName: "arrow.up.arrow.down")
+                    Text(filterState.sortKey.displayName)
+                        .font(.caption.weight(.medium))
+                    Image(systemName: filterState.sortAscending ? "chevron.up" : "chevron.down")
+                        .font(.caption2)
+                }
+            }
+            .help("Sort jobs")
+
+            Button { showFilterPopover.toggle() } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "line.3.horizontal.decrease")
+                    if filterState.activeFilterCount > 0 {
+                        Text("\(filterState.activeFilterCount)")
+                            .font(.caption2.weight(.semibold))
+                    }
+                }
+            }
+            .help("Advanced filters")
             .popover(isPresented: $showFilterPopover) {
                 filterPopover
             }
 
-            Spacer()
-
-            Text("\(filteredJobs.count) job\(filteredJobs.count == 1 ? "" : "s")")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-    }
-
-    // MARK: - Status Pill Bar
-
-    private var statusPillBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(statusPills, id: \.label) { pill in
+            Menu {
+                if !selectedJobIDs.isEmpty {
                     Button {
-                        if let status = pill.value {
-                            if filterState.statusFilter == [status] {
-                                filterState.statusFilter = nil
-                            } else {
-                                filterState.statusFilter = [status]
-                            }
-                        } else {
-                            filterState.statusFilter = nil
-                        }
+                        let ids = Array(selectedJobIDs)
+                        Task { try? await appServices.queueActor.enqueue(jobIDs: ids, mode: .extract) }
                     } label: {
-                        Text(pill.label)
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(pillIsActive(pill) ? Theme.accent : Color.secondary.opacity(0.12))
-                            .foregroundStyle(pillIsActive(pill) ? .white : .primary)
-                            .clipShape(Capsule())
+                        Label("Re-run AI on \(selectedJobIDs.count) Selected", systemImage: "arrow.clockwise")
                     }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-        }
-    }
-
-    private func pillIsActive(_ pill: (label: String, value: JobStatus?)) -> Bool {
-        if pill.value == nil {
-            return filterState.statusFilter == nil
-        }
-        // swiftlint:disable:next force_unwrapping
-        return filterState.statusFilter == [pill.value!]
-    }
-
-    // MARK: - Table
-
-    private var jobTable: some View {
-        Table(filteredJobs, selection: $selection) {
-            TableColumn("#") { job in
-                Text(job.jobNumber.map { "#\($0)" } ?? "—")
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-            }
-            .width(min: 44, ideal: 56, max: 64)
-
-            TableColumn("Status") { job in
-                StatusChip(status: job.status)
-            }
-            .width(min: 80, ideal: 100, max: 120)
-
-            TableColumn("Company") { job in
-                Text(job.company ?? "—")
-                    .lineLimit(1)
-                    .fontWeight(job.unread ? .semibold : .regular)
-            }
-            .width(min: 100, ideal: 150)
-
-            TableColumn("Title") { job in
-                HStack(spacing: 4) {
-                    if job.unread {
-                        Circle()
-                            .fill(Theme.accent)
-                            .frame(width: 6, height: 6)
+                    Button {
+                        let ids = Array(selectedJobIDs)
+                        let svc = appServices.jobService
+                        Task { for id in ids { try? await svc.archive(jobID: id) } }
+                        selectedJobIDs = []
+                    } label: {
+                        Label("Archive Selected", systemImage: "archivebox")
                     }
-                    Text(job.title ?? "—")
-                        .lineLimit(1)
-                        .fontWeight(job.unread ? .semibold : .regular)
+                    Divider()
                 }
-            }
-            .width(min: 150, ideal: 220)
-
-            TableColumn("Location") { job in
-                Text(job.location ?? "—")
-                    .lineLimit(1)
-                    .foregroundStyle(.secondary)
-            }
-            .width(min: 80, ideal: 140)
-
-            TableColumn("Remote") { job in
-                remoteLabel(job.remoteType)
-            }
-            .width(min: 60, ideal: 80, max: 100)
-
-            TableColumn("Salary") { job in
-                salaryText(job)
-            }
-            .width(min: 60, ideal: 90, max: 110)
-
-            TableColumn("Fit") { job in
-                if let score = job.fitScore {
-                    Text("\(score)")
-                        .font(.caption.monospaced())
-                        .fontWeight(.semibold)
-                        .foregroundStyle(fitColor(score))
-                } else {
-                    Text("—")
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.tertiary)
+                Button {
+                    exportCSV()
+                } label: {
+                    Label("Export to CSV…", systemImage: "square.and.arrow.up")
                 }
+                Divider()
+                if hasActiveFilters || !searchTokens.isEmpty {
+                    Button(role: .destructive) {
+                        clearAllFilters()
+                    } label: {
+                        Label("Clear All Filters", systemImage: "xmark.circle")
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
             }
-            .width(min: 36, ideal: 46, max: 56)
-
-            TableColumn("Rating") { job in
-                ratingView(job.rating)
-            }
-            .width(min: 60, ideal: 80, max: 90)
-
-            TableColumn("Captured") { job in
-                Text(relativeDate(job.createdAt))
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-            }
-            .width(min: 70, ideal: 90, max: 110)
-        }
-        .onChange(of: selection) { _, newValue in
-            guard newValue.count == 1,
-                  let jobID = newValue.first,
-                  let job = allJobs.first(where: { $0.id == jobID })
-            else { return }
-            router.selectedJobID = job.id
-            Task {
-                try? await jobService.markOpened(jobID: job.id)
-            }
+            .help("More actions")
         }
     }
 
-    // MARK: - Batch Toolbar
+    // MARK: - Status filter bar
 
-    @ToolbarContentBuilder
-    private var batchToolbar: some ToolbarContent {
-        if !selection.isEmpty {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    showStatusPicker = true
-                } label: {
-                    Label("Set Status", systemImage: "tag")
-                }
-                .help("Change status for \(selection.count) selected job\(selection.count == 1 ? "" : "s")")
-                .popover(isPresented: $showStatusPicker) {
-                    statusPickerPopover
-                }
+    // MARK: - Job list (extracted to help compiler type-check)
 
-                Button {
-                    Task { await queueAI() }
-                } label: {
-                    Label("Queue AI", systemImage: "cpu")
-                }
-                .help("Queue LLM extraction for \(selection.count) selected job\(selection.count == 1 ? "" : "s")")
-
-                Button(role: .destructive) {
-                    Task { await deleteSelected() }
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-                .help("Delete \(selection.count) selected job\(selection.count == 1 ? "" : "s")")
-
-                Button {
-                    selection.removeAll()
-                } label: {
-                    Label("Clear Selection", systemImage: "xmark.circle")
-                }
-                .help("Clear selection")
-            }
+    private var jobList: some View {
+        List(filteredJobs, selection: $selectedJobIDs) { job in
+            JobListRow(job: job, isSelected: selectedJobIDs.contains(job.id))
+                .tag(job.id)
+                .contextMenu { jobContextMenu(job) }
         }
+        .listStyle(.inset)
     }
 
-    // MARK: - Popovers
+    // MARK: - Filter popover
 
     private var filterPopover: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Sort")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Picker("Sort by", selection: $filterState.sortKey) {
-                ForEach(JobsSortKey.allCases, id: \.self) { key in
-                    Text(key.displayName).tag(key)
+        VStack(spacing: 0) {
+            // HIG-12: explicit dismiss control for large popover
+            HStack {
+                Text("Filters").font(.headline)
+                Spacer()
+                Button("Done") { showFilterPopover = false }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+            Divider()
+            ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                filterSection("Remote") {
+                    HStack(spacing: 6) {
+                        ForEach([RemoteType.remote, .hybrid, .onsite], id: \.self) { rt in
+                            remoteToggle(rt)
+                        }
+                    }
+                }
+                Divider()
+                filterSection("Min Fit Score") {
+                    HStack(spacing: 6) {
+                        fitScoreChip(nil, label: "Any")
+                        fitScoreChip(55, label: "55+")
+                        fitScoreChip(70, label: "70+")
+                        fitScoreChip(85, label: "85+")
+                    }
+                }
+                Divider()
+                filterSection("Min Rating") {
+                    HStack(spacing: 6) {
+                        ratingChip(nil, label: "Any")
+                        ForEach([3, 4, 5], id: \.self) { r in ratingChip(r, label: "\(r)★+") }
+                    }
+                }
+                Divider()
+                filterSection("Min Salary") {
+                    HStack(spacing: 6) {
+                        salaryChip(nil, label: "Any")
+                        salaryChip(100_000, label: "$100k")
+                        salaryChip(150_000, label: "$150k")
+                        salaryChip(200_000, label: "$200k")
+                    }
+                }
+                Divider()
+                filterSection("Captured") {
+                    HStack(spacing: 6) {
+                        recentChip(nil, label: "Any time")
+                        recentChip(7, label: "7 days")
+                        recentChip(30, label: "30 days")
+                        recentChip(90, label: "90 days")
+                    }
                 }
             }
-            .pickerStyle(.menu)
-            .labelsHidden()
-
-            Toggle(
-                filterState.sortAscending ? "Ascending" : "Descending",
-                isOn: $filterState.sortAscending
-            )
-            .font(.callout)
-        }
-        .padding(16)
-        .frame(minWidth: 200)
+            } // end ScrollView
+        } // end outer VStack
+        .frame(width: 280)
     }
 
-    private var statusPickerPopover: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Set status to:")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.top, 10)
-            ForEach(JobStatus.allCases, id: \.self) { status in
-                Button {
-                    let ids = selectedStringIDs
-                    Task {
-                        try? await jobService.setStatusBulk(status, jobIDs: ids)
-                    }
-                    showStatusPicker = false
-                    selection.removeAll()
-                } label: {
-                    HStack {
-                        StatusChip(status: status)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                }
-                .buttonStyle(.plain)
-            }
-            Spacer().frame(height: 6)
+    private func filterSection(_ title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                .textCase(.uppercase).tracking(0.3)
+            content()
         }
-        .frame(minWidth: 160)
+        .padding(.horizontal, 14).padding(.vertical, 10)
+    }
+
+    private func remoteToggle(_ rt: RemoteType) -> some View {
+        let label: String
+        switch rt {
+        case .remote: label = "Remote"
+        case .hybrid: label = "Hybrid"
+        case .onsite: label = "On-site"
+        case .unknown: label = "Unknown"
+        }
+        let active = filterState.remoteFilter?.contains(rt) == true
+        return Button {
+            var set = filterState.remoteFilter ?? []
+            if active { set.remove(rt) } else { set.insert(rt) }
+            filterState.remoteFilter = set.isEmpty ? nil : set
+        } label: {
+            Text(label).font(.caption)
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(active ? Color.accentColor : Color.secondary.opacity(0.1))
+                .foregroundStyle(active ? .white : .primary).clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func fitScoreChip(_ value: Int?, label: String) -> some View {
+        let active = filterState.minFitScore == value
+        return Button { filterState.minFitScore = active ? nil : value } label: {
+            Text(label).font(.caption)
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(active ? Color.accentColor : Color.secondary.opacity(0.1))
+                .foregroundStyle(active ? .white : .primary).clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func ratingChip(_ value: Int?, label: String) -> some View {
+        let active = filterState.minRating == value
+        return Button { filterState.minRating = active ? nil : value } label: {
+            Text(label).font(.caption)
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(active ? Color.accentColor : Color.secondary.opacity(0.1))
+                .foregroundStyle(active ? .white : .primary).clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func salaryChip(_ value: Int?, label: String) -> some View {
+        let active = filterState.minSalary == value
+        return Button { filterState.minSalary = active ? nil : value } label: {
+            Text(label).font(.caption)
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(active ? Color.accentColor : Color.secondary.opacity(0.1))
+                .foregroundStyle(active ? .white : .primary).clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func recentChip(_ value: Int?, label: String) -> some View {
+        let active = filterState.recentDays == value
+        return Button { filterState.recentDays = active ? nil : value } label: {
+            Text(label).font(.caption)
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(active ? Color.accentColor : Color.secondary.opacity(0.1))
+                .foregroundStyle(active ? .white : .primary).clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Computed
 
+    private var navTitle: String {
+        if let filter = router.sidebarJobFilter { return filter.displayName }
+        if let id = router.activeSavedSearchID,
+           let search = savedSearches.first(where: { $0.id == id }) { return search.name }
+        return "All Jobs"
+    }
+
+    private var hasActiveFilters: Bool {
+        filterState.hasActiveFilters || !searchTokens.isEmpty || !searchText.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    private var filteredJobIDs: Set<String> {
+        Set(filteredJobs.map(\.id))
+    }
+
     private var filteredJobs: [Job] {
         let base = allJobs.filter { job in
-            // Status filter
+            // Sidebar smart-folder filter (use @State mirror for reliable re-render)
+            if let sidebarStatus = localSidebarFilter {
+                guard job.status == sidebarStatus else { return false }
+            }
+            // Search tokens
+            for token in searchTokens {
+                switch token {
+                case .status(let s):      if job.status != s { return false }
+                case .minFitScore(let n): if (job.fitScore ?? 0) < n { return false }
+                case .minSalary(let n):
+                    let sal = job.salaryMin ?? job.salaryMax ?? 0
+                    if sal < n { return false }
+                case .remoteType(let rt): if job.remoteType != rt { return false }
+                case .minRating(let n):   if (job.rating ?? 0) < n { return false }
+                case .recentDays(let d):
+                    let cutoff = Calendar.current.date(byAdding: .day, value: -d, to: Date()) ?? Date()
+                    if job.createdAt < cutoff { return false }
+                }
+            }
+            // Advanced filter state
             if let statuses = filterState.statusFilter {
                 guard statuses.contains(job.status) else { return false }
             }
-            // Also respect router.statusFilter (sidebar quick-filter)
-            if let routerFilter = router.statusFilter,
-               let status = JobStatus(rawValue: routerFilter) {
-                guard job.status == status else { return false }
+            if let remotes = filterState.remoteFilter {
+                guard let rt = job.remoteType, remotes.contains(rt) else { return false }
             }
-            // Search text
-            let q = filterState.searchText.trimmingCharacters(in: .whitespaces)
+            if let minFit = filterState.minFitScore {
+                guard (job.fitScore ?? 0) >= minFit else { return false }
+            }
+            if let minRating = filterState.minRating {
+                guard (job.rating ?? 0) >= minRating else { return false }
+            }
+            if let minSalary = filterState.minSalary {
+                let salary = job.salaryMin ?? job.salaryMax ?? 0
+                guard salary >= minSalary else { return false }
+            }
+            if let days = filterState.recentDays {
+                let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+                guard job.createdAt >= cutoff else { return false }
+            }
+            // Text search
+            let q = searchText.trimmingCharacters(in: .whitespaces)
             if !q.isEmpty {
                 let qLow = q.lowercased()
                 let matchNum = qLow.hasPrefix("#") ? String(qLow.dropFirst()) : qLow
                 let textMatch = [job.company, job.title, job.location]
-                    .compactMap(\.self)
-                    .joined(separator: " ")
-                    .lowercased()
-                    .contains(qLow)
+                    .compactMap(\.self).joined(separator: " ").lowercased().contains(qLow)
                 let numMatch = job.jobNumber.map { String($0).contains(matchNum) } ?? false
                 if !textMatch && !numMatch { return false }
             }
@@ -366,97 +415,167 @@ struct JobsView: View {
         return JobsSortLogic.sorted(base, key: filterState.sortKey, ascending: filterState.sortAscending)
     }
 
-    // MARK: - Batch Actions
+    // MARK: - Context menu
 
-    /// Returns the string job IDs for currently selected jobs.
-    private var selectedStringIDs: [String] {
-        Array(selection)
-    }
+    @ViewBuilder
+    private func jobContextMenu(_ job: Job) -> some View {
+        let targets: [String] = selectedJobIDs.contains(job.id) ? Array(selectedJobIDs) : [job.id]
+        let label: String = targets.count > 1 ? "\(targets.count) Jobs" : "Job"
+        let svc = appServices.jobService
+        let queue = appServices.queueActor
 
-    private func queueAI() async {
-        let ids = selectedStringIDs
-        try? await jobService.enqueueLLM(jobIDs: ids, mode: .extract)
-        selection.removeAll()
-    }
-
-    private func deleteSelected() async {
-        let ids = selectedStringIDs
-        for id in ids {
-            try? await jobService.delete(jobID: id)
+        Menu("Set Status") {
+            ForEach(JobStatus.allCases, id: \.self) { status in
+                Button(status.displayName) {
+                    Task { for id in targets { try? await svc.setStatus(status, for: id) } }
+                }
+            }
         }
-        selection.removeAll()
+        Button { Task { for id in targets { try? await svc.archive(jobID: id) } } }
+            label: { Label("Archive \(label)", systemImage: "archivebox") }
+        Button { Task { try? await queue.enqueue(jobIDs: targets, mode: .extract) } }
+            label: { Label("Re-run AI on \(label)", systemImage: "arrow.clockwise") }
+        Divider()
+        Button(role: .destructive) { jobIDsToDelete = targets }
+            label: { Label("Delete \(label)", systemImage: "trash") }
     }
 
     // MARK: - Helpers
 
-    @ViewBuilder
-    private func remoteLabel(_ type: RemoteType?) -> some View {
-        switch type {
-        case .remote:
-            Text("Remote").font(.caption).foregroundStyle(.green)
-        case .hybrid:
-            Text("Hybrid").font(.caption).foregroundStyle(.orange)
-        case .onsite:
-            Text("Onsite").font(.caption).foregroundStyle(.secondary)
-        case .unknown, nil:
-            Text("—").font(.caption).foregroundStyle(.tertiary)
+    private func applySearchToTokens(_ search: SavedSearch) {
+        var tokens: [JobSearchToken] = []
+        for raw in search.statusFilterRaw {
+            if let s = JobStatus(rawValue: raw) { tokens.append(.status(s)) }
         }
+        for raw in search.remoteFilterRaw {
+            if let rt = RemoteType(rawValue: raw) { tokens.append(.remoteType(rt)) }
+        }
+        if let fit = search.minFitScore { tokens.append(.minFitScore(fit)) }
+        if let sal = search.minSalary { tokens.append(.minSalary(sal)) }
+        if let rating = search.minRating { tokens.append(.minRating(rating)) }
+        if let days = search.recentDays { tokens.append(.recentDays(days)) }
+        searchTokens = tokens
+        searchText = search.searchText
     }
 
-    @ViewBuilder
-    private func salaryText(_ job: Job) -> some View {
-        let parts: [String] = [job.salaryMin.map { formatSalary($0) }, job.salaryMax.map { formatSalary($0) }]
-            .compactMap(\.self)
-        if parts.isEmpty {
-            if let note = job.salaryNote {
-                Text(note).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+    private func clearAllFilters() {
+        searchTokens = []
+        searchText = ""
+        filterState = JobsFilterState()
+        router.activeSavedSearchID = nil
+    }
+
+    private func exportCSV() {
+        let jobs = filteredJobs
+        var rows = ["#,Company,Title,Status,Fit,Location,Salary Min,Salary Max,Captured"]
+        for job in jobs {
+            let fields: [String] = [
+                job.jobNumber.map { String($0) } ?? "",
+                job.company ?? "",
+                job.title ?? "",
+                job.status.rawValue,
+                job.fitScore.map { String($0) } ?? "",
+                job.location ?? "",
+                job.salaryMin.map { String($0) } ?? "",
+                job.salaryMax.map { String($0) } ?? "",
+                job.createdAt.formatted(.dateTime.year().month().day()),
+            ]
+            rows.append(fields.map { "\"\($0.replacingOccurrences(of: "\"", with: "\"\""))\"" }.joined(separator: ","))
+        }
+        let csv = rows.joined(separator: "\n")
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.commaSeparatedText]
+        panel.nameFieldStringValue = "jobs.csv"
+        if panel.runModal() == .OK, let url = panel.url {
+            try? csv.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+}
+
+// MARK: - Job list row
+
+private struct JobListRow: View {
+    let job: Job
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            fitRing
+            jobInfo
+            Spacer(minLength: 0)
+            rightMeta
+        }
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
+    }
+
+    private var fitRing: some View {
+        Group {
+            if let score = job.fitScore {
+                FitRingView(score: score, size: 36)
             } else {
-                Text("—").font(.caption.monospaced()).foregroundStyle(.tertiary)
+                ZStack {
+                    Circle().stroke(Color.secondary.opacity(0.12), lineWidth: 3)
+                    Image(systemName: "sparkle").font(.system(size: 10)).foregroundStyle(.quaternary)
+                }
+                .frame(width: 36, height: 36)
             }
-        } else {
-            Text(parts.joined(separator: "–")).font(.caption.monospaced()).foregroundStyle(.secondary)
         }
     }
 
-    private func formatSalary(_ value: Int) -> String {
-        value >= 1000 ? "$\(value / 1000)k" : "$\(value)"
-    }
-
-    @ViewBuilder
-    private func ratingView(_ rating: Int?) -> some View {
-        if let rating, rating > 0 {
-            HStack(spacing: 2) {
-                ForEach(1 ... 5, id: \.self) { i in
-                    Image(systemName: i <= rating ? "star.fill" : "star")
-                        .font(.system(size: 9))
-                        .foregroundStyle(i <= rating ? Color.yellow : Color.secondary.opacity(0.3))
+    private var jobInfo: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 5) {
+                if job.unread {
+                    Circle().fill(Color.accentColor).frame(width: 5, height: 5)
+                        .accessibilityLabel("Unread")
+                }
+                Text(job.title ?? "Untitled")
+                    .font(.subheadline.weight(job.unread ? .semibold : .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+            }
+            HStack(spacing: 3) {
+                if let company = job.company {
+                    Text(company).font(.caption).foregroundStyle(.secondary)
+                }
+                if let location = job.location, !location.isEmpty {
+                    Text("·").font(.caption).foregroundStyle(.quaternary)
+                    Text(location).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                if let remote = job.remoteType, remote != .unknown {
+                    Text("·").font(.caption).foregroundStyle(.quaternary)
+                    Text(remote.displayName).font(.caption).foregroundStyle(.tertiary)
                 }
             }
-        } else {
-            Text("—").font(.caption).foregroundStyle(.tertiary)
         }
     }
 
-    private func fitColor(_ score: Int) -> Color {
-        if score >= 75 { return .green }
-        if score >= 50 { return .yellow }
-        return .red
+    private var rightMeta: some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            StatusChip(status: job.status)
+            if let salary = salaryText {
+                Text(salary).font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
+            }
+        }
     }
 
-    private func relativeDate(_ date: Date) -> String {
-        let calendar = Calendar.current
-        let now = Date()
-        let components = calendar.dateComponents([.day, .hour, .minute], from: date, to: now)
-        if let days = components.day, days > 0 {
-            return days == 1 ? "1d ago" : "\(days)d ago"
+    private var salaryText: String? {
+        let parts: [String] = [job.salaryMin.map { formatK($0) }, job.salaryMax.map { formatK($0) }].compactMap(\.self)
+        guard !parts.isEmpty else { return nil }
+        let sym = currencySymbol(job.salaryCurrency ?? "USD")
+        return sym + parts.joined(separator: "–")
+    }
+
+    private func formatK(_ value: Int) -> String { value >= 1000 ? "\(value / 1000)k" : "\(value)" }
+
+    private func currencySymbol(_ code: String) -> String {
+        switch code {
+        case "USD": return "$"
+        case "GBP": return "£"
+        case "EUR": return "€"
+        default:    return "$"
         }
-        if let hours = components.hour, hours > 0 {
-            return "\(hours)h ago"
-        }
-        if let minutes = components.minute, minutes > 0 {
-            return "\(minutes)m ago"
-        }
-        return "just now"
     }
 }
 
@@ -465,16 +584,14 @@ struct JobsView: View {
 private extension JobsSortKey {
     var displayName: String {
         switch self {
-        case .jobNumber: "Job #"
-        case .company: "Company"
-        case .title: "Title"
-        case .status: "Status"
-        case .fitScore: "Fit Score"
-        case .rating: "Rating"
-        case .capturedAt: "Date Captured"
+        case .jobNumber:   "Job #"
+        case .company:     "Company"
+        case .title:       "Title"
+        case .status:      "Status"
+        case .fitScore:    "Fit Score"
+        case .rating:      "Rating"
+        case .capturedAt:  "Date Captured"
         case .extractedAt: "Date Extracted"
         }
     }
 }
-
-// Preview requires a real ModelContainer so is omitted here.

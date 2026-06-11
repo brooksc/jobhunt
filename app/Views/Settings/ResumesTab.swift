@@ -73,13 +73,25 @@ struct ResumesTab: View {
         }
         .alert("Delete Resume?", isPresented: $showingDeleteAlert, presenting: deleteCandidate) { resume in
             Button("Delete", role: .destructive) {
+                let wasActive = resume.active
                 modelContext.delete(resume)
+                if wasActive {
+                    let remaining = resumes.filter { $0.id != resume.id }
+                    if let next = remaining.first(where: { !$0.active }) ?? remaining.first {
+                        next.active = true
+                    }
+                }
                 try? modelContext.save()
             }
             Button("Cancel", role: .cancel) {}
         } message: { resume in
             if resume.active {
-                Text("\"\(resume.name)\" is your active resume. Deleting it will leave no active resume.")
+                let hasOther = resumes.contains { $0.id != resume.id }
+                if hasOther {
+                    Text("\"\(resume.name)\" is your active resume. The next resume will be promoted to active.")
+                } else {
+                    Text("\"\(resume.name)\" is your only resume. Deleting it will leave no active resume.")
+                }
             } else {
                 Text("Are you sure you want to delete \"\(resume.name)\"?")
             }
@@ -109,12 +121,14 @@ private struct ResumeRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: resume.active ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(resume.active ? .green : .secondary)
-                .font(.title3)
-                .onTapGesture {
-                    setActive(resume)
-                }
+            Button {
+                setActive(resume)
+            } label: {
+                Image(systemName: resume.active ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(resume.active ? .green : .secondary)
+                    .font(.title3)
+            }
+            .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(resume.name)

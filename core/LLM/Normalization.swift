@@ -609,12 +609,15 @@ public enum DisplayNormalizer {
     public static func mapStatus(_ statusStr: String?) -> String {
         guard let statusStr else { return "" }
         let map: [String: String] = [
-            "saved": "saved", "interested": "saved",
+            "new": "new",
+            "saved": "pursuing", "interested": "pursuing", "pursuing": "pursuing",
             "applied": "applied",
             "interviewing": "interview",
             "offer": "offer",
             "rejected": "rejected",
-            "closed": "archived", "ignored": "archived",
+            "ignored": "passed", "passed": "passed",
+            "closed": "closed",
+            "archived": "archived",
             "duplicate": "duplicate"
         ]
         return map[statusStr] ?? statusStr

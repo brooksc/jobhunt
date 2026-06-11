@@ -29,8 +29,14 @@ struct DashboardView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 20) {
                 statCardsSection
-                topOpportunitiesSection
-                pipelineFunnelSection
+                HStack(alignment: .top, spacing: 16) {
+                    pipelineFunnelSection
+                    followUpsDueSection
+                }
+                HStack(alignment: .top, spacing: 16) {
+                    recommendedToApplySection
+                    recentCapturesSection
+                }
                 dailyActivitySection
                 siteScheduleSection
                 qualitySummarySection
@@ -44,7 +50,7 @@ struct DashboardView: View {
 
     private var statCardsSection: some View {
         let total = jobs.count
-        let active = jobs.count(where: { [.saved, .applied, .interview].contains($0.status) })
+        let active = jobs.count(where: { [.pursuing, .applied, .interview].contains($0.status) })
         let interviews = jobs.count(where: { $0.status == .interview })
         let offers = jobs.count(where: { $0.status == .offer })
 
@@ -56,86 +62,300 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - Top Opportunities
+    // MARK: - Recommended to Apply
 
-    private var topOpportunitiesSection: some View {
-        let opportunities = jobs
-            .filter { ($0.fitScore ?? 0) > 70 && $0.status != .rejected && $0.status != .archived }
+    private var recommendedToApplySection: some View {
+        let recommended = jobs
+            .filter { $0.status == .pursuing && ($0.fitScore ?? 0) > 0 }
             .sorted { ($0.fitScore ?? 0) > ($1.fitScore ?? 0) }
             .prefix(4)
 
-        return VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("Top Opportunities")
+        return GroupBox {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 6) {
+                    Image(systemName: "bolt.fill")
+                        .font(.caption)
+                        .foregroundStyle(Color.accentColor)
+                    Text("Recommended to Apply")
+                        .font(.subheadline.weight(.semibold))
+                    Text("best fit · not yet applied")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                }
+                .padding(.bottom, 10)
 
-            if opportunities.isEmpty {
-                emptyState("No top opportunities yet", subtitle: "Run AI extraction to score your saved jobs.")
-            } else {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                    ForEach(Array(opportunities)) { job in
-                        OpportunityCard(job: job) {
-                            router.selectedJobID = job.id
-                            router.selectedSection = .jobs
+                if recommended.isEmpty {
+                    emptyState("No scored saved jobs", subtitle: "Score saved jobs to see recommendations.")
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(Array(recommended)) { job in
+                            Button {
+                                router.selectedJobID = job.id
+                                router.selectedSection = .jobs
+                            } label: {
+                                HStack(spacing: 12) {
+                                    if let score = job.fitScore {
+                                        FitRingView(score: score, size: 32)
+                                    }
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(job.title ?? "Untitled")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.primary)
+                                            .lineLimit(1)
+                                        HStack(spacing: 4) {
+                                            CompanyMarkView(name: job.company, size: 14)
+                                            Text(job.company ?? "")
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    if let url = job.applicationURL ?? job.capture?.url, let link = URL(string: url) {
+                                        Link("Apply", destination: link)
+                                            .font(.caption2.weight(.semibold))
+                                            .buttonStyle(.borderedProminent)
+                                    }
+                                }
+                                .padding(.vertical, 7)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            Divider()
                         }
                     }
                 }
             }
+            .padding(4)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Recent Captures
+
+    private var recentCapturesSection: some View {
+        let recent = Array(jobs.sorted { ($0.capture?.capturedAt ?? $0.createdAt) > ($1.capture?.capturedAt ?? $1.createdAt) }.prefix(4))
+
+        return GroupBox {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 6) {
+                    Image(systemName: "tray.and.arrow.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Recent Captures")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                }
+                .padding(.bottom, 10)
+
+                if recent.isEmpty {
+                    emptyState("No jobs yet", subtitle: nil)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(recent) { job in
+                            Button {
+                                router.selectedJobID = job.id
+                                router.selectedSection = .jobs
+                            } label: {
+                                HStack(spacing: 8) {
+                                    CompanyMarkView(name: job.company, size: 22)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(job.title ?? "Untitled")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.primary)
+                                            .lineLimit(1)
+                                        Text(job.company ?? "")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    ExtractionChip(status: job.extractionStatus)
+                                    if let capturedAt = job.capture?.capturedAt {
+                                        Text(capturedAt, style: .relative)
+                                            .font(.caption2.monospacedDigit())
+                                            .foregroundStyle(.tertiary)
+                                            .frame(width: 40, alignment: .trailing)
+                                    }
+                                }
+                                .padding(.vertical, 6)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            Divider()
+                        }
+                    }
+                }
+            }
+            .padding(4)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Follow-ups Due
+
+    private var followUpsDueSection: some View {
+        let now = Date()
+        let dueSoon = jobs
+            .filter { job in
+                job.actions.contains { action in
+                    action.completedAt == nil
+                        && (action.snoozedUntil == nil || action.snoozedUntil! <= now)
+                        && action.dueDate <= Calendar.current.date(byAdding: .day, value: 7, to: now)!
+                }
+            }
+            .sorted { a, b in
+                let aDate = a.actions.filter { $0.completedAt == nil }.map(\.dueDate).min() ?? Date.distantFuture
+                let bDate = b.actions.filter { $0.completedAt == nil }.map(\.dueDate).min() ?? Date.distantFuture
+                return aDate < bDate
+            }
+            .prefix(4)
+
+        return GroupBox {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 6) {
+                    Image(systemName: "bell.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    Text("Follow-ups Due")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Button("View all") {
+                        router.selectedSection = .needsAction
+                    }
+                    .font(.caption)
+                    .foregroundStyle(Color.accentColor)
+                    .buttonStyle(.plain)
+                }
+                .padding(.bottom, 10)
+
+                if dueSoon.isEmpty {
+                    emptyState("All caught up!", subtitle: nil)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(Array(dueSoon)) { job in
+                            Button {
+                                router.selectedJobID = job.id
+                                router.selectedSection = .jobs
+                            } label: {
+                                let action = job.actions.filter { $0.completedAt == nil }.sorted { $0.dueDate < $1.dueDate }.first
+                                HStack(spacing: 8) {
+                                    if let action {
+                                        DueBadge(date: action.dueDate)
+                                    }
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(job.company ?? "Unknown")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.primary)
+                                            .lineLimit(1)
+                                        if let action {
+                                            Text(action.note)
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .padding(.vertical, 7)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            Divider()
+                        }
+                    }
+                }
+            }
+            .padding(4)
         }
     }
 
-    // MARK: - Pipeline Funnel
+    // MARK: - Pipeline Funnel (horizontal bars)
 
     private var pipelineFunnelSection: some View {
-        let stages: [(label: String, status: JobStatus)] = [
-            ("Saved", .saved),
-            ("Applied", .applied),
-            ("Interview", .interview),
-            ("Offer", .offer)
+        let stages: [(label: String, statuses: [JobStatus])] = [
+            ("Tracked", [.pursuing, .applied, .interview, .offer]),
+            ("Applied", [.applied, .interview, .offer]),
+            ("Interview", [.interview, .offer]),
+            ("Offer", [.offer]),
         ]
         let counts = stages.map { stage in
-            (label: stage.label, status: stage.status, count: jobs.count(where: { $0.status == stage.status }))
+            (label: stage.label, count: jobs.count(where: { stage.statuses.contains($0.status) }))
         }
+        let maxCount = counts.map(\.count).max() ?? 1
 
-        return VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("Pipeline")
-
-            GroupBox {
-                Chart {
-                    ForEach(counts, id: \.label) { item in
-                        BarMark(
-                            x: .value("Status", item.label),
-                            y: .value("Count", item.count)
-                        )
-                        .foregroundStyle(Theme.statusColor(item.status))
-                        .cornerRadius(4)
-                    }
+        return GroupBox {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 6) {
+                    Image(systemName: "chart.bar.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Application Funnel")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
                 }
-                .frame(height: 160)
-                .chartXAxis(.automatic)
-                .onTapGesture {} // handled per-bar below
-            }
+                .padding(.bottom, 10)
 
-            // Tappable label row for navigation
-            HStack(spacing: 0) {
-                ForEach(counts, id: \.label) { item in
-                    Button {
-                        router.statusFilter = item.status.rawValue
-                        router.selectedSection = .jobs
-                    } label: {
-                        VStack(spacing: 2) {
-                            Text("\(item.count)")
-                                .font(.headline)
-                                .foregroundStyle(Theme.statusColor(item.status))
+                VStack(spacing: 8) {
+                    ForEach(Array(counts.enumerated()), id: \.element.label) { idx, item in
+                        HStack(spacing: 10) {
                             Text(item.label)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .font(.caption.weight(.medium))
+                                .frame(width: 64, alignment: .leading)
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(Color.secondary.opacity(0.1))
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(funnelColor(idx))
+                                        .frame(width: max(28, geo.size.width * CGFloat(item.count) / CGFloat(max(1, maxCount))))
+                                        .overlay(
+                                            Text("\(item.count)")
+                                                .font(.caption.weight(.bold).monospacedDigit())
+                                                .foregroundStyle(.white)
+                                                .padding(.leading, 8),
+                                            alignment: .leading
+                                        )
+                                }
+                            }
+                            .frame(height: 24)
+                            // Conversion rate
+                            if idx > 0 {
+                                let prev = counts[idx - 1].count
+                                let conv = prev > 0 ? Int((Double(item.count) / Double(prev)) * 100) : 0
+                                Text("\(conv)%")
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(.tertiary)
+                                    .frame(width: 30, alignment: .trailing)
+                            } else {
+                                Spacer().frame(width: 30)
+                            }
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                }
+
+                Divider().padding(.vertical, 10)
+
+                // Footer stats
+                HStack(spacing: 0) {
+                    let avgFit = jobs.compactMap(\.fitScore).reduce(0, +)
+                    let fitCount = jobs.compactMap(\.fitScore).count
+                    FooterCell(label: "Avg fit", value: fitCount > 0 ? "\(avgFit / fitCount)" : "—")
+                    FooterCell(label: "Rejected", value: "\(jobs.count(where: { $0.status == .rejected }))")
+                    FooterCell(label: "Passed", value: "\(jobs.count(where: { $0.status == .passed }))", last: true)
                 }
             }
+            .padding(4)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func funnelColor(_ index: Int) -> Color {
+        switch index {
+        case 0: return .accentColor.opacity(0.6)
+        case 1: return .accentColor.opacity(0.75)
+        case 2: return .blue.opacity(0.75)
+        case 3: return .green.opacity(0.75)
+        default: return .accentColor
         }
     }
 
@@ -198,6 +418,7 @@ struct DashboardView: View {
                     VStack(spacing: 0) {
                         ForEach(Array(upcoming.enumerated()), id: \.element.site.id) { index, item in
                             Button {
+                                router.selectedSiteID = item.site.id
                                 router.selectedSection = .sites
                             } label: {
                                 HStack {
@@ -294,53 +515,66 @@ private struct StatCard: View {
     }
 }
 
-// MARK: - OpportunityCard
+// MARK: - DueBadge
 
-private struct OpportunityCard: View {
-    let job: Job
-    let onTap: () -> Void
+private struct DueBadge: View {
+    let date: Date
 
-    var body: some View {
-        Button(action: onTap) {
-            GroupBox {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(job.company ?? "Unknown Company")
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .lineLimit(1)
-                            Text(job.title ?? "Unknown Title")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                        Spacer()
-                        if let score = job.fitScore {
-                            VStack(spacing: 1) {
-                                Text("\(score)")
-                                    .font(.title3)
-                                    .fontWeight(.bold)
-                                    .foregroundStyle(fitScoreColor(score))
-                                Text("fit")
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-                    }
-
-                    StatusChip(status: job.status)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .buttonStyle(.plain)
+    private var label: String {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let due = cal.startOfDay(for: date)
+        let days = cal.dateComponents([.day], from: today, to: due).day ?? 0
+        if days < 0 { return "\(-days)d late" }
+        if days == 0 { return "Today" }
+        if days == 1 { return "Tomor." }
+        return "in \(days)d"
     }
 
-    private func fitScoreColor(_ score: Int) -> Color {
-        if score >= 70 { return .green }
-        if score >= 40 { return .orange }
+    private var color: Color {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let due = cal.startOfDay(for: date)
+        if due < today { return .red }
+        if due == today { return .orange }
         return .secondary
+    }
+
+    var body: some View {
+        Text(label)
+            .font(.caption2.weight(.semibold).monospacedDigit())
+            .foregroundStyle(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(color.opacity(0.12))
+            .clipShape(Capsule())
+    }
+}
+
+// MARK: - FooterCell
+
+private struct FooterCell: View {
+    let label: String
+    let value: String
+    var last = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .textCase(.uppercase)
+                .tracking(0.3)
+            Text(value)
+                .font(.subheadline.weight(.semibold).monospacedDigit())
+                .foregroundStyle(.primary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 4)
+        .overlay(
+            last ? nil : Divider().frame(maxHeight: .infinity).padding(.vertical, 4),
+            alignment: .trailing
+        )
     }
 }
 
@@ -373,8 +607,7 @@ private struct QualitySummarySection: View {
 
                     VStack(alignment: .trailing, spacing: 8) {
                         if issueCount > 0 {
-                            Button("Queue re-extraction") {
-                                // Navigate to LLM Queue; re-extraction is triggered from there
+                            Button("View LLM Queue") {
                                 router.selectedSection = .llmQueue
                             }
                             .buttonStyle(.borderedProminent)

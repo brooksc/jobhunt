@@ -11,59 +11,84 @@ public final class Theme {
         var label: String {
             switch self {
             case .light: "Light"
-            case .dark: "Dark"
-            case .auto: "System"
+            case .dark:  "Dark"
+            case .auto:  "System"
             }
         }
 
         var systemImage: String {
             switch self {
             case .light: "sun.max"
-            case .dark: "moon"
-            case .auto: "circle.lefthalf.filled"
+            case .dark:  "moon"
+            case .auto:  "circle.lefthalf.filled"
             }
         }
     }
 
     public init() {}
 
-    /// Design tokens matching styles.css
-    public static let accent = Color(red: 0x5E / 255, green: 0x6A / 255, blue: 0xD2 / 255)
+    /// Use the system accent color for UI highlights (adapts to user's accent preference).
+    public static let accent: Color = .accentColor
 
-    /// Status colors matching styles.css status palette
+    /// Adaptive status colors — light/dark variants for WCAG contrast compliance.
     public static func statusColor(_ status: JobStatus) -> Color {
         switch status {
-        case .saved: Color(red: 0x6B / 255, green: 0x72 / 255, blue: 0x80 / 255)
-        case .applied: Color(red: 0x3B / 255, green: 0x82 / 255, blue: 0xF6 / 255)
-        case .interview: Color(red: 0x8B / 255, green: 0x5C / 255, blue: 0xF6 / 255)
-        case .offer: Color(red: 0x10 / 255, green: 0xB9 / 255, blue: 0x81 / 255)
-        case .rejected: Color(red: 0xEF / 255, green: 0x44 / 255, blue: 0x44 / 255)
-        case .archived: Color(red: 0x37 / 255, green: 0x41 / 255, blue: 0x51 / 255)
-        case .notAvailable: Color(red: 0xF5 / 255, green: 0x9E / 255, blue: 0x0B / 255)
-        case .duplicate: Color(red: 0xF5 / 255, green: 0xDD / 255, blue: 0x0B / 255)
+        case .new:       adaptive(light: 0x6B7280, dark: 0x9CA3AF)
+        case .pursuing:  adaptive(light: 0x0369A1, dark: 0x38BDF8)
+        case .applied:   adaptive(light: 0x2563EB, dark: 0x60A5FA)
+        case .interview: adaptive(light: 0x7C3AED, dark: 0xA78BFA)
+        case .offer:     adaptive(light: 0x059669, dark: 0x34D399)
+        case .rejected:  adaptive(light: 0xDC2626, dark: 0xF87171)
+        case .passed:    adaptive(light: 0x6B7280, dark: 0x9CA3AF)
+        case .archived:  adaptive(light: 0x6B7280, dark: 0x9CA3AF)
+        case .closed:    adaptive(light: 0xD97706, dark: 0xFCD34D)
+        case .duplicate: adaptive(light: 0xB45309, dark: 0xFDE68A)
+        case .expired:   adaptive(light: 0x9CA3AF, dark: 0x6B7280)
         }
     }
 
     public static func statusSymbol(_ status: JobStatus) -> String {
         switch status {
-        case .saved: "bookmark"
-        case .applied: "paperplane"
+        case .new:       "sparkle"
+        case .pursuing:  "bookmark"
+        case .applied:   "paperplane"
         case .interview: "person.2"
-        case .offer: "star.fill"
-        case .rejected: "xmark.circle"
-        case .archived: "archivebox"
-        case .notAvailable: "exclamationmark.triangle"
+        case .offer:     "star.fill"
+        case .rejected:  "xmark.circle"
+        case .passed:    "hand.raised"
+        case .archived:  "archivebox"
+        case .closed:    "exclamationmark.triangle"
         case .duplicate: "doc.on.doc"
+        case .expired:   "clock.badge.xmark"
         }
     }
 
     public static func extractionColor(_ status: ExtractionStatus) -> Color {
         switch status {
-        case .pending: Color(red: 0x6B / 255, green: 0x72 / 255, blue: 0x80 / 255)
-        case .running: Color(red: 0x3B / 255, green: 0x82 / 255, blue: 0xF6 / 255)
-        case .succeeded: Color(red: 0x10 / 255, green: 0xB9 / 255, blue: 0x81 / 255)
-        case .failed: Color(red: 0xEF / 255, green: 0x44 / 255, blue: 0x44 / 255)
-        case .skipped: Color(red: 0xF5 / 255, green: 0x9E / 255, blue: 0x0B / 255)
+        case .pending:  adaptive(light: 0x6B7280, dark: 0x9CA3AF)
+        case .running:  adaptive(light: 0x2563EB, dark: 0x60A5FA)
+        case .succeeded: adaptive(light: 0x059669, dark: 0x34D399)
+        case .failed:   adaptive(light: 0xDC2626, dark: 0xF87171)
+        case .skipped:  adaptive(light: 0xD97706, dark: 0xFCD34D)
         }
+    }
+
+    // MARK: - Private helpers
+
+    /// Build an adaptive Color from 0xRRGGBB integer literals.
+    private static func adaptive(light: Int, dark: Int) -> Color {
+        Color(nsColor: NSColor(
+            name: nil,
+            dynamicProvider: { appearance in
+                let useDark = appearance.bestMatch(from: [.darkAqua, .vibrantDark]) != nil
+                let hex = useDark ? dark : light
+                return NSColor(
+                    red:   CGFloat((hex >> 16) & 0xFF) / 255,
+                    green: CGFloat((hex >>  8) & 0xFF) / 255,
+                    blue:  CGFloat( hex        & 0xFF) / 255,
+                    alpha: 1
+                )
+            }
+        ))
     }
 }

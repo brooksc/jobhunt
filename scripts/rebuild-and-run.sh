@@ -8,6 +8,8 @@ SCHEME="Jobhunt-DMG"
 CONFIG="Debug-DMG"
 APP_NAME="Jobhunt"
 SKIP_TESTS=false
+# Use a fixed DerivedData path so every build lands in the same place.
+DERIVED_DATA="$HOME/Library/Developer/Xcode/DerivedData/Jobhunt-local"
 
 for arg in "$@"; do
     case "$arg" in
@@ -29,12 +31,14 @@ nice xcodebuild build \
     -scheme "$SCHEME" \
     -configuration "$CONFIG" \
     -destination 'platform=macOS' \
+    -derivedDataPath "$DERIVED_DATA" \
     CODE_SIGNING_ALLOWED=NO \
     | xcbeautify 2>/dev/null || xcodebuild build \
         -project Jobhunt.xcodeproj \
         -scheme "$SCHEME" \
         -configuration "$CONFIG" \
         -destination 'platform=macOS' \
+        -derivedDataPath "$DERIVED_DATA" \
         CODE_SIGNING_ALLOWED=NO
 
 # 3. Tests
@@ -45,6 +49,7 @@ if [ "$SKIP_TESTS" = false ]; then
         -scheme "$SCHEME" \
         -configuration "$CONFIG" \
         -destination 'platform=macOS' \
+        -derivedDataPath "$DERIVED_DATA" \
         -only-testing:CoreTests \
         CODE_SIGNING_ALLOWED=NO \
         | xcbeautify 2>/dev/null || xcodebuild test \
@@ -52,15 +57,13 @@ if [ "$SKIP_TESTS" = false ]; then
             -scheme "$SCHEME" \
             -configuration "$CONFIG" \
             -destination 'platform=macOS' \
+            -derivedDataPath "$DERIVED_DATA" \
             -only-testing:CoreTests \
             CODE_SIGNING_ALLOWED=NO
 fi
 
 # 4. Find and launch
-APP_PATH="$(find ~/Library/Developer/Xcode/DerivedData \
-    -name "${APP_NAME}.app" \
-    -path "*/${CONFIG}/${APP_NAME}.app" \
-    -maxdepth 8 2>/dev/null | head -1)"
+APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/$APP_NAME.app"
 
 if [ -z "$APP_PATH" ]; then
     echo "✗ Could not find built ${APP_NAME}.app" >&2

@@ -5,87 +5,241 @@ import SwiftUI
 
 struct ContentView: View {
     var router: Router
-    @State private var theme = Theme()
-    @State private var columnVisibility: NavigationSplitViewVisibility = .doubleColumn
-    @Environment(AppServices.self) private var appServices
+    var theme: Theme
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var selectedJobIDs: Set<String> = []
 
+    @Environment(AppServices.self) private var appServices
     @Query(filter: #Predicate<Job> { $0.unread == true }) private var unreadJobs: [Job]
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            Sidebar(router: router, theme: theme)
-                .navigationSplitViewColumnWidth(min: 170, ideal: 200)
+            Sidebar(router: router)
+                .navigationSplitViewColumnWidth(min: 170, ideal: 210)
+        } content: {
+            contentColumn
         } detail: {
-            sectionView(for: router.selectedSection)
+            detailColumn
         }
         .environment(router)
         .environment(theme)
-        .preferredColorScheme(
-            theme.colorSchemePreference == .auto ? nil :
-                theme.colorSchemePreference == .dark ? .dark : .light
-        )
-        .background(
-            DockBadgeUpdater(unreadCount: unreadJobs.count)
-                .frame(width: 0, height: 0)
-        )
+        .environment(\.jobService, appServices.jobService)
+        .environment(\.queueActor, appServices.queueActor)
+        .toolbar { serviceStatusMenu }
+        .background(DockBadgeUpdater(unreadCount: unreadJobs.count))
         .onAppear {
-            guard let window = NSApp.mainWindow else { return }
-            window.minSize = NSSize(width: 900, height: 600)
-            guard window.frame.width < 1200 || window.frame.height < 750 else { return }
-            let newW = max(window.frame.width, 1200)
-            let newH = max(window.frame.height, 750)
-            let origin = window.frame.origin
-            window.setFrame(NSRect(x: origin.x, y: origin.y, width: newW, height: newH), display: true)
+            applyAppearance(theme.colorSchemePreference)
+            configureWindow()
         }
-    }
-
-    @ViewBuilder
-    private func sectionView(for section: SidebarSection) -> some View {
-        switch section {
-        case .jobs:
-            JobsPaneView()
-        case .dashboard:
-            DashboardView()
-        case .dataQuality:
-            DataQualityView()
-        case .needsAction:
-            NeedsActionView()
-        case .llmQueue:
-            LLMQueueView(queueActor: appServices.queueActor, settings: appServices.settings)
-        case .sites:
-            SitesPaneView(siteService: appServices.siteService)
-        case .duplicates:
-            DuplicatesView()
-        case .settings:
-            SettingsView()
-        case .help:
-            HelpView()
+        .onChange(of: theme.colorSchemePreference) { _, pref in applyAppearance(pref) }
+        .onChange(of: router.selectedSection) { _, section in
+            switch section {
+            case .jobs, .sites: columnVisibility = .all
+            default:
+                // .doubleColumn on macOS hides the sidebar (not the detail pane),
+                // so we keep .all and collapse the detail column via its content.
+                columnVisibility = .all
+                selectedJobIDs = []
+            }
         }
-    }
-}
-
-// MARK: - Jobs pane (list + optional detail split)
-
-private struct JobsPaneView: View {
-    @Environment(Router.self) private var router
-
-    var body: some View {
-        HSplitView {
-            JobsView()
-                .frame(minWidth: 400, idealWidth: 550)
-            if let jobID = router.selectedJobID {
-                JobDetailWrapper(jobID: jobID)
-                    .frame(minWidth: 350)
+        .onChange(of: router.selectedJobID) { _, jobID in
+            if let id = jobID {
+                selectedJobIDs = [id]
+                router.selectedSection = .jobs
+                columnVisibility = .all
+                router.selectedJobID = nil
             }
         }
     }
+
+    // MARK: - Content column
+
+    @ViewBuilder
+    private var contentColumn: some View {
+        switch router.selectedSection {
+        case .jobs:
+            JobsView(selectedJobIDs: $selectedJobIDs)
+                .navigationSplitViewColumnWidth(min: 360, ideal: 480)
+        case .dashboard:
+            DashboardView()
+                .navigationSplitViewColumnWidth(min: 600, ideal: 900)
+        case .dataQuality:
+            DataQualityView()
+                .navigationSplitViewColumnWidth(min: 600, ideal: 900)
+        case .needsAction:
+            NeedsActionView()
+                .navigationSplitViewColumnWidth(min: 600, ideal: 900)
+        case .llmQueue:
+            LLMQueueView(queueActor: appServices.queueActor, settings: appServices.settings)
+                .navigationSplitViewColumnWidth(min: 600, ideal: 900)
+        case .sites:
+            SitesView(siteService: appServices.siteService)
+                .navigationSplitViewColumnWidth(min: 280, ideal: 340)
+        case .duplicates:
+            DuplicatesView()
+                .navigationSplitViewColumnWidth(min: 600, ideal: 900)
+        case .help:
+            HelpView()
+                .navigationSplitViewColumnWidth(min: 600, ideal: 900)
+        case .settings:
+            SettingsView()
+                .navigationSplitViewColumnWidth(min: 600, ideal: 900)
+        }
+    }
+
+    // MARK: - Detail / Inspector column
+
+    @ViewBuilder
+    private var detailColumn: some View {
+        switch router.selectedSection {
+        case .jobs:
+            JobInspectorView(selectedJobIDs: $selectedJobIDs)
+                .navigationSplitViewColumnWidth(min: 340, ideal: 460)
+        case .sites:
+            SiteInspectorView()
+                .navigationSplitViewColumnWidth(min: 340, ideal: 460)
+        default:
+            // Zero-width spacer collapses the detail pane for full-width views.
+            Color(nsColor: .windowBackgroundColor)
+                .navigationSplitViewColumnWidth(min: 0, ideal: 0, max: 0)
+        }
+    }
+
+    // MARK: - Service-status toolbar (HIG-4: interactive Menu, not bare images)
+
+    @ToolbarContentBuilder
+    private var serviceStatusMenu: some ToolbarContent {
+        ToolbarItem(placement: .automatic) {
+            Menu {
+                Section("LLM") {
+                    Label(
+                        "\(appServices.settings.llmProvider) · \(shortModelName)",
+                        systemImage: "cpu"
+                    )
+                    Button("Open LLM Queue") { router.navigateToSection(.llmQueue) }
+                }
+                Section("Capture") {
+                    Label("Extension: linked", systemImage: "puzzlepiece")
+                }
+            } label: {
+                Image(systemName: "circle.grid.2x2")
+                    .foregroundStyle(.secondary)
+            }
+            .help("Service status")
+        }
+    }
+
+    // MARK: - Helpers
+
+    private var shortModelName: String {
+        appServices.settings.llmModel.split(separator: "-").prefix(2).joined(separator: "-")
+    }
+
+    private func applyAppearance(_ pref: Theme.ColorSchemePreference) {
+        switch pref {
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark:  NSApp.appearance = NSAppearance(named: .darkAqua)
+        case .auto:  NSApp.appearance = nil
+        }
+    }
+
+    private func configureWindow() {
+        guard let window = NSApp.mainWindow else { return }
+        window.minSize = NSSize(width: 900, height: 600)
+        guard window.frame.width < 1200 || window.frame.height < 750 else { return }
+        let newW = max(window.frame.width, 1200)
+        let newH = max(window.frame.height, 750)
+        let origin = window.frame.origin
+        window.setFrame(NSRect(x: origin.x, y: origin.y, width: newW, height: newH), display: true)
+    }
 }
 
-// MARK: - Sites pane (list + detail split)
+// MARK: - Job Inspector wrapper
 
-private struct SitesPaneView: View {
-    let siteService: SiteService
+struct JobInspectorView: View {
+    @Binding var selectedJobIDs: Set<String>
+    @Query(sort: \Job.createdAt, order: .reverse) private var allJobs: [Job]
+    @Environment(\.jobService) private var jobService
+    @Environment(\.queueActor) private var queueActor
+
+    private var selectedJob: Job? {
+        guard selectedJobIDs.count == 1, let id = selectedJobIDs.first else { return nil }
+        return allJobs.first { $0.id == id }
+    }
+
+    var body: some View {
+        if let job = selectedJob {
+            JobDetailView(
+                job: job,
+                onNavigatePrev: { navigateAdjacentJob(offset: -1) },
+                onNavigateNext: { navigateAdjacentJob(offset: +1) }
+            )
+        } else if selectedJobIDs.count > 1 {
+            multiSelectionSummary
+        } else {
+            emptyState
+        }
+    }
+
+    private var emptyState: some View {
+        ContentUnavailableView(
+            "No Job Selected",
+            systemImage: "sidebar.right",
+            description: Text("Select a job from the list to view details.")
+        )
+    }
+
+    private var multiSelectionSummary: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 40))
+                .foregroundStyle(.secondary)
+            Text("\(selectedJobIDs.count) jobs selected")
+                .font(.title3.weight(.semibold))
+            Text("Use right-click for bulk actions, or select a single job to inspect.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 260)
+
+            Divider().frame(maxWidth: 200)
+
+            VStack(spacing: 10) {
+                Button {
+                    let ids = Array(selectedJobIDs)
+                    Task { for id in ids { try? await jobService?.archive(jobID: id) } }
+                } label: {
+                    Label("Archive All", systemImage: "archivebox").frame(minWidth: 160)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    let ids = Array(selectedJobIDs)
+                    Task { try? await queueActor?.enqueue(jobIDs: ids, mode: .extract) }
+                } label: {
+                    Label("Re-run AI on All", systemImage: "arrow.clockwise").frame(minWidth: 160)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    private func navigateAdjacentJob(offset: Int) {
+        guard let currentID = selectedJobIDs.first,
+              let idx = allJobs.firstIndex(where: { $0.id == currentID }) else { return }
+        let nextIdx = idx + offset
+        guard allJobs.indices.contains(nextIdx) else { return }
+        selectedJobIDs = [allJobs[nextIdx].id]
+    }
+}
+
+// MARK: - Site Inspector (HIG-11: SiteDetailView in detail column)
+
+private struct SiteInspectorView: View {
     @Environment(Router.self) private var router
+    @Environment(AppServices.self) private var appServices
     @Query private var sites: [Site]
 
     private var selectedSite: Site? {
@@ -94,41 +248,15 @@ private struct SitesPaneView: View {
     }
 
     var body: some View {
-        HSplitView {
-            SitesView(siteService: siteService)
-                .frame(minWidth: 250, idealWidth: 350)
-            Group {
-                if let site = selectedSite {
-                    SiteDetailView(site: site, siteService: siteService)
-                } else {
-                    ContentUnavailableView(
-                        "No Site Selected",
-                        systemImage: "globe",
-                        description: Text("Select a site to view details.")
-                    )
-                }
-            }
-            .frame(minWidth: 350)
+        if let site = selectedSite {
+            SiteDetailView(site: site, siteService: appServices.siteService)
+        } else {
+            ContentUnavailableView(
+                "No Site Selected",
+                systemImage: "globe",
+                description: Text("Select a site to view details.")
+            )
         }
     }
 }
 
-// MARK: - Job detail query wrapper
-
-private struct JobDetailWrapper: View {
-    let jobID: String
-    @Query private var jobs: [Job]
-
-    init(jobID: String) {
-        self.jobID = jobID
-        _jobs = Query(filter: #Predicate { $0.id == jobID })
-    }
-
-    var body: some View {
-        if let job = jobs.first {
-            JobDetailView(job: job)
-        }
-    }
-}
-
-// Preview requires a real ModelContainer (for AppServices) so is omitted here.

@@ -225,7 +225,7 @@ extension BackgroundStore {
                 location: "San Francisco, CA", remoteType: .hybrid,
                 salaryMin: 250_000, salaryMax: 360_000, salaryCurrency: "USD",
                 employmentType: "full_time", seniority: "senior",
-                status: .saved,
+                status: .pursuing,
                 summary: "Drive critical programs across OpenAI's research and product orgs. Manage dependencies between frontier model research and consumer/API product teams.",
                 requirements: "BS/MS in CS or engineering. 6+ years program management in fast-paced AI or product org.",
                 skills: ["AI products", "research coordination", "program management", "fast-paced environment"],
@@ -242,7 +242,7 @@ extension BackgroundStore {
                 location: "Remote - USA", remoteType: .remote,
                 salaryMin: 260_000, salaryMax: 350_000, salaryCurrency: "USD",
                 employmentType: "full_time", seniority: "senior",
-                status: .saved,
+                status: .pursuing,
                 summary: "Lead delivery of high-visibility initiatives across Netflix streaming infrastructure. Drive accountability, remove blockers, and communicate program status to leadership.",
                 requirements: "7+ years program management in a high-scale engineering environment.",
                 skills: ["streaming infrastructure", "program management", "leadership communication"],
@@ -259,7 +259,7 @@ extension BackgroundStore {
                 location: "Remote - USA", remoteType: .remote,
                 salaryMin: 195_000, salaryMax: 265_000, salaryCurrency: "USD",
                 employmentType: "full_time", seniority: "senior",
-                status: .saved,
+                status: .pursuing,
                 summary: "Own delivery of Coinbase platform programs including wallet, custody, and exchange reliability. Work with crypto infrastructure teams globally.",
                 requirements: "5+ years TPM. Fintech or high-regulation environment experience preferred.",
                 skills: ["fintech", "crypto", "platform", "program management"],
@@ -276,7 +276,7 @@ extension BackgroundStore {
                 location: "Seattle, WA", remoteType: .hybrid,
                 salaryMin: 180_000, salaryMax: 250_000, salaryCurrency: "USD",
                 employmentType: "full_time", seniority: "principal",
-                status: .saved,
+                status: .pursuing,
                 summary: "Drive technical programs for AWS reliability engineering, managing Tier-1 service health initiatives across multiple S-team goals.",
                 requirements: "8+ years engineering or TPM. AWS experience strongly preferred.",
                 skills: ["AWS", "reliability engineering", "S-team programs", "technical leadership"],
@@ -293,7 +293,7 @@ extension BackgroundStore {
                 location: "San Francisco, CA", remoteType: .hybrid,
                 salaryMin: 190_000, salaryMax: 245_000, salaryCurrency: "USD",
                 employmentType: "full_time", seniority: "senior",
-                status: .saved,
+                status: .pursuing,
                 summary: "Manage CRM platform programs across Salesforce Customer 360. Partner with product and engineering to deliver quarterly milestones.",
                 requirements: "6+ years TPM. Enterprise SaaS background. Experience with Agile at scale.",
                 skills: ["CRM", "enterprise SaaS", "agile at scale", "program management"],
@@ -344,7 +344,7 @@ extension BackgroundStore {
                 location: "San Francisco, CA", remoteType: .hybrid,
                 salaryMin: 170_000, salaryMax: 215_000, salaryCurrency: "USD",
                 employmentType: "full_time", seniority: "mid",
-                status: .archived,
+                status: .passed,
                 summary: "Manage Lyft marketplace and pricing programs. Coordinate across data science, product, and engineering.",
                 requirements: "4+ years TPM. Marketplace or two-sided platform experience preferred.",
                 skills: ["marketplace", "data science", "program management"],
@@ -362,7 +362,7 @@ extension BackgroundStore {
                 location: "Seattle, WA", remoteType: .hybrid,
                 salaryMin: 180_000, salaryMax: 250_000, salaryCurrency: "USD",
                 employmentType: "full_time", seniority: "principal",
-                status: .saved,
+                status: .pursuing,
                 summary: "Drive technical programs for AWS reliability engineering.",
                 requirements: "8+ years engineering or TPM.",
                 skills: ["AWS", "reliability engineering"],
@@ -380,7 +380,7 @@ extension BackgroundStore {
                 location: nil, remoteType: nil,
                 salaryMin: nil, salaryMax: nil, salaryCurrency: "USD",
                 employmentType: nil, seniority: nil,
-                status: .archived,
+                status: .passed,
                 summary: nil, requirements: nil, skills: [],
                 capturedAt: daysAgo(6), extractedAt: daysAgo(6),
                 extractionStatus: .succeeded, fitScore: nil, fitStatus: .none,
@@ -468,7 +468,7 @@ extension BackgroundStore {
             }
 
             // Status change event for non-saved jobs
-            if seed.status != .saved {
+            if seed.status != .pursuing {
                 let statusAt = seed.capturedAt.addingTimeInterval(2 * 86400)
                 let statusEvent = JobEvent(
                     id: "evt_status_\(seed.jobId)",

@@ -21,7 +21,7 @@ public enum LLMProviderFactory {
             return GoogleProvider(apiKey: apiKey, model: model, timeoutSeconds: timeout, session: session)
         case "openrouter":
             return OpenRouterProvider(apiKey: apiKey, model: model, timeoutSeconds: timeout, session: session)
-        case "apple":
+        case "foundation_models":
             return FoundationModelsProvider()
         case "custom":
             let baseURL = settings.llmBaseURL

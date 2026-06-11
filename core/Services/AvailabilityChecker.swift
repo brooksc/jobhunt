@@ -24,6 +24,18 @@ public enum JobUnavailableKey {
     public static let reason = "reason"
 }
 
+// MARK: - GoneJobResult
+
+/// A job found to be unavailable during a check. Returned to the caller for user confirmation
+/// before any status change is made.
+public struct GoneJobResult: Sendable {
+    public let jobID: String
+    public let jobNumber: Int?
+    public let title: String
+    public let url: URL
+    public let reason: String
+}
+
 // MARK: - AvailabilityChecker
 
 /// Ports server/availability.js: URL liveness detection + stale-job scheduler.
@@ -180,6 +192,53 @@ public enum AvailabilityChecker {
         }
     }
 
+    // MARK: - findGoneJobs
+
+    /// Checks the URLs of pursuing jobs and returns those that appear to be gone,
+    /// WITHOUT modifying any job records. Call this to gather candidates, then show
+    /// a confirmation UI before marking them expired.
+    public static func findGoneJobs(
+        _ jobs: [Job],
+        session: URLSession = .shared
+    ) async -> [GoneJobResult] {
+        let eligible = jobs.filter { $0.status == .pursuing }
+        guard !eligible.isEmpty else { return [] }
+
+        struct JobSpec: Sendable {
+            let id: String; let jobNumber: Int?; let title: String; let url: URL
+        }
+        let specs: [JobSpec] = eligible.compactMap { job in
+            let urlString = job.capture?.canonicalURL ?? job.capture?.url ?? ""
+            guard !urlString.isEmpty, let url = URL(string: urlString) else { return nil }
+            return JobSpec(id: job.id, jobNumber: job.jobNumber, title: job.title ?? "", url: url)
+        }
+        guard !specs.isEmpty else { return [] }
+
+        var results: [GoneJobResult] = []
+        await withTaskGroup(of: GoneJobResult?.self) { group in
+            var inFlight = 0
+            for spec in specs {
+                if inFlight >= 10 {
+                    if let r = await group.next() {
+                        if let r { results.append(r) }
+                        inFlight -= 1
+                    }
+                }
+                let (id, jobNumber, title, url) = (spec.id, spec.jobNumber, spec.title, spec.url)
+                inFlight += 1
+                group.addTask {
+                    let result = await checkURL(url, title: title, session: session)
+                    if case let .gone(reason) = result {
+                        return GoneJobResult(jobID: id, jobNumber: jobNumber, title: title, url: url, reason: reason)
+                    }
+                    return nil
+                }
+            }
+            for await r in group { if let r { results.append(r) } }
+        }
+        return results
+    }
+
     // MARK: - checkJobs
 
     /// Lightweight value type for communicating check results across async boundaries.
@@ -191,14 +250,14 @@ public enum AvailabilityChecker {
     }
 
     /// Checks all non-archived, non-unavailable jobs in parallel (max 10 concurrent).
-    /// Jobs found gone are marked `.notAvailable` and a `jobUnavailable` notification is posted.
+    /// Jobs found gone are marked `.expired` and a `jobUnavailable` notification is posted.
     public static func checkJobs(
         _ jobs: [Job],
         store: BackgroundStore,
         session: URLSession = .shared
     ) async -> (checked: Int, unavailable: Int, marked: Int) {
         let eligible = jobs.filter {
-            $0.status != .archived && $0.status != .notAvailable
+            $0.status != .passed && $0.status != .archived && $0.status != .closed && $0.status != .expired
         }
         guard !eligible.isEmpty else { return (0, 0, 0) }
 
@@ -256,7 +315,7 @@ public enum AvailabilityChecker {
                 do {
                     let idToMatch = checked.jobID
                     try await store.update(Job.self, predicate: #Predicate { $0.id == idToMatch }) { job in
-                        job.status = .notAvailable
+                        job.status = .expired
                         job.updatedAt = Date()
                     }
                     markedCount += 1
@@ -301,7 +360,7 @@ public enum AvailabilityChecker {
             let fetched = try await store.fetch(descriptor)
             // Keep active jobs whose captures are older than the cutoff.
             jobs = fetched.filter { job in
-                guard job.status != .archived, job.status != .notAvailable else { return false }
+                guard job.status != .passed, job.status != .archived, job.status != .closed, job.status != .expired else { return false }
                 guard let capturedAt = job.capture?.capturedAt else { return false }
                 return capturedAt <= cutoff
             }.prefix(limit).map(\.self)

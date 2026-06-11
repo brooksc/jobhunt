@@ -6,9 +6,12 @@ struct SiteDetailView: View {
     let site: Site
     let siteService: SiteService
 
+    @Environment(Router.self) private var router
+
     @State private var intervalDaysText: String
     @State private var showDeleteConfirmation = false
     @State private var errorMessage: String?
+    @FocusState private var intervalFieldFocused: Bool
 
     init(site: Site, siteService: SiteService) {
         self.site = site
@@ -16,44 +19,51 @@ struct SiteDetailView: View {
         _intervalDaysText = State(initialValue: String(site.intervalDays))
     }
 
+    private var displayName: String {
+        if let name = site.companyName, !name.isEmpty { return name }
+        if !site.pageTitle.isEmpty { return site.pageTitle }
+        return site.origin
+    }
+
+    private var visitURL: URL? {
+        URL(string: site.jobsURL ?? site.url)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 // Header
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(site.companyName ?? (site.pageTitle.isEmpty ? site.origin : site.pageTitle))
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .lineLimit(2)
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(displayName)
+                            .font(.title3.weight(.semibold))
+                            .lineLimit(2)
 
-                    Text(site.origin)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        if let url = URL(string: site.url) {
+                            Link(site.origin, destination: url)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text(site.origin)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Spacer()
+
+                    reviewStatusChip
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
-                .padding(.bottom, 12)
+                .padding(16)
 
                 Divider()
 
                 // Fields
                 VStack(alignment: .leading, spacing: 0) {
-                    siteField(label: "URL") {
-                        Text(site.url)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-
-                    Divider().padding(.leading, 16)
-
                     siteField(label: "State") {
                         Picker("State", selection: Binding(
                             get: { site.state },
-                            set: { newState in
-                                setSiteState(newState)
-                            }
+                            set: { setSiteState($0) }
                         )) {
                             Text("Not Reviewed").tag(SiteState.notReviewed)
                             Text("Reviewed").tag(SiteState.reviewed)
@@ -66,22 +76,17 @@ struct SiteDetailView: View {
 
                     Divider().padding(.leading, 16)
 
-                    siteField(label: "Interval (days)") {
-                        TextField("14", text: $intervalDaysText)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 80)
-                            .onSubmit { saveIntervalDays() }
-                    }
-
-                    Divider().padding(.leading, 16)
-
-                    siteField(label: "Last Reviewed") {
-                        if let lastReviewed = site.lastReviewedAt {
-                            Text(lastReviewed, style: .date)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("Never")
+                    siteField(label: "Check every") {
+                        HStack(spacing: 4) {
+                            TextField("14", text: $intervalDaysText)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 56)
+                                .focused($intervalFieldFocused)
+                                .onSubmit { saveIntervalDays() }
+                                .onChange(of: intervalFieldFocused) { _, focused in
+                                    if !focused { saveIntervalDays() }
+                                }
+                            Text("days")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -89,13 +94,25 @@ struct SiteDetailView: View {
 
                     Divider().padding(.leading, 16)
 
-                    siteField(label: "Next Review") {
-                        if let nextReview = site.nextReviewAt {
-                            nextReviewText(nextReview)
+                    siteField(label: "Last reviewed") {
+                        if let last = site.lastReviewedAt {
+                            Text(last, style: .date)
+                                .font(.callout)
+                                .foregroundStyle(.primary)
                         } else {
-                            Text("—")
-                                .font(.caption)
+                            Text("Never")
+                                .font(.callout)
                                 .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Divider().padding(.leading, 16)
+
+                    siteField(label: "Next review") {
+                        if let next = site.nextReviewAt {
+                            nextReviewLabel(next)
+                        } else {
+                            Text("—").font(.callout).foregroundStyle(.secondary)
                         }
                     }
 
@@ -103,71 +120,52 @@ struct SiteDetailView: View {
 
                     siteField(label: "Added") {
                         Text(site.addedAt, style: .date)
-                            .font(.caption)
+                            .font(.callout)
                             .foregroundStyle(.secondary)
                     }
                 }
-                .padding(.vertical, 4)
 
                 if let errorMessage {
                     Text(errorMessage)
                         .font(.caption)
                         .foregroundStyle(.red)
                         .padding(.horizontal, 16)
-                        .padding(.top, 8)
+                        .padding(.top, 12)
                 }
+            }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button(action: markReviewed) {
+                    Label("Mark Reviewed", systemImage: "checkmark.circle.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .help("Mark this site as reviewed today")
 
-                Divider().padding(.top, 8)
-
-                // Actions
-                VStack(spacing: 8) {
-                    Button {
-                        markReviewed()
-                    } label: {
-                        Label("Mark Reviewed", systemImage: "checkmark.circle")
-                            .frame(maxWidth: .infinity)
+                if let url = visitURL {
+                    Button { NSWorkspace.shared.open(url) } label: {
+                        Label("Visit Site", systemImage: "arrow.up.right.square")
                     }
                     .buttonStyle(.bordered)
-
-                    if let jobsURL = site.jobsURL, let url = URL(string: jobsURL) {
-                        Button {
-                            NSWorkspace.shared.open(url)
-                        } label: {
-                            Label("Visit Jobs URL", systemImage: "arrow.up.right.square")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-                    } else if let url = URL(string: site.url) {
-                        Button {
-                            NSWorkspace.shared.open(url)
-                        } label: {
-                            Label("Visit Site", systemImage: "arrow.up.right.square")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-                    }
-
-                    Button(role: .destructive) {
-                        showDeleteConfirmation = true
-                    } label: {
-                        Label("Delete Site", systemImage: "trash")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .confirmationDialog(
-                        "Delete \(site.companyName ?? site.origin)?",
-                        isPresented: $showDeleteConfirmation,
-                        titleVisibility: .visible
-                    ) {
-                        Button("Delete", role: .destructive) {
-                            deleteSite()
-                        }
-                        Button("Cancel", role: .cancel) {}
-                    } message: {
-                        Text("This action cannot be undone.")
-                    }
+                    .help("Open jobs page in browser")
                 }
-                .padding(16)
+
+                Button(role: .destructive) {
+                    showDeleteConfirmation = true
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .help("Delete this site")
+                .confirmationDialog(
+                    "Delete \(displayName)?",
+                    isPresented: $showDeleteConfirmation,
+                    titleVisibility: .visible
+                ) {
+                    Button("Delete", role: .destructive) { deleteSite() }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("This action cannot be undone.")
+                }
             }
         }
         .onChange(of: site.id) { _, _ in
@@ -176,37 +174,84 @@ struct SiteDetailView: View {
         }
     }
 
+    // MARK: - Review status chip (top-right of header)
+
     @ViewBuilder
-    private func nextReviewText(_ date: Date) -> some View {
-        let now = Date()
-        let diff = Calendar.current.dateComponents([.day], from: now, to: date).day ?? 0
-        if diff < 0 {
-            Text("Overdue by \(-diff)d")
-                .font(.caption)
+    private var reviewStatusChip: some View {
+        if let next = site.nextReviewAt {
+            let days = Calendar.current.dateComponents([.day], from: Date(), to: next).day ?? 0
+            if days < 0 {
+                Label("Overdue \(-days)d", systemImage: "exclamationmark.circle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.red)
+                    .clipShape(Capsule())
+            } else if days == 0 {
+                Label("Due today", systemImage: "clock.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.orange)
+                    .clipShape(Capsule())
+            } else if days <= 7 {
+                Label("Due in \(days)d", systemImage: "clock")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.orange.opacity(0.12))
+                    .clipShape(Capsule())
+            } else {
+                Label("Due \(next, style: .date)", systemImage: "checkmark.circle")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.green)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.green.opacity(0.1))
+                    .clipShape(Capsule())
+            }
+        }
+    }
+
+    // MARK: - Next review inline label
+
+    @ViewBuilder
+    private func nextReviewLabel(_ date: Date) -> some View {
+        let days = Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
+        if days < 0 {
+            Text("Overdue by \(-days) days")
+                .font(.callout)
                 .foregroundStyle(.red)
-        } else if diff == 0 {
+        } else if days == 0 {
             Text("Today")
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.orange)
         } else {
             Text(date, style: .date)
-                .font(.caption)
-                .foregroundStyle(diff <= 7 ? .orange : .secondary)
+                .font(.callout)
+                .foregroundStyle(days <= 7 ? .orange : .primary)
         }
     }
+
+    // MARK: - Field row
 
     private func siteField(label: String, @ViewBuilder content: () -> some View) -> some View {
         HStack(alignment: .center, spacing: 8) {
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .frame(width: 110, alignment: .leading)
+                .frame(width: 100, alignment: .leading)
             content()
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
     }
+
+    // MARK: - Actions
 
     private func setSiteState(_ state: SiteState) {
         let id = site.id
@@ -233,8 +278,10 @@ struct SiteDetailView: View {
     private func saveIntervalDays() {
         guard let days = Int(intervalDaysText), days > 0 else {
             intervalDaysText = String(site.intervalDays)
+            errorMessage = "Enter a positive number of days"
             return
         }
+        errorMessage = nil
         let id = site.id
         Task {
             do {
@@ -250,6 +297,7 @@ struct SiteDetailView: View {
         Task {
             do {
                 try await siteService.deleteSite(id: id)
+                await MainActor.run { router.selectedSiteID = nil }
             } catch {
                 await MainActor.run { errorMessage = error.localizedDescription }
             }

@@ -71,7 +71,7 @@ public final class Job {
         salaryNote: String? = nil,
         employmentType: String? = nil,
         seniority: String? = nil,
-        status: JobStatus = .saved,
+        status: JobStatus = .new,
         manualOverridesJSON: String = "[]",
         extractedJSON: String? = nil,
         extractionStatus: ExtractionStatus = .pending,

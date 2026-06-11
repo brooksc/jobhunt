@@ -25,6 +25,9 @@ claude/
 chromestore/*.zip
 chromestore/*.png
 
+# View screenshots
+screenshots/
+
 # Xcode / Tuist generated files
 *.xcodeproj
 *.xcworkspace

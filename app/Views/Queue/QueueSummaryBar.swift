@@ -42,6 +42,7 @@ struct QueueSummaryBar: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .tint(isPaused ? .green : .orange)
+            .help(isPaused ? "Resume processing queued requests" : "Pause the queue — in-flight requests finish, new ones wait")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)

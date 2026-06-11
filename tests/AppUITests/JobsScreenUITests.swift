@@ -1,11 +1,25 @@
 import XCTest
 
-/// Minimal launch test for the Jobs screen (TASK-048).
-/// Full UI interaction tests will be added once the screen is wired into the simulator.
 final class JobsScreenUITests: XCTestCase {
-    func testAppLaunchesWithJobsScreen() {
-        // Placeholder: verifies the test target compiles and links correctly.
-        // A real XCUITest launch test requires a simulator target; add when CI supports it.
-        XCTAssertTrue(true)
+
+    private var app: XCUIApplication!
+
+    override func setUp() {
+        super.setUp()
+        continueAfterFailure = false
+        app = launchApp()
+        navigate(app, label: "All Jobs")
+    }
+
+    override func tearDown() {
+        app.terminate()
+        app = nil
+        super.tearDown()
+    }
+
+    func testSidebarPursuingFilters() {
+        navigate(app, label: "Pursuing")
+        Thread.sleep(forTimeInterval: 0.5)
+        snap(app, "sidebar-pursuing-filtered")
     }
 }

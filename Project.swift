@@ -61,6 +61,23 @@ func testTarget(name: String, bundleSuffix: String, sources: SourceFilesList, de
     )
 }
 
+func uiTestTarget(name: String, bundleSuffix: String, sources: SourceFilesList, deps: [TargetDependency]) -> Target {
+    Target.target(
+        name: name,
+        destinations: [.mac],
+        product: .uiTests,
+        bundleId: "\(bundleId).\(bundleSuffix)",
+        deploymentTargets: deploymentTarget,
+        sources: sources,
+        dependencies: deps,
+        settings: .settings(
+            base: sharedBase,
+            configurations: projectConfigurations,
+            defaultSettings: .recommended(excluding: [])
+        )
+    )
+}
+
 // MARK: - Library/framework targets
 
 let coreTarget = frameworkTarget(
@@ -192,7 +209,7 @@ let mcpTestsTarget = testTarget(
     deps: [.target(name: "JobhuntMCP")]
 )
 
-let appUITestsTarget = testTarget(
+let appUITestsTarget = uiTestTarget(
     name: "AppUITests",
     bundleSuffix: "AppUITests",
     sources: ["Tests/AppUITests/**/*.swift"],

@@ -47,6 +47,7 @@ private struct SettingsTabView: View {
                 .tag(3)
         }
         .padding()
+        .frame(minWidth: 480, minHeight: 400)
         .navigationTitle("Settings")
     }
 }
@@ -78,7 +79,7 @@ private struct ProviderOption: Identifiable, Hashable {
             privacyURL: "https://openrouter.ai/privacy"
         ),
         ProviderOption(id: "custom", label: "Custom", isCloud: false, privacyURL: nil),
-        ProviderOption(id: "apple", label: "Apple Intelligence", isCloud: false, privacyURL: nil)
+        ProviderOption(id: "foundation_models", label: "Apple Intelligence", isCloud: false, privacyURL: nil)
     ]
 
     static func find(_ id: String) -> ProviderOption {
@@ -96,14 +97,22 @@ struct LLMTab: View {
 
     @State private var pendingProviderID: String?
     @State private var showingConsentSheet = false
-    @State private var selectedProviderID: String = "lmstudio"
+    @State private var selectedProviderID: String
     @State private var apiKeyText: String = ""
     @State private var connectionStatus: ConnectionStatus = .idle
     @State private var isFetchingModels = false
+    @State private var fetchedModels: [String] = []
     @State private var modelText: String = ""
     @State private var baseURLText: String = ""
     @State private var priceInput: String = ""
     @State private var priceOutput: String = ""
+    @FocusState private var inputPriceFocused: Bool
+    @FocusState private var outputPriceFocused: Bool
+
+    init(settings: SettingsStore) {
+        self.settings = settings
+        _selectedProviderID = State(initialValue: settings.llmProvider)
+    }
 
     private enum ConnectionStatus {
         case idle, testing, success(String), failure(String)
@@ -136,7 +145,7 @@ struct LLMTab: View {
             priceInput = String(settings.double(forKey: SettingsKey.llmPriceInput))
             priceOutput = String(settings.double(forKey: SettingsKey.llmPriceOutput))
         }
-        .sheet(isPresented: $showingConsentSheet) {
+        .sheet(isPresented: $showingConsentSheet, onDismiss: { pendingProviderID = nil }) {
             if let providerID = pendingProviderID {
                 let provider = ProviderOption.find(providerID)
                 LLMConsentSheet(
@@ -169,7 +178,7 @@ struct LLMTab: View {
                 }
             }
 
-            if selectedProviderID == "apple" {
+            if selectedProviderID == "foundation_models" {
                 if #available(macOS 26, *) {
                     Text("Apple Intelligence — no additional configuration required.")
                         .foregroundStyle(.secondary)
@@ -201,11 +210,21 @@ struct LLMTab: View {
                 ))
             }
 
-            if selectedProviderID != "apple" {
+            if selectedProviderID != "foundation_models" {
                 HStack {
-                    TextField("Model", text: $modelText)
-                        .onSubmit { settings.llmModel = modelText }
+                    if fetchedModels.isEmpty {
+                        TextField("Model", text: $modelText)
+                            .onSubmit { settings.llmModel = modelText }
+                            .onChange(of: modelText) { _, new in settings.llmModel = new }
+                    } else {
+                        Picker("Model", selection: $modelText) {
+                            ForEach(fetchedModels, id: \.self) { Text($0).tag($0) }
+                        }
                         .onChange(of: modelText) { _, new in settings.llmModel = new }
+                        Button("Clear") { fetchedModels = [] }
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.secondary)
+                    }
 
                     if canFetchModels {
                         Button {
@@ -260,8 +279,9 @@ struct LLMTab: View {
                 TextField("0.00", text: $priceInput)
                     .multilineTextAlignment(.trailing)
                     .frame(width: 100)
+                    .focused($inputPriceFocused)
                     .onSubmit { savePrices() }
-                    .onChange(of: priceInput) { _, _ in savePrices() }
+                    .onChange(of: inputPriceFocused) { _, focused in if !focused { savePrices() } }
             }
             HStack {
                 Text("Output tokens")
@@ -269,8 +289,9 @@ struct LLMTab: View {
                 TextField("0.00", text: $priceOutput)
                     .multilineTextAlignment(.trailing)
                     .frame(width: 100)
+                    .focused($outputPriceFocused)
                     .onSubmit { savePrices() }
-                    .onChange(of: priceOutput) { _, _ in savePrices() }
+                    .onChange(of: outputPriceFocused) { _, focused in if !focused { savePrices() } }
             }
         }
     }
@@ -330,8 +351,13 @@ struct LLMTab: View {
 
     private var needsAPIKey: Bool {
         switch selectedProviderID {
-        case "openai", "anthropic", "google", "openrouter", "custom": true
-        default: false
+        case "openai", "anthropic", "google", "openrouter":
+            return true
+        case "custom":
+            let lower = baseURLText.lowercased()
+            return !lower.contains("localhost") && !lower.contains("127.0.0.1") && !lower.contains("0.0.0.0")
+        default:
+            return false
         }
     }
 
@@ -407,9 +433,12 @@ struct LLMTab: View {
             // swiftlint:disable:next nesting type_name
             struct ModelsResp: Decodable { struct M: Decodable { let id: String }; let data: [M]? }
             let resp = try JSONDecoder().decode(ModelsResp.self, from: data)
-            if let first = resp.data?.first {
-                modelText = first.id
-                settings.llmModel = first.id
+            if let models = resp.data, !models.isEmpty {
+                fetchedModels = models.map(\.id)
+                if !fetchedModels.contains(modelText) {
+                    modelText = fetchedModels[0]
+                    settings.llmModel = fetchedModels[0]
+                }
             }
         } catch {
             // User can type model name manually

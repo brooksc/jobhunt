@@ -55,7 +55,7 @@ final class ModelRoundTripTests: XCTestCase {
         descriptor.fetchLimit = 1
         let fetched = try context.fetch(descriptor)
         XCTAssertEqual(fetched.first?.company, "Acme")
-        XCTAssertEqual(fetched.first?.status, .saved)
+        XCTAssertEqual(fetched.first?.status, .new)
         XCTAssertEqual(fetched.first?.extractionStatus, .pending)
         XCTAssertEqual(fetched.first?.fitStatus, FitStatus.none)
         XCTAssertFalse(fetched.first?.unread ?? true)
@@ -63,7 +63,7 @@ final class ModelRoundTripTests: XCTestCase {
 
     func testJobDefaultsMatchLegacy() {
         let job = Job()
-        XCTAssertEqual(job.status, .saved)
+        XCTAssertEqual(job.status, .new)
         XCTAssertEqual(job.extractionStatus, .pending)
         XCTAssertEqual(job.fitStatus, .none)
         XCTAssertEqual(job.manualOverridesJSON, "[]")
@@ -214,8 +214,8 @@ final class ModelRoundTripTests: XCTestCase {
     // MARK: - Enum raw values match legacy strings
 
     func testEnumRawValues() {
-        XCTAssertEqual(JobStatus.saved.rawValue, "saved")
-        XCTAssertEqual(JobStatus.notAvailable.rawValue, "not_available")
+        XCTAssertEqual(JobStatus.pursuing.rawValue, "pursuing")
+        XCTAssertEqual(JobStatus.closed.rawValue, "closed")
         XCTAssertEqual(ExtractionStatus.pending.rawValue, "pending")
         XCTAssertEqual(ExtractionStatus.succeeded.rawValue, "succeeded")
         XCTAssertEqual(FitStatus.none.rawValue, "none")

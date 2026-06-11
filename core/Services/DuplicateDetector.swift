@@ -346,7 +346,7 @@ public struct DuplicateDetector {
             $0.extractionStatus == "succeeded" &&
                 !($0.company?.trimmingCharacters(in: .whitespaces).isEmpty ?? true) &&
                 !($0.title?.trimmingCharacters(in: .whitespaces).isEmpty ?? true) &&
-                !["archived", "not_available"].contains($0.status)
+                !["passed", "archived", "closed"].contains($0.status)
         }
 
         // Group by normalised title
@@ -383,7 +383,7 @@ public struct DuplicateDetector {
                 let keepHostname = DuplicateDetector.sourceHostname(urlString: keep.sourceURL)
 
                 for (candidate, candidateScore) in sorted.dropFirst() {
-                    guard ["saved", "duplicate", "applied"].contains(candidate.status) else { continue }
+                    guard ["new", "pursuing", "duplicate", "applied"].contains(candidate.status) else { continue }
                     guard let evidence = DuplicateDetector.evidenceMatch(left: keep, right: candidate) else { continue }
 
                     // Skip if resolved by DuplicateDecision

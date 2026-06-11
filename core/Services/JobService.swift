@@ -211,7 +211,7 @@ public actor JobService {
     }
 
     public func archive(jobID: String) async throws {
-        try await setStatus(.archived, for: jobID)
+        try await setStatus(.passed, for: jobID)
     }
 
     public func delete(jobID: String) async throws {

@@ -500,7 +500,7 @@ final class MigratorTests: XCTestCase {
                 jobNumber: intVal(row, "job_number"),
                 company: str(row, "company"),
                 title: str(row, "title"),
-                status: str(row, "status").flatMap { JobStatus(rawValue: $0) } ?? .saved,
+                status: str(row, "status").flatMap { JobStatus(rawValue: $0) } ?? .pursuing,
                 manualOverridesJSON: req(row, "manual_overrides", fallback: "[]"),
                 extractedJSON: str(row, "extracted_json"),
                 extractionStatus: str(row, "extraction_status").flatMap { ExtractionStatus(rawValue: $0) } ?? .pending,
@@ -593,7 +593,7 @@ final class MigratorTests: XCTestCase {
             "{\"title\":\"Senior Engineer\"}",
             "extractedJSON should be preserved verbatim"
         )
-        XCTAssertEqual(job.status, .saved)
+        XCTAssertEqual(job.status, .pursuing)
 
         let capture = try XCTUnwrap(captures.first)
         XCTAssertEqual(capture.rawHash, "hash_abc", "rawHash should be preserved verbatim")

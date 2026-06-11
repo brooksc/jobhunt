@@ -63,6 +63,11 @@ struct AddSiteSheet: View {
         let name = nameText.trimmingCharacters(in: .whitespaces)
         guard !url.isEmpty else { return }
 
+        guard let parsed = URL(string: url), parsed.scheme == "http" || parsed.scheme == "https" else {
+            errorMessage = "Please enter a valid http or https URL."
+            return
+        }
+
         isAdding = true
         errorMessage = nil
 
@@ -72,7 +77,10 @@ struct AddSiteSheet: View {
                     url: url,
                     name: name.isEmpty ? nil : name
                 )
-                await MainActor.run { dismiss() }
+                await MainActor.run {
+                    isAdding = false
+                    dismiss()
+                }
             } catch {
                 await MainActor.run {
                     errorMessage = error.localizedDescription

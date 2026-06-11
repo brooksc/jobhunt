@@ -189,7 +189,7 @@ final class JobServiceTests: XCTestCase {
         let container = try ModelContainerFactory.inMemory()
         let store = makeStore(container)
 
-        let job1 = Job(id: "job-1", jobNumber: 1, company: "Acme", title: "Engineer", status: .saved)
+        let job1 = Job(id: "job-1", jobNumber: 1, company: "Acme", title: "Engineer", status: .pursuing)
         let job2 = Job(id: "job-2", jobNumber: 2, company: "Beta", title: "Designer", status: .applied)
         try await store.insertBatch([job1, job2])
 
@@ -212,7 +212,7 @@ final class JobServiceTests: XCTestCase {
         let store = makeStore(container)
 
         // Job with comma in title
-        let job = Job(id: "job-esc", jobNumber: 3, company: "Acme, Inc.", title: "Engineer, Senior", status: .saved)
+        let job = Job(id: "job-esc", jobNumber: 3, company: "Acme, Inc.", title: "Engineer, Senior", status: .pursuing)
         try await store.insert(job)
 
         let csv = ExportService.jobsCSV(jobs: [job])

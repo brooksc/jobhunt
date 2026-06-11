@@ -70,9 +70,9 @@ final class DemoSeederTests: XCTestCase {
         XCTAssertTrue(statuses.contains(.offer), "Must include at least one offer job")
         XCTAssertTrue(statuses.contains(.interview), "Must include at least one interview job")
         XCTAssertTrue(statuses.contains(.applied), "Must include at least one applied job")
-        XCTAssertTrue(statuses.contains(.saved), "Must include at least one saved job")
+        XCTAssertTrue(statuses.contains(.pursuing), "Must include at least one saved job")
         XCTAssertTrue(statuses.contains(.rejected), "Must include at least one rejected job")
-        XCTAssertTrue(statuses.contains(.archived), "Must include at least one archived job")
+        XCTAssertTrue(statuses.contains(.passed), "Must include at least one passed job")
     }
 
     func testSeedDemoJobsHaveFitScores() async throws {

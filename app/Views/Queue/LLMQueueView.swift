@@ -48,6 +48,10 @@ struct LLMQueueView: View {
 
     @State private var expandedIDs: Set<String> = []
 
+    // MARK: Confirmation
+
+    @State private var showingDeleteAllConfirm = false
+
     // MARK: Error toast
 
     @State private var errorMessage: String?
@@ -155,9 +159,33 @@ struct LLMQueueView: View {
             .contextMenu(forSelectionType: String.self) { ids in
                 selectionContextMenu(for: ids)
             }
+            .onDeleteCommand {
+                if !selection.isEmpty {
+                    deleteSelected(Array(selection))
+                }
+            }
         }
         .navigationTitle("LLM Queue")
         .toolbar { toolbarContent }
+        .confirmationDialog(
+            "Delete all \(allRequests.count) queue records?",
+            isPresented: $showingDeleteAllConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete All", role: .destructive) {
+                Task {
+                    do {
+                        try await queueActor.deleteAll()
+                        selection.removeAll()
+                    } catch {
+                        errorMessage = "Delete failed: \(error.localizedDescription)"
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently removes all history. It cannot be undone.")
+        }
         .task {
             // Sync isPaused from settings
             isPaused = settings.llmQueuePaused
@@ -178,14 +206,25 @@ struct LLMQueueView: View {
                 Button("Process Selected") {
                     Task { await processSelected(Array(selection)) }
                 }
+                .help("Re-queue and immediately process the selected requests")
+                .disabled(isPaused)
 
-                Button("Cancel Selected", role: .destructive) {
+                Button("Cancel Selected") {
                     Task { await cancelSelected(Array(selection)) }
                 }
+                .help("Cancel the selected queued/running requests")
 
                 Button("Reset Selected") {
                     Task { await resetSelected(Array(selection)) }
                 }
+                .help("Reset the selected requests back to Queued so they run again")
+
+                Button(role: .destructive) {
+                    deleteSelected(Array(selection))
+                } label: {
+                    Label("Delete Selected", systemImage: "trash")
+                }
+                .help("Permanently delete the selected records")
 
                 Divider()
             }
@@ -196,13 +235,25 @@ struct LLMQueueView: View {
             } label: {
                 Label("Process All", systemImage: "sparkles")
             }
+            .help("Start processing all queued requests")
+            .disabled(isPaused || allRequests.filter { $0.status == .queued }.isEmpty)
 
-            // Cancel All
-            Button(role: .destructive) {
+            // Cancel Queued
+            Button {
                 Task { await cancelAll() }
             } label: {
-                Label("Cancel All", systemImage: "trash")
+                Label("Cancel Queued", systemImage: "stop.circle")
             }
+            .help("Cancel all queued and running requests (does not delete history)")
+            .disabled(allRequests.filter { $0.status == .queued || $0.status == .running }.isEmpty)
+
+            // Delete All
+            Button(role: .destructive) {
+                showingDeleteAllConfirm = true
+            } label: {
+                Label("Delete All", systemImage: "trash")
+            }
+            .help("Permanently delete all queue records")
         }
 
         ToolbarItemGroup(placement: .secondaryAction) {
@@ -239,8 +290,11 @@ struct LLMQueueView: View {
                 Task { await resetSelected(Array(ids)) }
             }
             Divider()
-            Button("Cancel Selected", role: .destructive) {
+            Button("Cancel Selected") {
                 Task { await cancelSelected(Array(ids)) }
+            }
+            Button("Delete Selected", role: .destructive) {
+                deleteSelected(Array(ids))
             }
         }
     }
@@ -310,16 +364,7 @@ struct LLMQueueView: View {
     }
 
     private func processAll() async {
-        // Enqueue pending jobs that aren't yet in the queue
-        // The queue actor's startProcessing handles the actual processing
-        do {
-            let pendingJobIDs = allRequests
-                .filter { $0.status == .queued }
-                .compactMap { $0.job?.id }
-            if !pendingJobIDs.isEmpty {
-                await queueActor.startProcessing()
-            }
-        }
+        await queueActor.startProcessing()
     }
 
     private func processSelected(_ ids: [String]) async {
@@ -334,11 +379,11 @@ struct LLMQueueView: View {
         for id in ids {
             do {
                 try await queueActor.cancelRequest(id: id)
+                selection.remove(id)
             } catch {
                 errorMessage = "Cancel failed: \(error.localizedDescription)"
             }
         }
-        selection.removeAll()
     }
 
     private func resetSelected(_ ids: [String]) async {
@@ -360,6 +405,17 @@ struct LLMQueueView: View {
         }
     }
 
+    private func deleteSelected(_ ids: [String]) {
+        Task {
+            do {
+                try await queueActor.deleteRequests(ids: ids)
+                selection.removeAll()
+            } catch {
+                errorMessage = "Delete failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
     // MARK: - Event handler
 
     private func handleQueueEvent(_ event: QueueEvent) {
@@ -367,7 +423,7 @@ struct LLMQueueView: View {
         case .autoPaused:
             isPaused = true
         case .processingComplete:
-            break
+            isPaused = false
         case .jobReady, .jobUnavailable:
             break
         }

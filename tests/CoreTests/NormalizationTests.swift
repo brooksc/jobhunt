@@ -527,18 +527,20 @@ final class CompanyBackfillerTests: XCTestCase {
 
 final class DisplayNormalizerTests: XCTestCase {
     func testMapStatus() {
-        // Port of transform.test.js 'mapStatus' suite
-        XCTAssertEqual(DisplayNormalizer.mapStatus("saved"), "saved")
+        // Canonical values pass through unchanged
+        XCTAssertEqual(DisplayNormalizer.mapStatus("pursuing"), "pursuing")
         XCTAssertEqual(DisplayNormalizer.mapStatus("applied"), "applied")
         XCTAssertEqual(DisplayNormalizer.mapStatus("offer"), "offer")
         XCTAssertEqual(DisplayNormalizer.mapStatus("rejected"), "rejected")
         XCTAssertEqual(DisplayNormalizer.mapStatus("archived"), "archived")
+        XCTAssertEqual(DisplayNormalizer.mapStatus("passed"), "passed")
+        XCTAssertEqual(DisplayNormalizer.mapStatus("closed"), "closed")
         XCTAssertEqual(DisplayNormalizer.mapStatus("duplicate"), "duplicate")
-        // Legacy mappings
-        XCTAssertEqual(DisplayNormalizer.mapStatus("interested"), "saved")
+        // Legacy → new mappings
+        XCTAssertEqual(DisplayNormalizer.mapStatus("saved"), "pursuing")
+        XCTAssertEqual(DisplayNormalizer.mapStatus("interested"), "pursuing")
         XCTAssertEqual(DisplayNormalizer.mapStatus("interviewing"), "interview")
-        XCTAssertEqual(DisplayNormalizer.mapStatus("closed"), "archived")
-        XCTAssertEqual(DisplayNormalizer.mapStatus("ignored"), "archived")
+        XCTAssertEqual(DisplayNormalizer.mapStatus("ignored"), "passed")
         // Unknown passes through
         XCTAssertEqual(DisplayNormalizer.mapStatus("unknown_status"), "unknown_status")
     }

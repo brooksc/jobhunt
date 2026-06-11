@@ -44,6 +44,10 @@ struct SitesView: View {
         }
     }
 
+    private var notYetReviewedSites: [Site] {
+        sites.filter { $0.state == .notReviewed && $0.nextReviewAt == nil }
+    }
+
     private var excludedSites: [Site] {
         sites.filter { $0.state == .exclude }
     }
@@ -87,6 +91,15 @@ struct SitesView: View {
                     }
                 }
 
+                if !notYetReviewedSites.isEmpty {
+                    Section("Not Yet Reviewed") {
+                        ForEach(notYetReviewedSites) { site in
+                            SiteRowView(site: site)
+                                .tag(site.id)
+                        }
+                    }
+                }
+
                 if !excludedSites.isEmpty {
                     Section("Excluded") {
                         ForEach(excludedSites) { site in
@@ -106,6 +119,7 @@ struct SitesView: View {
                 } label: {
                     Label("Add Site", systemImage: "plus")
                 }
+                .help("Add a new job board site to track")
             }
         }
         .sheet(isPresented: $showAddSheet) {
@@ -120,18 +134,23 @@ private struct SiteRowView: View {
     let site: Site
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(displayName)
                 .font(.callout)
                 .fontWeight(.medium)
                 .lineLimit(1)
 
-            HStack(spacing: 6) {
-                SiteStateBadge(state: site.state)
+            HStack(spacing: 4) {
+                Text(site.origin)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
 
                 if let nextReview = site.nextReviewAt {
+                    Text("·").font(.caption2).foregroundStyle(.quaternary)
                     nextReviewLabel(nextReview)
                 } else if site.lastReviewedAt == nil {
+                    Text("·").font(.caption2).foregroundStyle(.quaternary)
                     Text("Never reviewed")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -149,8 +168,7 @@ private struct SiteRowView: View {
 
     @ViewBuilder
     private func nextReviewLabel(_ date: Date) -> some View {
-        let now = Date()
-        let diff = Calendar.current.dateComponents([.day], from: now, to: date).day ?? 0
+        let diff = Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
         if diff < 0 {
             Label("Overdue \(-diff)d", systemImage: "exclamationmark.circle.fill")
                 .font(.caption2)
@@ -167,39 +185,6 @@ private struct SiteRowView: View {
             Text(date, style: .date)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-        }
-    }
-}
-
-// MARK: - State Badge
-
-private struct SiteStateBadge: View {
-    let state: SiteState
-
-    var body: some View {
-        Text(label)
-            .font(.caption2)
-            .fontWeight(.medium)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.15))
-            .foregroundStyle(color)
-            .clipShape(Capsule())
-    }
-
-    private var label: String {
-        switch state {
-        case .notReviewed: "Not Reviewed"
-        case .reviewed: "Reviewed"
-        case .exclude: "Excluded"
-        }
-    }
-
-    private var color: Color {
-        switch state {
-        case .notReviewed: .secondary
-        case .reviewed: .green
-        case .exclude: .red
         }
     }
 }

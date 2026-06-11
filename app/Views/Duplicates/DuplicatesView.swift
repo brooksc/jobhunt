@@ -170,7 +170,6 @@ struct DuplicatesView: View {
     private func handleUnmark(candidateID: String) {
         guard let job = jobIndex[candidateID] else { return }
         job.duplicateOfJobID = nil
-        job.status = .saved
         job.updatedAt = Date()
         try? modelContext.save()
         selectedPairID = nil
@@ -269,37 +268,36 @@ struct CompareView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Header bar
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Compare Pair")
-                        .font(.headline)
-                    HStack(spacing: 4) {
-                        Text(String(format: "%.0f%% match", pair.confidence * 100))
-                            .font(.caption)
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                        Text("·")
-                            .foregroundStyle(.tertiary)
-                        Text(pair.reason)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                }
+            HStack(spacing: 8) {
+                Image(systemName: "square.on.square")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                Text(String(format: "%.0f%% similar", pair.confidence * 100))
+                    .font(.subheadline.weight(.semibold))
+                Text("·")
+                    .foregroundStyle(.quaternary)
+                Text(pair.reason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 Spacer()
-                Button("Unmark as Duplicate") {
+                Button("Unmark") {
                     onUnmark()
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.small)
+                .font(.caption)
 
                 Button("Delete Candidate") {
                     showDeleteConfirmation = true
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
+                .controlSize(.small)
+                .font(.caption)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
 
             Divider()
 
@@ -317,7 +315,9 @@ struct CompareView: View {
                         label: "Candidate",
                         snapshot: pair.candidate,
                         job: candidateJob,
-                        other: pair.original
+                        other: pair.original,
+                        isNewer: true,
+                        onDiscard: { showDeleteConfirmation = true }
                     )
                 }
             }
@@ -340,15 +340,28 @@ private struct JobCompareColumn: View {
     let snapshot: JobSnapshot
     let job: Job?
     let other: JobSnapshot
+    var isNewer: Bool = false
+    var onDiscard: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Column header
             VStack(alignment: .leading, spacing: 4) {
-                Text(label)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
+                HStack(spacing: 6) {
+                    Text(label)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                    if isNewer {
+                        Text("newer")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.secondary.opacity(0.1))
+                            .clipShape(Capsule())
+                    }
+                }
                 HStack(spacing: 8) {
                     Text(snapshot.company ?? "Unknown company")
                         .font(.title3)
@@ -422,6 +435,20 @@ private struct JobCompareColumn: View {
                 }
             }
             .padding(.bottom, 8)
+
+            // Discard button
+            if let onDiscard {
+                Button {
+                    onDiscard()
+                } label: {
+                    Label("Discard this one", systemImage: "trash")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

@@ -3,14 +3,17 @@ import Foundation
 // Raw values must match legacy SQLite string values exactly for CSV/MCP/extension parity.
 
 public enum JobStatus: String, Codable, CaseIterable, Sendable {
-    case saved
+    case new
+    case pursuing
     case applied
     case interview
     case offer
     case rejected
+    case passed
     case archived
-    case notAvailable = "not_available"
+    case closed
     case duplicate
+    case expired
 }
 
 public enum ExtractionStatus: String, Codable, CaseIterable, Sendable {

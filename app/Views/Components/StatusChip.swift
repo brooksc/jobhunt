@@ -16,17 +16,20 @@ struct StatusChip: View {
     }
 }
 
-private extension JobStatus {
+extension JobStatus {
     var displayName: String {
         switch self {
-        case .saved: "Saved"
-        case .applied: "Applied"
+        case .new:       "New"
+        case .pursuing:  "Pursuing"
+        case .applied:   "Applied"
         case .interview: "Interview"
-        case .offer: "Offer"
-        case .rejected: "Rejected"
-        case .archived: "Archived"
-        case .notAvailable: "Not Available"
+        case .offer:     "Offer"
+        case .rejected:  "Rejected"
+        case .passed:    "Passed"
+        case .archived:  "Archived"
+        case .closed:    "Closed"
         case .duplicate: "Duplicate"
+        case .expired:   "Expired"
         }
     }
 }

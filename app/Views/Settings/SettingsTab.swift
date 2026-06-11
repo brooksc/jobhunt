@@ -1,4 +1,5 @@
 import JobhuntCore
+import SwiftData
 import SwiftUI
 
 struct SettingsTab: View {
@@ -7,9 +8,16 @@ struct SettingsTab: View {
     @State private var isRunningAvailabilityCheck = false
     @State private var availabilityCheckMessage: String?
     @State private var customJDText: String = ""
+    @State private var goneJobs: [GoneJobResult] = []
+    @State private var showingExpiredConfirmation = false
+
+    @Environment(Theme.self) private var theme
+    @Environment(\.modelContext) private var modelContext
+    @Query private var allJobs: [Job]
 
     var body: some View {
         Form {
+            appearanceSection
             locationSection
             intervalsSection
             availabilitySection
@@ -19,6 +27,32 @@ struct SettingsTab: View {
         .formStyle(.grouped)
         .onAppear {
             customJDText = settings.string(forKey: SettingsKey.jobDescriptionMarkdown)
+        }
+        .sheet(isPresented: $showingExpiredConfirmation) {
+            ExpiredConfirmationSheet(
+                goneJobs: goneJobs,
+                onConfirm: { markExpired($0) },
+                onDismiss: {
+                    showingExpiredConfirmation = false
+                    availabilityCheckMessage = "\(goneJobs.count) potential expiration(s) — none marked"
+                }
+            )
+        }
+    }
+
+    // MARK: - Appearance section (HIG-3: theme preference moved here from sidebar)
+
+    private var appearanceSection: some View {
+        Section("Appearance") {
+            Picker("Color scheme", selection: Binding(
+                get: { theme.colorSchemePreference },
+                set: { theme.colorSchemePreference = $0 }
+            )) {
+                ForEach(Theme.ColorSchemePreference.allCases, id: \.self) { pref in
+                    Label(pref.label, systemImage: pref.systemImage).tag(pref)
+                }
+            }
+            .pickerStyle(.segmented)
         }
     }
 
@@ -98,6 +132,33 @@ struct SettingsTab: View {
                     ),
                     in: 1 ... 30
                 )
+
+                HStack {
+                    Button {
+                        Task { await runAvailabilityCheck() }
+                    } label: {
+                        if isRunningAvailabilityCheck {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label("Run Check Now", systemImage: "arrow.clockwise")
+                        }
+                    }
+                    .disabled(isRunningAvailabilityCheck)
+
+                    if let msg = availabilityCheckMessage {
+                        Spacer()
+                        Text(msg)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if let lastCheck = lastAutoCheckDate {
+                    LabeledContent("Last check") {
+                        Text(lastCheck.formatted())
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             Stepper(
@@ -108,33 +169,6 @@ struct SettingsTab: View {
                 ),
                 in: 7 ... 90
             )
-
-            HStack {
-                Button {
-                    Task { await runAvailabilityCheck() }
-                } label: {
-                    if isRunningAvailabilityCheck {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Label("Run Check Now", systemImage: "arrow.clockwise")
-                    }
-                }
-                .disabled(isRunningAvailabilityCheck)
-
-                if let msg = availabilityCheckMessage {
-                    Spacer()
-                    Text(msg)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            if let lastCheck = lastAutoCheckDate {
-                LabeledContent("Last check") {
-                    Text(lastCheck.formatted())
-                        .foregroundStyle(.secondary)
-                }
-            }
         }
     }
 
@@ -193,8 +227,125 @@ struct SettingsTab: View {
         isRunningAvailabilityCheck = true
         availabilityCheckMessage = nil
         defer { isRunningAvailabilityCheck = false }
+
+        let pursuing = allJobs.filter { $0.status == .pursuing }
+        guard !pursuing.isEmpty else {
+            availabilityCheckMessage = "No pursuing jobs to check"
+            return
+        }
+
+        availabilityCheckMessage = "Checking \(pursuing.count) jobs…"
+        let found = await AvailabilityChecker.findGoneJobs(pursuing)
+
         let now = ISO8601DateFormatter().string(from: Date())
         settings.set(now, forKey: SettingsKey.availabilityLastAutoCheckAt)
-        availabilityCheckMessage = "Check started"
+
+        if found.isEmpty {
+            availabilityCheckMessage = "All \(pursuing.count) jobs are still available"
+        } else {
+            goneJobs = found
+            showingExpiredConfirmation = true
+            availabilityCheckMessage = nil
+        }
+    }
+
+    private func markExpired(_ jobs: [GoneJobResult]) {
+        showingExpiredConfirmation = false
+        let ids = Set(jobs.map(\.jobID))
+        for job in allJobs where ids.contains(job.id) {
+            job.status = .expired
+            job.updatedAt = Date()
+        }
+        try? modelContext.save()
+        availabilityCheckMessage = "\(jobs.count) job(s) marked expired"
+    }
+}
+
+// MARK: - ExpiredConfirmationSheet
+
+private struct ExpiredConfirmationSheet: View {
+    let goneJobs: [GoneJobResult]
+    let onConfirm: ([GoneJobResult]) -> Void
+    let onDismiss: () -> Void
+
+    @State private var selected: Set<String>
+
+    init(goneJobs: [GoneJobResult], onConfirm: @escaping ([GoneJobResult]) -> Void, onDismiss: @escaping () -> Void) {
+        self.goneJobs = goneJobs
+        self.onConfirm = onConfirm
+        self.onDismiss = onDismiss
+        _selected = State(initialValue: Set(goneJobs.map(\.jobID)))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Jobs No Longer Available")
+                .font(.headline)
+            Text("\(goneJobs.count) of your pursuing jobs appear to be gone. Select which to mark as Expired.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 0) {
+                ForEach(goneJobs, id: \.jobID) { job in
+                    HStack(alignment: .top, spacing: 10) {
+                        Toggle("", isOn: Binding(
+                            get: { selected.contains(job.jobID) },
+                            set: { if $0 { selected.insert(job.jobID) } else { selected.remove(job.jobID) } }
+                        ))
+                        .labelsHidden()
+                        .padding(.top, 2)
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(jobLabel(job)).font(.body)
+                            Text(friendlyReason(job.reason))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Link(job.url.absoluteString, destination: job.url)
+                                .font(.caption2)
+                                .foregroundStyle(.blue)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        Spacer()
+                    }
+                    .padding(.vertical, 8)
+
+                    if job.jobID != goneJobs.last?.jobID {
+                        Divider()
+                    }
+                }
+            }
+            .padding(10)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            HStack {
+                Button("Dismiss") { onDismiss() }
+                    .buttonStyle(.bordered)
+                Spacer()
+                Button("Mark \(selected.count) Expired") {
+                    let toMark = goneJobs.filter { selected.contains($0.jobID) }
+                    onConfirm(toMark)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(selected.isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(minWidth: 460)
+    }
+
+    private func jobLabel(_ job: GoneJobResult) -> String {
+        if let num = job.jobNumber { return "#\(num) \(job.title)" }
+        return job.title
+    }
+
+    private func friendlyReason(_ reason: String) -> String {
+        if reason.hasPrefix("HTTP 404") || reason.hasPrefix("HTTP 410") { return "Listing removed (404)" }
+        if reason.hasPrefix("HTTP") { return reason }
+        if reason.hasPrefix("body:") { return "Page content indicates listing is gone" }
+        if reason.hasPrefix("redirected to non-job page") { return "Redirected away from job listing" }
+        if reason.hasPrefix("redirected page missing title") { return "Redirect destination has no job title" }
+        return reason
     }
 }

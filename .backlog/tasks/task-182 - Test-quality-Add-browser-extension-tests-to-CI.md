@@ -1,9 +1,10 @@
 ---
 id: TASK-182
 title: 'Test quality: Add browser extension tests to CI'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 22:18'
+updated_date: '2026-06-11 22:36'
 labels:
   - audit
   - tests

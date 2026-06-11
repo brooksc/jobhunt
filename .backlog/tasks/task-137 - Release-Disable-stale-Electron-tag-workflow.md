@@ -1,9 +1,10 @@
 ---
 id: TASK-137
 title: 'Release: Disable stale Electron tag workflow'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 03:39'
+updated_date: '2026-06-11 19:00'
 labels:
   - release
   - ci
@@ -17,6 +18,9 @@ references:
   - >-
     .backlog/tasks/task-064 -
     Cutover-cleanup-remove-Electron-Node-React-update-docs.md
+modified_files:
+  - .github/workflows/release.yml
+  - .github/workflows/release-dmg.yml
 priority: high
 ---
 
@@ -33,3 +37,9 @@ The repository still contains `.github/workflows/release.yml` triggered on `v*` 
 - [ ] #3 Any useful secrets documentation from the stale workflow is moved to the current Swift release docs before deletion.
 - [ ] #4 Cutover cleanup task references are updated if this workflow was part of the planned Electron removal.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Deleted .github/workflows/release.yml (the stale Electron/npm workflow that ran on v* tags). Moved its secrets documentation comment block into release-dmg.yml so no information is lost. Only release-dmg.yml, release-mas.yml, and swift-build.yml now exist — all are Swift/Tuist workflows.
+<!-- SECTION:FINAL_SUMMARY:END -->

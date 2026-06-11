@@ -3,9 +3,10 @@ id: TASK-116
 title: >-
   Persistence: Make capture ingestion atomic across Capture, Job, and queue
   request creation
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 02:46'
+updated_date: '2026-06-11 02:58'
 labels:
   - persistence
   - swiftdata
@@ -28,9 +29,9 @@ priority: high
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Concurrent capture ingestion cannot assign duplicate `jobNumber` values
-- [ ] #2 A successful ingestion persists a linked `Capture`, `Job`, and extraction `LLMRequest` as one consistent unit
-- [ ] #3 If ingestion fails, it does not leave an orphaned capture, orphaned job, or missing queue request
-- [ ] #4 Duplicate detection behavior remains unchanged for raw-hash and cleaned-hash duplicates
-- [ ] #5 Focused tests cover concurrent ingestion and failure/partial-write behavior
+- [x] #1 Concurrent capture ingestion cannot assign duplicate `jobNumber` values
+- [x] #2 A successful ingestion persists a linked `Capture`, `Job`, and extraction `LLMRequest` as one consistent unit
+- [x] #3 If ingestion fails, it does not leave an orphaned capture, orphaned job, or missing queue request
+- [x] #4 Duplicate detection behavior remains unchanged for raw-hash and cleaned-hash duplicates
+- [x] #5 Focused tests cover concurrent ingestion and failure/partial-write behavior
 <!-- AC:END -->

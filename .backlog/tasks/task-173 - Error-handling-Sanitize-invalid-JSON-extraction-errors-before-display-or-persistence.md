@@ -3,9 +3,10 @@ id: TASK-173
 title: >-
   Error handling: Sanitize invalid JSON extraction errors before display or
   persistence
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 21:45'
+updated_date: '2026-06-11 22:19'
 labels:
   - audit
   - error-handling
@@ -31,3 +32,9 @@ priority: low
 - [ ] #2 Debug diagnostics retain enough context to troubleshoot malformed responses safely.
 - [ ] #3 Tests cover the sanitized invalid-JSON localized description.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Changed `ExtractionEngineError.invalidJSON` `errorDescription` from exposing `json.prefix(200)` to a safe "LLM response could not be parsed as JSON" message. The associated String value is preserved for programmatic access/debug logging but no longer appears in user-visible or persisted error descriptions. Test added verifying raw output is not exposed.
+<!-- SECTION:FINAL_SUMMARY:END -->

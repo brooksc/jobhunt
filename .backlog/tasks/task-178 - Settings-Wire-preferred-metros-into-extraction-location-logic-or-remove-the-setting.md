@@ -3,9 +3,10 @@ id: TASK-178
 title: >-
   Settings: Wire preferred metros into extraction/location logic or remove the
   setting
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 22:13'
+updated_date: '2026-06-11 22:30'
 labels:
   - audit
   - settings

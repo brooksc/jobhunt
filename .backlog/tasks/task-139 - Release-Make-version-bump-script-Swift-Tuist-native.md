@@ -1,9 +1,10 @@
 ---
 id: TASK-139
 title: 'Release: Make version bump script Swift/Tuist-native'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 03:40'
+updated_date: '2026-06-11 19:46'
 labels:
   - release
   - versioning
@@ -30,3 +31,9 @@ README documents `./scripts/bump-version.sh patch|minor|major`, but the script c
 - [ ] #3 The script does not auto-commit unless that behavior is intentionally documented and desired.
 - [ ] #4 README versioning instructions match the implemented script behavior.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Rewrote scripts/bump-version.sh to read current version from Project.swift marketingVersion via grep (no package.json dependency). Both explicit-version mode and semver-increment mode now update Project.swift and extension/manifest.json identically. Removed the hidden git add/commit that was only in the explicit-version path. Updated README versioning section to document both usage forms, note that the script does not auto-commit, and show the manual commit command.
+<!-- SECTION:FINAL_SUMMARY:END -->

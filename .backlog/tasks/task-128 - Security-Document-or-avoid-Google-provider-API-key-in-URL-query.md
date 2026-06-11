@@ -1,9 +1,10 @@
 ---
 id: TASK-128
 title: 'Security: Document or avoid Google provider API key in URL query'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 03:01'
+updated_date: '2026-06-11 20:26'
 labels:
   - security
   - llm
@@ -23,8 +24,8 @@ GoogleProvider builds requests with the API key in the URL query string. If the 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 GoogleProvider uses a header-based API key transport if supported by the target API.
-- [ ] #2 If query-string API keys are required, the reason is documented near the provider implementation.
-- [ ] #3 Provider logging and errors never persist or print URLs containing API keys.
-- [ ] #4 Tests or code review checks verify Google request failures redact credentials.
+- [x] #1 GoogleProvider uses a header-based API key transport if supported by the target API.
+- [x] #2 If query-string API keys are required, the reason is documented near the provider implementation.
+- [x] #3 Provider logging and errors never persist or print URLs containing API keys.
+- [x] #4 Tests or code review checks verify Google request failures redact credentials.
 <!-- AC:END -->

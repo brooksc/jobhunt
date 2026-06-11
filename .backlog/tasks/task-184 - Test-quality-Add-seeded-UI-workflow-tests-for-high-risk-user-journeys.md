@@ -1,9 +1,10 @@
 ---
 id: TASK-184
 title: 'Test quality: Add seeded UI workflow tests for high-risk user journeys'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 22:19'
+updated_date: '2026-06-11 22:37'
 labels:
   - audit
   - tests

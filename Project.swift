@@ -202,10 +202,13 @@ let serverTestsTarget = testTarget(
     deps: [.target(name: "JobhuntServer")]
 )
 
+// MCPHelpers.swift is compiled directly into the test bundle because JobhuntMCP is
+// a command-line tool (.commandLineTool), not a framework, so its symbols can't be
+// linked against by a test target.
 let mcpTestsTarget = testTarget(
     name: "MCPTests",
     bundleSuffix: "MCPTests",
-    sources: ["Tests/MCPTests/**/*.swift"],
+    sources: ["Tests/MCPTests/**/*.swift", "mcp/swift/MCPHelpers.swift"],
     deps: [.target(name: "JobhuntMCP")]
 )
 

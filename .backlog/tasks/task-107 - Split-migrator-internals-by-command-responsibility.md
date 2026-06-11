@@ -1,9 +1,10 @@
 ---
 id: TASK-107
 title: Split migrator internals by command responsibility
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-10 20:49'
+updated_date: '2026-06-11 02:28'
 labels:
   - architecture
   - audit
@@ -30,3 +31,9 @@ Architecture audit finding: `JobhuntMigrator` is correctly isolated as a separat
 - [ ] #3 Migrator tests cover the extracted responsibilities touched by the refactor.
 - [ ] #4 `JobhuntMigrator` builds and existing migrator-related tests pass after the split.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Completed as part of TASK-099. Migrator internals split into 6 files by command responsibility.
+<!-- SECTION:FINAL_SUMMARY:END -->

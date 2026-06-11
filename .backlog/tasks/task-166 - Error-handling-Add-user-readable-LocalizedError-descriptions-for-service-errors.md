@@ -3,9 +3,10 @@ id: TASK-166
 title: >-
   Error handling: Add user-readable LocalizedError descriptions for service
   errors
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 21:42'
+updated_date: '2026-06-11 22:19'
 labels:
   - audit
   - error-handling
@@ -31,3 +32,9 @@ Core service error enums such as `JobServiceError`, `SiteServiceError`, `Keychai
 - [ ] #2 Descriptions do not leak raw sensitive payloads or credentials.
 - [ ] #3 Tests assert representative localized descriptions for job, site, keychain, and JSON repair errors.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added `LocalizedError` conformance to `JobServiceError`, `SiteServiceError`, `KeychainError`, and `JSONRepairError`. All descriptions are user-readable and safe: job/site/action errors show actionable messages, keychain errors show the code for diagnostics without leaking credentials, JSONRepairError doesn't expose raw content. Tests added in JobServiceTests and JSONRepairTests covering all cases.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -181,6 +181,66 @@ final class ExtractionEngineTests: XCTestCase {
         )
     }
 
+    // MARK: - Snapshot-based engine API
+
+    func testExtract_usesSnapshot_noCaptureTextThrows() async throws {
+        let snapshot = JobExtractionSnapshot(
+            captureURL: "https://example.com",
+            captureCanonicalURL: nil,
+            capturePageTitle: "Test",
+            captureCleanedDescription: nil,
+            captureVisibleText: nil,
+            captureSelectedText: nil
+        )
+        let provider = AlwaysFailProvider(error: LLMProviderError.unavailable(reason: "should not reach"))
+        do {
+            _ = try await ExtractionEngine.extract(snapshot: snapshot, provider: provider, settings: makeSettings())
+            XCTFail("Expected noCaptureText error")
+        } catch ExtractionEngineError.noCaptureText {
+            // expected
+        }
+    }
+
+    func testExtract_snapshot_callsProviderWithCaptureText() async throws {
+        let successJSON = """
+        {"title":"Engineer","company":"Acme","location":null,"remote_type":null,
+         "salary_min":null,"salary_max":null,"salary_currency":null,"salary_note":null,
+         "salary_hourly_min":null,"salary_hourly_max":null,
+         "employment_type":null,"seniority":null,"skills":[],"summary":"Great",
+         "requirements":[],"nice_to_haves":[],"benefits":[],
+         "application_url":null,"application_instructions":null,"confidence":null}
+        """
+        let snapshot = JobExtractionSnapshot(
+            captureURL: "https://example.com/job",
+            captureCanonicalURL: nil,
+            capturePageTitle: "Engineer",
+            captureCleanedDescription: "We are looking for an engineer.",
+            captureVisibleText: nil,
+            captureSelectedText: nil
+        )
+        let provider = CountingProvider(succeedOnAttempt: 1, successResponse: successJSON)
+        let result = try await ExtractionEngine.extract(snapshot: snapshot, provider: provider, settings: makeSettings())
+        XCTAssertEqual(result.title, "Engineer")
+    }
+
+    func testScoreFit_snapshot_emptyResumeThrows() async throws {
+        let jobSnap = JobFitSnapshot(title: "Eng", company: "Acme", seniority: nil, extractedJSON: nil, extractionModel: nil)
+        let resumeSnap = ResumeSnapshot(text: "   ")
+        let provider = AlwaysFailProvider(error: LLMProviderError.unavailable(reason: "should not reach"))
+        do {
+            _ = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, provider: provider)
+            XCTFail("Expected emptyResumeText error")
+        } catch ExtractionEngineError.emptyResumeText {
+            // expected
+        }
+    }
+
+    private func makeSettings() throws -> SettingsStore {
+        let container = try ModelContainerFactory.inMemory()
+        let ctx = ModelContext(container)
+        return SettingsStore(modelContext: ctx)
+    }
+
     // MARK: - QueueActor retry (attempt tracking)
 
     func testQueueActorRetryAttemptCount() async throws {

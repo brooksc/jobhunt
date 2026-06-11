@@ -1,6 +1,62 @@
 // swiftlint:disable function_body_length
 import Foundation
-import SwiftData
+
+// MARK: - Sendable snapshots
+//
+// Callers fetch live SwiftData models, snapshot the needed fields into these structs,
+// then pass the snapshots to the engine. The engine never holds a SwiftData model reference.
+
+public struct JobExtractionSnapshot: Sendable {
+    public let captureURL: String
+    public let captureCanonicalURL: String?
+    public let capturePageTitle: String
+    public let captureCleanedDescription: String?
+    public let captureVisibleText: String?
+    public let captureSelectedText: String?
+
+    public init(
+        captureURL: String,
+        captureCanonicalURL: String?,
+        capturePageTitle: String,
+        captureCleanedDescription: String?,
+        captureVisibleText: String?,
+        captureSelectedText: String?
+    ) {
+        self.captureURL = captureURL
+        self.captureCanonicalURL = captureCanonicalURL
+        self.capturePageTitle = capturePageTitle
+        self.captureCleanedDescription = captureCleanedDescription
+        self.captureVisibleText = captureVisibleText
+        self.captureSelectedText = captureSelectedText
+    }
+}
+
+public struct JobFitSnapshot: Sendable {
+    public let title: String?
+    public let company: String?
+    public let seniority: String?
+    public let extractedJSON: String?
+    public let extractionModel: String?
+
+    public init(
+        title: String?,
+        company: String?,
+        seniority: String?,
+        extractedJSON: String?,
+        extractionModel: String?
+    ) {
+        self.title = title
+        self.company = company
+        self.seniority = seniority
+        self.extractedJSON = extractedJSON
+        self.extractionModel = extractionModel
+    }
+}
+
+public struct ResumeSnapshot: Sendable {
+    public let text: String
+    public init(text: String) { self.text = text }
+}
 
 // MARK: - ExtractionResult
 
@@ -31,21 +87,17 @@ public enum ExtractionEngine {
     /// Extract job fields from a capture via LLM.
     /// Mirrors processRequest (extract path) in server/extract.js.
     public static func extract(
-        job: Job,
+        snapshot: JobExtractionSnapshot,
         provider: any LLMProvider,
         settings: SettingsStore
     ) async throws -> ExtractionResult {
-        guard let capture = job.capture else {
-            throw ExtractionEngineError.noCaptureText
-        }
-
-        let description = captureText(capture)
+        let description = captureText(snapshot)
         guard !description.isEmpty else {
             throw ExtractionEngineError.noCaptureText
         }
 
-        let url = capture.canonicalURL ?? capture.url
-        let pageTitle = capture.pageTitle
+        let url = snapshot.captureCanonicalURL ?? snapshot.captureURL
+        let pageTitle = snapshot.capturePageTitle
 
         let locationContext = LocationContext(
             preferredLocations: settings.preferredLocations,
@@ -118,8 +170,8 @@ public enum ExtractionEngine {
     /// Score job fit against a single resume via LLM.
     /// Mirrors processFitScoreRequest in server/extract.js.
     public static func scoreFit(
-        job: Job,
-        resume: Resume,
+        job: JobFitSnapshot,
+        resume: ResumeSnapshot,
         provider: any LLMProvider
     ) async throws -> FitScoreResult {
         guard !resume.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -153,8 +205,8 @@ public enum ExtractionEngine {
 
     // MARK: - Private helpers
 
-    private static func captureText(_ capture: Capture) -> String {
-        capture.cleanedDescription ?? capture.visibleText ?? capture.selectedText ?? ""
+    private static func captureText(_ snapshot: JobExtractionSnapshot) -> String {
+        snapshot.captureCleanedDescription ?? snapshot.captureVisibleText ?? snapshot.captureSelectedText ?? ""
     }
 
     private static func computeConfidence(_ raw: Any??) -> Double? {
@@ -171,7 +223,7 @@ public enum ExtractionEngine {
         return nil
     }
 
-    private static func buildJobContext(from job: Job) -> ExtractedJobContext {
+    private static func buildJobContext(from job: JobFitSnapshot) -> ExtractedJobContext {
         var title = job.title
         var company = job.company
         var seniority = job.seniority

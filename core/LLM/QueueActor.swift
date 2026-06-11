@@ -262,12 +262,20 @@ public actor QueueActor {
             return false
         }
 
-        // Fetch the job
+        // Fetch the job and snapshot its fields before the async provider call
         let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
         guard let job = jobs.first else {
             await markRequestCancelled(id: itemID)
             return false
         }
+        let extractionSnapshot = JobExtractionSnapshot(
+            captureURL: job.capture?.url ?? "",
+            captureCanonicalURL: job.capture?.canonicalURL,
+            capturePageTitle: job.capture?.pageTitle ?? "",
+            captureCleanedDescription: job.capture?.cleanedDescription,
+            captureVisibleText: job.capture?.visibleText,
+            captureSelectedText: job.capture?.selectedText
+        )
 
         let attempt = LLMRequestAttempt(
             requestType: .extract,
@@ -278,7 +286,7 @@ public actor QueueActor {
         )
 
         do {
-            let result = try await ExtractionEngine.extract(job: job, provider: provider, settings: settings)
+            let result = try await ExtractionEngine.extract(snapshot: extractionSnapshot, provider: provider, settings: settings)
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
 
             // Persist extraction result
@@ -397,6 +405,7 @@ public actor QueueActor {
             return false
         }
 
+        // Fetch job and resume, then snapshot fields before the async provider call
         let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
         guard let job = jobs.first else {
             await markRequestCancelled(id: itemID)
@@ -418,8 +427,17 @@ public actor QueueActor {
             return false
         }
 
+        let jobSnap = JobFitSnapshot(
+            title: job.title,
+            company: job.company,
+            seniority: job.seniority,
+            extractedJSON: job.extractedJSON,
+            extractionModel: job.extractionModel
+        )
+        let resumeSnap = ResumeSnapshot(text: resume.text)
+
         do {
-            let fitResult = try await ExtractionEngine.scoreFit(job: job, resume: resume, provider: provider)
+            let fitResult = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, provider: provider)
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
 
             let fitJSON = FitScorer.encode(fitResult)

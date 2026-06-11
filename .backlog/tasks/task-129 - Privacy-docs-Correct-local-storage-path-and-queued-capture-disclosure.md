@@ -1,10 +1,10 @@
 ---
 id: TASK-129
 title: 'Privacy docs: Correct local storage path and queued-capture disclosure'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 03:01'
-updated_date: '2026-06-11 04:34'
+updated_date: '2026-06-11 20:30'
 labels:
   - privacy
   - documentation
@@ -38,3 +38,15 @@ PRIVACY.md still refers to the legacy ~/.config/jobhunt path while the SwiftData
 <!-- SECTION:NOTES:BEGIN -->
 Security/privacy audit addendum: `marketing/privacy.html` currently states that everything stays on the user's machine, then later discloses optional cloud LLM processing. Privacy docs and marketing copy should consistently describe the app as local-first, not local-only, and should include custom remote provider behavior.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Updated both PRIVACY.md and marketing/privacy.html:
+- Corrected storage path from ~/.config/jobhunt/ to ~/Library/Application Support/Jobhunt/jobhunt.store
+- Added MAS sandboxed path distinction (~/Library/Containers/.../jobhunt.store)
+- Replaced "Everything stays on your machine" with local-first framing ("by default, all job data stays on your Mac")
+- Added extension offline queue retention bounds: 7 days / 50 items, with contents disclosure (URL, title, selected text, visible text)
+- Added custom remote OpenAI-compatible endpoint row to AI provider table with explicit consent requirement
+- Added table styles to privacy.html for the new provider and path tables
+<!-- SECTION:FINAL_SUMMARY:END -->

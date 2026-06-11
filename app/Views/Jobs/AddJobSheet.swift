@@ -3,7 +3,7 @@ import SwiftUI
 
 struct AddJobSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.jobService) private var jobService
+    @Environment(AppServices.self) private var appServices
 
     @State private var urlText: String = ""
     @State private var isSaving = false
@@ -47,7 +47,7 @@ struct AddJobSheet: View {
         Task {
             do {
                 let payload = CapturePayload(url: url, pageTitle: "", visibleText: "")
-                _ = try await jobService?.ingestCapture(payload)
+                _ = try await appServices.jobService.ingestCapture(payload)
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription

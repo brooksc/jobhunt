@@ -1,9 +1,10 @@
 ---
 id: TASK-181
 title: 'Test quality: Run UI tests against isolated seeded data'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 22:16'
+updated_date: '2026-06-11 22:36'
 labels:
   - audit
   - tests

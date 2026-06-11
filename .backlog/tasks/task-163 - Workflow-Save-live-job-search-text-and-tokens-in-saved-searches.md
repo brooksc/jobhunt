@@ -1,9 +1,10 @@
 ---
 id: TASK-163
 title: 'Workflow: Save live job search text and tokens in saved searches'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 20:56'
+updated_date: '2026-06-11 21:35'
 labels:
   - audit
   - workflow
@@ -29,3 +30,9 @@ priority: medium
 - [ ] #2 Saving a search with search tokens preserves equivalent filter behavior after reload/apply.
 - [ ] #3 The save/search state has a clear single source of truth or explicit mapping tests.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Passed live `searchText` and `searchTokens` into `SaveSearchSheet`. Added `merged` computed property that starts from `filterState`, overrides `searchText` with the live value, and folds all token-based filters (status, remoteType, minFitScore, minSalary, minRating, recentDays) into the filter state. Both `buildChips()` (preview) and `save()` now use `merged` so the saved search captures everything visible in the search bar.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,9 +1,10 @@
 ---
 id: TASK-153
 title: 'LLM: Use the configured fit model instead of the extraction model'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 19:31'
+updated_date: '2026-06-11 21:12'
 labels:
   - llm
   - fit-scoring
@@ -14,6 +15,10 @@ references:
   - core/LLM/ExtractionEngine.swift
   - core/LLM/QueueActor.swift
   - core/Settings/SettingsStore.swift
+modified_files:
+  - core/LLM/ExtractionEngine.swift
+  - core/LLM/QueueActor.swift
+  - tests/CoreTests/ExtractionEngineTests.swift
 priority: high
 ---
 
@@ -30,3 +35,9 @@ LLM/extraction audit finding: `ExtractionEngine.scoreFit` builds `ChatRequest` w
 - [ ] #3 Attempt/request metadata records the requested and returned fit-scoring model clearly.
 - [ ] #4 Tests prove fit scoring uses the current settings model rather than `job.extractionModel`.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added `model: String` parameter to `ExtractionEngine.scoreFit`. Updated `processFitRequest` to call `readExtractionSettings()` and pass `fitSettings.llmModel`. Added `CapturingProvider` test helper and a test verifying the passed model reaches the ChatRequest rather than `job.extractionModel`.
+<!-- SECTION:FINAL_SUMMARY:END -->

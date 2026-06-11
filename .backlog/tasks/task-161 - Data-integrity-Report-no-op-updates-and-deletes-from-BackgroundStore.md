@@ -1,9 +1,10 @@
 ---
 id: TASK-161
 title: 'Data integrity: Report no-op updates and deletes from BackgroundStore'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 20:56'
+updated_date: '2026-06-11 21:26'
 labels:
   - audit
   - data-integrity
@@ -14,6 +15,11 @@ references:
   - core/Services/JobService.swift
   - core/Services/SiteService.swift
   - core/Services/ResumeService.swift
+modified_files:
+  - core/Services/BackgroundStore.swift
+  - core/Services/JobService.swift
+  - core/Services/SiteService.swift
+  - tests/CoreTests/JobServiceTests.swift
 priority: medium
 ---
 
@@ -29,3 +35,9 @@ priority: medium
 - [ ] #2 Services that target a required ID throw or return an explicit not-found result when no row is affected.
 - [ ] #3 Tests cover at least job action completion, site state update, and job deletion for missing IDs.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added `BackgroundStoreError.notFound`, `updateOne`, and `deleteOne` to BackgroundStore. Updated `JobService.setStatus`, `delete(jobID:)` and `SiteService.updateSite`, `deleteSite`, `setSiteState` to use them. Five tests cover not-found detection for job actions and site mutations. Also removed a stale test line that was a silent no-op under the old silent-update behavior.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -397,4 +397,36 @@ public actor JobService {
               let job = capture.job else { return nil }
         return job.jobNumber
     }
+
+    // MARK: - MCP read queries
+
+    public func listJobs(status: String?, limit: Int) async throws -> [JobListRecord] {
+        let descriptor = FetchDescriptor<Job>(
+            sortBy: [SortDescriptor(\Job.createdAt, order: .reverse)]
+        )
+        let all = try await store.fetch(descriptor)
+        let filtered: [Job]
+        if let statusRaw = status, let jobStatus = JobStatus(rawValue: statusRaw) {
+            filtered = all.filter { $0.status == jobStatus }
+        } else {
+            filtered = all
+        }
+        return Array(filtered.prefix(limit)).map { JobListRecord(job: $0) }
+    }
+
+    public func getJob(byNumber number: Int) async throws -> JobDetailRecord? {
+        let descriptor = FetchDescriptor<Job>(
+            predicate: #Predicate { $0.jobNumber == number }
+        )
+        let jobs = try await store.fetch(descriptor)
+        return jobs.first.map { JobDetailRecord(job: $0) }
+    }
+
+    public func workflowSnapshot() async throws -> WorkflowSnapshot {
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        let sites = try await store.fetch(FetchDescriptor<Site>())
+        var counts: [String: Int] = [:]
+        for job in jobs { counts[job.status.rawValue, default: 0] += 1 }
+        return WorkflowSnapshot(jobsTotal: jobs.count, sitesTotal: sites.count, statusCounts: counts)
+    }
 }

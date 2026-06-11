@@ -213,9 +213,9 @@
 
         switch request.path {
         case "/mcp/jobs/list":
-            return await handleMCPJobsList(request, store: store)
+            return await handleMCPJobsList(request, jobService: jobService)
         case "/mcp/jobs/get":
-            return await handleMCPJobGet(request, store: store)
+            return await handleMCPJobGet(request, jobService: jobService)
         case "/mcp/captures/add":
             return await handleMCPCaptureAdd(request, jobService: jobService)
         case "/mcp/jobs/update":
@@ -227,7 +227,7 @@
         case "/mcp/jobs/rerun":
             return await handleMCPJobRerun(request, jobService: jobService, store: store)
         case "/mcp/sites/list":
-            return await handleMCPSitesList(request, store: store)
+            return await handleMCPSitesList(request, siteService: siteService)
         case "/mcp/sites/add":
             return await handleMCPSiteAdd(request, siteService: siteService)
         case "/mcp/sites/update":
@@ -235,7 +235,7 @@
         case "/mcp/sites/delete":
             return await handleMCPSiteDelete(request, siteService: siteService)
         case "/mcp/snapshot":
-            return await handleMCPSnapshot(request, store: store)
+            return await handleMCPSnapshot(request, jobService: jobService)
         default:
             return HTTPResponse.error("MCP route not found", code: 404)
         }
@@ -258,45 +258,31 @@
         isoFormatter.string(from: date)
     }
 
-    private func handleMCPJobsList(_ request: HTTPRequest, store: BackgroundStore) async -> HTTPResponse {
+    private func handleMCPJobsList(_ request: HTTPRequest, jobService: JobService) async -> HTTPResponse {
         let req = try? request.decodeBody(as: MCPJobsListRequest.self)
         let limit = req?.limit ?? 50
         let statusFilter = req?.status
 
         do {
-            let jobs: [Job]
-            if let statusFilter, let jobStatus = JobStatus(rawValue: statusFilter) {
-                let descriptor = FetchDescriptor<Job>(
-                    predicate: #Predicate { $0.status == jobStatus },
-                    sortBy: [SortDescriptor(\Job.createdAt, order: .reverse)]
-                )
-                jobs = try await store.fetch(descriptor)
-            } else {
-                var descriptor = FetchDescriptor<Job>(
-                    sortBy: [SortDescriptor(\Job.createdAt, order: .reverse)]
-                )
-                descriptor.fetchLimit = limit
-                jobs = try await store.fetch(descriptor)
-            }
-
-            let summaries = Array(jobs.prefix(limit)).map { job in
+            let records = try await jobService.listJobs(status: statusFilter, limit: limit)
+            let summaries = records.map { r in
                 MCPJobSummary(
-                    jobNumber: job.jobNumber,
-                    jobID: job.id,
-                    status: job.status.rawValue,
-                    extractionStatus: job.extractionStatus.rawValue,
-                    company: job.company,
-                    title: job.title,
-                    location: job.location,
-                    remoteType: job.remoteType?.rawValue,
-                    salaryMin: job.salaryMin,
-                    salaryMax: job.salaryMax,
-                    salaryNote: job.salaryNote,
-                    rating: job.rating,
-                    pageTitle: job.capture?.pageTitle,
-                    sourceURL: job.capture?.url,
-                    capturedAt: formatDate(job.capture?.createdAt),
-                    createdAt: formatDate(job.createdAt)
+                    jobNumber: r.jobNumber,
+                    jobID: r.id,
+                    status: r.status.rawValue,
+                    extractionStatus: r.extractionStatus.rawValue,
+                    company: r.company,
+                    title: r.title,
+                    location: r.location,
+                    remoteType: r.remoteType?.rawValue,
+                    salaryMin: r.salaryMin,
+                    salaryMax: r.salaryMax,
+                    salaryNote: r.salaryNote,
+                    rating: r.rating,
+                    pageTitle: r.pageTitle,
+                    sourceURL: r.sourceURL,
+                    capturedAt: formatDate(r.capturedAt),
+                    createdAt: formatDate(r.createdAt)
                 )
             }
             return HTTPResponse.ok(summaries)
@@ -305,41 +291,36 @@
         }
     }
 
-    private func handleMCPJobGet(_ request: HTTPRequest, store: BackgroundStore) async -> HTTPResponse {
+    private func handleMCPJobGet(_ request: HTTPRequest, jobService: JobService) async -> HTTPResponse {
         guard let req = try? request.decodeBody(as: MCPJobGetRequest.self) else {
             return HTTPResponse.error("job_number required")
         }
 
         do {
-            let jobNumber = req.jobNumber
-            let descriptor = FetchDescriptor<Job>(
-                predicate: #Predicate { $0.jobNumber == jobNumber }
-            )
-            let jobs = try await store.fetch(descriptor)
-            guard let job = jobs.first else {
+            guard let r = try await jobService.getJob(byNumber: req.jobNumber) else {
                 return HTTPResponse.error("job not found", code: 404)
             }
 
             let detail = MCPJobDetail(
-                jobNumber: job.jobNumber,
-                jobID: job.id,
-                status: job.status.rawValue,
-                extractionStatus: job.extractionStatus.rawValue,
-                extractionError: job.extractionError,
-                company: job.company,
-                title: job.title,
-                location: job.location,
-                remoteType: job.remoteType?.rawValue,
-                salaryMin: job.salaryMin,
-                salaryMax: job.salaryMax,
-                salaryNote: job.salaryNote,
-                rating: job.rating,
-                pageTitle: job.capture?.pageTitle,
-                sourceURL: job.capture?.url,
-                capturedAt: formatDate(job.capture?.createdAt),
-                createdAt: formatDate(job.createdAt),
-                selectedText: job.capture?.selectedText,
-                visibleText: job.capture?.visibleText
+                jobNumber: r.jobNumber,
+                jobID: r.id,
+                status: r.status.rawValue,
+                extractionStatus: r.extractionStatus.rawValue,
+                extractionError: r.extractionError,
+                company: r.company,
+                title: r.title,
+                location: r.location,
+                remoteType: r.remoteType?.rawValue,
+                salaryMin: r.salaryMin,
+                salaryMax: r.salaryMax,
+                salaryNote: r.salaryNote,
+                rating: r.rating,
+                pageTitle: r.pageTitle,
+                sourceURL: r.sourceURL,
+                capturedAt: formatDate(r.capturedAt),
+                createdAt: formatDate(r.createdAt),
+                selectedText: r.selectedText,
+                visibleText: r.visibleText
             )
             return HTTPResponse.ok(detail)
         } catch {
@@ -485,20 +466,18 @@
         }
     }
 
-    private func handleMCPSitesList(_: HTTPRequest, store: BackgroundStore) async -> HTTPResponse {
+    private func handleMCPSitesList(_: HTTPRequest, siteService: SiteService) async -> HTTPResponse {
         do {
-            let sites = try await store.fetch(FetchDescriptor<Site>(
-                sortBy: [SortDescriptor(\Site.createdAt, order: .reverse)]
-            ))
-            let summaries = sites.map { site in
+            let records = try await siteService.listSites()
+            let summaries = records.map { r in
                 MCPSiteSummary(
-                    id: site.id,
-                    url: site.url,
-                    name: site.companyName,
-                    state: site.state.rawValue,
-                    intervalDays: site.intervalDays,
-                    note: site.note,
-                    createdAt: formatDate(site.createdAt)
+                    id: r.id,
+                    url: r.url,
+                    name: r.companyName,
+                    state: r.state.rawValue,
+                    intervalDays: r.intervalDays,
+                    note: r.note,
+                    createdAt: formatDate(r.createdAt)
                 )
             }
             return HTTPResponse.ok(summaries)
@@ -564,23 +543,15 @@
         }
     }
 
-    private func handleMCPSnapshot(_: HTTPRequest, store: BackgroundStore) async -> HTTPResponse {
+    private func handleMCPSnapshot(_: HTTPRequest, jobService: JobService) async -> HTTPResponse {
         do {
-            let jobs = try await store.fetch(FetchDescriptor<Job>())
-            let sites = try await store.fetch(FetchDescriptor<Site>())
-
-            var statusCounts: [String: Int] = [:]
-            for job in jobs {
-                let key = job.status.rawValue
-                statusCounts[key, default: 0] += 1
-            }
-
-            let snapshot = MCPSnapshotResponse(
-                jobsTotal: jobs.count,
-                sitesTotal: sites.count,
-                statusCounts: statusCounts
+            let snap = try await jobService.workflowSnapshot()
+            let response = MCPSnapshotResponse(
+                jobsTotal: snap.jobsTotal,
+                sitesTotal: snap.sitesTotal,
+                statusCounts: snap.statusCounts
             )
-            return HTTPResponse.ok(snapshot)
+            return HTTPResponse.ok(response)
         } catch {
             return HTTPResponse.error(error.localizedDescription, code: 500)
         }

@@ -89,3 +89,116 @@ public enum SalaryDisplay {
         return nil
     }
 }
+
+// MARK: - MCP Read Models
+//
+// Plain Sendable structs used by Core service query methods so route handlers
+// only perform auth, request decoding, and response encoding — no FetchDescriptors.
+
+public struct JobListRecord: Sendable {
+    public let id: String
+    public let jobNumber: Int?
+    public let status: JobStatus
+    public let extractionStatus: ExtractionStatus
+    public let company: String?
+    public let title: String?
+    public let location: String?
+    public let remoteType: RemoteType?
+    public let salaryMin: Int?
+    public let salaryMax: Int?
+    public let salaryNote: String?
+    public let rating: Int?
+    public let pageTitle: String?
+    public let sourceURL: String?
+    public let capturedAt: Date?
+    public let createdAt: Date
+
+    init(job: Job) {
+        id = job.id
+        jobNumber = job.jobNumber
+        status = job.status
+        extractionStatus = job.extractionStatus
+        company = job.company
+        title = job.title
+        location = job.location
+        remoteType = job.remoteType
+        salaryMin = job.salaryMin
+        salaryMax = job.salaryMax
+        salaryNote = job.salaryNote
+        rating = job.rating
+        pageTitle = job.capture?.pageTitle
+        sourceURL = job.capture?.url
+        capturedAt = job.capture?.createdAt
+        createdAt = job.createdAt
+    }
+}
+
+public struct JobDetailRecord: Sendable {
+    public let id: String
+    public let jobNumber: Int?
+    public let status: JobStatus
+    public let extractionStatus: ExtractionStatus
+    public let extractionError: String?
+    public let company: String?
+    public let title: String?
+    public let location: String?
+    public let remoteType: RemoteType?
+    public let salaryMin: Int?
+    public let salaryMax: Int?
+    public let salaryNote: String?
+    public let rating: Int?
+    public let pageTitle: String?
+    public let sourceURL: String?
+    public let capturedAt: Date?
+    public let createdAt: Date
+    public let selectedText: String?
+    public let visibleText: String?
+
+    init(job: Job) {
+        id = job.id
+        jobNumber = job.jobNumber
+        status = job.status
+        extractionStatus = job.extractionStatus
+        extractionError = job.extractionError
+        company = job.company
+        title = job.title
+        location = job.location
+        remoteType = job.remoteType
+        salaryMin = job.salaryMin
+        salaryMax = job.salaryMax
+        salaryNote = job.salaryNote
+        rating = job.rating
+        pageTitle = job.capture?.pageTitle
+        sourceURL = job.capture?.url
+        capturedAt = job.capture?.createdAt
+        createdAt = job.createdAt
+        selectedText = job.capture?.selectedText
+        visibleText = job.capture?.visibleText
+    }
+}
+
+public struct SiteListRecord: Sendable {
+    public let id: String
+    public let url: String
+    public let companyName: String?
+    public let state: SiteState
+    public let intervalDays: Int
+    public let note: String
+    public let createdAt: Date
+
+    init(site: Site) {
+        id = site.id
+        url = site.url
+        companyName = site.companyName
+        state = site.state
+        intervalDays = site.intervalDays
+        note = site.note
+        createdAt = site.createdAt
+    }
+}
+
+public struct WorkflowSnapshot: Sendable {
+    public let jobsTotal: Int
+    public let sitesTotal: Int
+    public let statusCounts: [String: Int]
+}

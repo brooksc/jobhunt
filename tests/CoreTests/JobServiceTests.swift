@@ -268,4 +268,84 @@ final class JobServiceTests: XCTestCase {
         XCTAssertEqual(reviewsAfter.count, 1, "Only job2's review should remain after clearing job1")
         XCTAssertEqual(reviewsAfter.first?.job?.id, job2.id, "Remaining review belongs to job2")
     }
+
+    // MARK: - MCP read query tests
+
+    func testListJobs_noFilter_returnsAllUpToLimit() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let queue = makeQueue(container)
+        let svc = JobService(store: store, queue: queue)
+
+        for i in 1...5 {
+            let p = CapturePayload(url: "https://example.com/j/\(i)", pageTitle: "Job \(i)", visibleText: "text")
+            _ = try await svc.ingestCapture(p)
+        }
+
+        let records = try await svc.listJobs(status: nil, limit: 3)
+        XCTAssertEqual(records.count, 3)
+    }
+
+    func testListJobs_statusFilter_returnsOnlyMatching() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let queue = makeQueue(container)
+        let svc = JobService(store: store, queue: queue)
+
+        let p1 = CapturePayload(url: "https://example.com/j/1", pageTitle: "Job 1", visibleText: "text")
+        let p2 = CapturePayload(url: "https://example.com/j/2", pageTitle: "Job 2", visibleText: "text")
+        let r1 = try await svc.ingestCapture(p1)
+        _ = try await svc.ingestCapture(p2)
+
+        try await svc.setStatus(.pursuing, for: r1.captureID.replacingOccurrences(of: "cap-", with: "job-"))
+        // Directly set one job to pursuing via store
+        let all = try await store.fetch(FetchDescriptor<Job>())
+        let job1 = all.first(where: { $0.jobNumber == r1.jobNumber })!
+        try await svc.setStatus(.pursuing, for: job1.id)
+
+        let pursuing = try await svc.listJobs(status: "pursuing", limit: 50)
+        XCTAssertTrue(pursuing.allSatisfy { $0.status == .pursuing })
+    }
+
+    func testGetJob_found() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let queue = makeQueue(container)
+        let svc = JobService(store: store, queue: queue)
+
+        let p = CapturePayload(url: "https://example.com/jobs/42", pageTitle: "My Job", visibleText: "description")
+        let result = try await svc.ingestCapture(p)
+
+        let record = try await svc.getJob(byNumber: result.jobNumber)
+        XCTAssertNotNil(record)
+        XCTAssertEqual(record?.jobNumber, result.jobNumber)
+        XCTAssertEqual(record?.pageTitle, "My Job")
+        XCTAssertEqual(record?.sourceURL, "https://example.com/jobs/42")
+    }
+
+    func testGetJob_notFound_returnsNil() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let queue = makeQueue(container)
+        let svc = JobService(store: store, queue: queue)
+
+        let record = try await svc.getJob(byNumber: 9999)
+        XCTAssertNil(record)
+    }
+
+    func testWorkflowSnapshot_countsJobsAndSites() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let queue = makeQueue(container)
+        let svc = JobService(store: store, queue: queue)
+
+        for i in 1...3 {
+            let p = CapturePayload(url: "https://example.com/j/\(i)", pageTitle: "Job \(i)", visibleText: "t")
+            _ = try await svc.ingestCapture(p)
+        }
+
+        let snap = try await svc.workflowSnapshot()
+        XCTAssertEqual(snap.jobsTotal, 3)
+        XCTAssertFalse(snap.statusCounts.isEmpty)
+    }
 }

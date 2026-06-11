@@ -126,6 +126,16 @@ public actor SiteService {
             site.updatedAt = Date()
         }
     }
+
+    // MARK: - MCP read queries
+
+    public func listSites() async throws -> [SiteListRecord] {
+        let descriptor = FetchDescriptor<Site>(
+            sortBy: [SortDescriptor(\Site.createdAt, order: .reverse)]
+        )
+        let sites = try await store.fetch(descriptor)
+        return sites.map { SiteListRecord(site: $0) }
+    }
 }
 
 // MARK: - URL origin helper

@@ -3,9 +3,10 @@ id: TASK-142
 title: >-
   Performance: Make capture ingest constant-time for duplicate checks and job
   numbering
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 03:45'
+updated_date: '2026-06-11 19:02'
 labels:
   - performance
   - swiftdata
@@ -13,6 +14,9 @@ labels:
 dependencies: []
 references:
   - core/Services/BackgroundStore.swift
+modified_files:
+  - core/Services/BackgroundStore.swift
+  - tests/CoreTests/JobServiceTests.swift
 priority: high
 ---
 
@@ -29,3 +33,9 @@ Performance audit finding: `BackgroundStore.insertCaptureAtomically` fetches eve
 - [ ] #3 A regression test or benchmark covers ingest with a large seeded dataset and verifies bounded query behavior/latency.
 - [ ] #4 Duplicate behavior for raw-hash and cleaned-hash captures remains unchanged.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Rewrote insertCaptureAtomically in BackgroundStore to use bounded predicate fetches instead of full table scans. rawHash check: predicate fetch with fetchLimit 1. cleanedHash check: predicate fetch with fetchLimit 10 (filters by hash first, then URL in memory). Job number: sort descending by jobNumber + fetchLimit 1 instead of loading all jobs and computing max in memory. Added testAtomicIngest_jobNumberingIsCorrectWithLargeDataset which seeds 50 jobs then verifies correct numbering and duplicate detection.
+<!-- SECTION:FINAL_SUMMARY:END -->

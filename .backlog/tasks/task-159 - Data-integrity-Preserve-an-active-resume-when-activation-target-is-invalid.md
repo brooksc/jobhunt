@@ -1,15 +1,19 @@
 ---
 id: TASK-159
 title: 'Data integrity: Preserve an active resume when activation target is invalid'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 20:56'
+updated_date: '2026-06-11 21:04'
 labels:
   - audit
   - data-integrity
   - resume
 dependencies: []
 references:
+  - core/Services/ResumeService.swift
+  - tests/CoreTests/ResumeServiceTests.swift
+modified_files:
   - core/Services/ResumeService.swift
   - tests/CoreTests/ResumeServiceTests.swift
 priority: high
@@ -27,3 +31,9 @@ priority: high
 - [ ] #2 The service throws or otherwise reports a not-found result for invalid activation targets.
 - [ ] #3 Tests cover valid activation, invalid activation, and the invariant that at most one resume is active.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added `ResumeServiceError.resumeNotFound` and fixed `setActiveResume` to validate the target ID before deactivating all resumes. Three new tests added: invalid ID throws and leaves active resume unchanged, valid activation sets exactly one active resume.
+<!-- SECTION:FINAL_SUMMARY:END -->

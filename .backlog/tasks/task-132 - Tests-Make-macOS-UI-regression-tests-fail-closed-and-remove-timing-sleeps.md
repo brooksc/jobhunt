@@ -1,9 +1,10 @@
 ---
 id: TASK-132
 title: 'Tests: Make macOS UI regression tests fail closed and remove timing sleeps'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 03:26'
+updated_date: '2026-06-11 19:35'
 labels:
   - tests
   - ui
@@ -33,3 +34,9 @@ Current UI tests include screenshot tours and behavior tests, but some behavior 
 - [ ] #4 UI tests produce actionable failure messages for missing controls and failed navigation.
 - [ ] #5 A local or VM run command for the hardened UI tests is documented.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added waitUntil() polling helper to AppUITests.swift. Replaced all Thread.sleep calls in launchApp() and navigate() with state-based waits (sidebar.dashboard existence, btn.isSelected). Filter chip guard-and-return blocks in BehaviorUITests.swift changed to XCTAssertTrue(...) so missing chips fail the test instead of silently skipping. Command-key sleeps replaced with waitUntil on window count / waitForExistence. clickSettingsTab() uses waitUntil{btn.isSelected} instead of sleep. ScreenshotTests detail-pane clicks wait on staticTexts.count. test02_JobsAll gains a sidebar selected-state assertion. Run command documented at top of AppUITests.swift.
+<!-- SECTION:FINAL_SUMMARY:END -->

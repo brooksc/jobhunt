@@ -1,9 +1,10 @@
 ---
 id: TASK-110
 title: 'macOS UX: Restore native sidebar selection semantics'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 02:24'
+updated_date: '2026-06-11 03:06'
 labels:
   - ux
   - macos
@@ -25,9 +26,9 @@ priority: medium
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Sidebar navigation uses a single native selection/navigation mechanism rather than plain buttons nested inside a selectable list
-- [ ] #2 Keyboard arrow navigation moves through sidebar rows and updates visible selection predictably
-- [ ] #3 VoiceOver announces sidebar rows as selectable navigation items with correct selected state
-- [ ] #4 Existing sidebar badges, saved-search context menu actions, tooltips, and accessibility identifiers continue to work
+- [x] #1 Sidebar navigation uses a single native selection/navigation mechanism rather than plain buttons nested inside a selectable list
+- [x] #2 Keyboard arrow navigation moves through sidebar rows and updates visible selection predictably
+- [x] #3 VoiceOver announces sidebar rows as selectable navigation items with correct selected state
+- [x] #4 Existing sidebar badges, saved-search context menu actions, tooltips, and accessibility identifiers continue to work
 - [ ] #5 UI tests cover sidebar keyboard or selection behavior for at least two representative rows
 <!-- AC:END -->

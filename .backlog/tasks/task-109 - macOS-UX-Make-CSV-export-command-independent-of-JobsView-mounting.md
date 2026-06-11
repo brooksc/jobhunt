@@ -1,9 +1,10 @@
 ---
 id: TASK-109
 title: 'macOS UX: Make CSV export command independent of JobsView mounting'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 02:23'
+updated_date: '2026-06-11 02:53'
 labels:
   - ux
   - macos
@@ -24,8 +25,8 @@ The app-level `Export Jobs to CSV…` command currently sets `router.triggerExpo
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Invoking `Export Jobs to CSV…` from any app section where the command is enabled opens the save panel and exports the intended job set
-- [ ] #2 The command is disabled or clearly unavailable in states where export cannot be performed
-- [ ] #3 Export behavior no longer depends on `JobsView` being mounted to observe router state
+- [x] #1 Invoking `Export Jobs to CSV…` from any app section where the command is enabled opens the save panel and exports the intended job set
+- [x] #2 The command is disabled or clearly unavailable in states where export cannot be performed
+- [x] #3 Export behavior no longer depends on `JobsView` being mounted to observe router state
 - [ ] #4 UI or integration coverage verifies export command routing outside the Jobs section
 <!-- AC:END -->

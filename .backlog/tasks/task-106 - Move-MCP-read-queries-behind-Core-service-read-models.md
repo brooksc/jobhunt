@@ -4,11 +4,12 @@ title: Move MCP read queries behind Core service read models
 status: To Do
 assignee: []
 created_date: '2026-06-10 20:49'
+updated_date: '2026-06-11 02:47'
 labels:
   - architecture
-  - audit
   - mcp
-  - server
+  - read-models
+  - persistence
 dependencies: []
 references:
   - server/swift/MCPBridgeRoutes.swift
@@ -31,4 +32,11 @@ Architecture audit finding: `MCPBridgeRoutes` mixes route handling with SwiftDat
 - [ ] #2 Route handlers remain responsible for transport concerns only: auth, request decoding, response encoding, and status codes.
 - [ ] #3 Core query/read-model methods are covered by focused tests independent of MCP transport.
 - [ ] #4 Existing MCP response shapes remain compatible unless an intentional API change is documented.
+- [ ] #5 Read-model tests or route tests verify MCP job list, job get, sites list, and snapshot output remains stable after moving fetch/DTO shaping behind Core read-model methods
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Persistence/data-flow audit follow-up: MCP read routes still fetch SwiftData models and shape API DTOs inline in `server/swift/MCPBridgeRoutes.swift` (`handleMCPJobsList`, `handleMCPJobGet`, `handleMCPSitesList`, `handleMCPSnapshot`, and `resolveJobID`). This leaks persistence shape, enum raw values, relationship loading behavior, and date formatting into the transport layer. Keep this task as the backlog item for the audit finding "MCP/server read routes expose persistence shape as API shape."
+<!-- SECTION:NOTES:END -->

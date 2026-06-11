@@ -1,9 +1,10 @@
 ---
 id: TASK-118
 title: 'Persistence: Make SettingsStore persistence actor-safe and error-visible'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 02:46'
+updated_date: '2026-06-11 03:18'
 labels:
   - persistence
   - settings
@@ -15,6 +16,14 @@ references:
   - app/Shell/AppServices.swift
   - core/LLM/QueueActor.swift
   - tests/CoreTests/SettingsStoreTests.swift
+modified_files:
+  - core/Settings/SettingsStore.swift
+  - core/LLM/ExtractionEngine.swift
+  - core/LLM/QueueActor.swift
+  - app/Shell/AppServices.swift
+  - tests/CoreTests/ExtractionEngineTests.swift
+  - tests/CoreTests/SettingsStoreTests.swift
+  - tests/CoreTests/JobServiceTests.swift
 priority: medium
 ---
 
@@ -32,3 +41,9 @@ priority: medium
 - [ ] #4 Existing keychain behavior for API keys remains unchanged and API keys are not persisted to SwiftData
 - [ ] #5 Tests cover settings mutation visibility between UI-facing settings and background queue/provider code
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Removed `nonisolated(unsafe) let settings: SettingsStore` from QueueActor. Added `ExtractionSettings: Sendable` struct to SettingsStore with `extractionSettings()` snapshot method. Changed QueueActor.init to accept `isPaused`, `onSetPaused`, and `readExtractionSettings` async Sendable closures instead of holding a live SettingsStore reference. Changed ExtractionEngine.extract to accept `ExtractionSettings` instead of `SettingsStore`. Fixed `persistToStore` to log errors via NSLog instead of `try?`. Updated AppServices.swift to wire closures through `MainActor.run`. Updated all test call sites. Added 3 new SettingsStoreTests: snapshot reflection, snapshot independence, and queue pause/resume mutation visibility via closures.
+<!-- SECTION:FINAL_SUMMARY:END -->

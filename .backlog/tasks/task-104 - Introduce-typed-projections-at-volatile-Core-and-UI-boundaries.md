@@ -1,9 +1,10 @@
 ---
 id: TASK-104
 title: Introduce typed projections at volatile Core and UI boundaries
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-10 20:49'
+updated_date: '2026-06-11 02:33'
 labels:
   - architecture
   - audit
@@ -32,3 +33,9 @@ Architecture audit finding: `JobhuntCore` intentionally combines domain models w
 - [ ] #3 The projection keeps SwiftData model details out of the selected UI or adapter code path.
 - [ ] #4 Existing user-visible behavior remains unchanged unless an intentional correction is documented.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Completed as part of TASK-098. JobDetailProjection and FitScoreProjection are typed projections at the Core/UI boundary for the job detail display path. SwiftData model details no longer leak into the view body.
+<!-- SECTION:FINAL_SUMMARY:END -->

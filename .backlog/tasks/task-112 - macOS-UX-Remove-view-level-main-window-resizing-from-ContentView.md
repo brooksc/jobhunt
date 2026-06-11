@@ -1,9 +1,10 @@
 ---
 id: TASK-112
 title: 'macOS UX: Remove view-level main-window resizing from ContentView'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 02:24'
+updated_date: '2026-06-11 03:06'
 labels:
   - ux
   - macos
@@ -24,9 +25,9 @@ priority: medium
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 `ContentView` no longer directly resizes `NSApp.mainWindow` during view appearance
-- [ ] #2 Default and minimum window sizing are expressed through appropriate scene/window configuration or a narrowly scoped platform integration layer
-- [ ] #3 User-resized windows are not forcibly enlarged on normal section navigation or view refresh
-- [ ] #4 Launch behavior still provides a reasonable first-run window size
+- [x] #1 `ContentView` no longer directly resizes `NSApp.mainWindow` during view appearance
+- [x] #2 Default and minimum window sizing are expressed through appropriate scene/window configuration or a narrowly scoped platform integration layer
+- [x] #3 User-resized windows are not forcibly enlarged on normal section navigation or view refresh
+- [x] #4 Launch behavior still provides a reasonable first-run window size
 - [ ] #5 Manual verification or UI coverage documents launch and restored-window behavior
 <!-- AC:END -->

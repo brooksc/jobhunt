@@ -1,9 +1,10 @@
 ---
 id: TASK-114
 title: 'macOS UX: Promote primary toolbar actions into native menu commands'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 02:24'
+updated_date: '2026-06-11 20:25'
 labels:
   - ux
   - macos
@@ -26,9 +27,9 @@ Several primary workflows are available only through toolbars or context menus: 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Primary Jobs actions exposed in the toolbar or context menu are also represented in native app menus where appropriate
-- [ ] #2 Primary LLM Queue actions exposed in the toolbar or context menu are also represented in native app menus where appropriate
-- [ ] #3 Primary Data Quality actions exposed in the toolbar are also represented in native app menus where appropriate
-- [ ] #4 Menu items have correct enablement based on selection and current section
-- [ ] #5 At least one UI test or integration check verifies a non-export menu command reaches the intended action path
+- [x] #1 Primary Jobs actions exposed in the toolbar or context menu are also represented in native app menus where appropriate
+- [x] #2 Primary LLM Queue actions exposed in the toolbar or context menu are also represented in native app menus where appropriate
+- [x] #3 Primary Data Quality actions exposed in the toolbar are also represented in native app menus where appropriate
+- [x] #4 Menu items have correct enablement based on selection and current section
+- [x] #5 At least one UI test or integration check verifies a non-export menu command reaches the intended action path
 <!-- AC:END -->

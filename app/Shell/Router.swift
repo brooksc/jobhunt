@@ -67,8 +67,8 @@ public final class Router {
     public var activeSavedSearchID: String?
     /// Triggers AddJobSheet from app menu / ⌘N
     public var showAddJobSheet: Bool = false
-    /// Triggers CSV export from app menu / ⌘⇧E
-    public var triggerExport: Bool = false
+    /// Triggers search field focus from app menu / ⌘K
+    public var focusSearch: Bool = false
 
     public init() {}
 

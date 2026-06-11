@@ -1,6 +1,8 @@
+import AppKit
 import JobhuntCore
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
 @main
 struct JobhuntApp: App {
@@ -60,10 +62,31 @@ struct JobhuntApp: App {
                 .keyboardShortcut("n", modifiers: .command)
             }
 
+            // ⌘K — Jump to Jobs / focus search
+            CommandGroup(after: .newItem) {
+                Button("Search Jobs") {
+                    router.navigateToSection(.jobs)
+                    router.focusSearch = true
+                }
+                .keyboardShortcut("k", modifiers: .command)
+            }
+
             // ⌘⇧E — Export CSV (HIG-18)
             CommandGroup(after: .importExport) {
                 Button("Export Jobs to CSV…") {
-                    router.triggerExport = true
+                    Task { @MainActor in
+                        let ctx = ModelContext(modelContainer)
+                        let jobs = (try? ctx.fetch(FetchDescriptor<Job>(
+                            sortBy: [SortDescriptor(\Job.createdAt, order: .reverse)]
+                        ))) ?? []
+                        let csv = ExportService.jobsCSV(jobs: jobs)
+                        let panel = NSSavePanel()
+                        panel.allowedContentTypes = [.commaSeparatedText]
+                        panel.nameFieldStringValue = "jobs.csv"
+                        if panel.runModal() == .OK, let url = panel.url {
+                            try? ExportService.write(csv, to: url)
+                        }
+                    }
                 }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
             }

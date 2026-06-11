@@ -81,8 +81,19 @@ struct JobsView: View {
         .onChange(of: router.showAddJobSheet) { _, show in
             if show { showAddJobSheet = true; router.showAddJobSheet = false }
         }
-        .onChange(of: router.triggerExport) { _, trigger in
-            if trigger { exportCSV(); router.triggerExport = false }
+        .onChange(of: router.focusSearch) { _, focus in
+            if focus {
+                router.focusSearch = false
+                DispatchQueue.main.async {
+                    guard let toolbar = NSApp.keyWindow?.toolbar else { return }
+                    for item in toolbar.items {
+                        if let searchItem = item as? NSSearchToolbarItem {
+                            searchItem.beginSearchInteraction()
+                            return
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -466,30 +477,15 @@ struct JobsView: View {
     }
 
     private func exportCSV() {
-        let jobs = filteredJobs
-        var rows = ["#,Company,Title,Status,Fit,Location,Salary Min,Salary Max,Captured"]
-        for job in jobs {
-            let fields: [String] = [
-                job.jobNumber.map { String($0) } ?? "",
-                job.company ?? "",
-                job.title ?? "",
-                job.status.rawValue,
-                job.fitScore.map { String($0) } ?? "",
-                job.location ?? "",
-                job.salaryMin.map { String($0) } ?? "",
-                job.salaryMax.map { String($0) } ?? "",
-                job.createdAt.formatted(.dateTime.year().month().day()),
-            ]
-            rows.append(fields.map { "\"\($0.replacingOccurrences(of: "\"", with: "\"\""))\"" }.joined(separator: ","))
-        }
-        let csv = rows.joined(separator: "\n")
+        let csv = ExportService.jobsCSV(jobs: filteredJobs)
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.commaSeparatedText]
         panel.nameFieldStringValue = "jobs.csv"
         if panel.runModal() == .OK, let url = panel.url {
-            try? csv.write(to: url, atomically: true, encoding: .utf8)
+            try? ExportService.write(csv, to: url)
         }
     }
+
 }
 
 // MARK: - Job list row

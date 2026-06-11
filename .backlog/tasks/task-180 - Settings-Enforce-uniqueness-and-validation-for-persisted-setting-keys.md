@@ -1,9 +1,10 @@
 ---
 id: TASK-180
 title: 'Settings: Enforce uniqueness and validation for persisted setting keys'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 22:14'
+updated_date: '2026-06-11 22:30'
 labels:
   - audit
   - settings

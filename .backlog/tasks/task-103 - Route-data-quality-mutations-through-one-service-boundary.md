@@ -1,9 +1,10 @@
 ---
 id: TASK-103
 title: Route data-quality mutations through one service boundary
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-10 20:49'
+updated_date: '2026-06-11 01:44'
 labels:
   - architecture
   - audit

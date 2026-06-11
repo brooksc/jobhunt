@@ -1,9 +1,10 @@
 ---
 id: TASK-098
 title: Extract typed job-detail projection logic out of SwiftUI views
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-10 07:49'
+updated_date: '2026-06-11 02:33'
 labels:
   - audit
   - refactor
@@ -30,3 +31,9 @@ Audit finding: `JobDetailView.swift` mixes rendering with JSON parsing, salary/f
 - [ ] #3 Tests cover projection behavior for valid JSON, missing JSON, malformed JSON, and manual skill overrides.
 - [ ] #4 User-visible Job Detail behavior remains unchanged except for any intentional bug fixes documented in the task notes.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Created core/Models/Projections.swift with JobDetailProjection (summary, requirements, niceToHaves, skills from extractedJSON + manualOverridesJSON), FitScoreProjection (requirementsMet, requirementsNotMet, dimensions from fitScoreJSON), and SalaryDisplay.text() helper. Removed all inline JSONSerialization calls from JobDetailView; consolidated the two duplicate salaryText computed vars into one-liners. Added 17 tests covering populated JSON, missing JSON, malformed JSON, manual override precedence, and all salary display branches.
+<!-- SECTION:FINAL_SUMMARY:END -->

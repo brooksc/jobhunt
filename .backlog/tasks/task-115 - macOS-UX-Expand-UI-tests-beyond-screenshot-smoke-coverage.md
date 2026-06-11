@@ -1,9 +1,10 @@
 ---
 id: TASK-115
 title: 'macOS UX: Expand UI tests beyond screenshot smoke coverage'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 02:24'
+updated_date: '2026-06-11 03:12'
 labels:
   - ux
   - macos
@@ -15,6 +16,8 @@ references:
   - tests/AppUITests/ScreenshotTests.swift
   - tests/AppUITests/JobsScreenUITests.swift
   - app/Views/Help/KeyboardShortcutsTable.swift
+modified_files:
+  - tests/AppUITests/BehaviorUITests.swift
 priority: medium
 ---
 
@@ -32,3 +35,9 @@ The current AppUITests provide a screenshot tour and limited sidebar navigation 
 - [ ] #4 UI tests verify at least one accessible selected-state filter control
 - [ ] #5 Screenshot tests remain available for visual smoke coverage but are not the only coverage for desktop UX behavior
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added BehaviorUITests.swift with 5 behavior-focused tests: sidebar navigation (Dashboard→DataQuality selection change), LLM Queue non-default section navigation, ⌘K shortcut navigates to Jobs, ⌘, shortcut opens Settings window, and filter chip accessible state toggling in both JobsView (Remote chip) and DataQualityView (Missing Title chip). Tests verify accessibilityValue and isSelected traits cycle correctly. Screenshot tests remain unchanged.
+<!-- SECTION:FINAL_SUMMARY:END -->

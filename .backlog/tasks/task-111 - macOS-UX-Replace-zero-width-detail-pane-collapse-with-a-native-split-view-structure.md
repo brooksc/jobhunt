@@ -3,9 +3,10 @@ id: TASK-111
 title: >-
   macOS UX: Replace zero-width detail pane collapse with a native split-view
   structure
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 02:24'
+updated_date: '2026-06-11 03:06'
 labels:
   - ux
   - macos
@@ -27,9 +28,9 @@ priority: medium
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Full-width sections such as Dashboard, Data Quality, Needs Action, LLM Queue, Duplicates, Help, and Settings no longer render a zero-width detail pane
-- [ ] #2 Jobs and Sites still present their inspector/detail panes with expected column widths
-- [ ] #3 Sidebar visibility and resizing behavior remain stable across section changes
-- [ ] #4 Accessibility traversal does not include an empty fake detail column for full-width sections
+- [x] #1 Full-width sections such as Dashboard, Data Quality, Needs Action, LLM Queue, Duplicates, Help, and Settings no longer render a zero-width detail pane
+- [x] #2 Jobs and Sites still present their inspector/detail panes with expected column widths
+- [x] #3 Sidebar visibility and resizing behavior remain stable across section changes
+- [x] #4 Accessibility traversal does not include an empty fake detail column for full-width sections
 - [ ] #5 Screenshot or UI coverage verifies at least one inspector section and one full-width section
 <!-- AC:END -->

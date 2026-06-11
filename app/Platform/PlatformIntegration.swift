@@ -25,12 +25,19 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         requestNotificationAuthorization()
         registerNotificationDelegate()
         observeFocusRequests()
+        applyWindowPolicy()
 
         eventTask = Task { [weak self] in
             for await event in await queue.events {
                 await self?.handleEvent(event)
             }
         }
+    }
+
+    private func applyWindowPolicy() {
+        // Set minimum window size once at launch. The scene declares defaultSize(1200×750)
+        // for first run; we only enforce the floor, not force-resize user-restored windows.
+        NSApp.mainWindow?.minSize = NSSize(width: 900, height: 600)
     }
 
     /// Update dock badge to unread job count.

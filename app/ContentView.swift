@@ -29,7 +29,6 @@ struct ContentView: View {
         .background(DockBadgeUpdater(unreadCount: unreadJobs.count))
         .onAppear {
             applyAppearance(theme.colorSchemePreference)
-            configureWindow()
         }
         .onChange(of: theme.colorSchemePreference) { _, pref in applyAppearance(pref) }
         .onChange(of: router.selectedSection) { _, section in
@@ -99,9 +98,10 @@ struct ContentView: View {
             SiteInspectorView()
                 .navigationSplitViewColumnWidth(min: 340, ideal: 460)
         default:
-            // Zero-width spacer collapses the detail pane for full-width views.
-            Color(nsColor: .windowBackgroundColor)
+            // Full-width sections have no inspector; collapse the detail column.
+            Color.clear
                 .navigationSplitViewColumnWidth(min: 0, ideal: 0, max: 0)
+                .accessibilityHidden(true)
         }
     }
 
@@ -143,15 +143,7 @@ struct ContentView: View {
         }
     }
 
-    private func configureWindow() {
-        guard let window = NSApp.mainWindow else { return }
-        window.minSize = NSSize(width: 900, height: 600)
-        guard window.frame.width < 1200 || window.frame.height < 750 else { return }
-        let newW = max(window.frame.width, 1200)
-        let newH = max(window.frame.height, 750)
-        let origin = window.frame.origin
-        window.setFrame(NSRect(x: origin.x, y: origin.y, width: newW, height: newH), display: true)
-    }
+
 }
 
 // MARK: - Job Inspector wrapper

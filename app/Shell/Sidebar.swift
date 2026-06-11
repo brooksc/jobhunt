@@ -22,43 +22,31 @@ struct Sidebar: View {
 
     var body: some View {
         List(selection: $listSelection) {
-            Button { listSelection = .dashboard } label: {
-                Label("Dashboard", systemImage: "chart.bar")
-            }
-            .buttonStyle(.plain)
-            .tag(SidebarItem.dashboard)
-            .accessibilityIdentifier("sidebar.dashboard")
-            .help("Overview and stats")
+            Label("Dashboard", systemImage: "chart.bar")
+                .tag(SidebarItem.dashboard)
+                .accessibilityIdentifier("sidebar.dashboard")
+                .help("Overview and stats")
 
-            Button { listSelection = .needsAction } label: {
-                Label("Needs Action", systemImage: "bell")
-            }
-            .buttonStyle(.plain)
-            .tag(SidebarItem.needsAction)
-            .badge(pendingActions.isEmpty ? 0 : pendingActions.count)
-            .accessibilityIdentifier("sidebar.needsAction")
-            .help("Jobs with pending follow-up")
+            Label("Needs Action", systemImage: "bell")
+                .tag(SidebarItem.needsAction)
+                .badge(pendingActions.isEmpty ? 0 : pendingActions.count)
+                .accessibilityIdentifier("sidebar.needsAction")
+                .help("Jobs with pending follow-up")
 
             Section("Jobs") {
-                Button { listSelection = .jobsAll } label: {
-                    Label("All Jobs", systemImage: "tray.2")
-                }
-                .buttonStyle(.plain)
-                .tag(SidebarItem.jobsAll)
-                .badge(allJobs.count)
-                .accessibilityIdentifier("sidebar.jobs.all")
-                .help("All captured jobs")
+                Label("All Jobs", systemImage: "tray.2")
+                    .tag(SidebarItem.jobsAll)
+                    .badge(allJobs.count)
+                    .accessibilityIdentifier("sidebar.jobs.all")
+                    .help("All captured jobs")
 
                 ForEach(sidebarStatuses, id: \.self) { status in
                     let count = allJobs.filter { $0.status == status }.count
-                    Button { listSelection = .jobs(status) } label: {
-                        Label(status.displayName, systemImage: Theme.statusSymbol(status))
-                    }
-                    .buttonStyle(.plain)
-                    .tag(SidebarItem.jobs(status))
-                    .badge(count)
-                    .accessibilityIdentifier("sidebar.jobs.\(status.rawValue)")
-                    .help("Jobs with status: \(status.displayName)")
+                    Label(status.displayName, systemImage: Theme.statusSymbol(status))
+                        .tag(SidebarItem.jobs(status))
+                        .badge(count)
+                        .accessibilityIdentifier("sidebar.jobs.\(status.rawValue)")
+                        .help("Jobs with status: \(status.displayName)")
                 }
             }
 
@@ -66,70 +54,52 @@ struct Sidebar: View {
                 Section("Saved Searches") {
                     ForEach(savedSearches) { search in
                         let count = allJobs.filter { search.matches($0) }.count
-                        Button { listSelection = .savedSearch(search.id) } label: {
-                            Label(search.name, systemImage: "pin")
-                        }
-                        .buttonStyle(.plain)
-                        .tag(SidebarItem.savedSearch(search.id))
-                        .badge(count)
-                        .help("Saved search: \(search.name)")
-                        .contextMenu {
-                            Button("Rename…") {
-                                renamingSearch = search
-                                renameText = search.name
+                        Label(search.name, systemImage: "pin")
+                            .tag(SidebarItem.savedSearch(search.id))
+                            .badge(count)
+                            .help("Saved search: \(search.name)")
+                            .contextMenu {
+                                Button("Rename…") {
+                                    renamingSearch = search
+                                    renameText = search.name
+                                }
+                                Divider()
+                                Button("Delete", role: .destructive) {
+                                    searchToDelete = search
+                                }
                             }
-                            Divider()
-                            Button("Delete", role: .destructive) {
-                                searchToDelete = search
-                            }
-                        }
                     }
                 }
             }
 
             Section("Sources") {
-                Button { listSelection = .sites } label: {
-                    Label("Sites", systemImage: "globe")
-                }
-                .buttonStyle(.plain)
-                .tag(SidebarItem.sites)
-                .accessibilityIdentifier("sidebar.sites")
-                .help("Job listing sources")
+                Label("Sites", systemImage: "globe")
+                    .tag(SidebarItem.sites)
+                    .accessibilityIdentifier("sidebar.sites")
+                    .help("Job listing sources")
 
-                Button { listSelection = .duplicates } label: {
-                    Label("Duplicates", systemImage: "doc.on.doc")
-                }
-                .buttonStyle(.plain)
-                .tag(SidebarItem.duplicates)
-                .badge(duplicateJobs.isEmpty ? 0 : duplicateJobs.count)
-                .accessibilityIdentifier("sidebar.duplicates")
-                .help("Duplicate job postings")
+                Label("Duplicates", systemImage: "doc.on.doc")
+                    .tag(SidebarItem.duplicates)
+                    .badge(duplicateJobs.isEmpty ? 0 : duplicateJobs.count)
+                    .accessibilityIdentifier("sidebar.duplicates")
+                    .help("Duplicate job postings")
             }
 
             Section("Tools") {
-                Button { listSelection = .llmQueue } label: {
-                    Label("LLM Queue", systemImage: "cpu")
-                }
-                .buttonStyle(.plain)
-                .tag(SidebarItem.llmQueue)
-                .accessibilityIdentifier("sidebar.llmQueue")
-                .help("LLM processing queue status")
+                Label("LLM Queue", systemImage: "cpu")
+                    .tag(SidebarItem.llmQueue)
+                    .accessibilityIdentifier("sidebar.llmQueue")
+                    .help("LLM processing queue status")
 
-                Button { listSelection = .dataQuality } label: {
-                    Label("Data Quality", systemImage: "checkmark.shield")
-                }
-                .buttonStyle(.plain)
-                .tag(SidebarItem.dataQuality)
-                .accessibilityIdentifier("sidebar.dataQuality")
-                .help("Data quality issues")
+                Label("Data Quality", systemImage: "checkmark.shield")
+                    .tag(SidebarItem.dataQuality)
+                    .accessibilityIdentifier("sidebar.dataQuality")
+                    .help("Data quality issues")
 
-                Button { listSelection = .settings } label: {
-                    Label("Settings", systemImage: "gear")
-                }
-                .buttonStyle(.plain)
-                .tag(SidebarItem.settings)
-                .accessibilityIdentifier("sidebar.settings")
-                .help("App settings")
+                Label("Settings", systemImage: "gear")
+                    .tag(SidebarItem.settings)
+                    .accessibilityIdentifier("sidebar.settings")
+                    .help("App settings")
             }
         }
         .listStyle(.sidebar)

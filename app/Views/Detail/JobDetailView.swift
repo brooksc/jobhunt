@@ -218,17 +218,7 @@ private struct DetailHeader: View {
     }
 
     private var salaryText: String? {
-        let sym: String
-        switch job.salaryCurrency ?? "USD" {
-        case "GBP": sym = "£"
-        case "EUR": sym = "€"
-        default: sym = "$"
-        }
-        let k: (Int) -> String = { v in v >= 1000 ? "\(v / 1000)k" : "\(v)" }
-        if let min = job.salaryMin, let max = job.salaryMax { return "\(sym)\(k(min))–\(k(max))" }
-        if let min = job.salaryMin { return "\(sym)\(k(min))+" }
-        if let max = job.salaryMax { return "up to \(sym)\(k(max))" }
-        return nil
+        SalaryDisplay.text(min: job.salaryMin, max: job.salaryMax, currency: job.salaryCurrency)
     }
 
     private func metaChip(_ text: String) -> some View {
@@ -363,19 +353,10 @@ struct OverviewTabView: View {
     @State private var showDeleteConfirm = false
     @State private var errorMessage: String?
 
-    private var extractedDict: [String: Any]? {
-        guard let json = job.extractedJSON,
-              let data = json.data(using: .utf8),
-              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-        return dict
-    }
-
-    private var summary: String? { extractedDict?["summary"] as? String }
-    private var requirements: [String] { (extractedDict?["requirements"] as? [String]) ?? [] }
-    private var niceToHaves: [String] {
-        (extractedDict?["nice_to_have"] as? [String])
-        ?? (extractedDict?["nice_to_haves"] as? [String]) ?? []
-    }
+    private var projection: JobDetailProjection { JobDetailProjection(job: job) }
+    private var summary: String? { projection.summary }
+    private var requirements: [String] { projection.requirements }
+    private var niceToHaves: [String] { projection.niceToHaves }
 
     var body: some View {
         ScrollView {
@@ -688,17 +669,7 @@ struct OverviewTabView: View {
     }
 
     private var salaryText: String {
-        let sym: String
-        switch job.salaryCurrency ?? "USD" {
-        case "GBP": sym = "£"
-        case "EUR": sym = "€"
-        default: sym = "$"
-        }
-        let k: (Int) -> String = { v in v >= 1000 ? "\(v / 1000)k" : "\(v)" }
-        if let min = job.salaryMin, let max = job.salaryMax { return "\(sym)\(k(min))–\(k(max))" }
-        if let min = job.salaryMin { return "\(sym)\(k(min))+" }
-        if let max = job.salaryMax { return "up to \(sym)\(k(max))" }
-        return "—"
+        SalaryDisplay.text(min: job.salaryMin, max: job.salaryMax, currency: job.salaryCurrency) ?? "—"
     }
 
     private func fitColor(_ score: Int) -> Color {
@@ -716,13 +687,7 @@ struct OverviewTabView: View {
     }
 
     private func loadSkills() {
-        let json = job.manualOverridesJSON
-        if let data = json.data(using: .utf8),
-           let arr = try? JSONSerialization.jsonObject(with: data) as? [String] {
-            skills = arr
-        } else if let extracted = extractedDict?["skills"] as? [String] {
-            skills = extracted
-        }
+        skills = projection.skills
     }
 
     private func commitNewSkill() {
@@ -889,23 +854,10 @@ private struct ResumeScoreCard: View {
     let onRescore: () -> Void
 
     private var resumeName: String { fitScore.resume?.name ?? fitScore.model ?? "Resume" }
-
-    private var fitDict: [String: Any]? {
-        guard let json = fitScore.fitScoreJSON,
-              let data = json.data(using: .utf8),
-              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-        return dict
-    }
-
-    private var requirementsMet: [String] { (fitDict?["requirements_met"] as? [String]) ?? [] }
-    private var requirementsNotMet: [String] { (fitDict?["requirements_not_met"] as? [String]) ?? [] }
-    private var dimensions: [(name: String, score: Int, rationale: String?)] {
-        guard let dims = fitDict?["dimensions"] as? [[String: Any]] else { return [] }
-        return dims.compactMap { d in
-            guard let name = d["name"] as? String, let score = d["score"] as? Int else { return nil }
-            return (name: name, score: score, rationale: d["rationale"] as? String)
-        }
-    }
+    private var fitProjection: FitScoreProjection { FitScoreProjection(fitScore: fitScore) }
+    private var requirementsMet: [String] { fitProjection.requirementsMet }
+    private var requirementsNotMet: [String] { fitProjection.requirementsNotMet }
+    private var dimensions: [FitDimension] { fitProjection.dimensions }
 
     var body: some View {
         VStack(spacing: 0) {

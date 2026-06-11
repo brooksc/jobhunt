@@ -3,9 +3,10 @@ id: TASK-150
 title: >-
   Privacy: Validate PrivacyInfo.xcprivacy and App Privacy answers against cloud
   LLM behavior
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 04:35'
+updated_date: '2026-06-11 20:08'
 labels:
   - privacy
   - mas
@@ -28,8 +29,8 @@ Security/privacy audit finding: `PrivacyInfo.xcprivacy` declares no collected da
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 PrivacyInfo.xcprivacy and App Store privacy answers are reviewed against actual job text, resume text, provider credential, and remote-provider data flows.
-- [ ] #2 The final decision is documented: either no-developer-collection rationale is recorded, or the manifest/App Privacy answers are updated to disclose relevant data categories.
-- [ ] #3 Remote custom LLM endpoints are included in the privacy assessment, not only named cloud providers.
+- [x] #1 PrivacyInfo.xcprivacy and App Store privacy answers are reviewed against actual job text, resume text, provider credential, and remote-provider data flows.
+- [x] #2 The final decision is documented: either no-developer-collection rationale is recorded, or the manifest/App Privacy answers are updated to disclose relevant data categories.
+- [x] #3 Remote custom LLM endpoints are included in the privacy assessment, not only named cloud providers.
 - [ ] #4 Review is repeated after consent enforcement tasks are complete so declarations match runtime behavior.
 <!-- AC:END -->

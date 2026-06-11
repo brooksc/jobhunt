@@ -1,9 +1,10 @@
 ---
 id: TASK-105
 title: Use one shared SettingsStore instance across app runtime
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-10 20:49'
+updated_date: '2026-06-11 01:42'
 labels:
   - architecture
   - audit

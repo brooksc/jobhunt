@@ -4,7 +4,7 @@ title: 'Platform integration: notifications, dock badge, deep links, Sparkle (DM
 status: Done
 assignee: []
 created_date: '2026-06-07 22:51'
-updated_date: '2026-06-08 03:55'
+updated_date: '2026-06-11 03:39'
 labels:
   - swift-rewrite
   - ui
@@ -52,7 +52,15 @@ Depends on task-045 (Router/shell), task-044 (events), task-047 (focus bridge), 
 - [ ] #3 jobhunt://jobs/N deep links + /api/app/focus bridge focus the window and navigate
 - [ ] #4 Sparkle 2 wired for DMG flavor only (#if !MAS_BUILD); MAS omits it
 - [ ] #5 Unit tests for notification gating + deep-link routing; documented manual checklist for badge/Sparkle
+- [ ] #6 The DMG Check for Updates command invokes a real Sparkle 2 updater rather than a logging stub, or the command is hidden until Sparkle ships.
+- [ ] #7 Manual verification confirms Check for Updates works in a signed DMG build and is omitted from MAS builds.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Release audit follow-up: `SparkleUpdater` is currently a stub that only logs, while the DMG app exposes a Check for Updates command. Either this task must wire Sparkle 2 end-to-end or the command should be hidden until Sparkle is functional.
+<!-- SECTION:NOTES:END -->
 
 ## Final Summary
 

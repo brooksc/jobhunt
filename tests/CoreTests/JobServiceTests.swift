@@ -232,4 +232,40 @@ final class JobServiceTests: XCTestCase {
         let result = ExportService.escapeCsv("say \"hello\"")
         XCTAssertEqual(result, "\"say \"\"hello\"\"\"")
     }
+
+    // MARK: - testClearDataQualityReview_onlyDeletesTargetedReview
+
+    func testClearDataQualityReview_onlyDeletesTargetedReview() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let queue = makeQueue(container)
+        let svc = JobService(store: store, queue: queue)
+
+        // Ingest two jobs
+        let payload1 = CapturePayload(url: "https://example.com/j/1", pageTitle: "Job One", selectedText: nil, visibleText: "Text one")
+        let payload2 = CapturePayload(url: "https://example.com/j/2", pageTitle: "Job Two", selectedText: nil, visibleText: "Text two")
+        let r1 = try await svc.ingestCapture(payload1)
+        let r2 = try await svc.ingestCapture(payload2)
+
+        // Mark both as reviewed
+        let ctx = ModelContext(container)
+        let jobs = try ctx.fetch(FetchDescriptor<Job>(sortBy: [SortDescriptor(\.createdAt)]))
+        XCTAssertEqual(jobs.count, 2)
+        let job1 = jobs[0], job2 = jobs[1]
+
+        try await svc.markDataQualityReviewed(jobID: job1.id, notes: nil)
+        try await svc.markDataQualityReviewed(jobID: job2.id, notes: nil)
+
+        // Verify both have reviews
+        let reviewsBefore = try ctx.fetch(FetchDescriptor<DataQualityReview>())
+        XCTAssertEqual(reviewsBefore.count, 2, "Both jobs should have reviews")
+
+        // Clear only job1's review
+        try await svc.clearDataQualityReview(jobID: job1.id)
+
+        // Only job2's review should remain
+        let reviewsAfter = try ctx.fetch(FetchDescriptor<DataQualityReview>())
+        XCTAssertEqual(reviewsAfter.count, 1, "Only job2's review should remain after clearing job1")
+        XCTAssertEqual(reviewsAfter.first?.job?.id, job2.id, "Remaining review belongs to job2")
+    }
 }

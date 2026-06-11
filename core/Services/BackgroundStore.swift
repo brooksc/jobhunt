@@ -37,14 +37,25 @@ public actor BackgroundStore {
     /// Delete all models matching a predicate, then save.
     public func delete<T: PersistentModel>(
         _: T.Type,
-        predicate: Predicate<T>? = nil
+        predicate: Predicate<T>
     ) throws {
         var descriptor = FetchDescriptor<T>()
-        if let predicate {
-            descriptor.predicate = predicate
-        }
+        descriptor.predicate = predicate
         let items = try modelContext.fetch(descriptor)
         items.forEach { modelContext.delete($0) }
+        try modelContext.save()
+    }
+
+    /// Delete all rows of the given type. Use only when full-table deletion is intentional.
+    public func deleteAll<T: PersistentModel>(_: T.Type) throws {
+        let items = try modelContext.fetch(FetchDescriptor<T>())
+        items.forEach { modelContext.delete($0) }
+        try modelContext.save()
+    }
+
+    /// Delete a single known model object, then save.
+    public func deleteObject(_ model: some PersistentModel) throws {
+        modelContext.delete(model)
         try modelContext.save()
     }
 

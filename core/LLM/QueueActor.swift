@@ -124,7 +124,7 @@ public actor QueueActor {
 
     /// Permanently delete all requests (all statuses).
     public func deleteAll() async throws {
-        try await store.delete(LLMRequest.self, predicate: nil)
+        try await store.deleteAll(LLMRequest.self)
     }
 
     /// Reset a failed request back to queued so it can be retried.

@@ -46,18 +46,18 @@ extension BackgroundStore {
     }
 
     func deleteAll() throws {
-        try delete(LLMRequestAttempt.self)
-        try delete(LLMRequest.self)
-        try delete(DataQualityReview.self)
-        try delete(JobEvent.self)
-        try delete(JobAction.self)
-        try delete(DuplicateDecision.self)
-        try delete(JobFitScore.self)
-        try delete(Job.self)
-        try delete(Capture.self)
-        try delete(Site.self)
-        try delete(Resume.self)
-        try delete(Setting.self)
+        try deleteAll(LLMRequestAttempt.self)
+        try deleteAll(LLMRequest.self)
+        try deleteAll(DataQualityReview.self)
+        try deleteAll(JobEvent.self)
+        try deleteAll(JobAction.self)
+        try deleteAll(DuplicateDecision.self)
+        try deleteAll(JobFitScore.self)
+        try deleteAll(Job.self)
+        try deleteAll(Capture.self)
+        try deleteAll(Site.self)
+        try deleteAll(Resume.self)
+        try deleteAll(Setting.self)
     }
 
     // MARK: Seed execution

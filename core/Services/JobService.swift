@@ -336,16 +336,7 @@ public actor JobService {
         let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == id }))
         guard let job = jobs.first else { throw JobServiceError.jobNotFound(jobID) }
         if let review = job.qualityReview {
-            // modelContext.delete on the store — use the store's delete helper via a workaround
-            // DataQualityReview has no id; delete by fetching all and matching job reference
-            try await store.update(DataQualityReview.self, predicate: nil) { rev in
-                if rev.job?.id == id {
-                    // Mark for deletion by setting a sentinel — actual delete below
-                }
-            }
-            // Delete via the job's inverse relationship
-            _ = review // silence unused-variable warning; deletion happens via cascade or explicit delete
-            try await store.delete(DataQualityReview.self, predicate: nil)
+            try await store.deleteObject(review)
         }
     }
 

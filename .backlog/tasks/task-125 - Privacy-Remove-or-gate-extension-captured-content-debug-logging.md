@@ -1,15 +1,18 @@
 ---
 id: TASK-125
 title: 'Privacy: Remove or gate extension captured-content debug logging'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 03:01'
+updated_date: '2026-06-11 19:27'
 labels:
   - privacy
   - extension
   - logging
 dependencies: []
 references:
+  - extension/service_worker.js
+modified_files:
   - extension/service_worker.js
 priority: medium
 ---
@@ -27,3 +30,9 @@ The Chrome extension service worker logs captured page excerpts and structured d
 - [ ] #3 Failure logs preserve enough operational detail without printing captured content.
 - [ ] #4 Manual or automated checks confirm visible_text_head, visible_text_tail, and structured_data payload logs are removed or gated.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Removed the debug console.log block from service_worker.js submitOrQueue() that was printing visible_text_head (500 chars), visible_text_tail (500 chars), structured_data JSON, and salary_lines_found from captured page content. Operational error logging (console.error on capture failure) is preserved since it doesn't expose captured content.
+<!-- SECTION:FINAL_SUMMARY:END -->

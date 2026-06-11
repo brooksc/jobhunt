@@ -1,9 +1,10 @@
 ---
 id: TASK-099
 title: Split the migrator command into mode-focused modules
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-10 07:49'
+updated_date: '2026-06-11 02:28'
 labels:
   - audit
   - refactor
@@ -28,3 +29,9 @@ Audit finding: `tools/migrator/main.swift` is a 1,378-line command that combines
 - [ ] #3 Migrator tests cover the extracted units or command modes touched by the split.
 - [ ] #4 The migrator target builds and existing CoreTests pass after the refactor.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Split tools/migrator/main.swift (1,379 lines) into 6 focused files: Args.swift (Mode enum + parseArgs), SQLiteHelpers.swift (DB access + date parsing + row extension), Migration.swift (MigrationSummary + migrate), Verify.swift (VerifyResult + verify + count helpers), Patch.swift (PatchSummary + patch), FitScores.swift (repairFitScores + patchFitScores). main.swift is now the entry point dispatch only (~160 lines). Project.swift glob picks up the new files automatically; tuist generate wires them. All CLI modes keep their existing behavior. MigratorTests pass.
+<!-- SECTION:FINAL_SUMMARY:END -->

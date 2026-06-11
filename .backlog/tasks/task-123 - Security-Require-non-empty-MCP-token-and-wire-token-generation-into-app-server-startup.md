@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-06-11 03:01'
+updated_date: '2026-06-11 04:33'
 labels:
   - security
   - mcp
@@ -35,4 +36,12 @@ MCP route authorization can fail open when the configured token is empty because
 - [ ] #3 App startup generates or loads the MCP token and passes it into the local server before MCP routes are available.
 - [ ] #4 MCP helper reads the same token source used by the app/server handshake.
 - [ ] #5 Tests cover missing, empty, wrong, and correct token cases.
+- [ ] #6 MCP token file is created with explicit owner-only permissions, e.g. `0600`, and existing token files with broader permissions are repaired or rejected.
+- [ ] #7 Tests or implementation checks verify weak token-file permissions are not accepted silently.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Security/privacy audit addendum: `MCPTokenManager.generateAndWrite()` writes `~/.jobhunt-mcp-token` via `String.write`, so file permissions depend on process umask. The token file should be created/read only when owned by the current user and mode-restricted.
+<!-- SECTION:NOTES:END -->

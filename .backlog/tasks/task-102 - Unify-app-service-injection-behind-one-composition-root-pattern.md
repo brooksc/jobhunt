@@ -1,9 +1,10 @@
 ---
 id: TASK-102
 title: Unify app service injection behind one composition-root pattern
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-10 20:49'
+updated_date: '2026-06-11 01:43'
 labels:
   - architecture
   - audit

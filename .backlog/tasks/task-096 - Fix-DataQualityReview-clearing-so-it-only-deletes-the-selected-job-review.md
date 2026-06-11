@@ -1,9 +1,10 @@
 ---
 id: TASK-096
 title: Fix DataQualityReview clearing so it only deletes the selected job review
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-10 07:49'
+updated_date: '2026-06-11 01:41'
 labels:
   - bug
   - audit

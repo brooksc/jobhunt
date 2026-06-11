@@ -1,9 +1,10 @@
 ---
 id: TASK-183
 title: 'Test quality: Split mixed service regression tests by contract owner'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 22:18'
+updated_date: '2026-06-11 22:36'
 labels:
   - audit
   - tests

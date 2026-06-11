@@ -1,10 +1,10 @@
 ---
 id: TASK-106
 title: Move MCP read queries behind Core service read models
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-10 20:49'
-updated_date: '2026-06-11 02:47'
+updated_date: '2026-06-11 02:48'
 labels:
   - architecture
   - mcp
@@ -28,12 +28,14 @@ Architecture audit finding: `MCPBridgeRoutes` mixes route handling with SwiftDat
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 MCP jobs list, job get, sites list, and snapshot reads delegate to Core service query methods or read-model providers instead of constructing SwiftData fetch descriptors in route handlers.
-- [ ] #2 Route handlers remain responsible for transport concerns only: auth, request decoding, response encoding, and status codes.
-- [ ] #3 Core query/read-model methods are covered by focused tests independent of MCP transport.
-- [ ] #4 Existing MCP response shapes remain compatible unless an intentional API change is documented.
-- [ ] #5 Read-model tests or route tests verify MCP job list, job get, sites list, and snapshot output remains stable after moving fetch/DTO shaping behind Core read-model methods
+- [x] #1 MCP jobs list, job get, sites list, and snapshot reads delegate to Core service query methods or read-model providers instead of constructing SwiftData fetch descriptors in route handlers.
+- [x] #2 Route handlers remain responsible for transport concerns only: auth, request decoding, response encoding, and status codes.
+- [x] #3 Core query/read-model methods are covered by focused tests independent of MCP transport.
+- [x] #4 Existing MCP response shapes remain compatible unless an intentional API change is documented.
+- [x] #5 Read-model tests or route tests verify MCP job list, job get, sites list, and snapshot output remains stable after moving fetch/DTO shaping behind Core read-model methods
 <!-- AC:END -->
+
+
 
 ## Implementation Notes
 

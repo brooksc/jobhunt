@@ -1,9 +1,10 @@
 ---
 id: TASK-177
 title: 'Settings: Apply follow-up default days to action and snooze workflows'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 22:13'
+updated_date: '2026-06-11 22:30'
 labels:
   - audit
   - settings

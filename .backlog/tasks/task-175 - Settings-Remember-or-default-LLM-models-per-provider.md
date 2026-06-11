@@ -1,9 +1,10 @@
 ---
 id: TASK-175
 title: 'Settings: Remember or default LLM models per provider'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 22:12'
+updated_date: '2026-06-11 22:30'
 labels:
   - audit
   - settings

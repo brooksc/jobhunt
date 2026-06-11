@@ -1,9 +1,10 @@
 ---
 id: TASK-179
 title: 'Settings: Wire or remove the LLM debug logging setting'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-11 22:14'
+updated_date: '2026-06-11 22:30'
 labels:
   - audit
   - settings

@@ -1,9 +1,10 @@
 ---
 id: TASK-101
 title: Clean up git hygiene for generated build artifacts
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-10 07:49'
+updated_date: '2026-06-11 01:38'
 labels:
   - audit
   - repo-hygiene

@@ -1,9 +1,10 @@
 ---
 id: TASK-238
 title: 'Diagnostics: Surface settings persistence failures outside NSLog'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 01:51'
+updated_date: '2026-06-12 02:21'
 labels:
   - diagnostics
   - settings

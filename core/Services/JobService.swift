@@ -196,19 +196,24 @@ public actor JobService {
 
     public func setStatus(_ status: JobStatus, for jobID: String) async throws {
         let id = jobID
-        try await store.updateOne(Job.self, predicate: #Predicate { $0.id == id }, id: jobID) { job in
+        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == id }))
+        guard let job = jobs.first else { throw JobServiceError.jobNotFound(jobID) }
+        let oldStatus = job.status
+        try await store.update(Job.self, predicate: #Predicate { $0.id == id }) { job in
             job.status = status
             job.updatedAt = Date()
         }
+        let event = JobEvent(
+            eventType: "status",
+            note: "Status changed from \(oldStatus.rawValue) to \(status.rawValue)"
+        )
+        event.job = job
+        try await store.insert(event)
     }
 
     public func setStatusBulk(_ status: JobStatus, jobIDs: [String]) async throws {
-        guard !jobIDs.isEmpty else { return }
-        let ids = jobIDs
-        let newStatus = status
-        try await store.update(Job.self, predicate: #Predicate { ids.contains($0.id) }) { job in
-            job.status = newStatus
-            job.updatedAt = Date()
+        for id in jobIDs {
+            try await setStatus(status, for: id)
         }
     }
 

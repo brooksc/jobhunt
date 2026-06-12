@@ -222,6 +222,51 @@ public actor BackgroundStore {
         try modelContext.save()
     }
 
+    /// Create or update a JobFitScore record with fitStatus = .pending.
+    public func markFitScorePending(jobID: String, resumeID: String) throws {
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
+        guard let job = jobs.first else { return }
+        let record = try fitScoreRecord(job: job, resumeID: resumeID)
+        record.fitStatus = .pending
+        record.updatedAt = Date()
+        try modelContext.save()
+    }
+
+    /// Create or update a JobFitScore record with fitStatus = .running.
+    public func markFitScoreRunning(jobID: String, resumeID: String) throws {
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
+        guard let job = jobs.first else { return }
+        let record = try fitScoreRecord(job: job, resumeID: resumeID)
+        record.fitStatus = .running
+        record.updatedAt = Date()
+        try modelContext.save()
+    }
+
+    /// Create or update a JobFitScore record with fitStatus = .failed, storing the error in fitScoreJSON.
+    public func markFitScoreFailed(jobID: String, resumeID: String, errorMessage: String?) throws {
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
+        guard let job = jobs.first else { return }
+        let record = try fitScoreRecord(job: job, resumeID: resumeID)
+        record.fitStatus = .failed
+        if let msg = errorMessage {
+            record.fitScoreJSON = "{\"error\":\"\(msg.replacingOccurrences(of: "\"", with: "\\\""))\"}"
+        }
+        record.updatedAt = Date()
+        try modelContext.save()
+    }
+
+    private func fitScoreRecord(job: Job, resumeID: String) throws -> JobFitScore {
+        if let existing = job.fitScores.first(where: { $0.resume?.id == resumeID }) {
+            return existing
+        }
+        let record = JobFitScore()
+        modelContext.insert(record)
+        record.job = job
+        let resumes = try modelContext.fetch(FetchDescriptor<Resume>(predicate: #Predicate { $0.id == resumeID }))
+        record.resume = resumes.first
+        return record
+    }
+
     /// Atomically dedup-check, assign job number, and insert Capture + Job + extraction LLMRequest
     /// in a single modelContext.save(). No other BackgroundStore call can interleave mid-operation.
     public func insertCaptureAtomically(_ input: AtomicIngestInput) throws -> AtomicIngestResult {

@@ -132,8 +132,8 @@ final class BackgroundStoreNotFoundTests: XCTestCase {
 
         do {
             try await svc.setStatus(.pursuing, for: "nonexistent-job-id")
-            XCTFail("Expected notFound error")
-        } catch BackgroundStoreError.notFound {
+            XCTFail("Expected jobNotFound error")
+        } catch JobServiceError.jobNotFound {
             // expected
         }
     }

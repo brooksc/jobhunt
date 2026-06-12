@@ -1043,3 +1043,51 @@ final class FitScoringStateTests: XCTestCase {
         XCTAssertTrue(score.fitScoreJSON?.contains("rate limit exceeded") == true, "fitScoreJSON must include the error text")
     }
 }
+
+// MARK: - TASK-280: Status-change timeline events
+
+final class StatusTimelineEventTests: XCTestCase {
+    private func makeStore(_ container: ModelContainer) -> BackgroundStore { BackgroundStore(modelContainer: container) }
+
+    func testSetStatus_createsTimelineEvent() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        let result = try await svc.ingestCapture(CapturePayload(
+            url: "https://example.com/event-test",
+            pageTitle: "Event Test Job",
+            visibleText: "Some job text"
+        ))
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        let job = try XCTUnwrap(jobs.first(where: { $0.jobNumber == result.jobNumber }))
+        let jobID = job.id
+
+        try await svc.setStatus(.applied, for: jobID)
+
+        let events = try await store.fetch(FetchDescriptor<JobEvent>())
+        let statusEvents = events.filter { $0.eventType == "status" && $0.job?.id == jobID }
+        XCTAssertEqual(statusEvents.count, 1, "setStatus must create one status timeline event")
+        XCTAssertTrue(statusEvents.first?.note?.contains("applied") == true, "Status event note should mention the new status")
+    }
+
+    func testSetStatusBulk_createsEventsForEachJob() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        _ = try await svc.ingestCapture(CapturePayload(url: "https://example.com/bulk/1", pageTitle: "Job 1", visibleText: "text"))
+        _ = try await svc.ingestCapture(CapturePayload(url: "https://example.com/bulk/2", pageTitle: "Job 2", visibleText: "text"))
+
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertEqual(jobs.count, 2)
+        let jobIDs = jobs.map(\.id)
+
+        try await svc.setStatusBulk(.applied, jobIDs: jobIDs)
+
+        let events = try await store.fetch(FetchDescriptor<JobEvent>())
+        let statusEvents = events.filter { $0.eventType == "status" }
+        XCTAssertEqual(statusEvents.count, 2, "setStatusBulk must create one status event per job")
+        XCTAssertTrue(statusEvents.allSatisfy { $0.note?.contains("applied") == true })
+    }
+}

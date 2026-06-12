@@ -86,8 +86,10 @@ private struct DetailHeader: View {
     let onNavigatePrev: () -> Void
     let onNavigateNext: () -> Void
     @Environment(\.jobService) private var jobService
+    @Environment(AppServices.self) private var appServices
     @State private var showNoteSheet = false
     @State private var quickNoteText = ""
+    @State private var showApplyConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -319,11 +321,28 @@ private struct DetailFooter: View {
                     .buttonStyle(.bordered).controlSize(.mini)
                 }
             }
-            if job.status == .pursuing, let urlStr = job.applicationURL ?? job.capture?.url, let url = URL(string: urlStr) {
-                Link("Apply", destination: url)
+            if job.status == .pursuing || job.status == .new,
+               let urlStr = job.applicationURL ?? job.capture?.url,
+               let url = URL(string: urlStr) {
+                Button("Apply") { showApplyConfirmation = true }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .font(.caption.weight(.semibold))
+                    .confirmationDialog("Mark as applied?", isPresented: $showApplyConfirmation) {
+                        Button("Mark as Applied") {
+                            NSWorkspace.shared.open(url)
+                            Task {
+                                try? await jobService?.setStatus(.applied, for: job.id)
+                                let days = appServices.settings.followupDefaultDays
+                                let due = Calendar.current.date(byAdding: .day, value: days, to: Date()) ?? Date()
+                                try? await jobService?.createAction(jobID: job.id, text: "Follow up on application", dueAt: due)
+                            }
+                        }
+                        Button("Just Open URL") { NSWorkspace.shared.open(url) }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("Opening the application. Would you like to mark this job as applied and schedule a follow-up?")
+                    }
             }
         }
         .padding(.horizontal, 14)
@@ -1068,6 +1087,12 @@ struct TimelineTabView: View {
         sortedEvents.filter { isSystemEvent($0) }
     }
 
+    private var completedActions: [JobAction] {
+        job.actions
+            .filter { $0.completedAt != nil }
+            .sorted { ($0.completedAt ?? $0.dueDate) > ($1.completedAt ?? $1.dueDate) }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Composer
@@ -1087,6 +1112,12 @@ struct TimelineTabView: View {
                     // User events
                     ForEach(userEvents, id: \.id) { event in
                         TimelineEventRow(event: event)
+                        Divider().padding(.leading, 44)
+                    }
+
+                    // Completed actions (history)
+                    ForEach(completedActions, id: \.id) { action in
+                        CompletedActionRow(action: action)
                         Divider().padding(.leading, 44)
                     }
 
@@ -1407,6 +1438,40 @@ private struct TimelineEventRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+    }
+}
+
+// MARK: - Completed action row (shown in timeline history)
+
+private struct CompletedActionRow: View {
+    let action: JobAction
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "checkmark.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Completed")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+                if let at = action.completedAt {
+                    Text(at.formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Text(action.note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }
 }

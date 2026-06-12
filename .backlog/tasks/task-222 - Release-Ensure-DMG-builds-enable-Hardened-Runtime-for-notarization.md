@@ -1,9 +1,10 @@
 ---
 id: TASK-222
 title: 'Release: Ensure DMG builds enable Hardened Runtime for notarization'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 01:32'
+updated_date: '2026-06-12 02:08'
 labels:
   - release
   - macos

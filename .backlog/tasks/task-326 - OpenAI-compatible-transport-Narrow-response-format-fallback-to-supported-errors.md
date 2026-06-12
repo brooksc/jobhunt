@@ -3,9 +3,10 @@ id: TASK-326
 title: >-
   OpenAI-compatible transport: Narrow response-format fallback to supported
   errors
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:02'
+updated_date: '2026-06-12 20:18'
 labels:
   - audit
   - llm-provider

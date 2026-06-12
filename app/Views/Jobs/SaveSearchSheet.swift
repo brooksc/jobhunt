@@ -64,7 +64,7 @@ struct SaveSearchSheet: View {
             case .minRating(let n):
                 state.minRating = max(state.minRating ?? 0, n)
             case .recentDays(let d):
-                if state.recentDays == nil { state.recentDays = d }
+                state.recentDays = min(state.recentDays ?? Int.max, d)
             }
         }
         return state

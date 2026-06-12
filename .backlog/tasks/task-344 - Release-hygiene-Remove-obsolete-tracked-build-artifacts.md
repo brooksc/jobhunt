@@ -1,9 +1,10 @@
 ---
 id: TASK-344
 title: 'Release hygiene: Remove obsolete tracked build artifacts'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:36'
+updated_date: '2026-06-12 20:51'
 labels:
   - audit
   - release

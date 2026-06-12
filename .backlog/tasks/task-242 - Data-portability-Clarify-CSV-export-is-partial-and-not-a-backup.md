@@ -1,9 +1,10 @@
 ---
 id: TASK-242
 title: 'Data portability: Clarify CSV export is partial and not a backup'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 02:01'
+updated_date: '2026-06-12 02:16'
 labels:
   - export
   - docs

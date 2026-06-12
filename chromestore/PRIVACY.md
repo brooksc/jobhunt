@@ -22,7 +22,9 @@ When you click the toolbar button or use the right-click menu, the extension rea
 
 ## How data is used
 
-All captured data is sent exclusively to a companion app running on your own machine via localhost (`http://127.0.0.1`). It is stored in a local database under your control. No data is sent to any external server, third party, or cloud service.
+All captured data is sent exclusively to a companion app running on your own machine via localhost (`http://127.0.0.1`). It is stored in a local database under your control.
+
+**Greenhouse job board API:** When capturing a job from a Greenhouse-hosted job board (e.g. `boards.greenhouse.io` or `job-boards.greenhouse.io`), the extension makes a direct request to the Greenhouse public API (`https://boards-api.greenhouse.io/v1/boards/…/jobs/…`). The request includes a board identifier and job ID extracted from the page URL — no credentials, account information, or personal data are sent. This happens automatically during capture for Greenhouse pages only; no other external servers are contacted by the extension.
 
 If the local app is not running, captures are held temporarily in Chrome's local extension storage (`chrome.storage.local`) on your device until you sync or clear them.
 

@@ -144,10 +144,11 @@ xcodebuild test \
   CODE_SIGNING_ALLOWED=NO
 ```
 
-**UI tests** (requires a display server; run manually or on a scheduled VM lane):
+**UI tests** (requires a display; run manually):
 
 ```bash
 xcodebuild test \
+  -project Jobhunt.xcodeproj \
   -scheme Jobhunt-DMG \
   -configuration Debug-DMG \
   -destination 'platform=macOS' \
@@ -158,13 +159,16 @@ xcodebuild test \
 **LLM eval** (opt-in; requires a running LLM provider):
 
 ```bash
-LLM_EVAL=1 xcodebuild test \
+JOBHUNT_LLM_URL=http://127.0.0.1:1234 xcodebuild test \
+  -project Jobhunt.xcodeproj \
   -scheme Jobhunt-DMG \
   -configuration Debug-DMG \
   -destination 'platform=macOS' \
   -only-testing LLMEval \
   CODE_SIGNING_ALLOWED=NO
 ```
+
+Add `JOBHUNT_LLM_MIN_ACCURACY=80` to fail when accuracy drops below 80%. See `tests/LLMEval/README.md` for details.
 
 ### Versioning
 

@@ -325,12 +325,15 @@
         `<!-- Describe what was missing or incorrect -->`,
       ].join("\n"));
       const issueUrl = `https://github.com/brooksc/jobhunt/issues/new?title=${issueTitle}&body=${issueBody}`;
+      // Issue URL includes: job URL, preflight title/location/salary/remote, and capture stats.
+      // It does NOT include: full job description text, resume content, or LLM responses.
       const issueLink = document.createElement("a");
       issueLink.href = issueUrl;
       issueLink.target = "_blank";
       issueLink.rel = "noopener";
+      issueLink.title = "Opens GitHub Issues with job URL and preflight fields (title, location, salary, remote) pre-filled for your report";
       issueLink.style.cssText = "color:#6b7280;text-decoration:underline;cursor:pointer;";
-      issueLink.textContent = "Wrong data?";
+      issueLink.textContent = "Report capture issue";
       statsEl.appendChild(issueLink);
       document.body.appendChild(root);
 

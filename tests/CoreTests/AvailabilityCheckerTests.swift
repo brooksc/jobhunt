@@ -48,6 +48,26 @@ final class MockURLProtocol: URLProtocol {
     }
 }
 
+// MARK: - FailingURLProtocol
+
+/// URLProtocol subclass that always fails with URLError(.notConnectedToInternet).
+final class FailingURLProtocol: URLProtocol {
+    override static func canInit(with _: URLRequest) -> Bool { true }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+    }
+
+    override func stopLoading() {}
+
+    static func makeSession() -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [FailingURLProtocol.self]
+        return URLSession(configuration: config)
+    }
+}
+
 // MARK: - Helper
 
 private func makeResponse(url: String, status: Int = 200, body: String = "") -> (HTTPURLResponse, Data) {
@@ -227,13 +247,19 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
 
     // MARK: Error handling
 
-    func testReturnsErrorOnNetworkFailure() {
-        // No mock handler → MockURLProtocol default returns 200, but we can simulate error
-        // by using an unreachable URL and a custom protocol that throws.
-        // Instead, test via the .error case using a custom session that raises.
-        // We'll rely on the fact that .error is returned for non-timeout errors.
-        // This is covered indirectly: if no crash, the protocol coverage is met.
-        XCTAssertTrue(true) // placeholder — network error path covered by integration
+    func testReturnsErrorOnNetworkFailure() async throws {
+        let failingSession = FailingURLProtocol.makeSession()
+        let result = await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: "https://example.com/job/999")),
+            title: "Some Job",
+            session: failingSession
+        )
+        guard case let .error(error) = result else {
+            XCTFail("Expected .error but got \(result)")
+            return
+        }
+        let urlError = error as? URLError
+        XCTAssertEqual(urlError?.code, .notConnectedToInternet, "Should propagate URLError(.notConnectedToInternet)")
     }
 }
 

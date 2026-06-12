@@ -36,7 +36,8 @@
     <p>Jobhunt stores data you explicitly provide: job posting content captured via the Chrome extension, your resume text (pasted during onboarding), and your location preferences and settings. All of this is stored in a local SQLite database on your Mac under <code>~/.config/jobhunt/</code>.</p>
 
     <h2>What the Chrome extension collects</h2>
-    <p>When you click the toolbar button, the extension reads the current tab's URL, page title, visible text, and any structured data (JSON-LD) on the page. This content is sent only to the Jobhunt app running locally on your machine via <code>http://127.0.0.1</code>. Nothing is sent to any external server.</p>
+    <p>When you click the toolbar button, the extension reads the current tab's URL, page title, visible text, and any structured data (JSON-LD) on the page. This content is sent only to the Jobhunt app running locally on your machine via <code>http://127.0.0.1</code>.</p>
+    <p><strong>Greenhouse job board API:</strong> When capturing a job from a Greenhouse-hosted job board (e.g. <code>boards.greenhouse.io</code> or <code>job-boards.greenhouse.io</code>), the extension makes a direct request to the Greenhouse public API (<code>https://boards-api.greenhouse.io/v1/boards/…/jobs/…</code>) to retrieve structured job data. The request includes a board identifier and job ID extracted from the URL — no credentials, account information, or personal data are sent. This request goes from your browser directly to Greenhouse's servers and is subject to <a href="https://www.greenhouse.com/privacy-policy" target="_blank" rel="noopener">Greenhouse's privacy policy</a>. No other external server is contacted by the extension.</p>
     <p>If the local app is not running, captures are held temporarily in Chrome's local extension storage (<code>chrome.storage.local</code>) on your device until you sync or clear them.</p>
 
     <h2>AI processing</h2>

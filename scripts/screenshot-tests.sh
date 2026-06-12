@@ -21,15 +21,17 @@ else
     echo "⚠ No database found at $DB — continuing without backup"
 fi
 
-# 2. Run the screenshot tests.
+# 2. Run the screenshot tests using the Jobhunt-DMG scheme.
 echo "→ Running screenshot tests…"
 LOG=$(mktemp)
 nice xcodebuild test \
     -project "$REPO/Jobhunt.xcodeproj" \
-    -scheme AppUITests \
+    -scheme Jobhunt-DMG \
+    -configuration Debug-DMG \
     -destination 'platform=macOS' \
     -derivedDataPath "$REPO/build" \
     -only-testing AppUITests/ScreenshotTests \
+    CODE_SIGNING_ALLOWED=NO \
     2>&1 | tee "$LOG"
 
 # 3. Extract the screenshot directory path from test output and copy to project.

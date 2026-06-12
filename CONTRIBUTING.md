@@ -75,7 +75,7 @@ xcodebuild test \
 **LLM eval** (opt-in; requires a running LLM provider):
 
 ```bash
-LLM_EVAL=1 xcodebuild test \
+JOBHUNT_LLM_URL=http://127.0.0.1:1234 xcodebuild test \
   -project Jobhunt.xcodeproj \
   -scheme Jobhunt-DMG \
   -configuration Debug-DMG \
@@ -83,5 +83,8 @@ LLM_EVAL=1 xcodebuild test \
   -only-testing:LLMEval \
   CODE_SIGNING_ALLOWED=NO
 ```
+
+To enforce a minimum accuracy threshold (e.g. 80%), add `JOBHUNT_LLM_MIN_ACCURACY=80`. See [tests/LLMEval/README.md](tests/LLMEval/README.md) for full details.
+
 
 See [README.md](README.md#test) for full details on each lane.

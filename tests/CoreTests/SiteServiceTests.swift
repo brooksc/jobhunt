@@ -90,9 +90,21 @@ final class SiteServiceTests: XCTestCase {
         XCTAssertLessThan(diff, 2, "nextReviewAt must be lastReviewedAt + newIntervalDays")
     }
 
-    // MARK: - createSite respects custom intervalDays
+    // MARK: - TASK-301: New sites have nil nextReviewAt
 
-    func testCreateSite_customInterval_setsNextReviewAt() async throws {
+    func testCreateSite_hasNilNextReviewAt() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let svc = SiteService(store: makeStore(container))
+
+        _ = try await svc.createSite(url: "https://example.com/jobs", name: "Example")
+
+        let ctx = ModelContext(container)
+        let site = try XCTUnwrap(ctx.fetch(FetchDescriptor<Site>()).first)
+        XCTAssertNil(site.nextReviewAt, "New site must have nil nextReviewAt until first review")
+        XCTAssertEqual(site.state, .notReviewed)
+    }
+
+    func testCreateSite_customInterval_hasNilNextReviewAt() async throws {
         let container = try ModelContainerFactory.inMemory()
         let svc = SiteService(store: makeStore(container))
 
@@ -101,9 +113,43 @@ final class SiteServiceTests: XCTestCase {
         let ctx = ModelContext(container)
         let site = try XCTUnwrap(ctx.fetch(FetchDescriptor<Site>()).first)
         XCTAssertEqual(site.intervalDays, 21)
-        let expected = Calendar.current.date(byAdding: .day, value: 21, to: Date())!
-        let diff = site.nextReviewAt.map { abs($0.timeIntervalSince(expected)) } ?? 9999
-        XCTAssertLessThan(diff, 5, "nextReviewAt should be approx now + intervalDays")
+        XCTAssertNil(site.nextReviewAt, "New site must have nil nextReviewAt until first review")
+    }
+
+    // MARK: - TASK-303: markReviewed creates a SiteReview record
+
+    func testMarkReviewed_createsSiteReviewRecord() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = SiteService(store: store)
+
+        let siteID = try await svc.createSite(url: "https://example.com/jobs", name: "Example")
+        try await svc.markReviewed(siteID: siteID)
+
+        let ctx = ModelContext(container)
+        let reviews = try ctx.fetch(FetchDescriptor<SiteReview>())
+        XCTAssertEqual(reviews.count, 1, "markReviewed must create one SiteReview record")
+        XCTAssertEqual(reviews.first?.siteOrigin, "https://example.com")
+        XCTAssertNotNil(reviews.first?.reviewedAt)
+        XCTAssertNotNil(reviews.first?.nextReviewAt)
+    }
+
+    // MARK: - TASK-304: upsertSiteReview persists note
+
+    func testUpsertSiteReview_persistsNote() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let svc = SiteService(store: makeStore(container))
+
+        _ = try await svc.upsertSiteReview(
+            url: "https://example.com/jobs",
+            title: "Jobs",
+            intervalDays: 14,
+            note: "Looks promising"
+        )
+
+        let ctx = ModelContext(container)
+        let review = try XCTUnwrap(ctx.fetch(FetchDescriptor<SiteReview>()).first)
+        XCTAssertEqual(review.note, "Looks promising")
     }
 
     // MARK: - LocalizedError descriptions

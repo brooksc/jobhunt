@@ -51,19 +51,20 @@ public actor SiteService {
             title: title,
             intervalDays: intervalDays,
             reviewedAt: reviewedAt,
-            nextReviewAt: nextReviewAt ?? Calendar.current.date(byAdding: .day, value: intervalDays, to: reviewedAt)
+            nextReviewAt: nextReviewAt ?? Calendar.current.date(byAdding: .day, value: intervalDays, to: reviewedAt),
+            note: note
         )
     }
 
     /// Upsert a SiteReview from the extension payload (legacy format: interval_days).
     /// Also upserts the corresponding Site record.
     /// Returns the site_review_id.
-    public func upsertSiteReview(url: String, title: String?, intervalDays: Int) async throws -> String {
+    public func upsertSiteReview(url: String, title: String?, intervalDays: Int, note: String? = nil) async throws -> String {
         guard let parsedURL = URL(string: url), let origin = parsedURL.origin else {
             // Fall back to using the full URL as origin
-            return try await upsertSiteReviewInternal(url: url, origin: url, title: title, intervalDays: intervalDays)
+            return try await upsertSiteReviewInternal(url: url, origin: url, title: title, intervalDays: intervalDays, note: note)
         }
-        return try await upsertSiteReviewInternal(url: url, origin: origin, title: title, intervalDays: intervalDays)
+        return try await upsertSiteReviewInternal(url: url, origin: origin, title: title, intervalDays: intervalDays, note: note)
     }
 
     private func upsertSiteReviewInternal(
@@ -72,7 +73,8 @@ public actor SiteService {
         title: String?,
         intervalDays: Int,
         reviewedAt: Date? = nil,
-        nextReviewAt: Date? = nil
+        nextReviewAt: Date? = nil,
+        note: String? = nil
     ) async throws -> String {
         let now = reviewedAt ?? Date()
         let next = nextReviewAt ?? Calendar.current.date(byAdding: .day, value: intervalDays, to: now)
@@ -110,7 +112,8 @@ public actor SiteService {
             siteOrigin: origin,
             pageTitle: title,
             reviewedAt: now,
-            nextReviewAt: next
+            nextReviewAt: next,
+            note: note
         )
         try await store.insert(review)
         return review.id
@@ -131,8 +134,7 @@ public actor SiteService {
             }
             return existing.id
         }
-        let nextReviewAt = Calendar.current.date(byAdding: .day, value: intervalDays, to: Date())
-        let site = Site(origin: origin, url: url, companyName: name, intervalDays: intervalDays, nextReviewAt: nextReviewAt)
+        let site = Site(origin: origin, url: url, companyName: name, intervalDays: intervalDays, nextReviewAt: nil)
         try await store.insert(site)
         return site.id
     }
@@ -164,6 +166,9 @@ public actor SiteService {
         let sites = try await store.fetch(FetchDescriptor<Site>(predicate: #Predicate { $0.id == id }))
         guard let site = sites.first else { throw SiteServiceError.siteNotFound(siteID) }
         let intervalDays = site.intervalDays
+        let siteURL = site.url
+        let siteOrigin = site.origin
+        let pageTitle = site.pageTitle
         let now = Date()
         let next = Calendar.current.date(byAdding: .day, value: intervalDays, to: now)
         try await store.update(Site.self, predicate: #Predicate { $0.id == id }) { site in
@@ -172,6 +177,15 @@ public actor SiteService {
             site.state = .reviewed
             site.updatedAt = now
         }
+        // Create SiteReview record for audit history
+        let review = SiteReview(
+            siteURL: siteURL,
+            siteOrigin: siteOrigin,
+            pageTitle: pageTitle.isEmpty ? nil : pageTitle,
+            reviewedAt: now,
+            nextReviewAt: next
+        )
+        try await store.insert(review)
     }
 
     public func setSiteState(siteID: String, state: SiteState) async throws {

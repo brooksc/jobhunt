@@ -63,12 +63,15 @@ public final class SavedSearch {
         }
         if let days = recentDays {
             let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
-            if job.createdAt < cutoff { return false }
+            if (job.capturedAtDenormalized ?? job.createdAt) < cutoff { return false }
         }
         if !searchText.isEmpty {
-            let q = searchText.lowercased()
-            let text = [job.company, job.title, job.location].compactMap { $0 }.joined(separator: " ").lowercased()
-            if !text.contains(q) { return false }
+            let q = searchText.lowercased().trimmingCharacters(in: .whitespaces)
+            let matchNum = q.hasPrefix("#") ? String(q.dropFirst()) : q
+            let textFields = [job.company, job.title, job.location].compactMap { $0 }.joined(separator: " ").lowercased()
+            let textMatch = textFields.contains(q)
+            let numMatch = job.jobNumber.map { String($0).contains(matchNum) } ?? false
+            if !textMatch && !numMatch { return false }
         }
         return true
     }

@@ -71,6 +71,25 @@ public actor QueueActor {
         }
     }
 
+    /// Enqueue fit-scoring requests for a set of job IDs against a specific resume.
+    /// Also creates/updates a JobFitScore record for each (job, resume) pair with fitStatus = .pending.
+    public func enqueueFit(jobIDs: [String], resumeID: String) async throws {
+        guard !jobIDs.isEmpty else { return }
+        let ids = jobIDs
+        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { ids.contains($0.id) }))
+        let jobMap = Dictionary(jobs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let resumes = try await store.fetch(FetchDescriptor<Resume>(predicate: #Predicate { $0.id == resumeID }))
+        guard let resume = resumes.first else { return }
+        for jobID in jobIDs {
+            guard let job = jobMap[jobID] else { continue }
+            let req = LLMRequest(requestType: .fit, status: .queued)
+            req.job = job
+            req.resume = resume
+            try await store.insert(req)
+            try? await store.markFitScorePending(jobID: jobID, resumeID: resumeID)
+        }
+    }
+
     /// On app launch, reset any requests stuck in "running" back to "queued".
     public func requeueRunningOnLaunch() async throws {
         // Fetch all then filter in-memory — SwiftData predicates cannot compare enum cases.
@@ -198,7 +217,7 @@ public actor QueueActor {
     private func fetchQueuedRequests(limit: Int) async -> [QueuedItem] {
         do {
             // SwiftData predicates cannot compare enum cases; sort+filter in Swift instead.
-            var descriptor = FetchDescriptor<LLMRequest>(
+            let descriptor = FetchDescriptor<LLMRequest>(
                 sortBy: [SortDescriptor(\.createdAt)]
             )
             let all = try await store.fetch(descriptor)
@@ -436,6 +455,8 @@ public actor QueueActor {
         )
         let resumeSnap = ResumeSnapshot(text: resume.text)
 
+        try? await store.markFitScoreRunning(jobID: jobID, resumeID: resumeID)
+
         do {
             let fitResult = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, provider: provider)
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
@@ -501,6 +522,7 @@ public actor QueueActor {
                     req.finishedAt = Date()
                     req.error = errorStr
                 }
+                try? await store.markFitScoreFailed(jobID: jobID, resumeID: resumeID, errorMessage: errorStr)
                 try await store.update(
                     Job.self,
                     predicate: #Predicate { $0.id == jobID }

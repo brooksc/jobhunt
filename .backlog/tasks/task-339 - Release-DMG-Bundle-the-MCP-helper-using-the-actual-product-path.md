@@ -1,9 +1,10 @@
 ---
 id: TASK-339
 title: 'Release DMG: Bundle the MCP helper using the actual product path'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:35'
+updated_date: '2026-06-12 20:51'
 labels:
   - audit
   - release

@@ -1,9 +1,10 @@
 ---
 id: TASK-247
 title: 'Lifecycle: Requeue stuck running LLM requests during app startup'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 02:20'
+updated_date: '2026-06-12 02:25'
 labels:
   - lifecycle
   - queue

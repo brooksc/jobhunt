@@ -3,9 +3,10 @@ id: TASK-230
 title: >-
   Supply chain: Replace global lockfile ignore with targeted generated-file
   ignores
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 01:42'
+updated_date: '2026-06-12 02:16'
 labels:
   - supply-chain
   - repo-hygiene

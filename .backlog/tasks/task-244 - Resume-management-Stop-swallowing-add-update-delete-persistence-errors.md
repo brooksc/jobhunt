@@ -1,9 +1,10 @@
 ---
 id: TASK-244
 title: 'Resume management: Stop swallowing add/update/delete persistence errors'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 02:02'
+updated_date: '2026-06-12 02:25'
 labels:
   - resumes
   - error-handling

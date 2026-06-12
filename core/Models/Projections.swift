@@ -57,7 +57,15 @@ public struct FitScoreProjection {
         requirementsMet = (dict?["requirements_met"] as? [String]) ?? []
         requirementsNotMet = (dict?["requirements_not_met"] as? [String]) ?? []
         dimensions = (dict?["dimensions"] as? [[String: Any]])?.compactMap { d in
-            guard let name = d["name"] as? String, let score = d["score"] as? Int else { return nil }
+            guard let name = d["name"] as? String else { return nil }
+            let score: Int
+            if let dbl = d["score"] as? Double {
+                score = Int(dbl.rounded())
+            } else if let int = d["score"] as? Int {
+                score = int
+            } else {
+                return nil
+            }
             return FitDimension(name: name, score: score, rationale: d["rationale"] as? String)
         } ?? []
     }

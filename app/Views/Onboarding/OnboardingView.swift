@@ -11,6 +11,7 @@ struct OnboardingView: View {
     let onboardingManager: OnboardingManager
     let settings: SettingsStore
     let modelContainer: ModelContainer
+    let resumeService: ResumeService
 
     private let totalSteps = 6
 
@@ -27,7 +28,7 @@ struct OnboardingView: View {
                 case 1: ChromeExtensionStep()
                 case 2: AIProviderStep(settings: settings)
                 case 3: LocationStep(settings: settings)
-                case 4: ResumeStep(modelContainer: modelContainer)
+                case 4: ResumeStep(resumeService: resumeService)
                 case 5: FinishStep(settings: settings, onboardingManager: onboardingManager)
                 default: EmptyView()
                 }
@@ -469,7 +470,7 @@ private struct LocationStep: View {
 // MARK: - Step 5: Resume
 
 private struct ResumeStep: View {
-    let modelContainer: ModelContainer
+    let resumeService: ResumeService
 
     @State private var resumeText: String = ""
     @State private var resumeName: String = ""
@@ -587,25 +588,16 @@ private struct ResumeStep: View {
 
             // Persist the resume
             Task {
-                await saveResume(name: filename, text: text, filename: filename)
+                await saveResume(name: filename, text: text)
             }
         } catch {
             importError = "Import failed: \(error.localizedDescription)"
         }
     }
 
-    private func saveResume(name: String, text: String, filename: String) async {
-        let store = BackgroundStore(modelContainer: modelContainer)
+    private func saveResume(name: String, text: String) async {
         do {
-            let resume = Resume(
-                name: name,
-                filename: filename,
-                text: text,
-                charCount: text.count,
-                active: true,
-                sortOrder: 0
-            )
-            try await store.insert(resume)
+            try await resumeService.addResume(name: name, text: text)
         } catch {
             // Non-fatal: user can add resume later in settings
         }

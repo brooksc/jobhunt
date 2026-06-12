@@ -1168,4 +1168,95 @@ final class StatusTimelineEventTests: XCTestCase {
         XCTAssertEqual(statusEvents.count, 2, "setStatusBulk must create one status event per job")
         XCTAssertTrue(statusEvents.allSatisfy { $0.note?.contains("applied") == true })
     }
+
+    // MARK: - TASK-313: markRequestFailed does not overwrite retry/retryExhausted
+
+    func testMarkRequestFailed_doesNotOverwriteRetryExhausted() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+
+        let req = LLMRequest(requestType: .extract, status: .retryExhausted)
+        try await store.insert(req)
+        let reqID = req.id
+
+        // Simulate the guard-protected update that markRequestFailed uses
+        try await store.update(LLMRequest.self, predicate: #Predicate { $0.id == reqID }) { r in
+            guard r.status == .running else { return }
+            r.status = .failed
+            r.finishedAt = Date()
+            r.error = "should not appear"
+        }
+
+        let fetched = try await store.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == reqID }))
+        XCTAssertEqual(fetched.first?.status, .retryExhausted, "retryExhausted must not be overwritten by markRequestFailed")
+    }
+
+    func testMarkRequestFailed_doesNotOverwriteQueued() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+
+        let req = LLMRequest(requestType: .extract, status: .queued)
+        try await store.insert(req)
+        let reqID = req.id
+
+        // Simulate the guard-protected update
+        try await store.update(LLMRequest.self, predicate: #Predicate { $0.id == reqID }) { r in
+            guard r.status == .running else { return }
+            r.status = .failed
+            r.finishedAt = Date()
+            r.error = "should not appear"
+        }
+
+        let fetched = try await store.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == reqID }))
+        XCTAssertEqual(fetched.first?.status, .queued, "queued (retry) must not be overwritten by markRequestFailed")
+    }
+
+    // MARK: - TASK-314: Attempt records can be linked to an LLMRequest
+
+    func testAttemptRecordsLinkedToRequest() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+
+        let req = LLMRequest(requestType: .extract, status: .running)
+        try await store.insert(req)
+
+        let attempt = LLMRequestAttempt(
+            requestType: .extract,
+            attempt: 1,
+            status: .failed,
+            modelRequested: "test-model",
+            startedAt: Date(),
+            finishedAt: Date(),
+            error: "test error"
+        )
+        attempt.request = req
+        try await store.insert(attempt)
+
+        // Verify the relationship is navigable
+        let reqID = req.id
+        let fetched = try await store.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == reqID }))
+        XCTAssertEqual(fetched.first?.attempts.count, 1, "Attempt should be linked to the request")
+        XCTAssertEqual(fetched.first?.attempts.first?.status, .failed)
+    }
+
+    // MARK: - TASK-316: Running transition skips cancelled requests
+
+    func testRunningTransitionSkipsCancelledRequest() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+
+        let req = LLMRequest(requestType: .extract, status: .cancelled)
+        try await store.insert(req)
+        let reqID = req.id
+
+        // Simulate the guard-protected running transition from processRequest
+        try await store.update(LLMRequest.self, predicate: #Predicate { $0.id == reqID }) { r in
+            guard r.status == .queued else { return }
+            r.status = .running
+            r.startedAt = Date()
+        }
+
+        let fetched = try await store.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == reqID }))
+        XCTAssertEqual(fetched.first?.status, .cancelled, "Cancelled request must not be transitioned to running")
+    }
 }

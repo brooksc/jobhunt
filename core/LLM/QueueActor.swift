@@ -293,17 +293,26 @@ public actor QueueActor {
     }
 
     private func processRequest(_ item: QueuedItem, provider: any LLMProvider) async -> ProcessResult {
-        // Mark as running
+        // TASK-316: Conditionally mark as running — don't overwrite if cancelled between snapshot and here
         let itemID = item.id
         do {
             try await store.update(
                 LLMRequest.self,
                 predicate: #Predicate { $0.id == itemID }
             ) { req in
+                guard req.status == .queued else { return }
                 req.status = .running
                 req.startedAt = Date()
             }
         } catch {
+            return ProcessResult(succeeded: false)
+        }
+
+        // Verify the transition actually happened
+        let current = try? await store.fetch(
+            FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == itemID })
+        ).first
+        guard current?.status == .running else {
             return ProcessResult(succeeded: false)
         }
 
@@ -350,13 +359,9 @@ public actor QueueActor {
             captureSelectedText: job.capture?.selectedText
         )
 
-        let attempt = LLMRequestAttempt(
-            requestType: .extract,
-            attempt: item.attempt,
-            status: .running,
-            modelRequested: provider.id,
-            startedAt: startedAt
-        )
+        // TASK-314: Fetch the LLMRequest for linking to attempt records
+        let reqRecords = try? await store.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == itemID }))
+        let llmRequest = reqRecords?.first
 
         do {
             let extractSettings = await readExtractionSettings()
@@ -407,7 +412,7 @@ public actor QueueActor {
                 job.updatedAt = Date()
             }
 
-            // Persist attempt record
+            // Persist attempt record — linked to request and job (TASK-314)
             let finishedAttempt = LLMRequestAttempt(
                 requestType: .extract,
                 attempt: item.attempt,
@@ -420,6 +425,8 @@ public actor QueueActor {
                 promptChars: result.promptChars,
                 responseChars: result.responseChars
             )
+            finishedAttempt.request = llmRequest
+            finishedAttempt.job = job
             try await store.insert(finishedAttempt)
 
             // Mark request succeeded
@@ -438,7 +445,7 @@ public actor QueueActor {
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
             let errorStr = error.localizedDescription
 
-            // Record failed attempt
+            // Record failed attempt — linked to request and job (TASK-314)
             let failedAttempt = LLMRequestAttempt(
                 requestType: .extract,
                 attempt: item.attempt,
@@ -449,6 +456,8 @@ public actor QueueActor {
                 durationMs: durationMs,
                 error: errorStr
             )
+            failedAttempt.request = llmRequest
+            failedAttempt.job = job
             try await store.insert(failedAttempt)
 
             if item.attempt >= Self.maxRetries {
@@ -505,10 +514,27 @@ public actor QueueActor {
             return false
         }
 
+        // TASK-314: Fetch the LLMRequest for linking to attempt records (done before resume guard for TASK-317)
+        let fitReqRecords = try? await store.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == itemID }))
+        let fitLLMRequest = fitReqRecords?.first
+
         let resumes = try await store.fetch(FetchDescriptor<Resume>(predicate: #Predicate { $0.id == resumeID }))
         guard let resume = resumes.first,
               !resume.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             let errMsg = resumes.isEmpty ? "Resume no longer exists." : "Resume has no text to score against."
+            // TASK-317: Record attempt history for pre-provider failures
+            let blockedAttempt = LLMRequestAttempt(
+                requestType: .fit,
+                attempt: item.attempt,
+                status: .failed,
+                modelRequested: provider.id,
+                startedAt: startedAt,
+                finishedAt: Date(),
+                error: errMsg
+            )
+            blockedAttempt.request = fitLLMRequest
+            blockedAttempt.job = job
+            try? await store.insert(blockedAttempt)
             try await store.update(
                 LLMRequest.self,
                 predicate: #Predicate { $0.id == itemID }
@@ -566,6 +592,7 @@ public actor QueueActor {
                 scoredAt: scoredAt
             )
 
+            // Persist attempt record — linked to request and job (TASK-314)
             let finishedAttempt = LLMRequestAttempt(
                 requestType: .fit,
                 attempt: item.attempt,
@@ -578,6 +605,8 @@ public actor QueueActor {
                 promptChars: fitOutput.promptChars,
                 responseChars: fitOutput.responseChars
             )
+            finishedAttempt.request = fitLLMRequest
+            finishedAttempt.job = job
             try await store.insert(finishedAttempt)
 
             try await store.update(
@@ -598,6 +627,7 @@ public actor QueueActor {
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
             let errorStr = error.localizedDescription
 
+            // Persist attempt record — linked to request and job (TASK-314)
             let failedAttempt = LLMRequestAttempt(
                 requestType: .fit,
                 attempt: item.attempt,
@@ -608,6 +638,8 @@ public actor QueueActor {
                 durationMs: durationMs,
                 error: errorStr
             )
+            failedAttempt.request = fitLLMRequest
+            failedAttempt.job = job
             try await store.insert(failedAttempt)
 
             if item.attempt >= Self.maxRetries {
@@ -644,6 +676,8 @@ public actor QueueActor {
             LLMRequest.self,
             predicate: #Predicate { $0.id == itemID }
         ) { req in
+            // TASK-313: Only overwrite if still running — don't clobber retry/retryExhausted states
+            guard req.status == .running else { return }
             req.status = .failed
             req.finishedAt = Date()
             req.error = errorStr

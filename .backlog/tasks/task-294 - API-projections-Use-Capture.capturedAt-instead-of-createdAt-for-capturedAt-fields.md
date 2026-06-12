@@ -3,9 +3,10 @@ id: TASK-294
 title: >-
   API projections: Use Capture.capturedAt instead of createdAt for capturedAt
   fields
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 04:39'
+updated_date: '2026-06-12 05:47'
 labels:
   - audit
   - api

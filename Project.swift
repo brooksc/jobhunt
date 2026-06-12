@@ -216,11 +216,16 @@ let serverTestsTarget = testTarget(
     deps: [.target(name: "JobhuntServer")]
 )
 
+// MCPHelpers.swift is compiled directly into MCPTests because JobhuntMCP is a
+// commandLineTool and cannot be linked as a dependency (same pattern as CoreTests).
 let mcpTestsTarget = testTarget(
     name: "MCPTests",
     bundleSuffix: "MCPTests",
-    sources: ["Tests/MCPTests/**/*.swift"],
-    deps: [.target(name: "JobhuntMCP")]
+    sources: [
+        "Tests/MCPTests/**/*.swift",
+        "mcp/swift/MCPHelpers.swift",
+    ],
+    deps: [.target(name: "JobhuntCore")]
 )
 
 let appUITestsTarget = testTarget(
@@ -252,6 +257,7 @@ let dmgScheme = Scheme.scheme(
         [
             .testableTarget(target: .target("CoreTests")),
             .testableTarget(target: .target("ServerTests")),
+            .testableTarget(target: .target("MCPTests")),
         ],
         configuration: "Debug-DMG"
     ),

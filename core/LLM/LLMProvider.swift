@@ -91,10 +91,11 @@ public enum LLMProviderError: Error, LocalizedError {
     case noResponse
     case unavailable(reason: String)
 
+    /// Sanitized description safe for persistence — never includes raw response bodies.
     public var errorDescription: String? {
         switch self {
-        case let .httpError(code, body):
-            "LLM HTTP \(code): \(body.prefix(500))"
+        case let .httpError(code, _):
+            "LLM HTTP \(code)"
         case let .timeout(seconds):
             "LLM request timed out after \(seconds)s"
         case .noResponse:

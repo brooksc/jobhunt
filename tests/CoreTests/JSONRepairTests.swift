@@ -93,4 +93,58 @@ final class JSONRepairTests: XCTestCase {
         let obj = try (JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         XCTAssertEqual(obj["name"] as? String, "Alice")
     }
+
+    // MARK: - TASK-267: Prose before/after JSON
+
+    func testRepairProseBeforeJSON() throws {
+        let input = "Here is the result:\n{\"company\":\"Acme\"}"
+        let result = try repairJSON(input)
+        let data = try XCTUnwrap(result.data(using: .utf8))
+        let obj = try (JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        XCTAssertEqual(obj["company"] as? String, "Acme")
+    }
+
+    func testRepairProseAfterJSON() throws {
+        let input = "{\"company\":\"Acme\"}\n\nLet me know if you need anything."
+        let result = try repairJSON(input)
+        let data = try XCTUnwrap(result.data(using: .utf8))
+        let obj = try (JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        XCTAssertEqual(obj["company"] as? String, "Acme")
+    }
+
+    func testRepairProseBeforeAndAfterJSON() throws {
+        let input = "Sure! Here you go:\n{\"company\":\"Acme\",\"score\":42}\n\nHope that helps!"
+        let result = try repairJSON(input)
+        let data = try XCTUnwrap(result.data(using: .utf8))
+        let obj = try (JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        XCTAssertEqual(obj["company"] as? String, "Acme")
+        XCTAssertEqual(obj["score"] as? Int, 42)
+    }
+
+    func testRepairMultipleJSONObjectsFails() {
+        // Ambiguous: two top-level objects — extraction picks first-open to last-close,
+        // producing invalid JSON, so repairJSON should throw.
+        let input = "{\"a\":1}{\"b\":2}"
+        XCTAssertThrowsError(try repairJSON(input))
+    }
+
+    // MARK: - TASK-166 / TASK-173: LocalizedError
+
+    func testJSONRepairError_localizedDescription_doesNotLeakRawContent() {
+        let rawContent = "THIS_IS_SECRET_CONTENT_THAT_MUST_NOT_APPEAR"
+        let error = JSONRepairError.unparseable(rawContent)
+        let desc = error.localizedDescription
+        XCTAssertFalse(desc.contains(rawContent), "errorDescription must not expose raw model output")
+        XCTAssertFalse(desc.isEmpty, "errorDescription must not be empty")
+    }
+
+    func testExtractionEngineError_invalidJSON_doesNotLeakRawOutput() {
+        let rawOutput = "THIS_MUST_NOT_APPEAR_IN_DESCRIPTION"
+        let error = ExtractionEngineError.invalidJSON(rawOutput)
+        XCTAssertFalse(
+            error.localizedDescription.contains(rawOutput),
+            "invalidJSON errorDescription must not expose raw LLM output"
+        )
+        XCTAssertFalse(error.localizedDescription.isEmpty)
+    }
 }

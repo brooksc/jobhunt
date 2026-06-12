@@ -6,6 +6,7 @@ import SwiftUI
 /// SiteDetailView is displayed in the detail column when router.selectedSiteID is set.
 struct SitesView: View {
     @Environment(Router.self) private var router
+    @Environment(AppServices.self) private var appServices
 
     @Query(sort: \Site.nextReviewAt, order: .forward) private var sites: [Site]
 
@@ -123,7 +124,7 @@ struct SitesView: View {
             }
         }
         .sheet(isPresented: $showAddSheet) {
-            AddSiteSheet(siteService: siteService)
+            AddSiteSheet(siteService: siteService, intervalDays: appServices.settings.siteReviewIntervalDays)
         }
     }
 }

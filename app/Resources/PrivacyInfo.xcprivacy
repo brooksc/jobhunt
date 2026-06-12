@@ -4,6 +4,15 @@
 <dict>
   <key>NSPrivacyTracking</key><false/>
   <key>NSPrivacyTrackingDomains</key><array/>
+  <!-- NSPrivacyCollectedDataTypes is intentionally empty.
+       The developer collects no user data. All storage is local (SwiftData on device).
+       When the user configures a cloud LLM provider (OpenAI, Anthropic, Google, OpenRouter,
+       or a custom remote endpoint), job description and resume text are sent directly from
+       the user's device to that third-party provider under the provider's own privacy policy.
+       The developer never receives this data. Consent is required before any such transmission
+       (see ConsentHelper and LLMConsentSheet). Local and loopback providers (LM Studio,
+       Foundation Models, custom on 127.0.0.1/localhost/::1) never send data off-device.
+       Review this declaration after any new network feature is added. -->
   <key>NSPrivacyCollectedDataTypes</key><array/>
   <key>NSPrivacyAccessedAPITypes</key>
   <array>

@@ -51,7 +51,11 @@
   }
 
   async function loadQueue() {
-    const queue = await jobhuntRetryQueue.getQueue(chrome.storage.local);
+    const raw = await jobhuntRetryQueue.getQueue(chrome.storage.local);
+    const queue = jobhuntRetryQueue.purgeExpired(raw);
+    if (queue.length !== raw.length) {
+      await jobhuntRetryQueue.setQueue(chrome.storage.local, queue);
+    }
     render(queue);
     return queue;
   }

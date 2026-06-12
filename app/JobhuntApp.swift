@@ -6,16 +6,43 @@ import UniformTypeIdentifiers
 
 @main
 struct JobhuntApp: App {
-    let modelContainer: ModelContainer
-    let appServices: AppServices
-    let onboardingManager: OnboardingManager
-    let router: Router
-    let platformIntegration: PlatformIntegration
+    // Non-nil when ModelContainer failed to open — shows recovery UI instead of main window.
+    let storeFailure: StoreFailure?
+
+    let modelContainer: ModelContainer?
+    let appServices: AppServices?
+    let onboardingManager: OnboardingManager?
+    let router: Router?
+    let platformIntegration: PlatformIntegration?
     let theme = Theme()
 
+    struct StoreFailure {
+        let storeURL: URL
+        let message: String
+    }
+
     init() {
+        let args = CommandLine.arguments
+        let isUITest = args.contains("--ui-test-store")
+        let shouldSeed = args.contains("--seed-demo-data")
+
         do {
-            let container = try ModelContainerFactory.production()
+            let container: ModelContainer
+            if isUITest {
+                // Use a dedicated temp store that cannot touch the user's production database.
+                let storeURL = URL(fileURLWithPath: NSTemporaryDirectory())
+                    .appendingPathComponent("JobhuntUITest/jobhunt-ui-test.store")
+                try? FileManager.default.createDirectory(
+                    at: storeURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                // Always start fresh so tests see a clean slate.
+                let shmURL = storeURL.appendingPathExtension("shm")
+                let walURL = storeURL.appendingPathExtension("wal")
+                for url in [storeURL, shmURL, walURL] { try? FileManager.default.removeItem(at: url) }
+                container = try ModelContainerFactory.test(at: storeURL)
+            } else {
+                container = try ModelContainerFactory.production()
+            }
+
             modelContainer = container
             let services = AppServices(modelContainer: container)
             appServices = services
@@ -24,88 +51,122 @@ struct JobhuntApp: App {
             router = sharedRouter
             let integration = PlatformIntegration(router: sharedRouter, modelContainer: container)
             platformIntegration = integration
+            storeFailure = nil
             Task { @MainActor in
                 integration.start(queue: services.queueActor)
+                if shouldSeed {
+                    try? await DemoSeeder.seedDemo(into: services.backgroundStore)
+                }
             }
         } catch {
-            fatalError("Failed to create ModelContainer: \(error)")
+            modelContainer = nil
+            appServices = nil
+            onboardingManager = nil
+            router = nil
+            platformIntegration = nil
+            storeFailure = StoreFailure(
+                storeURL: ModelContainerFactory.productionStoreURL(),
+                message: error.localizedDescription
+            )
         }
     }
 
     var body: some Scene {
         WindowGroup {
-            ContentView(router: router, theme: theme)
-                .environment(appServices)
-                .sheet(isPresented: Binding(
-                    get: { onboardingManager.isPresented },
-                    set: { onboardingManager.isPresented = $0 }
-                )) {
-                    OnboardingView(
-                        onboardingManager: onboardingManager,
-                        settings: appServices.settings,
-                        modelContainer: modelContainer
-                    )
-                }
-                .onOpenURL { url in
-                    platformIntegration.handleDeepLink(url)
-                }
+            if let failure = storeFailure {
+                StoreRecoveryView(failure: failure)
+            } else if let container = modelContainer,
+                      let services = appServices,
+                      let mgr = onboardingManager,
+                      let r = router,
+                      let integration = platformIntegration {
+                ContentView(router: r, theme: theme)
+                    .environment(services)
+                    .sheet(isPresented: Binding(
+                        get: { mgr.isPresented },
+                        set: { mgr.isPresented = $0 }
+                    )) {
+                        OnboardingView(
+                            onboardingManager: mgr,
+                            settings: services.settings,
+                            modelContainer: container
+                        )
+                    }
+                    .onOpenURL { url in
+                        integration.handleDeepLink(url)
+                    }
+                    .modelContainer(container)
+            }
         }
         .defaultSize(width: 1200, height: 750)
-        .modelContainer(modelContainer)
         .commands {
-            // ⌘N — Add Job (HIG-7)
-            CommandGroup(replacing: .newItem) {
-                Button("Add Job…") {
-                    router.navigateToSection(.jobs)
-                    router.showAddJobSheet = true
-                }
-                .keyboardShortcut("n", modifiers: .command)
-            }
+            if let r = router, let services = appServices, let container = modelContainer {
+                JobMenuCommands()
+                QueueMenuCommands()
+                QualityMenuCommands()
 
-            // ⌘K — Jump to Jobs / focus search
-            CommandGroup(after: .newItem) {
-                Button("Search Jobs") {
-                    router.navigateToSection(.jobs)
-                    router.focusSearch = true
+                // ⌘N — Add Job (HIG-7)
+                CommandGroup(replacing: .newItem) {
+                    Button("Add Job…") {
+                        r.navigateToSection(.jobs)
+                        r.showAddJobSheet = true
+                    }
+                    .keyboardShortcut("n", modifiers: .command)
                 }
-                .keyboardShortcut("k", modifiers: .command)
-            }
 
-            // ⌘⇧E — Export CSV (HIG-18)
-            CommandGroup(after: .importExport) {
-                Button("Export Jobs to CSV…") {
-                    Task { @MainActor in
-                        let ctx = ModelContext(modelContainer)
-                        let jobs = (try? ctx.fetch(FetchDescriptor<Job>(
-                            sortBy: [SortDescriptor(\Job.createdAt, order: .reverse)]
-                        ))) ?? []
-                        let csv = ExportService.jobsCSV(jobs: jobs)
-                        let panel = NSSavePanel()
-                        panel.allowedContentTypes = [.commaSeparatedText]
-                        panel.nameFieldStringValue = "jobs.csv"
-                        if panel.runModal() == .OK, let url = panel.url {
-                            try? ExportService.write(csv, to: url)
+                // ⌘K — Jump to Jobs / focus search
+                CommandGroup(after: .newItem) {
+                    Button("Search Jobs") {
+                        r.navigateToSection(.jobs)
+                        r.focusSearch = true
+                    }
+                    .keyboardShortcut("k", modifiers: .command)
+                }
+
+                // ⌘⇧E — Export job list fields to CSV (not a full backup; HIG-18)
+                CommandGroup(after: .importExport) {
+                    Button("Export Job List to CSV…") {
+                        Task { @MainActor in
+                            let ctx = ModelContext(container)
+                            let jobs = (try? ctx.fetch(FetchDescriptor<Job>(
+                                sortBy: [SortDescriptor(\Job.createdAt, order: .reverse)]
+                            ))) ?? []
+                            let csv = ExportService.jobsCSV(jobs: jobs)
+                            let panel = NSSavePanel()
+                            panel.allowedContentTypes = [.commaSeparatedText]
+                            panel.nameFieldStringValue = "jobs.csv"
+                            guard panel.runModal() == .OK, let url = panel.url else { return }
+                            do {
+                                try ExportService.write(csv, to: url)
+                            } catch {
+                                services.toastStore.show(
+                                    "Export failed: \(error.localizedDescription)", isError: true
+                                )
+                            }
                         }
                     }
+                    .keyboardShortcut("e", modifiers: [.command, .shift])
                 }
-                .keyboardShortcut("e", modifiers: [.command, .shift])
-            }
 
-            #if !MAS_BUILD
-                CommandGroup(after: .appInfo) {
-                    Button("Check for Updates…") {
-                        SparkleUpdater.checkForUpdates()
+                #if !MAS_BUILD
+                    CommandGroup(after: .appInfo) {
+                        Button("Check for Updates…") {
+                            SparkleUpdater.checkForUpdates()
+                        }
                     }
-                }
-            #endif
+                #endif
+            }
         }
 
-        // HIG-2: Dedicated Settings scene — opened via ⌘, from the app menu
+        // HIG-2: Dedicated Settings scene — opened via ⌘, from the app menu.
+        // Only available when the store opened successfully.
         Settings {
-            SettingsView()
-                .environment(appServices)
-                .environment(theme)
-                .modelContainer(modelContainer)
+            if let services = appServices, let container = modelContainer {
+                SettingsView()
+                    .environment(services)
+                    .environment(theme)
+                    .modelContainer(container)
+            }
         }
     }
 }

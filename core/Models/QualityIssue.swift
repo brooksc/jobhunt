@@ -120,12 +120,14 @@ public enum QualityChecker: Sendable {
     }
 
     private static func rawByteSize(_ job: Job) -> Int {
+        if let cached = job.rawTextBytes { return cached }
         let selected = job.capture?.selectedText?.utf8.count ?? 0
         let visible = job.capture?.visibleText?.utf8.count ?? 0
         return max(selected, visible)
     }
 
     private static func cleanedByteSize(_ job: Job) -> Int {
-        job.capture?.cleanedDescription?.utf8.count ?? 0
+        if let cached = job.cleanedTextBytes { return cached }
+        return job.capture?.cleanedDescription?.utf8.count ?? 0
     }
 }

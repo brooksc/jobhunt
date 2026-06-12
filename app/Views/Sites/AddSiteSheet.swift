@@ -5,6 +5,7 @@ struct AddSiteSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let siteService: SiteService
+    let intervalDays: Int
 
     @State private var urlText = ""
     @State private var nameText = ""
@@ -75,7 +76,8 @@ struct AddSiteSheet: View {
             do {
                 _ = try await siteService.createSite(
                     url: url,
-                    name: name.isEmpty ? nil : name
+                    name: name.isEmpty ? nil : name,
+                    intervalDays: intervalDays
                 )
                 await MainActor.run {
                     isAdding = false

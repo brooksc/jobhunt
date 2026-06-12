@@ -3,12 +3,12 @@ import SwiftData
 import SwiftUI
 
 // MARK: - Sidebar statuses shown as smart folders
-private let sidebarStatuses: [JobStatus] = [.new, .pursuing, .applied, .interview, .offer, .rejected, .passed, .closed, .expired]
+private let sidebarStatuses: [JobStatus] = [.new, .pursuing, .applied, .interview, .offer, .rejected, .passed, .archived, .closed, .expired]
 
 struct Sidebar: View {
     var router: Router
 
-    @Environment(\.modelContext) private var modelContext
+    @Environment(AppServices.self) private var appServices
 
     @Query(filter: #Predicate<JobAction> { $0.completedAt == nil }) private var pendingActions: [JobAction]
     @Query(filter: #Predicate<Job> { $0.duplicateOfJobID != nil }) private var duplicateJobs: [Job]
@@ -34,6 +34,9 @@ struct Sidebar: View {
                 .help("Jobs with pending follow-up")
 
             Section("Jobs") {
+                // Compute status counts once — avoids O(N×S) work from per-status filter calls.
+                let statusCounts = Dictionary(grouping: allJobs, by: \.status).mapValues(\.count)
+
                 Label("All Jobs", systemImage: "tray.2")
                     .tag(SidebarItem.jobsAll)
                     .badge(allJobs.count)
@@ -41,7 +44,7 @@ struct Sidebar: View {
                     .help("All captured jobs")
 
                 ForEach(sidebarStatuses, id: \.self) { status in
-                    let count = allJobs.filter { $0.status == status }.count
+                    let count = statusCounts[status] ?? 0
                     Label(status.displayName, systemImage: Theme.statusSymbol(status))
                         .tag(SidebarItem.jobs(status))
                         .badge(count)
@@ -52,8 +55,17 @@ struct Sidebar: View {
 
             if !savedSearches.isEmpty {
                 Section("Saved Searches") {
+                    // Compute all search counts in one pass over allJobs per search.
+                    // Cached into a dictionary so each search label doesn't re-filter.
+                    let searchCounts: [String: Int] = {
+                        var counts = [String: Int]()
+                        for search in savedSearches {
+                            counts[search.id] = allJobs.count(where: { search.matches($0) })
+                        }
+                        return counts
+                    }()
                     ForEach(savedSearches) { search in
-                        let count = allJobs.filter { search.matches($0) }.count
+                        let count = searchCounts[search.id] ?? 0
                         Label(search.name, systemImage: "pin")
                             .tag(SidebarItem.savedSearch(search.id))
                             .badge(count)
@@ -124,7 +136,8 @@ struct Sidebar: View {
                     if listSelection == .savedSearch(search.id) {
                         listSelection = .jobsAll
                     }
-                    modelContext.delete(search)
+                    let id = search.id
+                    Task { try? await appServices.jobService.deleteSavedSearch(id: id) }
                     searchToDelete = nil
                 }
             }

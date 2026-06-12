@@ -4,13 +4,17 @@ import SwiftData
 @Model
 public final class Job {
     public var id: String
-    public var jobNumber: Int?
+    // Safe to mark unique on fresh installs. For existing stores with duplicate jobNumber rows,
+    // deduplicate before opening the store with this constraint active.
+    @Attribute(.unique) public var jobNumber: Int?
     public var company: String?
     public var title: String?
     public var location: String?
     public var remoteType: RemoteType?
     public var salaryMin: Int?
     public var salaryMax: Int?
+    public var salaryHourlyMin: Double?
+    public var salaryHourlyMax: Double?
     public var salaryCurrency: String?
     public var salaryNote: String?
     public var employmentType: String?
@@ -23,6 +27,8 @@ public final class Job {
     public var fitScore: Int?
     public var fitStatus: FitStatus
     public var fitScoreJSON: String?
+    /// Canonical duplicate signal. When non-nil, `status` must also be `.duplicate`.
+    /// Use `JobService.markDuplicate` / `unmarkDuplicate` to maintain this invariant.
     public var duplicateOfJobID: String?
     public var duplicateConfidence: Double?
     public var extractedAt: Date?
@@ -34,7 +40,13 @@ public final class Job {
     public var unread: Bool
     public var createdAt: Date
     public var updatedAt: Date
+    public var rawTextBytes: Int?
+    public var cleanedTextBytes: Int?
+    /// Denormalized copy of `capture.capturedAt` for use in store-level predicates.
+    /// Nil on rows ingested before this field was added; fall back to `createdAt` when nil.
+    public var capturedAtDenormalized: Date?
 
+    @Relationship(deleteRule: .cascade)
     public var capture: Capture?
 
     @Relationship(deleteRule: .cascade, inverse: \JobEvent.job)
@@ -67,6 +79,8 @@ public final class Job {
         remoteType: RemoteType? = nil,
         salaryMin: Int? = nil,
         salaryMax: Int? = nil,
+        salaryHourlyMin: Double? = nil,
+        salaryHourlyMax: Double? = nil,
         salaryCurrency: String? = nil,
         salaryNote: String? = nil,
         employmentType: String? = nil,
@@ -99,6 +113,8 @@ public final class Job {
         self.remoteType = remoteType
         self.salaryMin = salaryMin
         self.salaryMax = salaryMax
+        self.salaryHourlyMin = salaryHourlyMin
+        self.salaryHourlyMax = salaryHourlyMax
         self.salaryCurrency = salaryCurrency
         self.salaryNote = salaryNote
         self.employmentType = employmentType

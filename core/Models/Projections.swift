@@ -133,6 +133,16 @@ public struct JobListRecord: Sendable {
     }
 }
 
+/// Full read model returned by the MCP `job_get` tool and the HTTP `/api/jobs/:number` endpoint.
+///
+/// **Privacy note:** `selectedText` and `visibleText` are the raw text captured from the job
+/// posting page. Including them by default is intentional — local agent workflows (Claude MCP,
+/// Cursor, etc.) need access to source text for summarization and re-extraction. The MCP
+/// endpoint is local-only (127.0.0.1) and requires a per-device bearer token, so this data
+/// is only reachable by processes on the user's own machine that hold the token.
+///
+/// If this record is ever exposed over a network boundary, `selectedText`/`visibleText` should
+/// be moved behind an explicit opt-in parameter.
 public struct JobDetailRecord: Sendable {
     public let id: String
     public let jobNumber: Int?

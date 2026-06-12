@@ -174,10 +174,7 @@ private struct WelcomeStep: View {
 // MARK: - Step 2: Chrome Extension
 
 private struct ChromeExtensionStep: View {
-    /// Real Chrome Web Store URL for the Jobhunt extension (placeholder if not published)
-    private let storeURL = "https://chrome.google.com/webstore/detail/jobhunt-capture/placeholder"
-    /// Extension folder path for manual install
-    private let extensionPath = "~/code/jobhunt/extension"
+    private let storeURL = "https://chromewebstore.google.com/detail/jobhunt-capture/jekcbebhfeidkpapienoflbcaeeknlch"
 
     var body: some View {
         VStack(spacing: 24) {
@@ -219,14 +216,7 @@ private struct ChromeExtensionStep: View {
 
                 Text("1. Open chrome://extensions in Chrome")
                 Text("2. Enable \"Developer mode\" (top right)")
-                Text("3. Click \"Load unpacked\" and select:")
-                HStack(spacing: 4) {
-                    Image(systemName: "folder")
-                        .foregroundStyle(.secondary)
-                    Text(extensionPath)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
+                Text("3. Click \"Load unpacked\" and select the extension folder")
             }
             .font(.callout)
             .frame(maxWidth: 400, alignment: .leading)

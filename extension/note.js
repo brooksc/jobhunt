@@ -18,6 +18,9 @@ document.getElementById("save").addEventListener("click", async () => {
     statusText.textContent = "Saved.";
     window.setTimeout(() => window.close(), 500);
   } else {
-    statusText.textContent = "Could not save.";
+    // Keep the window open so the user can retry. Pending tab context is preserved
+    // in the service worker until capture succeeds.
+    const detail = (response && response.error) ? `: ${response.error}` : "";
+    statusText.textContent = `Could not save${detail}. Try again.`;
   }
 });

@@ -12,7 +12,9 @@ public final class Capture {
     public var cleanedDescription: String?
     public var structuredDataJSON: String?
     public var userNote: String?
-    public var rawHash: String
+    // Safe to mark unique on fresh installs. For existing stores with duplicate rawHash rows,
+    // deduplicate before opening the store with this constraint active.
+    @Attribute(.unique) public var rawHash: String
     public var cleanedHash: String?
     public var capturedAt: Date
     public var createdAt: Date

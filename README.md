@@ -27,7 +27,7 @@ Jobhunt is a native macOS app for job hunters. Capture postings from any job boa
 
 ### Chrome Extension
 
-Install from the [Chrome Web Store](https://chromewebstore.google.com/detail/jobhunt-capture/hfidoakacpbhopmcpikckjhibfnobjjb) or load unpacked:
+Install from the [Chrome Web Store](https://chromewebstore.google.com/detail/jobhunt-capture/jekcbebhfeidkpapienoflbcaeeknlch) or load unpacked:
 
 1. Open `chrome://extensions`.
 2. Enable **Developer mode**.
@@ -105,12 +105,14 @@ claude mcp add jobhunt -- /Applications/Jobhunt.app/Contents/Helpers/jobhunt-mcp
 
 The app must be running for MCP to work. MAS users do not get MCP (sandbox restriction).
 
+**MCP trust boundary:** The MCP endpoint is local-only (`127.0.0.1`) and requires a per-device bearer token written to `~/.jobhunt-mcp-token` (owner-readable only). The `job_get` tool omits raw captured page text (`selected_text`, `visible_text`) by default; pass `include_raw_text: true` to include it. Do not expose the MCP port or token to remote systems.
+
 ## Distribution
 
-| Channel | Artifact | Signing |
-|---|---|---|
-| GitHub Releases | `.dmg` | Developer ID |
-| Mac App Store | `.ipa` | MAS certificate |
+| Channel | Artifact | Signing | Delivery |
+|---|---|---|---|
+| GitHub Releases | `.dmg` | Developer ID | Attached to GitHub Release |
+| Mac App Store | `.pkg` | MAS certificate | Upload via Transporter → App Store Connect |
 
 ## Development
 
@@ -129,27 +131,63 @@ xcodebuild build \
 
 ### Test
 
+**Fast gate** (matches CI — CoreTests + ServerTests + MCPTests, ~30s):
+
 ```bash
 xcodebuild test \
-  -project Jobhunt.xcodeproj \
   -scheme Jobhunt-DMG \
+  -configuration Debug-DMG \
   -destination 'platform=macOS' \
-  -only-testing:CoreTests
+  -only-testing CoreTests \
+  -only-testing ServerTests \
+  -only-testing MCPTests \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+**UI tests** (requires a display server; run manually or on a scheduled VM lane):
+
+```bash
+xcodebuild test \
+  -scheme Jobhunt-DMG \
+  -configuration Debug-DMG \
+  -destination 'platform=macOS' \
+  -only-testing AppUITests \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+**LLM eval** (opt-in; requires a running LLM provider):
+
+```bash
+LLM_EVAL=1 xcodebuild test \
+  -scheme Jobhunt-DMG \
+  -configuration Debug-DMG \
+  -destination 'platform=macOS' \
+  -only-testing LLMEval \
+  CODE_SIGNING_ALLOWED=NO
 ```
 
 ### Versioning
 
+Version is sourced from `Project.swift` `.marketingVersion`. The script updates both
+`Project.swift` and `extension/manifest.json`. It does **not** auto-commit.
+
 ```bash
-./scripts/bump-version.sh patch   # z++
+./scripts/bump-version.sh patch   # z++   (reads current version from Project.swift)
 ./scripts/bump-version.sh minor   # y++, z=0
 ./scripts/bump-version.sh major   # x++, y=0, z=0
+./scripts/bump-version.sh 1.2.3  # set explicit version
+```
+
+After bumping, commit the changed files manually:
+```bash
+git add Project.swift extension/manifest.json
+git commit -m "chore: bump version to $(grep -o '"[0-9.]*"' Project.swift | head -1 | tr -d '"')"
 ```
 
 ### Runtime Data
 
 ```
 ~/Library/Application Support/Jobhunt/   # SwiftData store
-~/Library/Logs/Jobhunt/                  # LLM debug logs
 ```
 
 ## Features
@@ -159,5 +197,6 @@ xcodebuild test \
 - **Resume fit scoring** — ranks each job against your resume with dimension-level explanations
 - **Duplicate detection** — groups identical or near-identical postings across sources
 - **Dashboard** — daily activity view showing pipeline progress
+- **CSV export** — export the job list to CSV via the toolbar or File → Export Job List to CSV… (⌘⇧E). This exports job list fields only and is **not** a full backup. Use **Settings → Back Up Data** to create a complete, restorable backup of your database.
 - **Offline queue** — captures are queued in the extension if the app isn't running
 - **MCP server** — expose your job database as tools for Claude and other AI assistants (DMG only)

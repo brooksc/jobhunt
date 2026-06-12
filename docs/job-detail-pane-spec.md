@@ -24,7 +24,7 @@ All fields come from the `Job` SwiftData model and its relationships.
 | `salaryNote` | String? | e.g. "equity included" |
 | `employmentType` | String? | e.g. "Full-time" |
 | `seniority` | String? | e.g. "Senior" |
-| `status` | JobStatus | saved/applied/interview/offer/rejected/archived/not_available/duplicate |
+| `status` | JobStatus | new/pursuing/applied/interview/offer/rejected/passed/archived/closed/duplicate/expired |
 | `rating` | Int? | 1–5 |
 | `applicationURL` | String? | URL for apply page (may differ from source) |
 | `manualOverridesJSON` | String | JSON array of skill strings `["Swift","SwiftUI"]` |
@@ -281,7 +281,7 @@ Comparison table columns: Field | This job | Original
 Rows: Company, Title, Location, Remote, Status, Rating  
 Differing fields → `yellow.opacity(0.15)` background highlight.
 
-Actions: "Unmark as Duplicate" → clears `duplicateOfJobID` + sets status `.saved` · "View Original" → `router.selectedJobID = original.id`
+Actions: "Unmark as Duplicate" → clears `duplicateOfJobID` + sets status `.new` · "View Original" → `router.selectedJobID = original.id`
 
 ---
 

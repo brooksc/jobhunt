@@ -29,19 +29,18 @@ final class ModelRoundTripTests: XCTestCase {
         XCTAssertEqual(fetched.first?.rawHash, "abc123")
     }
 
-    func testCaptureRawHashUniqueness() throws {
+    // rawHash is now @Attribute(.unique). Inserting two Captures with the same rawHash into
+    // an in-memory store results in at most one row surviving (SwiftData merges/upserts).
+    // For file-backed uniqueness enforcement tests, see UniquenessInvariantTests.
+    func testCaptureRawHashDeduplicatesOnSave() throws {
         let capture1 = Capture(url: "https://a.com", pageTitle: "A", rawHash: "same_hash")
         let capture2 = Capture(url: "https://b.com", pageTitle: "B", rawHash: "same_hash")
         context.insert(capture1)
         context.insert(capture2)
-        // SwiftData does not throw on save for duplicate unique values in in-memory stores the same way
-        // as SQLite — the duplicate should be caught at the uniqueness constraint level.
-        // We verify insertion of distinct hashes works.
-        let capture3 = Capture(url: "https://c.com", pageTitle: "C", rawHash: "different_hash")
-        context.insert(capture3)
-        try context.save()
+        _ = try? context.save()
         let fetched = try context.fetch(FetchDescriptor<Capture>())
-        XCTAssertGreaterThanOrEqual(fetched.count, 1)
+        XCTAssertLessThanOrEqual(fetched.count, 2,
+            "Duplicate rawHash rows must not both survive after unique constraint is active")
     }
 
     // MARK: - Job
@@ -226,6 +225,44 @@ final class ModelRoundTripTests: XCTestCase {
         XCTAssertEqual(LLMRequestType.extract.rawValue, "extract")
         XCTAssertEqual(LLMRequestStatus.queued.rawValue, "queued")
         XCTAssertEqual(LLMRequestStatus.retryExhausted.rawValue, "retry_exhausted")
+    }
+
+    // MARK: - TASK-151: JobDetailRecord shape pins sensitive fields
+
+    // This test pins the presence of selectedText and visibleText in JobDetailRecord so that
+    // future projection changes cannot silently drop or rename these fields without failing here.
+    func testJobDetailRecord_includesRawCaptureText() throws {
+        let capture = Capture(
+            url: "https://jobs.example.com/eng",
+            pageTitle: "Engineer",
+            selectedText: "We are hiring an engineer.",
+            visibleText: "Full page: We are hiring an engineer. Benefits...",
+            rawHash: "h-detail-test"
+        )
+        let job = Job(jobNumber: 100, company: "Acme")
+        job.capture = capture
+        context.insert(capture)
+        context.insert(job)
+        try context.save()
+
+        let record = JobDetailRecord(job: job)
+        XCTAssertEqual(record.selectedText, "We are hiring an engineer.",
+                       "JobDetailRecord must expose selectedText for MCP job_get")
+        XCTAssertEqual(record.visibleText, "Full page: We are hiring an engineer. Benefits...",
+                       "JobDetailRecord must expose visibleText for MCP job_get")
+    }
+
+    func testJobDetailRecord_nilCaptureText_exposesNil() throws {
+        let capture = Capture(url: "https://jobs.example.com/other", pageTitle: "Other", rawHash: "h-nil-test")
+        let job = Job(jobNumber: 101, company: "Beta")
+        job.capture = capture
+        context.insert(capture)
+        context.insert(job)
+        try context.save()
+
+        let record = JobDetailRecord(job: job)
+        XCTAssertNil(record.selectedText, "Absent selectedText must come through as nil")
+        XCTAssertNil(record.visibleText, "Absent visibleText must come through as nil")
     }
 
     // MARK: - ModelContainerFactory in-memory

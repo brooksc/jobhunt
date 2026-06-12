@@ -120,8 +120,7 @@ struct HelpView: View {
             open). Check that the port in Settings matches the extension configuration. \
             Restart the app if the service stopped unexpectedly.
 
-            **Extraction fails silently** — Enable **LLM debug logging** in Settings → Debug \
-            and retry. Check the LLM Queue for error details and attempt history.
+            **Extraction fails silently** — Check the LLM Queue for error details and attempt history.
 
             **Captures not appearing** — The extension queues captures if the service is \
             unavailable and retries. Reopen the extension popup to see the queue state.
@@ -162,10 +161,6 @@ struct HelpView: View {
                     description: "Default number of days before a follow-up is due after applying."
                 )
                 SettingsRow(name: "Review Interval", description: "Default interval (days) for site review reminders.")
-                SettingsRow(
-                    name: "Debug Logging",
-                    description: "Enables verbose LLM request/response logging for troubleshooting."
-                )
             }
         }
     }

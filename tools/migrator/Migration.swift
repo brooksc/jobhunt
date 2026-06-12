@@ -20,12 +20,41 @@ struct MigrationSummary {
     var llmRequestAttempts = 0
     var contacts = 0
     var coverLetters = 0
+    // Per-table orphan skip counts.
+    // Policy: skip rows whose parent job is absent rather than importing dangling references.
+    var skippedOrphanEvents = 0
+    var skippedOrphanActions = 0
+    var skippedOrphanDataQualityReviews = 0
+    var skippedOrphanFitScores = 0
+    var skippedOrphanLLMRequests = 0
+    var skippedOrphanLLMRequestAttempts = 0
+    var skippedOrphanContacts = 0
+    var skippedOrphanCoverLetters = 0
+    // Total orphans skipped across all tables.
+    var skippedOrphans: Int {
+        skippedOrphanEvents + skippedOrphanActions + skippedOrphanDataQualityReviews +
+        skippedOrphanFitScores + skippedOrphanLLMRequests + skippedOrphanLLMRequestAttempts +
+        skippedOrphanContacts + skippedOrphanCoverLetters
+    }
+    // True when the destination store already contained data — migration was skipped
+    // to avoid creating duplicate records (no @Attribute(.unique) DB constraint exists).
+    // Callers must ensure the destination context is empty before calling migrate().
+    var skippedNonEmpty = false
 }
 
 // MARK: - Migration Logic
 
 func migrate(src: DBHandle, context: ModelContext) -> MigrationSummary {
     var s = MigrationSummary()
+
+    // Guard: refuse to run on a non-empty store to prevent duplicate records.
+    // Capture.rawHash and Job.id have no @Attribute(.unique) DB constraint, so a second
+    // migration run would silently create duplicate rows rather than failing safely.
+    let existingCaptures = (try? context.fetch(FetchDescriptor<Capture>())) ?? []
+    if !existingCaptures.isEmpty {
+        s.skippedNonEmpty = true
+        return s
+    }
 
     // captures
     if tableExists(src, "captures") {
@@ -119,7 +148,8 @@ func migrate(src: DBHandle, context: ModelContext) -> MigrationSummary {
                 occurredAt: row.dateOrNow("occurred_at"),
                 createdAt: row.dateOrNow("created_at")
             )
-            ev.job = jobMap[jobId]
+            guard let parentJob = jobMap[jobId] else { s.skippedOrphanEvents += 1; continue }
+            ev.job = parentJob
             context.insert(ev)
             s.events += 1
         }
@@ -188,7 +218,8 @@ func migrate(src: DBHandle, context: ModelContext) -> MigrationSummary {
                 createdAt: row.dateOrNow("created_at"),
                 updatedAt: row.dateOrNow("updated_at")
             )
-            ja.job = jobMap[jobId]
+            guard let parentJob = jobMap[jobId] else { s.skippedOrphanActions += 1; continue }
+            ja.job = parentJob
             context.insert(ja)
             s.jobActions += 1
         }
@@ -202,7 +233,8 @@ func migrate(src: DBHandle, context: ModelContext) -> MigrationSummary {
                 reviewedAt: row.dateOrNow("reviewed_at"),
                 note: row.req("note")
             )
-            dqr.job = jobMap[jobId]
+            guard let parentJob = jobMap[jobId] else { s.skippedOrphanDataQualityReviews += 1; continue }
+            dqr.job = parentJob
             context.insert(dqr)
             s.dataQualityReviews += 1
         }
@@ -272,7 +304,8 @@ func migrate(src: DBHandle, context: ModelContext) -> MigrationSummary {
                 createdAt: row.dateOrNow("created_at"),
                 updatedAt: row.dateOrNow("updated_at")
             )
-            jfs.job = jobMap[jobId]
+            guard let parentJob = jobMap[jobId] else { s.skippedOrphanFitScores += 1; continue }
+            jfs.job = parentJob
             if let resumeId = row.str("resume_id") {
                 jfs.resume = resumeMap[resumeId]
             }
@@ -297,7 +330,8 @@ func migrate(src: DBHandle, context: ModelContext) -> MigrationSummary {
                 startedAt: row.date("started_at"),
                 finishedAt: row.date("finished_at")
             )
-            req.job = jobMap[jobId]
+            guard let parentJob = jobMap[jobId] else { s.skippedOrphanLLMRequests += 1; continue }
+            req.job = parentJob
             if let resumeId = row.str("resume_id") {
                 req.resume = resumeMap[resumeId]
             }
@@ -330,8 +364,9 @@ func migrate(src: DBHandle, context: ModelContext) -> MigrationSummary {
                 promptChars: row.int("prompt_chars"),
                 responseChars: row.int("response_chars")
             )
+            guard let parentJob = jobMap[jobId] else { s.skippedOrphanLLMRequestAttempts += 1; continue }
             attempt.request = llmRequestMap[requestId]
-            attempt.job = jobMap[jobId]
+            attempt.job = parentJob
             context.insert(attempt)
             s.llmRequestAttempts += 1
         }
@@ -352,7 +387,8 @@ func migrate(src: DBHandle, context: ModelContext) -> MigrationSummary {
                 createdAt: row.dateOrNow("created_at"),
                 updatedAt: row.dateOrNow("updated_at")
             )
-            contact.job = jobMap[jobId]
+            guard let parentJob = jobMap[jobId] else { s.skippedOrphanContacts += 1; continue }
+            contact.job = parentJob
             context.insert(contact)
             s.contacts += 1
         }
@@ -369,7 +405,8 @@ func migrate(src: DBHandle, context: ModelContext) -> MigrationSummary {
                 model: row.str("model"),
                 createdAt: row.dateOrNow("created_at")
             )
-            cl.job = jobMap[jobId]
+            guard let parentJob = jobMap[jobId] else { s.skippedOrphanCoverLetters += 1; continue }
+            cl.job = parentJob
             context.insert(cl)
             s.coverLetters += 1
         }

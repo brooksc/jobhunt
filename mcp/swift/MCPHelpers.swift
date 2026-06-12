@@ -114,12 +114,16 @@ let tools: [[String: Any]] = [
     ],
     [
         "name": "job_get",
-        "description": "Fetch full job metadata and capture text.",
+        "description": "Fetch full job metadata. Raw captured page text (selected_text, visible_text) is omitted by default; pass include_raw_text: true to include it.",
         "inputSchema": [
             "type": "object",
             "required": ["job_number"],
             "properties": [
-                "job_number": ["type": "integer"]
+                "job_number": ["type": "integer"],
+                "include_raw_text": [
+                    "type": "boolean",
+                    "description": "Set to true to include raw captured page text (selected_text, visible_text). Omitted by default for privacy."
+                ] as [String: Any]
             ] as [String: Any]
         ] as [String: Any]
     ],
@@ -269,7 +273,9 @@ func resolveToolRoute(name: String, args: [String: Any]) -> Result<(String, [Str
         return .success(("/mcp/jobs/list", b))
     case "job_get":
         guard let num = args["job_number"] else { return .failure(MCPError("job_number required")) }
-        return .success(("/mcp/jobs/get", ["job_number": num]))
+        var b: [String: Any] = ["job_number": num]
+        if let raw = args["include_raw_text"] { b["include_raw_text"] = raw }
+        return .success(("/mcp/jobs/get", b))
     case "add_capture":
         guard args["url"] != nil, args["page_title"] != nil else {
             return .failure(MCPError("url and page_title required"))

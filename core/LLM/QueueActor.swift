@@ -15,18 +15,50 @@ public enum QueueEvent: Sendable {
 // MARK: - QueueActor
 
 public actor QueueActor {
-    // MARK: - Public API stream
+    // MARK: - Fan-out event subscriptions
 
-    public let events: AsyncStream<QueueEvent>
-    private let continuation: AsyncStream<QueueEvent>.Continuation
+    private var continuations: [UUID: AsyncStream<QueueEvent>.Continuation] = [:]
+
+    /// Subscribe to queue events. Each caller gets their own independent stream.
+    /// Supports multiple concurrent consumers without dropping events.
+    public func subscribe() -> AsyncStream<QueueEvent> {
+        let id = UUID()
+        return AsyncStream { [weak self] continuation in
+            Task { [weak self] in
+                await self?.addContinuation(continuation, for: id)
+            }
+            continuation.onTermination = { [weak self] _ in
+                Task { [weak self] in
+                    await self?.removeContinuation(for: id)
+                }
+            }
+        }
+    }
+
+    private func addContinuation(_ continuation: AsyncStream<QueueEvent>.Continuation, for id: UUID) {
+        continuations[id] = continuation
+    }
+
+    private func removeContinuation(for id: UUID) {
+        continuations.removeValue(forKey: id)
+    }
+
+    private func emit(_ event: QueueEvent) {
+        for continuation in continuations.values {
+            continuation.yield(event)
+        }
+    }
 
     // MARK: - Dependencies
 
     private let store: BackgroundStore
     private let providerFactory: @Sendable () -> any LLMProvider
-    /// nonisolated(unsafe) because SettingsStore is @Observable (not Sendable) but
-    /// all access goes through the actor's serialized execution context.
-    private nonisolated(unsafe) let settings: SettingsStore
+    /// Read the current queue-paused flag. Implementations should dispatch to @MainActor.
+    private let isPaused: @Sendable () async -> Bool
+    /// Write the queue-paused flag. Implementations should dispatch to @MainActor.
+    private let onSetPaused: @Sendable (Bool) async -> Void
+    /// Snapshot extraction-relevant settings. Implementations should dispatch to @MainActor.
+    private let readExtractionSettings: @Sendable () async -> ExtractionSettings
 
     // MARK: - State
 
@@ -43,35 +75,58 @@ public actor QueueActor {
 
     public init(
         store: BackgroundStore,
-        settings: SettingsStore,
+        isPaused: @escaping @Sendable () async -> Bool,
+        onSetPaused: @escaping @Sendable (Bool) async -> Void,
+        readExtractionSettings: @escaping @Sendable () async -> ExtractionSettings,
         providerFactory: @escaping @Sendable () -> any LLMProvider
     ) {
         self.store = store
-        self.settings = settings
+        self.isPaused = isPaused
+        self.onSetPaused = onSetPaused
+        self.readExtractionSettings = readExtractionSettings
         self.providerFactory = providerFactory
-        var cont: AsyncStream<QueueEvent>.Continuation!
-        events = AsyncStream { cont = $0 }
-        continuation = cont
     }
 
     // MARK: - Public API
 
     /// Enqueue new LLM extraction requests for a set of job IDs.
-    /// Each job must already exist in the store; this method creates the LLMRequest rows
-    /// and links them by fetching the Job objects from the store.
+    /// Fetches all needed Job objects in a single query and saves all LLMRequest rows at once.
     public func enqueue(jobIDs: [String], mode: LLMRequestType) async throws {
-        for jobID in jobIDs {
-            let jobs = try await store.fetch(
-                FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID })
-            )
-            guard let job = jobs.first else { continue }
-            let request = LLMRequest(requestType: mode, status: .queued)
-            request.job = job
-            try await store.insert(request)
+        guard !jobIDs.isEmpty else { return }
+        let ids = jobIDs
+        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { ids.contains($0.id) }))
+        let jobMap = Dictionary(jobs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let requests = jobIDs.compactMap { jobID -> LLMRequest? in
+            guard let job = jobMap[jobID] else { return nil }
+            let req = LLMRequest(requestType: mode, status: .queued)
+            req.job = job
+            return req
         }
+        try await store.insertBatch(requests)
     }
 
-    /// On app launch, reset any requests stuck in "running" back to "queued".
+    /// Enqueue fit-scoring requests for a set of job IDs against a specific resume.
+    /// Unlike `enqueue(jobIDs:mode:)`, this links each LLMRequest to the resume so
+    /// `processFitRequest` can find it and won't cancel due to a missing resumeID.
+    public func enqueueFit(jobIDs: [String], resumeID: String) async throws {
+        guard !jobIDs.isEmpty else { return }
+        let ids = jobIDs
+        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { ids.contains($0.id) }))
+        let jobMap = Dictionary(jobs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let resumes = try await store.fetch(FetchDescriptor<Resume>(predicate: #Predicate { $0.id == resumeID }))
+        guard let resume = resumes.first else { return }
+        let requests = jobIDs.compactMap { jobID -> LLMRequest? in
+            guard let job = jobMap[jobID] else { return nil }
+            let req = LLMRequest(requestType: .fit, status: .queued)
+            req.job = job
+            req.resume = resume
+            return req
+        }
+        try await store.insertBatch(requests)
+    }
+
+    /// On app launch, reset any requests stuck in "running" back to "queued",
+    /// then prune old history so fetchQueuedRequests stays fast.
     public func requeueRunningOnLaunch() async throws {
         // Fetch all then filter in-memory — SwiftData predicates cannot compare enum cases.
         try await store.update(LLMRequest.self, predicate: nil) { req in
@@ -81,16 +136,34 @@ public actor QueueActor {
             req.finishedAt = nil
             req.error = nil
         }
+        try await pruneFinishedRequests()
+    }
+
+    /// Delete terminal (succeeded/failed/cancelled/retryExhausted) LLMRequest history
+    /// older than `days` days. Keeps the table bounded so fetchQueuedRequests is fast.
+    public func pruneFinishedRequests(olderThan days: Int = 30) async throws {
+        let cutoff = Date(timeIntervalSinceNow: -Double(days) * 86400)
+        let terminal: Set<LLMRequestStatus> = [.succeeded, .failed, .retryExhausted, .cancelled]
+        // Predicate filters to rows with a finishedAt (excludes all queued/running).
+        // Date and status checks happen in Swift — SwiftData predicates cannot compare enum cases.
+        try await store.deleteFiltered(
+            LLMRequest.self,
+            predicate: #Predicate { $0.finishedAt != nil },
+            where: { req in
+                guard let finished = req.finishedAt else { return false }
+                return finished < cutoff && terminal.contains(req.status)
+            }
+        )
     }
 
     /// Pause the queue (prevents new requests from being processed).
     public func pauseQueue() async {
-        settings.llmQueuePaused = true
+        await onSetPaused(true)
     }
 
     /// Resume the queue and restart the drain loop.
     public func resumeQueue() async {
-        settings.llmQueuePaused = false
+        await onSetPaused(false)
         failureStreak = 0
         await startProcessing()
     }
@@ -153,7 +226,7 @@ public actor QueueActor {
         var totalFailed = 0
 
         while true {
-            guard !settings.llmQueuePaused else { break }
+            guard await !isPaused() else { break }
 
             let provider = providerFactory()
             let limit = provider.concurrencyLimit
@@ -175,18 +248,18 @@ public actor QueueActor {
                         totalFailed += 1
                         failureStreak += 1
                         if failureStreak >= Self.autoPauseThreshold {
-                            settings.llmQueuePaused = true
-                            continuation.yield(.autoPaused)
+                            await onSetPaused(true)
+                            emit(.autoPaused)
                             break
                         }
                     }
                 }
             }
 
-            if settings.llmQueuePaused { break }
+            if await isPaused() { break }
         }
 
-        continuation.yield(.processingComplete(processed: totalProcessed, failed: totalFailed))
+        emit(.processingComplete(processed: totalProcessed, failed: totalFailed))
     }
 
     // MARK: - Private processing
@@ -197,8 +270,13 @@ public actor QueueActor {
 
     private func fetchQueuedRequests(limit: Int) async -> [QueuedItem] {
         do {
-            // SwiftData predicates cannot compare enum cases; sort+filter in Swift instead.
-            var descriptor = FetchDescriptor<LLMRequest>(
+            // SwiftData predicates cannot compare enum cases, but can filter by finishedAt == nil.
+            // This excludes all terminal rows (succeeded/failed/cancelled/retryExhausted) at the
+            // DB level, then in-memory enum filter picks out .queued from {queued, running}.
+            // No fetchLimit here — the predicate keeps the result set small without risking
+            // starvation (old terminal rows can no longer block newer queued ones).
+            let descriptor = FetchDescriptor<LLMRequest>(
+                predicate: #Predicate { $0.finishedAt == nil },
                 sortBy: [SortDescriptor(\.createdAt)]
             )
             let all = try await store.fetch(descriptor)
@@ -286,8 +364,26 @@ public actor QueueActor {
         )
 
         do {
-            let result = try await ExtractionEngine.extract(snapshot: extractionSnapshot, provider: provider, settings: settings)
+            let extractSettings = await readExtractionSettings()
+
+            // Enforce consent immediately before sending data to a cloud provider.
+            // Fail the request (not the queue) if consent has been revoked since enqueue.
+            let consented = ConsentHelper.isConsented(
+                provider: extractSettings.llmProvider,
+                baseURL: extractSettings.llmBaseURL,
+                consentGranted: extractSettings.consentGranted
+            )
+            guard consented else {
+                await markRequestFailed(item: item, error: ConsentError.notConsented, startedAt: startedAt)
+                return false
+            }
+
+            let result = try await ExtractionEngine.extract(snapshot: extractionSnapshot, provider: provider, settings: extractSettings)
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+
+            // Guard: skip writing success if the request was cancelled while we were running.
+            let currentReqs = try await store.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == itemID }))
+            guard currentReqs.first?.status == .running else { return false }
 
             // Persist extraction result
             try await store.update(
@@ -295,17 +391,19 @@ public actor QueueActor {
                 predicate: #Predicate { $0.id == jobID }
             ) { job in
                 job.extractedJSON = result.extractedJSON
-                job.title = result.title ?? job.title
-                job.company = result.company ?? job.company
-                job.location = result.location ?? job.location
-                job.remoteType = result.remoteType ?? job.remoteType
-                job.salaryMin = result.salaryMin ?? job.salaryMin
-                job.salaryMax = result.salaryMax ?? job.salaryMax
-                job.salaryCurrency = result.salaryCurrency ?? job.salaryCurrency
-                job.salaryNote = result.salaryNote ?? job.salaryNote
-                job.employmentType = result.employmentType ?? job.employmentType
-                job.seniority = result.seniority ?? job.seniority
-                job.applicationURL = result.applicationURL ?? job.applicationURL
+                job.title = result.title
+                job.company = result.company
+                job.location = result.location
+                job.remoteType = result.remoteType
+                job.salaryMin = result.salaryMin
+                job.salaryMax = result.salaryMax
+                job.salaryHourlyMin = result.salaryHourlyMin
+                job.salaryHourlyMax = result.salaryHourlyMax
+                job.salaryCurrency = result.salaryCurrency
+                job.salaryNote = result.salaryNote
+                job.employmentType = result.employmentType
+                job.seniority = result.seniority
+                job.applicationURL = result.applicationURL
                 job.extractionConfidence = result.extractionConfidence
                 job.extractionModel = result.extractionModel
                 job.extractionStatus = .succeeded
@@ -339,7 +437,7 @@ public actor QueueActor {
                 req.model = result.extractionModel
             }
 
-            continuation.yield(.jobReady(jobNumber: item.jobNumber, title: item.jobTitle, fitScore: nil))
+            emit(.jobReady(jobNumber: item.jobNumber, title: item.jobTitle, fitScore: nil))
             return true
         } catch {
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
@@ -427,6 +525,21 @@ public actor QueueActor {
             return false
         }
 
+        let fitSettings = await readExtractionSettings()
+
+        // Enforce consent immediately before sending data to a cloud provider.
+        let consented = ConsentHelper.isConsented(
+            provider: fitSettings.llmProvider,
+            baseURL: fitSettings.llmBaseURL,
+            consentGranted: fitSettings.consentGranted
+        )
+        guard consented else {
+            await markRequestFailed(item: item, error: ConsentError.notConsented, startedAt: startedAt)
+            return false
+        }
+
+        let fitModel = fitSettings.llmModel
+
         let jobSnap = JobFitSnapshot(
             title: job.title,
             company: job.company,
@@ -437,10 +550,15 @@ public actor QueueActor {
         let resumeSnap = ResumeSnapshot(text: resume.text)
 
         do {
-            let fitResult = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, provider: provider)
+            let fitOutput = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, model: fitModel, provider: provider)
+            let fitResult = fitOutput.score
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
 
-            let fitJSON = FitScorer.encode(fitResult)
+            // Guard: skip writing success if the request was cancelled while we were running.
+            let currentReqs = try await store.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == itemID }))
+            guard currentReqs.first?.status == .running else { return false }
+
+            let fitJSON = fitOutput.fitScoreJSON ?? FitScorer.encode(fitResult)
             let scoredAt = Date()
             try await store.saveFitScore(
                 jobID: jobID,
@@ -456,9 +574,12 @@ public actor QueueActor {
                 attempt: item.attempt,
                 status: .succeeded,
                 modelRequested: provider.id,
+                responseFormat: "json_object",
                 startedAt: startedAt,
                 finishedAt: Date(),
-                durationMs: durationMs
+                durationMs: durationMs,
+                promptChars: fitOutput.promptChars,
+                responseChars: fitOutput.responseChars
             )
             try await store.insert(finishedAttempt)
 
@@ -470,7 +591,7 @@ public actor QueueActor {
                 req.finishedAt = Date()
             }
 
-            continuation.yield(.jobReady(
+            emit(.jobReady(
                 jobNumber: item.jobNumber,
                 title: item.jobTitle,
                 fitScore: fitResult.overall
@@ -560,6 +681,16 @@ private struct QueuedItem {
     let jobNumber: Int?
     let jobTitle: String?
     let resumeID: String?
+}
+
+// MARK: - ConsentError
+
+public enum ConsentError: Error, LocalizedError {
+    case notConsented
+
+    public var errorDescription: String? {
+        "Cloud LLM consent not granted. Enable the provider in Settings to process jobs."
+    }
 }
 
 // swiftlint:enable file_length function_body_length type_body_length

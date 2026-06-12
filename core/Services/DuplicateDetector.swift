@@ -46,7 +46,7 @@ public struct JobSnapshot: Sendable {
     public let duplicateOfJobID: String?
     public let extractionStatus: String
 
-    init(job: Job, capture: Capture) {
+    public init(job: Job, capture: Capture) {
         id = job.id
         jobNumber = job.jobNumber
         company = job.company
@@ -87,7 +87,12 @@ public struct DuplicateDetector {
         let snapshots = try fetchExtractedSnapshots(context: context)
         let decisions = try fetchDecisions(context: context)
         let resolvedHashes = Set(decisions.map(\.cleanedHash))
+        return duplicateGroups(snapshots: snapshots, resolvedHashes: resolvedHashes)
+    }
 
+    /// Pure computation overload — use when snapshots and resolved hashes are already available
+    /// (e.g. from @Query results). Safe to call from a background task.
+    public func duplicateGroups(snapshots: [JobSnapshot], resolvedHashes: Set<String>) -> [DuplicatePair] {
         var pairs: [DuplicatePair] = []
 
         // 1. Exact hash groups (same cleaned_hash, multiple jobs, different URLs)
@@ -346,7 +351,10 @@ public struct DuplicateDetector {
             $0.extractionStatus == "succeeded" &&
                 !($0.company?.trimmingCharacters(in: .whitespaces).isEmpty ?? true) &&
                 !($0.title?.trimmingCharacters(in: .whitespaces).isEmpty ?? true) &&
-                !["passed", "archived", "closed"].contains($0.status)
+                !["passed", "archived", "closed"].contains($0.status) &&
+                // Exclude already-resolved duplicates (either signal suffices per invariant).
+                $0.duplicateOfJobID == nil &&
+                $0.status != "duplicate"
         }
 
         // Group by normalised title

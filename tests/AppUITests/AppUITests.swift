@@ -1,5 +1,10 @@
 import XCTest
 
+// Run UI tests locally:
+//   xcodebuild test -scheme Jobhunt -destination 'platform=macOS' -only-testing AppUITests
+// Run on a macOS CI runner (e.g. GitHub Actions macos-latest):
+//   same command; requires a graphical display session (use macos-latest runner, not Linux)
+
 // One timestamped folder shared across all tests in a process run.
 // Written to /tmp first (always writable from test runner), then logged so
 // the caller can move/copy it to the project directory if desired.
@@ -19,15 +24,35 @@ let screenshotDir: URL = {
 
 extension XCTestCase {
 
+    // MARK: - State-based wait
+
+    /// Poll until `check()` returns true or `timeout` elapses. Returns whether the condition was met.
+    @discardableResult
+    func waitUntil(timeout: TimeInterval = 4, _ check: () -> Bool) -> Bool {
+        let deadline = Date(timeIntervalSinceNow: timeout)
+        while Date() < deadline {
+            if check() { return true }
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        }
+        return check()
+    }
+
     // MARK: - Launch
 
-    func launchApp() -> XCUIApplication {
+    func launchApp(seedData: Bool = true) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += ["-UIAnimationDragCoefficient", "0"]
+        app.launchArguments += ["-UIAnimationDragCoefficient", "0", "--ui-test-store"]
+        if seedData { app.launchArguments.append("--seed-demo-data") }
         app.launch()
         _ = app.windows.firstMatch.waitForExistence(timeout: 10)
-        Thread.sleep(forTimeInterval: 1.5)
+        // Wait for the sidebar to be ready rather than sleeping a fixed duration.
+        _ = app.buttons["sidebar.dashboard"].firstMatch.waitForExistence(timeout: 8)
         return app
+    }
+
+    /// Assert an element exists or fail immediately with a descriptive message.
+    func requireElement(_ element: XCUIElement, _ description: String, timeout: TimeInterval = 5) {
+        XCTAssert(element.waitForExistence(timeout: timeout), "Required UI element missing: \(description)")
     }
 
     // MARK: - Sidebar navigation
@@ -63,7 +88,8 @@ extension XCTestCase {
             let btn = app.buttons[id].firstMatch
             if btn.waitForExistence(timeout: 4) {
                 btn.click()
-                Thread.sleep(forTimeInterval: 1.0)
+                // Wait for the button to reflect selected state rather than sleeping.
+                waitUntil(timeout: 3) { btn.isSelected }
                 return
             }
         }
@@ -72,7 +98,8 @@ extension XCTestCase {
         let text = app.staticTexts[label].firstMatch
         if text.waitForExistence(timeout: 4) {
             text.click()
-            Thread.sleep(forTimeInterval: 1.0)
+            // No isSelected to poll on a staticText; give the view a moment to load.
+            waitUntil(timeout: 2) { app.cells.count > 0 || app.staticTexts.count > 2 }
             return
         }
 

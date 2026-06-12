@@ -7,7 +7,9 @@ node_modules/
 *.db-shm
 *.db-wal
 !server/demo.db
-*.lock
+# Policy: do NOT use *.lock — that silently hides package lockfiles (package-lock.json,
+# yarn.lock, etc.) which should be committed to pin dependency trees.
+# Tuist/.build/ and Tuist/Dependencies/ (below) cover Tuist-generated lock artefacts.
 
 # Electron build output
 dist/

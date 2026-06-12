@@ -760,9 +760,10 @@ struct FitTabView: View {
                                         openResumeName = openResumeName == key ? nil : key
                                     },
                                     onRescore: {
+                                        guard let resumeID = fs.resume?.id else { return }
                                         isBusy = true
                                         Task { defer { isBusy = false }
-                                            try? await queueActor?.enqueue(jobIDs: [job.id], mode: .fit)
+                                            try? await queueActor?.enqueueFit(jobIDs: [job.id], resumeID: resumeID)
                                         }
                                     }
                                 )
@@ -784,10 +785,10 @@ struct FitTabView: View {
                         HStack {
                             Spacer()
                             Button(isBusy ? "Queuing…" : "Score against resume") {
-                                guard !activeResumes.isEmpty else { return }
+                                guard let resumeID = activeResumes.first?.id else { return }
                                 isBusy = true
                                 Task { defer { isBusy = false }
-                                    try? await queueActor?.enqueue(jobIDs: [job.id], mode: .fit)
+                                    try? await queueActor?.enqueueFit(jobIDs: [job.id], resumeID: resumeID)
                                 }
                             }
                             .disabled(isBusy || activeResumes.isEmpty)
@@ -1037,9 +1038,11 @@ struct TimelineTabView: View {
     let job: Job
 
     @Environment(\.jobService) private var jobService
+    @Environment(AppServices.self) private var appServices
     @State private var noteText = ""
     @State private var showSetAction = false
     @State private var showSystemEvents = false
+    @State private var saveNoteError: String?
 
     // Pending actions
     private var pendingActions: [JobAction] {
@@ -1129,7 +1132,7 @@ struct TimelineTabView: View {
             }
         }
         .sheet(isPresented: $showSetAction) {
-            SetNextActionSheet(job: job)
+            SetNextActionSheet(job: job, followupDefaultDays: appServices.settings.followupDefaultDays)
         }
     }
 
@@ -1184,15 +1187,26 @@ struct TimelineTabView: View {
                     .font(.caption)
             }
             .padding(.horizontal, 12)
-            .padding(.bottom, 10)
+            .padding(.bottom, saveNoteError == nil ? 10 : 4)
+
+            if let err = saveNoteError {
+                Text(err).font(.caption2).foregroundStyle(.red).padding(.horizontal, 12).padding(.bottom, 8)
+            }
         }
     }
 
     private func saveNote() {
         let text = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        noteText = ""
-        Task { try? await jobService?.addNote(text, to: job.id) }
+        saveNoteError = nil
+        Task {
+            do {
+                try await jobService?.addNote(text, to: job.id)
+                noteText = ""
+            } catch {
+                saveNoteError = error.localizedDescription
+            }
+        }
     }
 }
 
@@ -1265,11 +1279,20 @@ private struct PendingActionRow: View {
 
 private struct SetNextActionSheet: View {
     let job: Job
+    let followupDefaultDays: Int
     @Environment(\.dismiss) private var dismiss
     @Environment(\.jobService) private var jobService
 
     @State private var noteText = ""
-    @State private var dueDate = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
+    @State private var dueDate: Date
+
+    init(job: Job, followupDefaultDays: Int) {
+        self.job = job
+        self.followupDefaultDays = followupDefaultDays
+        _dueDate = State(initialValue: Calendar.current.date(byAdding: .day, value: followupDefaultDays, to: Date()) ?? Date())
+    }
+    @State private var saveError: String?
+    @State private var isSaving = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -1282,21 +1305,32 @@ private struct SetNextActionSheet: View {
             DatePicker("Due date", selection: $dueDate, displayedComponents: .date)
                 .datePickerStyle(.compact)
 
+            if let err = saveError {
+                Text(err).font(.caption).foregroundStyle(.red)
+            }
+
             HStack {
                 Button("Cancel") { dismiss() }
                     .buttonStyle(.bordered)
                 Spacer()
-                Button("Save") {
+                Button(isSaving ? "Saving…" : "Save") {
                     let text = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !text.isEmpty else { return }
+                    saveError = nil
+                    isSaving = true
                     let due = dueDate
                     let id = job.id
                     Task {
-                        try? await jobService?.createAction(jobID: id, text: text, dueAt: due)
-                        dismiss()
+                        defer { isSaving = false }
+                        do {
+                            try await jobService?.createAction(jobID: id, text: text, dueAt: due)
+                            dismiss()
+                        } catch {
+                            saveError = error.localizedDescription
+                        }
                     }
                 }
-                .disabled(noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSaving)
                 .buttonStyle(.borderedProminent)
             }
         }

@@ -10,8 +10,12 @@ BACKUP="$DB_DIR/jobhunt.store.pre-screenshots-$(date +%Y%m%d-%H%M%S).bak"
 SCREENSHOTS="$REPO/screenshots"
 
 # 1. Back up production database before touching the app via UI tests.
+# Must copy -wal and -shm alongside .store to capture uncheckpointed data;
+# omitting them produces an inconsistent snapshot that misses recent writes.
 if [[ -f "$DB" ]]; then
     cp "$DB" "$BACKUP"
+    [[ -f "${DB}-wal" ]] && cp "${DB}-wal" "${BACKUP}-wal"
+    [[ -f "${DB}-shm" ]] && cp "${DB}-shm" "${BACKUP}-shm"
     echo "✓ Database backed up to $(basename "$BACKUP")"
 else
     echo "⚠ No database found at $DB — continuing without backup"
@@ -42,5 +46,7 @@ fi
 
 rm -f "$LOG"
 
-# 4. Remove old auto-backups (keep 5 most recent screenshot backups).
-ls -t "$DB_DIR"/jobhunt.store.pre-screenshots-*.bak 2>/dev/null | tail -n +6 | xargs rm -f || true
+# 4. Remove old auto-backups (keep 5 most recent screenshot backups, including -wal/-shm companions).
+ls -t "$DB_DIR"/jobhunt.store.pre-screenshots-*.bak 2>/dev/null | tail -n +6 | while read -r old; do
+    rm -f "$old" "${old}-wal" "${old}-shm"
+done || true

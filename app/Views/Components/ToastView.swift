@@ -6,13 +6,25 @@ struct ToastMessage: Identifiable {
     let isError: Bool
 }
 
+struct ErrorRecord: Identifiable {
+    let id = UUID()
+    let message: String
+    let timestamp: Date
+}
+
 @Observable
 final class ToastStore {
     var messages: [ToastMessage] = []
+    /// Last 10 error toasts — survives dismissal for the Debug tab.
+    private(set) var recentErrors: [ErrorRecord] = []
 
     func show(_ message: String, isError: Bool = false) {
         let toast = ToastMessage(message: message, isError: isError)
         messages.append(toast)
+        if isError {
+            recentErrors.append(ErrorRecord(message: message, timestamp: Date()))
+            if recentErrors.count > 10 { recentErrors.removeFirst() }
+        }
         // Auto-dismiss after 3 seconds
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(3))

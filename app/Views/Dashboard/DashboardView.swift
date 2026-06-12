@@ -15,6 +15,9 @@ struct DashboardView: View {
     /// Sites sorted by addedAt — filtered/sorted for schedule in computed property
     @Query(sort: \Site.addedAt) private var sites: [Site]
 
+    /// Cached aggregate metrics — recomputed only when `jobs` changes, not on every render.
+    @State private var summary: JobStatusSummary = .zero
+
     init() {
         let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
         _recentCaptures = Query(
@@ -44,21 +47,18 @@ struct DashboardView: View {
             .padding(16)
         }
         .navigationTitle("Dashboard")
+        .onAppear { summary = JobStatusSummary(jobs: jobs) }
+        .onChange(of: jobs) { _, updated in summary = JobStatusSummary(jobs: updated) }
     }
 
     // MARK: - Stat Cards
 
     private var statCardsSection: some View {
-        let total = jobs.count
-        let active = jobs.count(where: { [.pursuing, .applied, .interview].contains($0.status) })
-        let interviews = jobs.count(where: { $0.status == .interview })
-        let offers = jobs.count(where: { $0.status == .offer })
-
-        return HStack(spacing: 12) {
-            StatCard(label: "Total Jobs", value: total, systemImage: "briefcase")
-            StatCard(label: "Active", value: active, systemImage: "flame", color: .blue)
-            StatCard(label: "Interviews", value: interviews, systemImage: "person.2", color: .purple)
-            StatCard(label: "Offers", value: offers, systemImage: "star.fill", color: .green)
+        HStack(spacing: 12) {
+            StatCard(label: "Total Jobs", value: summary.total, systemImage: "briefcase")
+            StatCard(label: "Active", value: summary.active, systemImage: "flame", color: .blue)
+            StatCard(label: "Interviews", value: summary.interviews, systemImage: "person.2", color: .purple)
+            StatCard(label: "Offers", value: summary.offers, systemImage: "star.fill", color: .green)
         }
     }
 
@@ -272,15 +272,7 @@ struct DashboardView: View {
     // MARK: - Pipeline Funnel (horizontal bars)
 
     private var pipelineFunnelSection: some View {
-        let stages: [(label: String, statuses: [JobStatus])] = [
-            ("Tracked", [.pursuing, .applied, .interview, .offer]),
-            ("Applied", [.applied, .interview, .offer]),
-            ("Interview", [.interview, .offer]),
-            ("Offer", [.offer]),
-        ]
-        let counts = stages.map { stage in
-            (label: stage.label, count: jobs.count(where: { stage.statuses.contains($0.status) }))
-        }
+        let counts = summary.funnelCounts
         let maxCount = counts.map(\.count).max() ?? 1
 
         return GroupBox {
@@ -337,11 +329,9 @@ struct DashboardView: View {
 
                 // Footer stats
                 HStack(spacing: 0) {
-                    let avgFit = jobs.compactMap(\.fitScore).reduce(0, +)
-                    let fitCount = jobs.compactMap(\.fitScore).count
-                    FooterCell(label: "Avg fit", value: fitCount > 0 ? "\(avgFit / fitCount)" : "—")
-                    FooterCell(label: "Rejected", value: "\(jobs.count(where: { $0.status == .rejected }))")
-                    FooterCell(label: "Passed", value: "\(jobs.count(where: { $0.status == .passed }))", last: true)
+                    FooterCell(label: "Avg fit", value: summary.avgFitDisplay)
+                    FooterCell(label: "Rejected", value: "\(summary.rejected)")
+                    FooterCell(label: "Passed", value: "\(summary.passed)", last: true)
                 }
             }
             .padding(4)
@@ -454,13 +444,7 @@ struct DashboardView: View {
     // MARK: - Quality Summary
 
     private var qualitySummarySection: some View {
-        let issueJobs = jobs.filter { job in
-            job.extractionStatus == .failed ||
-                job.company == nil ||
-                job.title == nil
-        }
-
-        return QualitySummarySection(issueCount: issueJobs.count)
+        QualitySummarySection(issueCount: summary.issueCount)
     }
 
     // MARK: - Helpers

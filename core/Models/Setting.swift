@@ -3,7 +3,7 @@ import SwiftData
 
 @Model
 public final class Setting {
-    public var key: String
+    @Attribute(.unique) public var key: String
     public var value: String
     public var updatedAt: Date
 
@@ -36,7 +36,6 @@ public enum SettingsKey {
     public static let locationAllowHybrid = "location_allow_hybrid"
     public static let locationAllowOnsite = "location_allow_onsite"
     public static let llmQueuePaused = "llm_queue_paused"
-    public static let llmDebugLevel = "llm_debug_level"
     public static let availabilityAutoCheckEnabled = "availability_auto_check_enabled"
     public static let availabilityAutoCheckIntervalDays = "availability_auto_check_interval_days"
     public static let availabilityStaleDays = "availability_stale_days"

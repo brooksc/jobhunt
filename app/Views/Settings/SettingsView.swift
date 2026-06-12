@@ -126,7 +126,6 @@ struct LLMTab: View {
             providerSection
             pricingSection
             costSection
-            diagnosticsSection
         }
         .formStyle(.grouped)
         .onAppear {
@@ -143,9 +142,7 @@ struct LLMTab: View {
                     privacyURL: provider.privacyURL,
                     settings: settings,
                     onAgree: {
-                        selectedProviderID = providerID
-                        settings.llmProvider = providerID
-                        syncAPIKey()
+                        applyProviderChange(to: providerID)
                         pendingProviderID = nil
                     },
                     onCancel: { pendingProviderID = nil }
@@ -183,33 +180,38 @@ struct LLMTab: View {
             if selectedProviderID == "lmstudio" || selectedProviderID == "custom" {
                 TextField("Base URL", text: $baseURLText)
                     .onSubmit { settings.llmBaseURL = baseURLText }
-                    .onChange(of: baseURLText) { _, new in settings.llmBaseURL = new }
+                    .onChange(of: baseURLText) { _, new in
+                        settings.llmBaseURL = new
+                        if selectedProviderID == "custom",
+                           !ConsentHelper.isConsented(provider: "custom", settings: settings) {
+                            pendingProviderID = "custom"
+                            showingConsentSheet = true
+                        }
+                    }
             }
 
             if needsAPIKey {
                 SecureField("API Key", text: $apiKeyText)
                     .onSubmit { saveAPIKey() }
                     .onChange(of: apiKeyText) { _, _ in saveAPIKey() }
-            }
-
-            if selectedProviderID == "openrouter" {
-                Toggle("Free-tier model rotation", isOn: Binding(
-                    get: { settings.bool(forKey: SettingsKey.llmOpenRouterFreeRotate) },
-                    set: { settings.setBool($0, forKey: SettingsKey.llmOpenRouterFreeRotate) }
-                ))
+                if let err = settings.keychainWriteError {
+                    Label(err, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
             }
 
             if selectedProviderID != "foundation_models" {
                 HStack {
                     if fetchedModels.isEmpty {
                         TextField("Model", text: $modelText)
-                            .onSubmit { settings.llmModel = modelText }
-                            .onChange(of: modelText) { _, new in settings.llmModel = new }
+                            .onSubmit { settings.setModelForProvider(modelText, provider: selectedProviderID) }
+                            .onChange(of: modelText) { _, new in settings.setModelForProvider(new, provider: selectedProviderID) }
                     } else {
                         Picker("Model", selection: $modelText) {
                             ForEach(fetchedModels, id: \.self) { Text($0).tag($0) }
                         }
-                        .onChange(of: modelText) { _, new in settings.llmModel = new }
+                        .onChange(of: modelText) { _, new in settings.setModelForProvider(new, provider: selectedProviderID) }
                         Button("Clear") { fetchedModels = [] }
                             .buttonStyle(.borderless)
                             .foregroundStyle(.secondary)
@@ -307,20 +309,6 @@ struct LLMTab: View {
         }
     }
 
-    // MARK: - Diagnostics section
-
-    private var diagnosticsSection: some View {
-        Section("Diagnostics") {
-            Picker("Debug logging", selection: Binding(
-                get: { settings.string(forKey: SettingsKey.llmDebugLevel) },
-                set: { settings.set($0, forKey: SettingsKey.llmDebugLevel) }
-            )) {
-                Text("Errors only").tag("errors")
-                Text("Requests").tag("requests")
-                Text("Full (verbose)").tag("full")
-            }
-        }
-    }
 
     // MARK: - Helpers
 
@@ -343,8 +331,7 @@ struct LLMTab: View {
         case "openai", "anthropic", "google", "openrouter":
             return true
         case "custom":
-            let lower = baseURLText.lowercased()
-            return !lower.contains("localhost") && !lower.contains("127.0.0.1") && !lower.contains("0.0.0.0")
+            return !ConsentHelper.isLoopbackURL(baseURLText)
         default:
             return false
         }
@@ -360,7 +347,7 @@ struct LLMTab: View {
 
     private func syncFromSettings() {
         selectedProviderID = settings.llmProvider
-        modelText = settings.llmModel
+        modelText = settings.modelForProvider(settings.llmProvider)
         baseURLText = settings.llmBaseURL
         syncAPIKey()
     }
@@ -374,15 +361,19 @@ struct LLMTab: View {
     }
 
     private func handleProviderChange(to newID: String) {
-        let provider = ProviderOption.find(newID)
-        if provider.isCloud, !ConsentHelper.isConsented(provider: newID, settings: settings) {
+        if !ConsentHelper.isConsented(provider: newID, settings: settings) {
             pendingProviderID = newID
             showingConsentSheet = true
         } else {
-            selectedProviderID = newID
-            settings.llmProvider = newID
-            syncAPIKey()
+            applyProviderChange(to: newID)
         }
+    }
+
+    private func applyProviderChange(to newID: String) {
+        selectedProviderID = newID
+        settings.llmProvider = newID
+        modelText = settings.modelForProvider(newID)
+        syncAPIKey()
     }
 
     private func savePrices() {
@@ -426,7 +417,7 @@ struct LLMTab: View {
                 fetchedModels = models.map(\.id)
                 if !fetchedModels.contains(modelText) {
                     modelText = fetchedModels[0]
-                    settings.llmModel = fetchedModels[0]
+                    settings.setModelForProvider(fetchedModels[0], provider: selectedProviderID)
                 }
             }
         } catch {

@@ -4,8 +4,10 @@ import SwiftUI
 
 struct SaveSearchSheet: View {
     let filterState: JobsFilterState
+    let searchText: String
+    let searchTokens: [JobSearchToken]
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
+    @Environment(AppServices.self) private var appServices
     @Query(sort: \SavedSearch.sortOrder) private var existing: [SavedSearch]
 
     @State private var name: String = ""
@@ -46,19 +48,41 @@ struct SaveSearchSheet: View {
         }
     }
 
+    private var merged: JobsFilterState {
+        var state = filterState
+        state.searchText = searchText
+        for token in searchTokens {
+            switch token {
+            case .status(let s):
+                state.statusFilter = (state.statusFilter ?? []).union([s])
+            case .remoteType(let rt):
+                state.remoteFilter = (state.remoteFilter ?? []).union([rt])
+            case .minFitScore(let n):
+                state.minFitScore = max(state.minFitScore ?? 0, n)
+            case .minSalary(let n):
+                state.minSalary = max(state.minSalary ?? 0, n)
+            case .minRating(let n):
+                state.minRating = max(state.minRating ?? 0, n)
+            case .recentDays(let d):
+                if state.recentDays == nil { state.recentDays = d }
+            }
+        }
+        return state
+    }
+
     private func buildChips() -> [String] {
         var out: [String] = []
-        if let statuses = filterState.statusFilter {
+        if let statuses = merged.statusFilter {
             out.append(statuses.map(\.displayName).sorted().joined(separator: ", "))
         }
-        if let remotes = filterState.remoteFilter {
+        if let remotes = merged.remoteFilter {
             out.append(remotes.map { remoteLabel($0) }.sorted().joined(separator: ", "))
         }
-        if !filterState.searchText.isEmpty { out.append("\"\(filterState.searchText)\"") }
-        if let v = filterState.minFitScore { out.append("Fit ≥ \(v)") }
-        if let v = filterState.minRating { out.append("Rating ≥ \(v)★") }
-        if let v = filterState.minSalary { out.append("Salary ≥ $\(v / 1000)k") }
-        if let v = filterState.recentDays { out.append("Last \(v) days") }
+        if !merged.searchText.isEmpty { out.append("\"\(merged.searchText)\"") }
+        if let v = merged.minFitScore { out.append("Fit ≥ \(v)") }
+        if let v = merged.minRating { out.append("Rating ≥ \(v)★") }
+        if let v = merged.minSalary { out.append("Salary ≥ $\(v / 1000)k") }
+        if let v = merged.recentDays { out.append("Last \(v) days") }
         return out
     }
 
@@ -75,8 +99,8 @@ struct SaveSearchSheet: View {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
         let nextOrder = (existing.map(\.sortOrder).max() ?? -1) + 1
-        let search = filterState.toSavedSearch(name: trimmed, sortOrder: nextOrder)
-        modelContext.insert(search)
+        let search = merged.toSavedSearch(name: trimmed, sortOrder: nextOrder)
+        Task { try? await appServices.jobService.insertSavedSearch(search) }
         dismiss()
     }
 }

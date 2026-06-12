@@ -186,6 +186,19 @@ case let .migrate(inputPath, outputPath):
     print("  llm request attempts:  \(summary.llmRequestAttempts)")
     print("  contacts:              \(summary.contacts)")
     print("  cover letters:         \(summary.coverLetters)")
+    if summary.skippedOrphans > 0 {
+        var parts: [String] = []
+        if summary.skippedOrphanEvents > 0 { parts.append("events=\(summary.skippedOrphanEvents)") }
+        if summary.skippedOrphanActions > 0 { parts.append("actions=\(summary.skippedOrphanActions)") }
+        if summary.skippedOrphanDataQualityReviews > 0 { parts.append("dataQualityReviews=\(summary.skippedOrphanDataQualityReviews)") }
+        if summary.skippedOrphanFitScores > 0 { parts.append("fitScores=\(summary.skippedOrphanFitScores)") }
+        if summary.skippedOrphanLLMRequests > 0 { parts.append("llmRequests=\(summary.skippedOrphanLLMRequests)") }
+        if summary.skippedOrphanLLMRequestAttempts > 0 { parts.append("llmRequestAttempts=\(summary.skippedOrphanLLMRequestAttempts)") }
+        if summary.skippedOrphanContacts > 0 { parts.append("contacts=\(summary.skippedOrphanContacts)") }
+        if summary.skippedOrphanCoverLetters > 0 { parts.append("coverLetters=\(summary.skippedOrphanCoverLetters)") }
+        print("")
+        print("Skipped \(summary.skippedOrphans) orphan row(s): \(parts.joined(separator: ", "))")
+    }
     print("")
     print("Store written to: \(outputPath)")
 }

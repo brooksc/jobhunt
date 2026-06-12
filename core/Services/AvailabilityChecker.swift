@@ -349,20 +349,33 @@ public enum AvailabilityChecker {
     ) async -> (checked: Int, unavailable: Int, marked: Int) {
         let cutoff = Date().addingTimeInterval(-Double(max(1, staleDays)) * 86400)
 
-        // Fetch all jobs, then filter in memory.
-        // SwiftData predicates on macOS 15 don't reliably support enum rawValue comparisons.
+        // Use capturedAtDenormalized (populated on insert since TASK-216) to sort jobs
+        // oldest-first at the DB level, bounding the query with fetchLimit.
+        // Status and date are still filtered in-memory (enum predicates unsupported; optional
+        // date comparison in predicates requires force-unwrap which SwiftData doesn't support).
         let jobs: [Job]
         do {
             var descriptor = FetchDescriptor<Job>(
+                predicate: #Predicate { $0.capturedAtDenormalized != nil },
+                sortBy: [SortDescriptor(\Job.capturedAtDenormalized, order: .forward)]
+            )
+            descriptor.fetchLimit = limit * 4  // over-fetch to allow for in-memory status filter
+            let newStyleRows = try await store.fetch(descriptor)
+
+            // Legacy rows with nil capturedAtDenormalized: fetch separately, filter via relationship
+            var legacyDescriptor = FetchDescriptor<Job>(
+                predicate: #Predicate { $0.capturedAtDenormalized == nil },
                 sortBy: [SortDescriptor(\Job.createdAt, order: .forward)]
             )
-            descriptor.fetchLimit = limit * 10 // Over-fetch, then filter.
-            let fetched = try await store.fetch(descriptor)
-            // Keep active jobs whose captures are older than the cutoff.
-            jobs = fetched.filter { job in
-                guard job.status != .passed, job.status != .archived, job.status != .closed, job.status != .expired else { return false }
-                guard let capturedAt = job.capture?.capturedAt else { return false }
-                return capturedAt <= cutoff
+            legacyDescriptor.fetchLimit = limit * 2
+            let legacyRows = try await store.fetch(legacyDescriptor)
+
+            let all = newStyleRows + legacyRows
+            jobs = all.filter { job in
+                guard job.status != .passed, job.status != .archived,
+                      job.status != .closed, job.status != .expired else { return false }
+                let ageDate = job.capturedAtDenormalized ?? job.capture?.capturedAt ?? job.createdAt
+                return ageDate <= cutoff
             }.prefix(limit).map(\.self)
         } catch {
             return (0, 0, 0)

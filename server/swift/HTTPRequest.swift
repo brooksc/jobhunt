@@ -23,15 +23,18 @@ struct HTTPRequest {
 
 /// Parse raw HTTP request bytes into an HTTPRequest.
 /// Returns nil if the request is malformed or incomplete.
+/// Body is sliced from the original Data using Content-Length as a byte count,
+/// so non-ASCII (e.g. UTF-8 multi-byte) JSON bodies are never truncated.
 func parseHTTPRequest(_ data: Data) -> HTTPRequest? {
-    guard let raw = String(data: data, encoding: .utf8) else { return nil }
+    // Locate the header/body separator as raw bytes — never convert the body to String first.
+    let sepBytes = Data([13, 10, 13, 10]) // \r\n\r\n
+    guard let sepRange = data.range(of: sepBytes) else { return nil }
 
-    // Split headers from body on \r\n\r\n
-    guard let headerBodySep = raw.range(of: "\r\n\r\n") else { return nil }
-    let headerSection = String(raw[raw.startIndex ..< headerBodySep.lowerBound])
-    let bodyStart = headerBodySep.upperBound
+    // HTTP headers are always ASCII; body encoding is determined by Content-Type.
+    guard let headerString = String(data: data[data.startIndex ..< sepRange.lowerBound], encoding: .ascii)
+    else { return nil }
 
-    var lines = headerSection.components(separatedBy: "\r\n")
+    var lines = headerString.components(separatedBy: "\r\n")
     guard !lines.isEmpty else { return nil }
 
     let requestLine = lines.removeFirst()
@@ -41,7 +44,6 @@ func parseHTTPRequest(_ data: Data) -> HTTPRequest? {
     let method = parts[0]
     let rawTarget = parts[1]
 
-    // Parse path and query from request target
     var path = rawTarget
     var queryItems: [URLQueryItem] = []
     if let qIdx = rawTarget.firstIndex(of: "?") {
@@ -51,7 +53,6 @@ func parseHTTPRequest(_ data: Data) -> HTTPRequest? {
         queryItems = components?.queryItems ?? []
     }
 
-    // Parse headers into a [String: String] dict (lowercased keys)
     var headers: [String: String] = [:]
     for line in lines {
         if let colonIdx = line.firstIndex(of: ":") {
@@ -61,22 +62,15 @@ func parseHTTPRequest(_ data: Data) -> HTTPRequest? {
         }
     }
 
-    // Extract body based on Content-Length
+    // Slice body from raw Data using Content-Length as a byte count (not character count).
     var bodyData: Data?
+    let bodyStart = sepRange.upperBound
     if let contentLengthStr = headers["content-length"],
        let contentLength = Int(contentLengthStr),
-       contentLength > 0 {
-        let bodyString = String(raw[bodyStart...])
-        if let bodyBytes = bodyString.data(using: .utf8) {
-            bodyData = bodyBytes.prefix(contentLength)
-        }
+       contentLength > 0,
+       bodyStart < data.endIndex {
+        bodyData = Data(data[bodyStart...].prefix(contentLength))
     }
 
-    return HTTPRequest(
-        method: method,
-        path: path,
-        queryItems: queryItems,
-        headers: headers,
-        body: bodyData
-    )
+    return HTTPRequest(method: method, path: path, queryItems: queryItems, headers: headers, body: bodyData)
 }

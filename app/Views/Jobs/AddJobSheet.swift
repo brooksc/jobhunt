@@ -46,8 +46,7 @@ struct AddJobSheet: View {
         errorMessage = nil
         Task {
             do {
-                let payload = CapturePayload(url: url, pageTitle: "", visibleText: "")
-                _ = try await appServices.jobService.ingestCapture(payload)
+                _ = try await appServices.jobService.addJobByURL(url)
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription

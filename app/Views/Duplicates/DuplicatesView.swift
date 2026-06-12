@@ -5,15 +5,32 @@ import SwiftUI
 // MARK: - DuplicatesView
 
 struct DuplicatesView: View {
-    @Environment(\.modelContext) private var modelContext
+    @Environment(AppServices.self) private var appServices
 
-    /// All jobs — used to compute pairs and to look up originals by ID
+    /// All jobs — used to build pair index; @Query drives recomputation on change
     @Query(sort: \Job.createdAt, order: .forward) private var allJobs: [Job]
+    @Query private var allDecisions: [DuplicateDecision]
 
     @State private var searchText: String = ""
     @State private var selectedPairID: String?
     @State private var pairs: [DuplicatePair] = []
     @State private var jobIndex: [String: Job] = [:]
+    @State private var actionError: String?
+
+    /// Stable ID for `.task(id:)` debouncing — changes whenever the jobs array or decisions
+    /// change in any way that affects duplicate detection: count, status, or extractionStatus.
+    /// Uses a folded hash so that status transitions (e.g. new→passed) retrigger the scan
+    /// even when the job count stays the same.
+    private var pairRefreshID: Int {
+        var hasher = Hasher()
+        hasher.combine(allDecisions.count)
+        for job in allJobs {
+            hasher.combine(job.id)
+            hasher.combine(job.status.rawValue)
+            hasher.combine(job.extractionStatus.rawValue)
+        }
+        return hasher.finalize()
+    }
 
     var body: some View {
         HSplitView {
@@ -36,11 +53,23 @@ struct DuplicatesView: View {
             }
         }
         .navigationTitle("Duplicates")
-        .onChange(of: allJobs) { _, _ in
-            refreshPairs()
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let msg = actionError {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                    Text(msg).font(.caption).foregroundStyle(.red)
+                    Spacer()
+                    Button("Dismiss") { actionError = nil }.font(.caption)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.red.opacity(0.08))
+            }
         }
-        .onAppear {
-            refreshPairs()
+        // SwiftUI cancels and restarts this task whenever pairRefreshID changes,
+        // giving us implicit debouncing without holding a main-thread lock.
+        .task(id: pairRefreshID) {
+            await refreshPairsInBackground()
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {
@@ -149,39 +178,53 @@ struct DuplicatesView: View {
         "\(pair.original.id)||\(pair.candidate.id)"
     }
 
-    private func refreshPairs() {
-        // Build job index
+    @MainActor
+    private func refreshPairsInBackground() async {
+        // Build job index and snapshots synchronously on the main actor (reading @Query values is free)
         var index: [String: Job] = [:]
-        for job in allJobs {
-            index[job.id] = job
-        }
+        for job in allJobs { index[job.id] = job }
         jobIndex = index
 
-        // Compute pairs via DuplicateDetector
-        do {
-            pairs = try DuplicateDetector().duplicateGroups(context: modelContext)
-        } catch {
-            pairs = []
+        let snapshots = allJobs.compactMap { job -> JobSnapshot? in
+            guard let capture = job.capture else { return nil }
+            return JobSnapshot(job: job, capture: capture)
         }
+        let resolvedHashes = Set(allDecisions.map(\.cleanedHash))
+
+        // Move O(N²) computation off the main thread
+        let newPairs = await Task.detached(priority: .utility) {
+            DuplicateDetector().duplicateGroups(snapshots: snapshots, resolvedHashes: resolvedHashes)
+        }.value
+
+        pairs = newPairs
     }
 
     // MARK: - Actions
 
     private func handleUnmark(candidateID: String) {
-        guard let job = jobIndex[candidateID] else { return }
-        job.duplicateOfJobID = nil
-        job.updatedAt = Date()
-        try? modelContext.save()
-        selectedPairID = nil
-        refreshPairs()
+        Task {
+            do {
+                try await appServices.jobService.unmarkDuplicate(jobID: candidateID)
+                selectedPairID = nil
+                actionError = nil
+                await refreshPairsInBackground()
+            } catch {
+                actionError = "Unmark failed: \(error.localizedDescription)"
+            }
+        }
     }
 
     private func handleDelete(candidateID: String) {
-        guard let job = jobIndex[candidateID] else { return }
-        modelContext.delete(job)
-        try? modelContext.save()
-        selectedPairID = nil
-        refreshPairs()
+        Task {
+            do {
+                try await appServices.jobService.delete(jobID: candidateID)
+                selectedPairID = nil
+                actionError = nil
+                await refreshPairsInBackground()
+            } catch {
+                actionError = "Delete failed: \(error.localizedDescription)"
+            }
+        }
     }
 }
 

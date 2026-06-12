@@ -1,6 +1,21 @@
 import Foundation
 import Security
 
+/// Stores secrets in the macOS Keychain.
+///
+/// **Explicit security policy for new items:**
+/// - `kSecAttrSynchronizable = false` — never synced to iCloud Keychain; API keys are
+///   device-local secrets. This is also enforced at the search level so reads never
+///   accidentally match a synced copy.
+/// - `kSecAttrAccessible = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` — declared
+///   intent for data-protection keychain (iOS-style). On macOS's traditional login keychain
+///   this attribute is informational (the item is protected by the user's login keychain
+///   ACL), but it is set on every add so that items stored via the data-protection keychain
+///   (e.g. in sandboxed MAS builds with `kSecUseDataProtectionKeychain`) carry the
+///   explicit policy without code changes.
+///
+/// Existing items without these attributes are migrated on next `set(_:forKey:)` via
+/// delete-then-add (SecItemUpdate cannot change accessibility or sync attributes in-place).
 public struct KeychainStore: Sendable {
     private let service: String
 
@@ -10,17 +25,19 @@ public struct KeychainStore: Sendable {
 
     public func set(_ value: String, forKey key: String) throws {
         let data = Data(value.utf8)
-        var query = baseQuery(for: key)
+        let searchQuery = baseQuery(for: key)
 
-        if SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess {
-            let attributes: [CFString: Any] = [kSecValueData: data]
-            let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
-            guard status == errSecSuccess else { throw KeychainError.updateFailed(status) }
-        } else {
-            query[kSecValueData] = data
-            let status = SecItemAdd(query as CFDictionary, nil)
-            guard status == errSecSuccess else { throw KeychainError.addFailed(status) }
+        if SecItemCopyMatching(searchQuery as CFDictionary, nil) == errSecSuccess {
+            // Delete and re-add so the new item picks up the explicit security policy.
+            // SecItemUpdate cannot change kSecAttrAccessible or kSecAttrSynchronizable.
+            SecItemDelete(searchQuery as CFDictionary)
         }
+        var addQuery = searchQuery
+        addQuery[kSecValueData] = data
+        addQuery[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        addQuery[kSecAttrSynchronizable] = kCFBooleanFalse
+        let status = SecItemAdd(addQuery as CFDictionary, nil)
+        guard status == errSecSuccess else { throw KeychainError.addFailed(status) }
     }
 
     public func get(_ key: String) -> String? {
@@ -51,8 +68,16 @@ public struct KeychainStore: Sendable {
     }
 }
 
-public enum KeychainError: Error, Sendable {
+public enum KeychainError: Error, LocalizedError, Sendable {
     case addFailed(OSStatus)
     case updateFailed(OSStatus)
     case deleteFailed(OSStatus)
+
+    public var errorDescription: String? {
+        switch self {
+        case let .addFailed(code): "Keychain write failed (code \(code))"
+        case let .updateFailed(code): "Keychain update failed (code \(code))"
+        case let .deleteFailed(code): "Keychain delete failed (code \(code))"
+        }
+    }
 }

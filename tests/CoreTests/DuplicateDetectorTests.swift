@@ -390,6 +390,184 @@ final class DuplicateDetectorTests: XCTestCase {
         XCTAssertEqual(pairs.count, 2, "Three jobs with same hash should yield 2 pairs")
         XCTAssertTrue(pairs.allSatisfy { $0.kind == .exactHash })
     }
+
+    // TASK-143 regression: snapshot-based overload matches context-based result.
+    // Verifies that duplicateGroups(snapshots:resolvedHashes:) produces the same pairs
+    // as the context-based overload, enabling off-main-actor computation.
+    @MainActor
+    func testSnapshotOverloadMatchesContextOverload() throws {
+        let container = try makeTestContainer()
+        let ctx = container.mainContext
+
+        let hash = DuplicateDetector.cleanedHash(from: "snapshot overload test posting with sufficient distinct tokens here")
+        for idx in 1...2 {
+            let cap = Capture(url: "https://site\(idx).com/job", pageTitle: "Eng", rawHash: "rh_snap\(idx)", cleanedHash: hash)
+            cap.cleanedDescription = "snapshot overload test posting with sufficient distinct tokens here"
+            let job = Job(jobNumber: idx, company: "SnapCo", title: "Eng", extractionStatus: .succeeded)
+            job.capture = cap
+            ctx.insert(cap)
+            ctx.insert(job)
+        }
+        try ctx.save()
+
+        let contextPairs = try DuplicateDetector().duplicateGroups(context: ctx)
+
+        let allJobs = try ctx.fetch(FetchDescriptor<Job>())
+        let snapshots = allJobs.compactMap { job -> JobSnapshot? in
+            guard let cap = job.capture else { return nil }
+            return JobSnapshot(job: job, capture: cap)
+        }
+        let snapshotPairs = DuplicateDetector().duplicateGroups(snapshots: snapshots, resolvedHashes: [])
+
+        XCTAssertEqual(contextPairs.count, snapshotPairs.count)
+        let contextKeys = Set(contextPairs.map { "\($0.original.id)||\($0.candidate.id)" })
+        let snapshotKeys = Set(snapshotPairs.map { "\($0.original.id)||\($0.candidate.id)" })
+        XCTAssertEqual(contextKeys, snapshotKeys, "Snapshot overload must produce same pairs as context overload")
+    }
+
+    // MARK: - Performance benchmark (TASK-212)
+
+    /// Verifies that duplicate detection over 500+ synthetic jobs completes within a
+    /// reasonable wall-clock budget. The synthetic set contains:
+    ///   - 200 unique jobs (no duplicates expected)
+    ///   - 150 exact-hash duplicate pairs (300 jobs)
+    ///   - 50 near-duplicate clusters of 2 (100 jobs, different URLs)
+    /// Total: 600 snapshots, covering the O(N²) worst-case paths.
+    func testDuplicateDetectionPerformanceLargeDataset() {
+        let detector = DuplicateDetector()
+
+        // Build 600 synthetic snapshots
+        var snapshots: [JobSnapshot] = []
+
+        // 200 unique jobs — no matches
+        for i in 0..<200 {
+            let cap = Capture(
+                url: "https://unique-site\(i).example.com/job",
+                pageTitle: "Unique Role \(i)",
+                rawHash: "unique_rh_\(i)",
+                cleanedHash: "unique_ch_\(i)"
+            )
+            cap.cleanedDescription = "Unique description number \(i) with enough tokens for signal detection purposes here"
+            let job = Job(
+                jobNumber: i,
+                company: "UniqueCompany\(i)",
+                title: "Unique Engineer \(i)",
+                extractionStatus: .succeeded
+            )
+            job.capture = cap
+            snapshots.append(JobSnapshot(job: job, capture: cap))
+        }
+
+        // 150 exact-hash pairs (300 jobs) — same cleanedHash, different URLs
+        for i in 0..<150 {
+            let sharedHash = "shared_hash_\(i)"
+            let sharedDesc = "Shared description for duplicate pair \(i) with sufficient distinct tokens for detection"
+            for urlIdx in 0..<2 {
+                let url = urlIdx == 0
+                    ? "https://acme\(i).com/job"
+                    : "https://greenhouse.io/acme\(i)/job"
+                let cap = Capture(
+                    url: url,
+                    pageTitle: "Shared Role \(i)",
+                    rawHash: "shared_rh_\(i)_\(urlIdx)",
+                    cleanedHash: sharedHash
+                )
+                cap.cleanedDescription = sharedDesc
+                let job = Job(
+                    jobNumber: 200 + i * 2 + urlIdx,
+                    company: "AcmeCorp\(i)",
+                    title: "Software Engineer",
+                    extractionStatus: .succeeded
+                )
+                job.capture = cap
+                snapshots.append(JobSnapshot(job: job, capture: cap))
+            }
+        }
+
+        // 50 near-duplicate clusters (100 jobs): same title+company, different hostnames
+        for i in 0..<50 {
+            let desc = "Platform engineer kubernetes distributed systems reliability infrastructure cloud scale \(i)"
+            for urlIdx in 0..<2 {
+                let url = urlIdx == 0
+                    ? "https://nearco\(i).com/platform-eng"
+                    : "https://jobs.greenhouse.io/nearco\(i)"
+                let cap = Capture(
+                    url: url,
+                    pageTitle: "Platform Engineer",
+                    rawHash: "near_rh_\(i)_\(urlIdx)",
+                    cleanedHash: "near_ch_\(i)_\(urlIdx)"
+                )
+                cap.cleanedDescription = desc
+                let job = Job(
+                    jobNumber: 500 + i * 2 + urlIdx,
+                    company: "NearCo\(i)",
+                    title: "Platform Engineer",
+                    extractionStatus: .succeeded
+                )
+                job.capture = cap
+                snapshots.append(JobSnapshot(job: job, capture: cap))
+            }
+        }
+
+        XCTAssertEqual(snapshots.count, 600, "Expected 600 synthetic snapshots")
+
+        // Measure: full detection must complete in under 5 seconds on any CI machine.
+        let start = Date()
+        let pairs = detector.duplicateGroups(snapshots: snapshots, resolvedHashes: [])
+        let elapsed = Date().timeIntervalSince(start)
+
+        XCTAssertLessThan(elapsed, 5.0, "Duplicate detection over 600 jobs should complete in under 5 s (took \(elapsed)s)")
+
+        // Sanity-check: exact-hash pairs should be found
+        let exactPairs = pairs.filter { $0.kind == .exactHash }
+        XCTAssertEqual(exactPairs.count, 150, "Expected 150 exact-hash pairs")
+    }
+
+    // MARK: - TASK-252: already-resolved duplicates excluded from detection candidates
+
+    func testDetectDomainDuplicates_alreadyMarkedDuplicate_notSurfacedAsCandidate() {
+        let detector = DuplicateDetector()
+
+        // "keep" job: company domain, high score
+        let keepCap = Capture(url: "https://acme.com/jobs/engineer", pageTitle: "Software Engineer", rawHash: "rh-keep", cleanedHash: "ch-keep")
+        keepCap.cleanedDescription = "Build distributed systems kubernetes infrastructure reliability platform scale"
+        let keepJob = Job(company: "Acme", title: "Software Engineer", extractionStatus: .succeeded)
+        keepJob.capture = keepCap
+
+        // Candidate job that was ALREADY marked as a duplicate — must be excluded
+        let dupCap = Capture(url: "https://greenhouse.io/acme/engineer", pageTitle: "Software Engineer", rawHash: "rh-dup", cleanedHash: "ch-dup")
+        dupCap.cleanedDescription = "Build distributed systems kubernetes infrastructure reliability platform scale"
+        let dupJob = Job(company: "Acme", title: "Software Engineer", status: .duplicate, extractionStatus: .succeeded)
+        dupJob.duplicateOfJobID = keepJob.id
+        dupJob.capture = dupCap
+
+        let snapshots = [
+            JobSnapshot(job: keepJob, capture: keepCap),
+            JobSnapshot(job: dupJob, capture: dupCap)
+        ]
+
+        let pairs = detector.duplicateGroups(snapshots: snapshots, resolvedHashes: [])
+        XCTAssertTrue(pairs.isEmpty, "A job already marked as duplicate must not surface as a detection candidate")
+    }
+
+    // TASK-143 regression: resolved hashes passed via Set must suppress matching pairs.
+    func testSnapshotOverloadRespectsResolvedHashes() {
+        let hash = DuplicateDetector.cleanedHash(from: "already resolved hash text with enough tokens for detection")
+        var snapshots: [JobSnapshot] = []
+        for idx in 1...2 {
+            let cap = Capture(url: "https://s\(idx).com/j", pageTitle: "Job", rawHash: "rh\(idx)", cleanedHash: hash)
+            cap.cleanedDescription = "already resolved hash text with enough tokens for detection"
+            let job = Job(jobNumber: idx, company: "Co", title: "Job", extractionStatus: .succeeded)
+            job.capture = cap
+            snapshots.append(JobSnapshot(job: job, capture: cap))
+        }
+
+        let unresolved = DuplicateDetector().duplicateGroups(snapshots: snapshots, resolvedHashes: [])
+        XCTAssertEqual(unresolved.count, 1, "One pair expected before resolution")
+
+        let resolved = DuplicateDetector().duplicateGroups(snapshots: snapshots, resolvedHashes: [hash])
+        XCTAssertEqual(resolved.count, 0, "Pair must be suppressed when hash is in resolvedHashes")
+    }
 }
 
 // MARK: - Test helpers

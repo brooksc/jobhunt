@@ -1,0 +1,38 @@
+name: Version Parity
+
+# Ensures Project.swift marketingVersion and extension/manifest.json version stay in sync.
+# Runs on every push and PR so drift is caught before release.
+
+on:
+  push:
+    branches: [main, swift-rewrite]
+    tags-ignore: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-versions:
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout@v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Check version parity
+        run: |
+          APP_VERSION=$(grep -o '\.marketingVersion("[0-9.]*")' Project.swift | grep -o '"[0-9.]*"' | tr -d '"')
+          EXT_VERSION=$(jq -r '.version' extension/manifest.json)
+
+          echo "App version (Project.swift):          $APP_VERSION"
+          echo "Extension version (manifest.json):    $EXT_VERSION"
+
+          if [ "$APP_VERSION" != "$EXT_VERSION" ]; then
+            echo ""
+            echo "ERROR: Version mismatch!"
+            echo "  Project.swift marketingVersion = $APP_VERSION"
+            echo "  extension/manifest.json version = $EXT_VERSION"
+            echo ""
+            echo "Run ./scripts/bump-version.sh to update both files together."
+            exit 1
+          fi
+
+          echo "OK: versions match ($APP_VERSION)"

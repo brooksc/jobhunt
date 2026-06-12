@@ -6,10 +6,17 @@ import XCTest
 
 /// Records captured requests and returns preconfigured responses.
 /// Named LLMMockURLProtocol to avoid conflict with MockURLProtocol in AvailabilityCheckerTests.
+///
+/// Static state is global — these tests must not run in parallel within the same process.
+/// Provider test classes inherit LLMMockProviderTestCase which calls reset() in both setUp and tearDown.
 final class LLMMockURLProtocol: URLProtocol {
-    // Set these before each test
     static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
     static var capturedRequests: [URLRequest] = []
+
+    static func reset() {
+        requestHandler = nil
+        capturedRequests = []
+    }
 
     override static func canInit(with _: URLRequest) -> Bool {
         true
@@ -79,16 +86,29 @@ private func mockHTTPResponse(url: URL, statusCode: Int = 200) -> HTTPURLRespons
     HTTPURLResponse(url: url, statusCode: statusCode, httpVersion: nil, headerFields: nil)!
 }
 
-// MARK: - OpenAI provider tests
+// MARK: - Shared base for provider tests that use LLMMockURLProtocol
 
-final class OpenAIProviderTests: XCTestCase {
+/// Resets LLMMockURLProtocol state in both setUp and tearDown to prevent
+/// cross-test handler leakage, including when a test exits early via throw.
+class LLMMockProviderTestCase: XCTestCase {
     var session: URLSession!
 
     override func setUp() {
         super.setUp()
-        LLMMockURLProtocol.capturedRequests = []
+        LLMMockURLProtocol.reset()
         session = makeMockSession()
     }
+
+    override func tearDown() {
+        LLMMockURLProtocol.reset()
+        session = nil
+        super.tearDown()
+    }
+}
+
+// MARK: - OpenAI provider tests
+
+final class OpenAIProviderTests: LLMMockProviderTestCase {
 
     func testRequestURLAndHeaders() async throws {
         LLMMockURLProtocol.requestHandler = { req in
@@ -174,14 +194,7 @@ final class OpenAIProviderTests: XCTestCase {
 
 // MARK: - Anthropic provider tests
 
-final class AnthropicProviderTests: XCTestCase {
-    var session: URLSession!
-
-    override func setUp() {
-        super.setUp()
-        LLMMockURLProtocol.capturedRequests = []
-        session = makeMockSession()
-    }
+final class AnthropicProviderTests: LLMMockProviderTestCase {
 
     private func anthropicResponse(text: String, model: String = "claude-sonnet-4-6") -> Data {
         let json = """
@@ -244,14 +257,7 @@ final class AnthropicProviderTests: XCTestCase {
 
 // MARK: - Google provider tests
 
-final class GoogleProviderTests: XCTestCase {
-    var session: URLSession!
-
-    override func setUp() {
-        super.setUp()
-        LLMMockURLProtocol.capturedRequests = []
-        session = makeMockSession()
-    }
+final class GoogleProviderTests: LLMMockProviderTestCase {
 
     private func googleResponse(text: String) -> Data {
         let json = """
@@ -263,7 +269,7 @@ final class GoogleProviderTests: XCTestCase {
         return Data(json.utf8)
     }
 
-    func testRequestURLContainsAPIKeyAndModel() async throws {
+    func testRequestURLContainsModel_andKeyIsInHeader() async throws {
         LLMMockURLProtocol.requestHandler = { req in
             (mockHTTPResponse(url: req.url!), self.googleResponse(text: "answer"))
         }
@@ -274,9 +280,12 @@ final class GoogleProviderTests: XCTestCase {
         )
         _ = try await provider.complete(req)
 
-        let url = try XCTUnwrap(LLMMockURLProtocol.capturedRequests.first?.url)
-        XCTAssertTrue(url.absoluteString.contains("gemini-2.5-flash:generateContent"))
-        XCTAssertTrue(url.absoluteString.contains("key=gkey"))
+        let captured = try XCTUnwrap(LLMMockURLProtocol.capturedRequests.first)
+        let urlStr = captured.url?.absoluteString ?? ""
+        XCTAssertTrue(urlStr.contains("gemini-2.5-flash:generateContent"), "URL must contain model name")
+        XCTAssertFalse(urlStr.contains("key="), "API key must NOT appear in URL query (TASK-128)")
+        XCTAssertEqual(captured.value(forHTTPHeaderField: "x-goog-api-key"), "gkey",
+                       "API key must be sent via x-goog-api-key header")
     }
 
     func testSystemInstructionInjected() async throws {
@@ -303,14 +312,7 @@ final class GoogleProviderTests: XCTestCase {
 
 // MARK: - LMStudio provider tests
 
-final class LMStudioProviderTests: XCTestCase {
-    var session: URLSession!
-
-    override func setUp() {
-        super.setUp()
-        LLMMockURLProtocol.capturedRequests = []
-        session = makeMockSession()
-    }
+final class LMStudioProviderTests: LLMMockProviderTestCase {
 
     func testRequestURLUsesLocalhost() async throws {
         LLMMockURLProtocol.requestHandler = { req in
@@ -352,14 +354,7 @@ final class LMStudioProviderTests: XCTestCase {
 
 // MARK: - OpenRouter provider tests
 
-final class OpenRouterProviderTests: XCTestCase {
-    var session: URLSession!
-
-    override func setUp() {
-        super.setUp()
-        LLMMockURLProtocol.capturedRequests = []
-        session = makeMockSession()
-    }
+final class OpenRouterProviderTests: LLMMockProviderTestCase {
 
     func testRequestURLAndExtraHeaders() async throws {
         LLMMockURLProtocol.requestHandler = { req in
@@ -382,14 +377,7 @@ final class OpenRouterProviderTests: XCTestCase {
 
 // MARK: - Custom provider tests
 
-final class CustomProviderTests: XCTestCase {
-    var session: URLSession!
-
-    override func setUp() {
-        super.setUp()
-        LLMMockURLProtocol.capturedRequests = []
-        session = makeMockSession()
-    }
+final class CustomProviderTests: LLMMockProviderTestCase {
 
     func testRequestURLUsesCustomBaseURL() async throws {
         LLMMockURLProtocol.requestHandler = { req in
@@ -417,19 +405,13 @@ final class CustomProviderTests: XCTestCase {
 // MARK: - FoundationModels availability tests
 
 final class FoundationModelsProviderTests: XCTestCase {
-    func testIsAvailableReturnsBool() {
-        // Just assert it doesn't crash and returns a Bool
-        let available = FoundationModelsProvider.isAvailable()
-        XCTAssertNotNil(available) // always passes — value varies per OS
-    }
-
     func testConcurrencyLimitIsOne() {
         XCTAssertEqual(FoundationModelsProvider().concurrencyLimit, 1)
     }
 
+    // Platform smoke coverage: on macOS < 26 the provider must throw; on >= 26 it
+    // may succeed or fail depending on whether a model is loaded in the test environment.
     func testCompleteThrowsOnOlderOS() async {
-        // On macOS < 26 this should throw; on >= 26 it may throw too (no model loaded).
-        // We just assert it doesn't silently succeed without a real model.
         let provider = FoundationModelsProvider()
         if !FoundationModelsProvider.isAvailable() {
             do {
@@ -507,14 +489,7 @@ final class LLMProviderFactoryTests: XCTestCase {
 
 // MARK: - HTTP error tests
 
-final class LLMProviderErrorTests: XCTestCase {
-    var session: URLSession!
-
-    override func setUp() {
-        super.setUp()
-        LLMMockURLProtocol.capturedRequests = []
-        session = makeMockSession()
-    }
+final class LLMProviderErrorTests: LLMMockProviderTestCase {
 
     func testHTTP500ThrowsError() async {
         LLMMockURLProtocol.requestHandler = { req in
@@ -535,6 +510,22 @@ final class LLMProviderErrorTests: XCTestCase {
         } catch {
             XCTFail("Unexpected error type: \(error)")
         }
+    }
+
+    // TASK-127 regression: persisted error descriptions must not include raw provider response bodies.
+    func testHTTPErrorDescriptionOmitsResponseBody() {
+        let sensitiveBody = "Bearer token: sk-secret123, user data: john@example.com"
+        let err = LLMProviderError.httpError(statusCode: 429, body: sensitiveBody)
+        let description = err.localizedDescription
+        XCTAssertFalse(description.contains(sensitiveBody), "localizedDescription must not include raw response body")
+        XCTAssertFalse(description.contains("Bearer"), "localizedDescription must not include auth tokens from body")
+        XCTAssertTrue(description.contains("429"), "localizedDescription must include the status code")
+    }
+
+    func testDecodeErrorDescriptionOmitsRawContent() {
+        let err = LLMProviderError.noResponse
+        let description = err.localizedDescription
+        XCTAssertFalse(description.isEmpty)
     }
 }
 

@@ -26,6 +26,9 @@ struct ContentView: View {
         .environment(\.jobService, appServices.jobService)
         .environment(\.queueActor, appServices.queueActor)
         .toolbar { serviceStatusMenu }
+        .overlay(alignment: .bottom) {
+            ToastOverlay(store: appServices.toastStore)
+        }
         .background(DockBadgeUpdater(unreadCount: unreadJobs.count))
         .onAppear {
             applyAppearance(theme.colorSchemePreference)
@@ -118,6 +121,29 @@ struct ContentView: View {
                     )
                     Button("Open LLM Queue") { router.navigateToSection(.llmQueue) }
                 }
+                Section("Local Server") {
+                    if appServices.serverRunning {
+                        Label("Server: running", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    } else if let err = appServices.serverError {
+                        Label("Server: \(err)", systemImage: "exclamationmark.circle.fill")
+                            .foregroundStyle(.red)
+                        Button("Retry") {
+                            Task { @MainActor in
+                                appServices.serverError = nil
+                                do {
+                                    try await appServices.server.start()
+                                    appServices.serverRunning = true
+                                } catch {
+                                    appServices.serverError = error.localizedDescription
+                                }
+                            }
+                        }
+                    } else {
+                        Label("Server: starting…", systemImage: "circle")
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 Section("Capture") {
                     Label("Extension: linked", systemImage: "puzzlepiece")
                 }
@@ -207,7 +233,7 @@ struct JobInspectorView: View {
 
                 Button {
                     let ids = Array(selectedJobIDs)
-                    Task { try? await queueActor?.enqueue(jobIDs: ids, mode: .extract) }
+                    Task { try? await jobService?.resetExtractionBulk(jobIDs: ids) }
                 } label: {
                     Label("Re-run AI on All", systemImage: "arrow.clockwise").frame(minWidth: 160)
                 }

@@ -4,7 +4,9 @@ import SwiftData
 @Model
 public final class Site {
     public var id: String
-    public var origin: String
+    // Safe to mark unique on fresh installs. For existing stores with duplicate origin rows,
+    // deduplicate before opening the store with this constraint active.
+    @Attribute(.unique) public var origin: String
     public var url: String
     public var companyName: String?
     public var companyWebsite: String?

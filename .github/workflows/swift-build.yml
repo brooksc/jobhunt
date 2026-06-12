@@ -11,10 +11,11 @@ jobs:
   build:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      # actions/checkout@v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - name: Install Tuist
-        run: brew install tuist
+      - name: Install Tuist (pinned via .mise.toml)
+        run: mise install tuist
 
       - name: Install swiftlint / swiftformat
         run: brew install swiftlint swiftformat
@@ -38,14 +39,22 @@ jobs:
             build \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Run Core tests
+      # Fast gate: CoreTests + ServerTests + MCPTests (~30s).
+      # AppUITests: run manually or on a scheduled VM lane (requires display server).
+      # LLMEval: opt-in only; run with LLM_EVAL=1 locally after setting a provider.
+      - name: Run fast tests (Core + Server + MCP)
         run: |
           xcodebuild -scheme Jobhunt-DMG \
             -configuration Debug-DMG \
             -destination 'platform=macOS' \
             -only-testing CoreTests \
+            -only-testing ServerTests \
+            -only-testing MCPTests \
             test \
             CODE_SIGNING_ALLOWED=NO
+
+      - name: Run extension Node tests
+        run: npm test --prefix extension
 
       - name: SwiftLint
         run: swiftlint lint --strict

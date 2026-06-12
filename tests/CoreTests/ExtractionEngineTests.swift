@@ -2,6 +2,19 @@ import SwiftData
 import XCTest
 @testable import JobhuntCore
 
+// MARK: - Shared test helpers
+
+private func makeExtractionSettings() -> ExtractionSettings {
+    ExtractionSettings(
+        llmModel: "stub-model",
+        preferredLocations: "",
+        locationFilterEnabled: false,
+        locationAllowRemote: true,
+        locationAllowHybrid: true,
+        locationAllowOnsite: true
+    )
+}
+
 // MARK: - Stub providers for testing
 
 /// A provider that always fails with a given error.
@@ -12,6 +25,36 @@ private struct AlwaysFailProvider: LLMProvider {
 
     func complete(_: ChatRequest) async throws -> ChatResponse {
         throw error
+    }
+}
+
+/// Records the model string from the last ChatRequest it receives.
+private final class CapturingProvider: LLMProvider, @unchecked Sendable {
+    let id: String = "capturing"
+    let concurrencyLimit: Int = 1
+    private(set) var lastRequestedModel: String?
+    private(set) var lastRequest: ChatRequest?
+    private let response: String
+
+    init(response: String) { self.response = response }
+
+    func complete(_ request: ChatRequest) async throws -> ChatResponse {
+        lastRequestedModel = request.model
+        lastRequest = request
+        return ChatResponse(content: response, model: request.model, responseFormat: .text)
+    }
+}
+
+/// A provider that waits a short delay before returning a canned success response.
+private struct DelayedSuccessProvider: LLMProvider {
+    let id: String = "delayed-success"
+    let concurrencyLimit: Int = 1
+    let delay: TimeInterval
+    let response: String
+
+    func complete(_: ChatRequest) async throws -> ChatResponse {
+        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        return ChatResponse(content: response, model: "stub-model", responseFormat: .text)
     }
 }
 
@@ -141,15 +184,16 @@ final class ExtractionEngineTests: XCTestCase {
     func testQueueActorAutoPause() async throws {
         let container = try ModelContainerFactory.inMemory()
         let store = BackgroundStore(modelContainer: container)
-        let context = ModelContext(container)
-        let settings = SettingsStore(modelContext: context)
 
         let stubError = LLMProviderError.unavailable(reason: "stub failure")
         let failProvider = AlwaysFailProvider(error: stubError)
 
+        var paused = false
         let queue = QueueActor(
             store: store,
-            settings: settings,
+            isPaused: { paused },
+            onSetPaused: { paused = $0 },
+            readExtractionSettings: { makeExtractionSettings() },
             providerFactory: { failProvider }
         )
 
@@ -176,7 +220,7 @@ final class ExtractionEngineTests: XCTestCase {
 
         // Queue should be paused after consecutive failures
         XCTAssertTrue(
-            settings.llmQueuePaused,
+            paused,
             "Queue should auto-pause after \(QueueActor.autoPauseThreshold) consecutive failures"
         )
     }
@@ -194,7 +238,7 @@ final class ExtractionEngineTests: XCTestCase {
         )
         let provider = AlwaysFailProvider(error: LLMProviderError.unavailable(reason: "should not reach"))
         do {
-            _ = try await ExtractionEngine.extract(snapshot: snapshot, provider: provider, settings: makeSettings())
+            _ = try await ExtractionEngine.extract(snapshot: snapshot, provider: provider, settings: makeExtractionSettings())
             XCTFail("Expected noCaptureText error")
         } catch ExtractionEngineError.noCaptureText {
             // expected
@@ -219,8 +263,108 @@ final class ExtractionEngineTests: XCTestCase {
             captureSelectedText: nil
         )
         let provider = CountingProvider(succeedOnAttempt: 1, successResponse: successJSON)
-        let result = try await ExtractionEngine.extract(snapshot: snapshot, provider: provider, settings: makeSettings())
+        let result = try await ExtractionEngine.extract(snapshot: snapshot, provider: provider, settings: makeExtractionSettings())
         XCTAssertEqual(result.title, "Engineer")
+    }
+
+    // MARK: - TASK-154: scoreFit merged JSON retains explanation fields
+
+    func testScoreFit_mergedJSON_retainsExplanationFields() async throws {
+        let fitResponseJSON = """
+        {
+          "overall": 80,
+          "summary": "Strong iOS background.",
+          "requirements_met": ["Swift", "UIKit"],
+          "requirements_not_met": ["FPGA"],
+          "dimensions": [
+            {"name": "required_qualifications", "score": 85, "weight": 0.45, "rationale": "Meets core req"},
+            {"name": "skills", "score": 80, "weight": 0.15, "rationale": "Good skill match"}
+          ]
+        }
+        """
+        let capturing = CapturingProvider(response: fitResponseJSON)
+        let jobSnap = JobFitSnapshot(title: "iOS Dev", company: "Acme", seniority: nil, extractedJSON: nil, extractionModel: nil)
+        let resumeSnap = ResumeSnapshot(text: "Swift UIKit developer")
+
+        let output = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, model: "gpt-4o", provider: capturing)
+
+        XCTAssertNotNil(output.fitScoreJSON)
+        guard let jsonStr = output.fitScoreJSON,
+              let data = jsonStr.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            XCTFail("fitScoreJSON must be valid JSON")
+            return
+        }
+
+        // Explanation fields from LLM must be preserved
+        XCTAssertEqual(dict["summary"] as? String, "Strong iOS background.")
+        let requirementsMet = dict["requirements_met"] as? [String]
+        XCTAssertEqual(requirementsMet, ["Swift", "UIKit"])
+        let requirementsNotMet = dict["requirements_not_met"] as? [String]
+        XCTAssertEqual(requirementsNotMet?.first, "FPGA")
+        let dimensions = dict["dimensions"] as? [[String: Any]]
+        XCTAssertEqual(dimensions?.count, 2)
+        XCTAssertEqual(dimensions?.first?["rationale"] as? String, "Meets core req")
+
+        // Computed fields must also be present
+        XCTAssertNotNil(dict["overall"])
+        XCTAssertNotNil(dict["breakdown"])
+        XCTAssertNotNil(dict["penalty"])
+    }
+
+    // MARK: - TASK-153: scoreFit uses the passed model, not job.extractionModel
+
+    func testScoreFit_usesPassedModel() async throws {
+        let fitResponseJSON = """
+        {"overall":75,"dimensions":[{"name":"Technical","score":75,"weight":1.0,"rationale":"ok"}],"requirements_not_met":[]}
+        """
+        let capturing = CapturingProvider(response: fitResponseJSON)
+        let jobSnap = JobFitSnapshot(title: "iOS Dev", company: "Acme", seniority: nil, extractedJSON: nil, extractionModel: "old-extraction-model")
+        let resumeSnap = ResumeSnapshot(text: "Swift iOS developer with 5 years experience")
+
+        let output = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, model: "configured-fit-model", provider: capturing)
+
+        XCTAssertEqual(capturing.lastRequestedModel, "configured-fit-model",
+                       "scoreFit must use the model parameter, not job.extractionModel")
+        XCTAssertNotNil(output.fitScoreJSON, "scoreFit must return merged JSON")
+    }
+
+    // MARK: - TASK-266: ChatRequest includes responseFormat
+
+    func testExtract_chatRequest_hasResponseFormat() async throws {
+        let successJSON = """
+        {"title":"Engineer","company":"Acme","location":null,"remote_type":null,
+         "salary_min":null,"salary_max":null,"salary_currency":null,"salary_note":null,
+         "salary_hourly_min":null,"salary_hourly_max":null,
+         "employment_type":null,"seniority":null,"skills":[],"summary":"Good",
+         "requirements":[],"nice_to_haves":[],"benefits":[],
+         "application_url":null,"application_instructions":null,"confidence":null}
+        """
+        let capturing = CapturingProvider(response: successJSON)
+        let snapshot = JobExtractionSnapshot(
+            captureURL: "https://example.com/job",
+            captureCanonicalURL: nil,
+            capturePageTitle: "Engineer",
+            captureCleanedDescription: "Build amazing things.",
+            captureVisibleText: nil,
+            captureSelectedText: nil
+        )
+        _ = try await ExtractionEngine.extract(snapshot: snapshot, provider: capturing, settings: makeExtractionSettings())
+        XCTAssertNotNil(capturing.lastRequest?.responseFormat,
+                        "Extraction ChatRequest must include a non-nil responseFormat")
+    }
+
+    func testScoreFit_chatRequest_hasResponseFormat() async throws {
+        let fitResponseJSON = """
+        {"overall":80,"dimensions":[{"name":"required_qualifications","score":80,"weight":1.0,"rationale":"ok"}],
+         "requirements_not_met":[]}
+        """
+        let capturing = CapturingProvider(response: fitResponseJSON)
+        let jobSnap = JobFitSnapshot(title: "Engineer", company: "Acme", seniority: nil, extractedJSON: nil, extractionModel: nil)
+        let resumeSnap = ResumeSnapshot(text: "Swift developer with 5 years experience")
+        _ = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, model: "test-model", provider: capturing)
+        XCTAssertNotNil(capturing.lastRequest?.responseFormat,
+                        "Fit scoring ChatRequest must include a non-nil responseFormat")
     }
 
     func testScoreFit_snapshot_emptyResumeThrows() async throws {
@@ -228,17 +372,311 @@ final class ExtractionEngineTests: XCTestCase {
         let resumeSnap = ResumeSnapshot(text: "   ")
         let provider = AlwaysFailProvider(error: LLMProviderError.unavailable(reason: "should not reach"))
         do {
-            _ = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, provider: provider)
+            _ = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, model: "test-model", provider: provider)
             XCTFail("Expected emptyResumeText error")
         } catch ExtractionEngineError.emptyResumeText {
             // expected
         }
     }
 
-    private func makeSettings() throws -> SettingsStore {
+    // MARK: - Fit consent check
+
+    func testFitRequest_consentMissing_marksRequestFailed() async throws {
         let container = try ModelContainerFactory.inMemory()
-        let ctx = ModelContext(container)
-        return SettingsStore(modelContext: ctx)
+        let store = BackgroundStore(modelContainer: container)
+        let failProvider = AlwaysFailProvider(error: LLMProviderError.unavailable(reason: "should not reach"))
+
+        // Cloud provider without consent
+        let noConsentSettings = ExtractionSettings(
+            llmModel: "gpt-4o",
+            llmProvider: "openai",
+            llmBaseURL: "https://api.openai.com",
+            consentGranted: false,
+            preferredLocations: "",
+            locationFilterEnabled: false,
+            locationAllowRemote: true,
+            locationAllowHybrid: true,
+            locationAllowOnsite: true
+        )
+        var paused = false
+        let queue = QueueActor(
+            store: store,
+            isPaused: { paused },
+            onSetPaused: { paused = $0 },
+            readExtractionSettings: { noConsentSettings },
+            providerFactory: { failProvider }
+        )
+
+        let capture = Capture(url: "https://example.com/job", pageTitle: "Engineer", rawHash: "h1")
+        let job = Job(jobNumber: 1, title: "Engineer")
+        job.capture = capture
+        job.extractedJSON = "{\"title\":\"Engineer\"}"
+        let resume = Resume(name: "My Resume", text: "Swift developer with 5 years experience.", charCount: 40, active: true, sortOrder: 0)
+        try await store.insert(job)
+        try await store.insert(resume)
+
+        try await queue.enqueueFit(jobIDs: [job.id], resumeID: resume.id)
+        await queue.startProcessing()
+
+        let requests = try await store.fetch(FetchDescriptor<LLMRequest>())
+        let req = try XCTUnwrap(requests.first)
+        XCTAssertEqual(req.status, .failed, "Fit request without consent must be marked failed")
+    }
+
+    func testFitRequest_consentGranted_succeeds() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+
+        let fitJSON = """
+        {"overall":80,"dimensions":[{"name":"technical_skills","score":80,"weight":1.0,"evidence":"Good match"}],
+         "requirements_not_met":[],"summary":"Strong match"}
+        """
+        let capturingProvider = CapturingProvider(response: fitJSON)
+
+        // Cloud provider with consent granted
+        let consentedSettings = ExtractionSettings(
+            llmModel: "gpt-4o",
+            llmProvider: "openai",
+            llmBaseURL: "https://api.openai.com",
+            consentGranted: true,
+            preferredLocations: "",
+            locationFilterEnabled: false,
+            locationAllowRemote: true,
+            locationAllowHybrid: true,
+            locationAllowOnsite: true
+        )
+        var paused = false
+        let queue = QueueActor(
+            store: store,
+            isPaused: { paused },
+            onSetPaused: { paused = $0 },
+            readExtractionSettings: { consentedSettings },
+            providerFactory: { capturingProvider }
+        )
+
+        let capture = Capture(url: "https://example.com/job", pageTitle: "Engineer", rawHash: "h2")
+        let job = Job(jobNumber: 2, title: "Engineer")
+        job.capture = capture
+        job.extractedJSON = "{\"title\":\"Engineer\"}"
+        let resume = Resume(name: "My Resume", text: "Swift developer with 5 years experience.", charCount: 40, active: true, sortOrder: 0)
+        try await store.insert(job)
+        try await store.insert(resume)
+
+        try await queue.enqueueFit(jobIDs: [job.id], resumeID: resume.id)
+        await queue.startProcessing()
+
+        let requests = try await store.fetch(FetchDescriptor<LLMRequest>())
+        let req = try XCTUnwrap(requests.first)
+        XCTAssertEqual(req.status, .succeeded, "Fit request with consent granted must succeed")
+    }
+
+    func testFitRequest_loopbackProvider_noConsentNeeded() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+
+        let fitJSON = """
+        {"overall":75,"dimensions":[{"name":"technical_skills","score":75,"weight":1.0,"evidence":"Match"}],
+         "requirements_not_met":[],"summary":"OK match"}
+        """
+        let capturingProvider = CapturingProvider(response: fitJSON)
+
+        // Local provider — consentGranted=false doesn't matter for loopback
+        let localSettings = ExtractionSettings(
+            llmModel: "local-model",
+            llmProvider: "custom",
+            llmBaseURL: "http://127.0.0.1:1234",
+            consentGranted: false,
+            preferredLocations: "",
+            locationFilterEnabled: false,
+            locationAllowRemote: true,
+            locationAllowHybrid: true,
+            locationAllowOnsite: true
+        )
+        var paused = false
+        let queue = QueueActor(
+            store: store,
+            isPaused: { paused },
+            onSetPaused: { paused = $0 },
+            readExtractionSettings: { localSettings },
+            providerFactory: { capturingProvider }
+        )
+
+        let capture = Capture(url: "https://example.com/job", pageTitle: "Engineer", rawHash: "h3")
+        let job = Job(jobNumber: 3, title: "Engineer")
+        job.capture = capture
+        job.extractedJSON = "{\"title\":\"Engineer\"}"
+        let resume = Resume(name: "My Resume", text: "Swift developer with 5 years experience.", charCount: 40, active: true, sortOrder: 0)
+        try await store.insert(job)
+        try await store.insert(resume)
+
+        try await queue.enqueueFit(jobIDs: [job.id], resumeID: resume.id)
+        await queue.startProcessing()
+
+        let requests = try await store.fetch(FetchDescriptor<LLMRequest>())
+        let req = try XCTUnwrap(requests.first)
+        XCTAssertEqual(req.status, .succeeded, "Fit request to loopback provider must succeed without explicit consent")
+    }
+
+    // MARK: - TASK-247: requeueRunningOnLaunch resets stuck running requests
+
+    func testRequeueRunningOnLaunch_resetsRunningRequest() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        let queue = QueueActor(
+            store: store,
+            isPaused: { false },
+            onSetPaused: { _ in },
+            readExtractionSettings: { makeExtractionSettings() },
+            providerFactory: { AlwaysFailProvider(error: LLMProviderError.unavailable(reason: "stub")) }
+        )
+
+        // Insert a request stuck in .running (simulating a crash mid-run)
+        let job = Job(jobNumber: 1, title: "Stuck Job")
+        try await store.insert(job)
+        let req = LLMRequest(requestType: .extract, status: .running)
+        req.job = job
+        req.startedAt = Date(timeIntervalSinceNow: -60)
+        try await store.insert(req)
+
+        // Verify preconditions
+        let before = try await store.fetch(FetchDescriptor<LLMRequest>())
+        XCTAssertEqual(before.first?.status, .running)
+        XCTAssertNotNil(before.first?.startedAt)
+
+        // Call the method under test
+        try await queue.requeueRunningOnLaunch()
+
+        // Verify the request was reset to .queued with startedAt cleared
+        let after = try await store.fetch(FetchDescriptor<LLMRequest>())
+        let updated = try XCTUnwrap(after.first)
+        XCTAssertEqual(updated.status, .queued, "requeueRunningOnLaunch must reset .running to .queued")
+        XCTAssertNil(updated.startedAt, "requeueRunningOnLaunch must clear startedAt")
+    }
+
+    // MARK: - TASK-246: Cancellation during in-flight request prevents success overwrite
+
+    func testCancelDuringExecution_requestRemainsCancel() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+
+        // Provider that delays long enough for us to cancel before it returns
+        let delayedProvider = DelayedSuccessProvider(
+            delay: 0.05,
+            response: """
+            {"title":"Eng","company":"Acme","location":null,"remote_type":null,
+             "salary_min":null,"salary_max":null,"salary_currency":null,"salary_note":null,
+             "salary_hourly_min":null,"salary_hourly_max":null,
+             "employment_type":null,"seniority":null,"skills":[],"summary":"ok",
+             "requirements":[],"nice_to_haves":[],"benefits":[],
+             "application_url":null,"application_instructions":null,"confidence":null}
+            """
+        )
+        var paused = false
+        let queue = QueueActor(
+            store: store,
+            isPaused: { paused },
+            onSetPaused: { paused = $0 },
+            readExtractionSettings: { makeExtractionSettings() },
+            providerFactory: { delayedProvider }
+        )
+
+        let capture = Capture(
+            url: "https://example.com/job",
+            pageTitle: "Engineer",
+            selectedText: "Swift engineer role.",
+            rawHash: "cancelhash"
+        )
+        let job = Job(jobNumber: 1, title: "Engineer")
+        job.capture = capture
+        try await store.insert(job)
+        try await queue.enqueue(jobIDs: [job.id], mode: .extract)
+
+        // Start processing and cancel concurrently before provider returns
+        async let processing: Void = queue.startProcessing()
+        // Give the queue time to mark the request .running, then cancel it
+        try await Task.sleep(nanoseconds: 10_000_000) // 10ms
+        let requests = try await store.fetch(FetchDescriptor<LLMRequest>())
+        if let reqID = requests.first?.id {
+            try await queue.cancelRequest(id: reqID)
+        }
+        await processing
+
+        // The request must end as .cancelled, not .succeeded
+        let final = try await store.fetch(FetchDescriptor<LLMRequest>())
+        let finalReq = try XCTUnwrap(final.first)
+        XCTAssertEqual(finalReq.status, .cancelled,
+                       "Cancelling during in-flight execution must leave status as .cancelled")
+    }
+
+    // MARK: - TASK-245: Fan-out event stream delivers to multiple subscribers
+
+    func testSubscribe_twoSubscribersReceiveSameEvent() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+
+        let successJSON = """
+        {"title":"Engineer","company":"Acme","location":null,"remote_type":null,
+         "salary_min":null,"salary_max":null,"salary_currency":null,"salary_note":null,
+         "salary_hourly_min":null,"salary_hourly_max":null,
+         "employment_type":null,"seniority":null,"skills":[],"summary":"ok",
+         "requirements":[],"nice_to_haves":[],"benefits":[],
+         "application_url":null,"application_instructions":null,"confidence":null}
+        """
+        let capturingProvider = CapturingProvider(response: successJSON)
+        var paused = false
+        let queue = QueueActor(
+            store: store,
+            isPaused: { paused },
+            onSetPaused: { paused = $0 },
+            readExtractionSettings: { makeExtractionSettings() },
+            providerFactory: { capturingProvider }
+        )
+
+        // Subscribe two independent streams before processing starts
+        let stream1 = await queue.subscribe()
+        let stream2 = await queue.subscribe()
+
+        var events1: [QueueEvent] = []
+        var events2: [QueueEvent] = []
+
+        let capture = Capture(
+            url: "https://example.com/fanout-job",
+            pageTitle: "Fanout Engineer",
+            selectedText: "Swift role for fanout test.",
+            rawHash: "fanouthash"
+        )
+        let job = Job(jobNumber: 1, title: "Fanout Engineer")
+        job.capture = capture
+        try await store.insert(job)
+        try await queue.enqueue(jobIDs: [job.id], mode: .extract)
+
+        // Collect events from both streams while the queue runs
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                await queue.startProcessing()
+            }
+            group.addTask {
+                for await event in stream1 {
+                    events1.append(event)
+                    if case .processingComplete = event { break }
+                }
+            }
+            group.addTask {
+                for await event in stream2 {
+                    events2.append(event)
+                    if case .processingComplete = event { break }
+                }
+            }
+        }
+
+        XCTAssertFalse(events1.isEmpty, "Subscriber 1 must receive events")
+        XCTAssertFalse(events2.isEmpty, "Subscriber 2 must receive events")
+
+        // Both should have seen processingComplete
+        let complete1 = events1.contains { if case .processingComplete = $0 { return true }; return false }
+        let complete2 = events2.contains { if case .processingComplete = $0 { return true }; return false }
+        XCTAssertTrue(complete1, "Subscriber 1 must receive processingComplete")
+        XCTAssertTrue(complete2, "Subscriber 2 must receive processingComplete")
     }
 
     // MARK: - QueueActor retry (attempt tracking)
@@ -246,8 +684,6 @@ final class ExtractionEngineTests: XCTestCase {
     func testQueueActorRetryAttemptCount() async throws {
         let container = try ModelContainerFactory.inMemory()
         let store = BackgroundStore(modelContainer: container)
-        let context = ModelContext(container)
-        let settings = SettingsStore(modelContext: context)
 
         let successJSON = """
         {
@@ -279,7 +715,9 @@ final class ExtractionEngineTests: XCTestCase {
 
         let queue = QueueActor(
             store: store,
-            settings: settings,
+            isPaused: { false },
+            onSetPaused: { _ in },
+            readExtractionSettings: { makeExtractionSettings() },
             providerFactory: { countingProvider }
         )
 
@@ -303,5 +741,318 @@ final class ExtractionEngineTests: XCTestCase {
 
         // A successful extraction should write 1 attempt record
         XCTAssertGreaterThanOrEqual(attempts.count, 1)
+    }
+
+    // MARK: - TASK-269: Re-extraction overwrites scalar fields with nil when LLM returns nil
+
+    func testReextraction_nilFieldOverwritesOldValue() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+
+        // Extraction returns company=null (the LLM found no company in the posting)
+        let nilCompanyJSON = """
+        {"title":"Engineer","company":null,"location":null,"remote_type":null,
+         "salary_min":null,"salary_max":null,"salary_currency":null,"salary_note":null,
+         "salary_hourly_min":null,"salary_hourly_max":null,
+         "employment_type":null,"seniority":null,"skills":[],"summary":"ok",
+         "requirements":[],"nice_to_haves":[],"benefits":[],
+         "application_url":null,"application_instructions":null,"confidence":null}
+        """
+        let provider = CapturingProvider(response: nilCompanyJSON)
+        var paused = false
+        let queue = QueueActor(
+            store: store,
+            isPaused: { paused },
+            onSetPaused: { paused = $0 },
+            readExtractionSettings: { makeExtractionSettings() },
+            providerFactory: { provider }
+        )
+
+        let capture = Capture(
+            url: "https://example.com/job",
+            pageTitle: "Engineer",
+            selectedText: "Looking for an engineer.",
+            rawHash: "nilcompanyhash"
+        )
+        let job = Job(jobNumber: 1, title: "Engineer")
+        job.capture = capture
+        job.company = "OldCo"  // pre-existing value from a prior extraction
+        try await store.insert(job)
+
+        try await queue.enqueue(jobIDs: [job.id], mode: .extract)
+        await queue.startProcessing()
+
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        let updated = try XCTUnwrap(jobs.first)
+        XCTAssertNil(updated.company, "Re-extraction returning nil must overwrite the old company value, not preserve it")
+    }
+
+    // MARK: - TASK-272: Fit attempt records promptChars and responseChars
+
+    func testFitAttempt_recordsPromptAndResponseChars() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+
+        let fitJSON = """
+        {"overall":80,"dimensions":[{"name":"technical_skills","score":80,"weight":1.0,"evidence":"Match"}],
+         "requirements_not_met":[],"summary":"Strong match"}
+        """
+        let capturingProvider = CapturingProvider(response: fitJSON)
+
+        let consentedSettings = ExtractionSettings(
+            llmModel: "gpt-4o",
+            llmProvider: "openai",
+            llmBaseURL: "https://api.openai.com",
+            consentGranted: true,
+            preferredLocations: "",
+            locationFilterEnabled: false,
+            locationAllowRemote: true,
+            locationAllowHybrid: true,
+            locationAllowOnsite: true
+        )
+        var paused = false
+        let queue = QueueActor(
+            store: store,
+            isPaused: { paused },
+            onSetPaused: { paused = $0 },
+            readExtractionSettings: { consentedSettings },
+            providerFactory: { capturingProvider }
+        )
+
+        let capture = Capture(url: "https://example.com/job", pageTitle: "Engineer", rawHash: "fitcharshash")
+        let job = Job(jobNumber: 1, title: "Engineer")
+        job.capture = capture
+        job.extractedJSON = "{\"title\":\"Engineer\"}"
+        let resume = Resume(name: "My Resume", text: "Swift developer with 5 years experience.", charCount: 40, active: true, sortOrder: 0)
+        try await store.insert(job)
+        try await store.insert(resume)
+
+        try await queue.enqueueFit(jobIDs: [job.id], resumeID: resume.id)
+        await queue.startProcessing()
+
+        let attempts = try await store.fetch(FetchDescriptor<LLMRequestAttempt>())
+        let fitAttempt = try XCTUnwrap(attempts.first { $0.requestType == .fit && $0.status == .succeeded })
+        XCTAssertNotNil(fitAttempt.promptChars, "Successful fit attempt must record promptChars")
+        XCTAssertNotNil(fitAttempt.responseChars, "Successful fit attempt must record responseChars")
+        XCTAssertGreaterThan(fitAttempt.promptChars ?? 0, 0, "promptChars must be positive")
+        XCTAssertGreaterThan(fitAttempt.responseChars ?? 0, 0, "responseChars must be positive")
+        XCTAssertEqual(fitAttempt.responseFormat, "json_object", "Fit attempt must record responseFormat")
+    }
+
+    // MARK: - TASK-270: Disallowed remoteType is cleared post-extraction
+
+    func testExtract_remoteDisallowed_clearsRemoteType() async throws {
+        // LLM returns remote, but remote is disallowed → remoteType must be nil
+        let remoteJSON = """
+        {"title":"Remote Engineer","company":"Acme","location":"Remote","remote_type":"remote",
+         "salary_min":null,"salary_max":null,"salary_currency":null,"salary_note":null,
+         "salary_hourly_min":null,"salary_hourly_max":null,
+         "employment_type":null,"seniority":null,"skills":[],"summary":"ok",
+         "requirements":[],"nice_to_haves":[],"benefits":[],
+         "application_url":null,"application_instructions":null,"confidence":null}
+        """
+        let provider = CapturingProvider(response: remoteJSON)
+        let settings = ExtractionSettings(
+            llmModel: "stub",
+            preferredLocations: "",
+            locationFilterEnabled: true,
+            locationAllowRemote: false,
+            locationAllowHybrid: true,
+            locationAllowOnsite: true
+        )
+        let snapshot = JobExtractionSnapshot(
+            captureURL: "https://example.com/job",
+            captureCanonicalURL: nil,
+            capturePageTitle: "Remote Engineer",
+            captureCleanedDescription: "Fully remote role.",
+            captureVisibleText: nil,
+            captureSelectedText: nil
+        )
+        let result = try await ExtractionEngine.extract(snapshot: snapshot, provider: provider, settings: settings)
+        XCTAssertNil(result.remoteType, "remoteType must be nil when remote is disallowed")
+    }
+
+    func testExtract_hybridDisallowed_clearsRemoteType() async throws {
+        // LLM returns hybrid, only onsite is allowed → remoteType must be nil
+        let hybridJSON = """
+        {"title":"Hybrid Engineer","company":"Acme","location":"Seattle, WA","remote_type":"hybrid",
+         "salary_min":null,"salary_max":null,"salary_currency":null,"salary_note":null,
+         "salary_hourly_min":null,"salary_hourly_max":null,
+         "employment_type":null,"seniority":null,"skills":[],"summary":"ok",
+         "requirements":[],"nice_to_haves":[],"benefits":[],
+         "application_url":null,"application_instructions":null,"confidence":null}
+        """
+        let provider = CapturingProvider(response: hybridJSON)
+        let settings = ExtractionSettings(
+            llmModel: "stub",
+            preferredLocations: "",
+            locationFilterEnabled: true,
+            locationAllowRemote: false,
+            locationAllowHybrid: false,
+            locationAllowOnsite: true
+        )
+        let snapshot = JobExtractionSnapshot(
+            captureURL: "https://example.com/job",
+            captureCanonicalURL: nil,
+            capturePageTitle: "Hybrid Engineer",
+            captureCleanedDescription: "3 days per week in office.",
+            captureVisibleText: nil,
+            captureSelectedText: nil
+        )
+        let result = try await ExtractionEngine.extract(snapshot: snapshot, provider: provider, settings: settings)
+        XCTAssertNil(result.remoteType, "remoteType must be nil when hybrid is disallowed")
+    }
+
+    func testExtract_remoteAllowed_preservesRemoteType() async throws {
+        // LLM returns remote and remote is allowed → remoteType must be preserved
+        let remoteJSON = """
+        {"title":"Remote Engineer","company":"Acme","location":"Remote","remote_type":"remote",
+         "salary_min":null,"salary_max":null,"salary_currency":null,"salary_note":null,
+         "salary_hourly_min":null,"salary_hourly_max":null,
+         "employment_type":null,"seniority":null,"skills":[],"summary":"ok",
+         "requirements":[],"nice_to_haves":[],"benefits":[],
+         "application_url":null,"application_instructions":null,"confidence":null}
+        """
+        let provider = CapturingProvider(response: remoteJSON)
+        let settings = ExtractionSettings(
+            llmModel: "stub",
+            preferredLocations: "",
+            locationFilterEnabled: true,
+            locationAllowRemote: true,
+            locationAllowHybrid: false,
+            locationAllowOnsite: false
+        )
+        let snapshot = JobExtractionSnapshot(
+            captureURL: "https://example.com/job",
+            captureCanonicalURL: nil,
+            capturePageTitle: "Remote Engineer",
+            captureCleanedDescription: "Fully remote role.",
+            captureVisibleText: nil,
+            captureSelectedText: nil
+        )
+        let result = try await ExtractionEngine.extract(snapshot: snapshot, provider: provider, settings: settings)
+        XCTAssertEqual(result.remoteType, .remote, "remoteType must be preserved when remote is allowed")
+    }
+
+    // MARK: - TASK-271: Hourly salary fields survive into ExtractionResult
+
+    func testExtract_hourlySalary_populatesHourlyFields() async throws {
+        // LLM returns hourly salary values → hourlyMin/Max must be non-nil in ExtractionResult
+        let hourlyJSON = """
+        {"title":"Contractor","company":"Acme","location":null,"remote_type":null,
+         "salary_min":null,"salary_max":null,"salary_currency":"USD",
+         "salary_note":"$85/hr - $105/hr on W2 contract.",
+         "salary_hourly_min":null,"salary_hourly_max":null,
+         "employment_type":"contract","seniority":null,"skills":[],"summary":"ok",
+         "requirements":[],"nice_to_haves":[],"benefits":[],
+         "application_url":null,"application_instructions":null,"confidence":null}
+        """
+        let provider = CapturingProvider(response: hourlyJSON)
+        let snapshot = JobExtractionSnapshot(
+            captureURL: "https://example.com/job",
+            captureCanonicalURL: nil,
+            capturePageTitle: "Contractor",
+            captureCleanedDescription: "Pay: $85/hr - $105/hr on W2 contract.",
+            captureVisibleText: nil,
+            captureSelectedText: nil
+        )
+        let result = try await ExtractionEngine.extract(snapshot: snapshot, provider: provider, settings: makeExtractionSettings())
+        XCTAssertNotNil(result.salaryHourlyMin, "hourlyMin must be non-nil for hourly salary postings")
+        XCTAssertNotNil(result.salaryHourlyMax, "hourlyMax must be non-nil for hourly salary postings")
+        XCTAssertEqual(result.salaryHourlyMin, 85.0)
+        XCTAssertEqual(result.salaryHourlyMax, 105.0)
+        // Annual salary must also be set (converted at 2080 hrs/yr)
+        XCTAssertEqual(result.salaryMin, 176_800)
+        XCTAssertEqual(result.salaryMax, 218_400)
+    }
+
+    func testExtract_annualSalary_hourlyFieldsNil() async throws {
+        // LLM returns annual salary (no hourly) → hourlyMin/Max must be nil
+        let annualJSON = """
+        {"title":"Engineer","company":"Acme","location":null,"remote_type":null,
+         "salary_min":150000,"salary_max":200000,"salary_currency":"USD",
+         "salary_note":"$150,000 - $200,000 USD annually",
+         "salary_hourly_min":null,"salary_hourly_max":null,
+         "employment_type":"full_time","seniority":null,"skills":[],"summary":"ok",
+         "requirements":[],"nice_to_haves":[],"benefits":[],
+         "application_url":null,"application_instructions":null,"confidence":null}
+        """
+        let provider = CapturingProvider(response: annualJSON)
+        let snapshot = JobExtractionSnapshot(
+            captureURL: "https://example.com/job",
+            captureCanonicalURL: nil,
+            capturePageTitle: "Engineer",
+            captureCleanedDescription: "Salary: $150,000 - $200,000 USD annually.",
+            captureVisibleText: nil,
+            captureSelectedText: nil
+        )
+        let result = try await ExtractionEngine.extract(snapshot: snapshot, provider: provider, settings: makeExtractionSettings())
+        XCTAssertNil(result.salaryHourlyMin, "hourlyMin must be nil for annual salary postings")
+        XCTAssertNil(result.salaryHourlyMax, "hourlyMax must be nil for annual salary postings")
+        XCTAssertNotNil(result.salaryMin)
+        XCTAssertNotNil(result.salaryMax)
+    }
+
+    // MARK: - Queue starvation regression
+
+    /// Verifies that a large number of terminal (finished) rows older than the queued item
+    /// do not prevent the queued item from being fetched and processed.
+    func testQueueActor_terminalRowsDoNotStarveQueuedItems() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+
+        let successJSON = """
+        {"title":"Engineer","company":"Acme","location":null,"remote_type":null,
+         "salary_min":null,"salary_max":null,"salary_currency":null,"salary_note":null,
+         "salary_hourly_min":null,"salary_hourly_max":null,
+         "employment_type":null,"seniority":null,"skills":[],"summary":"Good",
+         "requirements":[],"nice_to_haves":[],"benefits":[],
+         "application_url":null,"application_instructions":null,"confidence":null}
+        """
+        let capturingProvider = CapturingProvider(response: successJSON)
+        var paused = false
+        let queue = QueueActor(
+            store: store,
+            isPaused: { paused },
+            onSetPaused: { paused = $0 },
+            readExtractionSettings: { makeExtractionSettings() },
+            providerFactory: { capturingProvider }
+        )
+
+        // Insert 50 terminal (retryExhausted) LLMRequest rows with early creation dates
+        // to simulate a scenario where many old finished rows exist before the queued item.
+        let earlyDate = Date(timeIntervalSinceNow: -3600)
+        for idx in 0 ..< 50 {
+            let oldCapture = Capture(url: "https://old.example.com/job\(idx)", pageTitle: "Old Job \(idx)", rawHash: "oldhash\(idx)")
+            let oldJob = Job(jobNumber: 1000 + idx, title: "Old Job \(idx)")
+            oldJob.capture = oldCapture
+            try await store.insert(oldJob)
+
+            let termReq = LLMRequest(requestType: .extract, status: .retryExhausted)
+            termReq.job = oldJob
+            termReq.finishedAt = earlyDate
+            try await store.insert(termReq)
+        }
+
+        // Now insert the one queued job that must not be starved
+        let liveCapture = Capture(
+            url: "https://example.com/live-job",
+            pageTitle: "Live Engineer",
+            selectedText: "We need a Swift engineer.",
+            rawHash: "livehash"
+        )
+        let liveJob = Job(jobNumber: 9999, title: "Live Engineer")
+        liveJob.capture = liveCapture
+        try await store.insert(liveJob)
+        try await queue.enqueue(jobIDs: [liveJob.id], mode: .extract)
+
+        await queue.startProcessing()
+
+        // The live job's LLMRequest must have been processed successfully.
+        let all = try await store.fetch(FetchDescriptor<LLMRequest>())
+        let liveReqs = all.filter { $0.job?.jobNumber == 9999 }
+        XCTAssertEqual(liveReqs.count, 1, "Live job must have exactly one LLMRequest")
+        XCTAssertEqual(liveReqs.first?.status, .succeeded,
+                       "Live job must be processed despite 50 older terminal rows")
     }
 }

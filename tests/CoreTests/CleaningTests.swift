@@ -4,18 +4,40 @@ import XCTest
 @testable import JobhuntCore
 
 final class CleaningTests: XCTestCase {
-    func testReturnsSelectedText() {
-        let result = cleanDescription(selectedText: "Selected portion", visibleText: "Full page text")
+    func testSelectedTextOnlyReturnsSelectedText() {
+        let result = cleanDescription(selectedText: "Selected portion", visibleText: "")
         XCTAssertEqual(result, "Selected portion")
     }
 
-    func testPrefersSelectedTextOverStructuredDataAndVisibleText() {
+    func testVisibleTextOnlyReturnsVisibleText() {
+        let result = cleanDescription(selectedText: "", visibleText: "Full page text")
+        XCTAssertEqual(result, "Full page text")
+    }
+
+    func testBothPresentCombinesSelectedFirstThenVisible() {
+        let result = cleanDescription(selectedText: "Selected portion", visibleText: "Full page text")
+        XCTAssertTrue(result.contains("Selected portion"), "selected text included")
+        XCTAssertTrue(result.contains("Full page text"), "visible text included")
+        // Selected must come before visible
+        let selectedRange = result.range(of: "Selected portion")!
+        let visibleRange = result.range(of: "Full page text")!
+        XCTAssertLessThan(selectedRange.lowerBound, visibleRange.lowerBound, "selected text appears first")
+        XCTAssertTrue(result.contains("---"), "separator present")
+    }
+
+    func testBothPresentWithStructuredDataCombinesAll() {
         let result = cleanDescription(
             selectedText: "Selected",
             visibleText: "Visible",
-            structuredData: [["@type": "JobPosting", "description": "Structured"]]
+            structuredData: [["@type": "JobPosting", "description": "Structured details"]]
         )
-        XCTAssertEqual(result, "Selected")
+        XCTAssertTrue(result.contains("Selected"), "selected text included")
+        XCTAssertTrue(result.contains("Visible"), "visible text included")
+        XCTAssertTrue(result.contains("Structured details"), "structured data included")
+        // Selected must come before visible
+        let selectedRange = result.range(of: "Selected")!
+        let visibleRange = result.range(of: "Visible")!
+        XCTAssertLessThan(selectedRange.lowerBound, visibleRange.lowerBound, "selected text appears first")
     }
 
     func testFallsBackToVisibleTextWhenSelectedTextIsEmpty() {

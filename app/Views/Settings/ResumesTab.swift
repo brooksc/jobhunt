@@ -7,12 +7,13 @@ struct ResumesTab: View {
     let settings: SettingsStore
 
     @Query(sort: \Resume.sortOrder) private var resumes: [Resume]
-    @Environment(\.modelContext) private var modelContext
+    @Environment(AppServices.self) private var appServices
 
     @State private var showingAddSheet = false
     @State private var editingResume: Resume?
     @State private var deleteCandidate: Resume?
     @State private var showingDeleteAlert = false
+    @State private var saveError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -38,7 +39,7 @@ struct ResumesTab: View {
             } else {
                 List {
                     ForEach(resumes) { resume in
-                        ResumeRow(resume: resume)
+                        ResumeRow(resume: resume, resumeService: appServices.resumeService)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 editingResume = resume
@@ -59,29 +60,25 @@ struct ResumesTab: View {
         .padding()
         .sheet(isPresented: $showingAddSheet) {
             ResumeEditSheet(resume: nil, onSave: { name, text in
-                addResume(name: name, text: text)
+                try await appServices.resumeService.addResume(name: name, text: text)
             })
         }
         .sheet(item: $editingResume) { resume in
             ResumeEditSheet(resume: resume, onSave: { name, text in
-                resume.name = name
-                resume.text = text
-                resume.charCount = text.count
-                resume.updatedAt = Date()
-                try? modelContext.save()
+                let id = resume.id
+                try await appServices.resumeService.updateResume(id: id, name: name, text: text)
             })
         }
         .alert("Delete Resume?", isPresented: $showingDeleteAlert, presenting: deleteCandidate) { resume in
             Button("Delete", role: .destructive) {
-                let wasActive = resume.active
-                modelContext.delete(resume)
-                if wasActive {
-                    let remaining = resumes.filter { $0.id != resume.id }
-                    if let next = remaining.first(where: { !$0.active }) ?? remaining.first {
-                        next.active = true
+                let id = resume.id
+                Task {
+                    do {
+                        try await appServices.resumeService.deleteResume(id: id)
+                    } catch {
+                        appServices.toastStore.show("Delete failed: \(error.localizedDescription)", isError: true)
                     }
                 }
-                try? modelContext.save()
             }
             Button("Cancel", role: .cancel) {}
         } message: { resume in
@@ -97,32 +94,19 @@ struct ResumesTab: View {
             }
         }
     }
-
-    private func addResume(name: String, text: String) {
-        let isFirst = resumes.isEmpty
-        let resume = Resume(
-            name: name,
-            text: text,
-            charCount: text.count,
-            active: isFirst,
-            sortOrder: resumes.count
-        )
-        modelContext.insert(resume)
-        try? modelContext.save()
-    }
 }
 
 // MARK: - ResumeRow
 
 private struct ResumeRow: View {
     let resume: Resume
-    @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Resume.sortOrder) private var allResumes: [Resume]
+    let resumeService: ResumeService
 
     var body: some View {
         HStack(spacing: 12) {
             Button {
-                setActive(resume)
+                let id = resume.id
+                Task { try? await resumeService.setActiveResume(id: id) }
             } label: {
                 Image(systemName: resume.active ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(resume.active ? .green : .secondary)
@@ -157,26 +141,22 @@ private struct ResumeRow: View {
         }
         .padding(.vertical, 4)
     }
-
-    private func setActive(_ target: Resume) {
-        for r in allResumes {
-            r.active = (r.id == target.id)
-        }
-        try? modelContext.save()
-    }
 }
 
 // MARK: - ResumeEditSheet
 
 private struct ResumeEditSheet: View {
     let resume: Resume?
-    let onSave: (String, String) -> Void
+    let onSave: (String, String) async throws -> Void
 
     @State private var name: String
     @State private var text: String
+    @State private var importError: String?
+    @State private var saveError: String?
+    @State private var isSaving = false
     @Environment(\.dismiss) private var dismiss
 
-    init(resume: Resume?, onSave: @escaping (String, String) -> Void) {
+    init(resume: Resume?, onSave: @escaping (String, String) async throws -> Void) {
         self.resume = resume
         self.onSave = onSave
         _name = State(initialValue: resume?.name ?? "")
@@ -215,16 +195,40 @@ private struct ResumeEditSheet: View {
                     .keyboardShortcut(.cancelAction)
                 Spacer()
                 Button("Save") {
-                    onSave(name, text)
-                    dismiss()
+                    isSaving = true
+                    Task {
+                        defer { isSaving = false }
+                        do {
+                            try await onSave(name, text)
+                            dismiss()
+                        } catch {
+                            saveError = error.localizedDescription
+                        }
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-                .disabled(name.isEmpty || text.isEmpty)
+                .disabled(name.isEmpty || text.isEmpty || isSaving)
             }
         }
         .padding(24)
         .frame(width: 600, height: 520)
+        .alert("Import Failed", isPresented: Binding(
+            get: { importError != nil },
+            set: { if !$0 { importError = nil } }
+        )) {
+            Button("OK", role: .cancel) { importError = nil }
+        } message: {
+            Text(importError ?? "")
+        }
+        .alert("Save Failed", isPresented: Binding(
+            get: { saveError != nil },
+            set: { if !$0 { saveError = nil } }
+        )) {
+            Button("OK", role: .cancel) { saveError = nil }
+        } message: {
+            Text(saveError ?? "")
+        }
     }
 
     private func importPDF() {
@@ -232,17 +236,44 @@ private struct ResumeEditSheet: View {
         panel.allowedContentTypes = [.pdf]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let extracted = extractPDFText(from: url)
-        if !extracted.isEmpty {
+        // Consistent with onboarding import: acquire security-scoped access before reading
+        // user-selected files under MAS sandboxing.
+        guard url.startAccessingSecurityScopedResource() else {
+            importError = "Could not access the selected file"
+            return
+        }
+        defer { url.stopAccessingSecurityScopedResource() }
+        do {
+            let extracted = try extractPDFText(from: url)
             text = extracted
             if name.isEmpty {
                 name = url.deletingPathExtension().lastPathComponent
             }
+        } catch {
+            importError = error.localizedDescription
         }
     }
 
-    private func extractPDFText(from url: URL) -> String {
-        guard let doc = PDFDocument(url: url) else { return "" }
-        return (0 ..< doc.pageCount).compactMap { doc.page(at: $0)?.string }.joined(separator: "\n")
+    private func extractPDFText(from url: URL) throws -> String {
+        guard let doc = PDFDocument(url: url) else {
+            throw PDFImportError.unreadable
+        }
+        let text = (0 ..< doc.pageCount).compactMap { doc.page(at: $0)?.string }.joined(separator: "\n")
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PDFImportError.emptyText
+        }
+        return text
+    }
+
+    private enum PDFImportError: LocalizedError {
+        case unreadable
+        case emptyText
+
+        var errorDescription: String? {
+            switch self {
+            case .unreadable: "The file could not be read as a PDF"
+            case .emptyText: "No text could be read from this PDF"
+            }
+        }
     }
 }

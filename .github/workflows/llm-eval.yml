@@ -1,0 +1,53 @@
+name: LLM Eval
+
+# Manual trigger or weekly schedule (Sunday 02:00 UTC).
+# Requires repository secrets: JOBHUNT_LLM_URL, JOBHUNT_LLM_API_KEY.
+# Set JOBHUNT_LLM_MIN_ACCURACY (default 75) to fail below that threshold.
+on:
+  workflow_dispatch:
+    inputs:
+      min_accuracy:
+        description: 'Minimum accuracy % to pass (default 75)'
+        required: false
+        default: '75'
+      llm_model:
+        description: 'Model override (leave blank to use provider default)'
+        required: false
+        default: ''
+  schedule:
+    - cron: '0 2 * * 0'
+
+jobs:
+  llm-eval:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tuist (pinned via .mise.toml)
+        run: mise install tuist
+
+      - name: Generate Xcode project
+        run: tuist generate --no-open
+
+      - name: Run LLM Eval
+        env:
+          JOBHUNT_LLM_URL: ${{ secrets.JOBHUNT_LLM_URL }}
+          JOBHUNT_LLM_API_KEY: ${{ secrets.JOBHUNT_LLM_API_KEY }}
+          JOBHUNT_LLM_MIN_ACCURACY: ${{ github.event.inputs.min_accuracy || '75' }}
+          JOBHUNT_LLM_MODEL: ${{ github.event.inputs.llm_model || '' }}
+        run: |
+          xcodebuild test \
+            -scheme LLMEval \
+            -destination 'platform=macOS' \
+            -only-testing LLMEval \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm-eval-results-${{ github.run_id }}
+          path: |
+            ~/Library/Developer/Xcode/DerivedData/**/Logs/Test/*.xcresult
+          retention-days: 30
+          if-no-files-found: ignore

@@ -13,8 +13,10 @@
 
     private struct MCPJobGetRequest: Decodable {
         let jobNumber: Int
+        let includeRawText: Bool?
         enum CodingKeys: String, CodingKey {
             case jobNumber = "job_number"
+            case includeRawText = "include_raw_text"
         }
     }
 
@@ -25,12 +27,14 @@
         let location: String?
         let salaryMin: Int?
         let salaryMax: Int?
+        let salaryCurrency: String?
         let salaryNote: String?
         enum CodingKeys: String, CodingKey {
             case jobNumber = "job_number"
             case company, title, location
             case salaryMin = "salary_min"
             case salaryMax = "salary_max"
+            case salaryCurrency = "salary_currency"
             case salaryNote = "salary_note"
         }
     }
@@ -205,9 +209,13 @@
         // Only handle /mcp/ paths
         guard request.path.hasPrefix("/mcp/") else { return nil }
 
-        // Authenticate via X-MCP-Token header
+        // Fail closed: an empty server token means MCP is not yet configured.
+        guard !mcpToken.isEmpty else {
+            return HTTPResponse.error("MCP not configured", code: 503)
+        }
+        // Reject missing or wrong tokens.
         let provided = request.headers["x-mcp-token"] ?? ""
-        guard provided == mcpToken else {
+        guard !provided.isEmpty, provided == mcpToken else {
             return HTTPResponse.error("Unauthorized", code: 401)
         }
 
@@ -258,10 +266,23 @@
         isoFormatter.string(from: date)
     }
 
+    private let mcpJobsListMinLimit = 1
+    private let mcpJobsListMaxLimit = 200
+    private let mcpJobsListDefaultLimit = 50
+
     private func handleMCPJobsList(_ request: HTTPRequest, jobService: JobService) async -> HTTPResponse {
         let req = try? request.decodeBody(as: MCPJobsListRequest.self)
-        let limit = req?.limit ?? 50
+        let rawLimit = req?.limit ?? mcpJobsListDefaultLimit
+        guard rawLimit >= mcpJobsListMinLimit else {
+            return HTTPResponse.error("limit must be at least \(mcpJobsListMinLimit)", code: 400)
+        }
+        let limit = min(rawLimit, mcpJobsListMaxLimit)
         let statusFilter = req?.status
+
+        if let statusRaw = statusFilter, JobStatus(rawValue: statusRaw) == nil {
+            let valid = JobStatus.allCases.map { $0.rawValue }.joined(separator: ", ")
+            return HTTPResponse.error("invalid status '\(statusRaw)'; valid values: \(valid)", code: 400)
+        }
 
         do {
             let records = try await jobService.listJobs(status: statusFilter, limit: limit)
@@ -319,8 +340,8 @@
                 sourceURL: r.sourceURL,
                 capturedAt: formatDate(r.capturedAt),
                 createdAt: formatDate(r.createdAt),
-                selectedText: r.selectedText,
-                visibleText: r.visibleText
+                selectedText: req.includeRawText == true ? r.selectedText : nil,
+                visibleText: req.includeRawText == true ? r.visibleText : nil
             )
             return HTTPResponse.ok(detail)
         } catch {
@@ -392,7 +413,11 @@
                 jobID: jobID,
                 company: req.company.map { Optional($0) } ?? .none,
                 title: req.title.map { Optional($0) } ?? .none,
-                location: req.location.map { Optional($0) } ?? .none
+                location: req.location.map { Optional($0) } ?? .none,
+                salaryMin: req.salaryMin.map { Optional($0) } ?? .none,
+                salaryMax: req.salaryMax.map { Optional($0) } ?? .none,
+                salaryCurrency: req.salaryCurrency.map { Optional($0) } ?? .none,
+                salaryNote: req.salaryNote.map { Optional($0) } ?? .none
             )
             return HTTPResponse.ok(MCPOKResponse(ok: true))
         } catch {

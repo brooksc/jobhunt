@@ -30,6 +30,8 @@ final class ScreenshotTests: XCTestCase {
 
     func test02_JobsAll() {
         navigate(app, label: "All Jobs")
+        XCTAssertTrue(app.buttons["sidebar.jobs.all"].firstMatch.isSelected,
+                      "All Jobs sidebar item should be selected")
         snap(app, "02-jobs-all")
     }
 
@@ -38,7 +40,8 @@ final class ScreenshotTests: XCTestCase {
         let firstRow = app.cells.element(boundBy: 0)
         if firstRow.waitForExistence(timeout: 4) {
             firstRow.click()
-            Thread.sleep(forTimeInterval: 1.0)
+            // Wait for the detail pane to render at least one text element.
+            waitUntil(timeout: 3) { self.app.staticTexts.count > 5 }
         }
         snap(app, "03-jobs-all-with-detail")
     }
@@ -77,7 +80,7 @@ final class ScreenshotTests: XCTestCase {
         let firstRow = app.cells.element(boundBy: 0)
         if firstRow.waitForExistence(timeout: 4) {
             firstRow.click()
-            Thread.sleep(forTimeInterval: 0.8)
+            waitUntil(timeout: 3) { self.app.staticTexts.count > 5 }
         }
         snap(app, "12-sites-with-detail")
     }
@@ -137,7 +140,7 @@ final class ScreenshotTests: XCTestCase {
         let btn = app.radioButtons.matching(pred).firstMatch
         if btn.waitForExistence(timeout: 4) {
             btn.click()
-            Thread.sleep(forTimeInterval: 1.0)
+            waitUntil(timeout: 3) { btn.isSelected }
         }
     }
 }

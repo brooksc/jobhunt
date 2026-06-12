@@ -68,6 +68,8 @@ public struct ExtractionResult: Sendable {
     public let remoteType: RemoteType?
     public let salaryMin: Int?
     public let salaryMax: Int?
+    public let salaryHourlyMin: Double?
+    public let salaryHourlyMax: Double?
     public let salaryCurrency: String?
     public let salaryNote: String?
     public let employmentType: String?
@@ -89,7 +91,7 @@ public enum ExtractionEngine {
     public static func extract(
         snapshot: JobExtractionSnapshot,
         provider: any LLMProvider,
-        settings: SettingsStore
+        settings: ExtractionSettings
     ) async throws -> ExtractionResult {
         let description = captureText(snapshot)
         guard !description.isEmpty else {
@@ -116,7 +118,7 @@ public enum ExtractionEngine {
         let promptText = messages.map(\.content).joined()
         let promptChars = promptText.count
 
-        let request = ChatRequest(messages: messages, model: settings.llmModel)
+        let request = ChatRequest(messages: messages, model: settings.llmModel, responseFormat: .jsonObject)
         let response = try await provider.complete(request)
         let responseChars = response.content.count
 
@@ -143,7 +145,19 @@ public enum ExtractionEngine {
             .flatMap { String(data: $0, encoding: .utf8) } ?? repairedJSON
 
         let remoteTypeStr = extracted["remote_type"] as? String
-        let remoteType: RemoteType? = remoteTypeStr.flatMap { RemoteType(rawValue: $0) }
+        var remoteType: RemoteType? = remoteTypeStr.flatMap { RemoteType(rawValue: $0) }
+
+        // TASK-270: Clamp remoteType to nil when the user has disallowed that mode.
+        // The prompt already asks the LLM to prefer allowed modes, but it can still return
+        // a disallowed value. Clear it post-extraction so disallowed modes are never persisted.
+        if settings.locationFilterEnabled, let rt = remoteType {
+            let allowed =
+                (rt == .remote && settings.locationAllowRemote) ||
+                (rt == .hybrid && settings.locationAllowHybrid) ||
+                (rt == .onsite && settings.locationAllowOnsite) ||
+                rt == .unknown
+            if !allowed { remoteType = nil }
+        }
 
         return ExtractionResult(
             extractedJSON: resultJSON,
@@ -153,6 +167,8 @@ public enum ExtractionEngine {
             remoteType: remoteType,
             salaryMin: extracted["salary_min"] as? Int,
             salaryMax: extracted["salary_max"] as? Int,
+            salaryHourlyMin: extracted["salary_hourly_min"] as? Double,
+            salaryHourlyMax: extracted["salary_hourly_max"] as? Double,
             salaryCurrency: extracted["salary_currency"] as? String,
             salaryNote: extracted["salary_note"] as? String,
             employmentType: extracted["employment_type"] as? String,
@@ -172,8 +188,9 @@ public enum ExtractionEngine {
     public static func scoreFit(
         job: JobFitSnapshot,
         resume: ResumeSnapshot,
+        model: String,
         provider: any LLMProvider
-    ) async throws -> FitScoreResult {
+    ) async throws -> FitScoreOutput {
         guard !resume.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw ExtractionEngineError.emptyResumeText
         }
@@ -184,8 +201,12 @@ public enum ExtractionEngine {
             resumeText: resume.text
         )
 
-        let request = ChatRequest(messages: messages, model: job.extractionModel ?? "")
+        let promptChars = messages.map(\.content).joined().count
+
+        let request = ChatRequest(messages: messages, model: model, responseFormat: .jsonObject)
         let response = try await provider.complete(request)
+
+        let responseChars = response.content.count
 
         let repairedJSON = try repairJSON(response.content)
         guard let data = repairedJSON.data(using: .utf8),
@@ -197,10 +218,12 @@ public enum ExtractionEngine {
         let requirementsNotMet = (raw["requirements_not_met"] as? [Any])?
             .compactMap { $0 as? String } ?? []
 
-        return FitScorer.computeScore(
+        let score = FitScorer.computeScore(
             dimensions: dimensions,
             requirementsNotMet: requirementsNotMet
         )
+        let mergedJSON = FitScorer.buildMergedJSON(result: score, rawLLMDict: raw)
+        return FitScoreOutput(score: score, fitScoreJSON: mergedJSON, promptChars: promptChars, responseChars: responseChars)
     }
 
     // MARK: - Private helpers
@@ -286,8 +309,8 @@ public enum ExtractionEngineError: Error, LocalizedError {
             "Job has no capture text to extract from"
         case .emptyResumeText:
             "Resume has no text to score against"
-        case let .invalidJSON(json):
-            "LLM response could not be parsed as JSON: \(json.prefix(200))"
+        case .invalidJSON:
+            "LLM response could not be parsed as JSON"
         }
     }
 }

@@ -46,7 +46,7 @@ public struct IngestResult: Sendable {
     }
 }
 
-public enum JobServiceError: Error, Sendable {
+public enum JobServiceError: Error, LocalizedError, Sendable {
     case missingURL
     case missingPageTitle
     case missingText
@@ -54,6 +54,18 @@ public enum JobServiceError: Error, Sendable {
     case actionNotFound(String)
     case contactNotFound(String)
     case coverLetterNotFound(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .missingURL: "Job URL is required"
+        case .missingPageTitle: "Job page title is required"
+        case .missingText: "Job description text is required"
+        case .jobNotFound: "Job not found"
+        case .actionNotFound: "Action item not found"
+        case .contactNotFound: "Contact not found"
+        case .coverLetterNotFound: "Cover letter not found"
+        }
+    }
 }
 
 // MARK: - JobService
@@ -142,19 +154,61 @@ public actor JobService {
 
     // swiftlint:enable function_body_length
 
+    // MARK: - URL-only ingestion
+
+    /// Add a job by URL alone (no browser-captured content). Uses the URL as synthetic content
+    /// so extraction has something to work with (URL paths often contain company and job keywords).
+    public func addJobByURL(_ urlString: String) async throws -> IngestResult {
+        let trimmed = urlString.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, URL(string: trimmed) != nil else {
+            throw JobServiceError.missingURL
+        }
+
+        let rawHash = DuplicateDetector.rawHash(
+            url: trimmed,
+            canonicalURL: nil,
+            selectedText: nil,
+            visibleText: trimmed,
+            structuredData: []
+        )
+        let input = AtomicIngestInput(
+            captureID: "cap-\(UUID().uuidString)",
+            jobID: "job-\(UUID().uuidString)",
+            url: trimmed,
+            canonicalURL: nil,
+            pageTitle: trimmed,
+            selectedText: nil,
+            visibleText: trimmed,
+            cleanedDescription: trimmed,
+            structuredDataJSON: nil,
+            userNote: nil,
+            rawHash: rawHash,
+            cleanedHash: nil
+        )
+        let atomic = try await store.insertCaptureAtomically(input)
+        if !atomic.isDuplicate {
+            try await queue.enqueue(jobIDs: [input.jobID], mode: .extract)
+        }
+        return IngestResult(captureID: atomic.captureID, jobNumber: atomic.jobNumber, isDuplicate: atomic.isDuplicate)
+    }
+
     // MARK: - Job mutations
 
     public func setStatus(_ status: JobStatus, for jobID: String) async throws {
         let id = jobID
-        try await store.update(Job.self, predicate: #Predicate { $0.id == id }) { job in
+        try await store.updateOne(Job.self, predicate: #Predicate { $0.id == id }, id: jobID) { job in
             job.status = status
             job.updatedAt = Date()
         }
     }
 
     public func setStatusBulk(_ status: JobStatus, jobIDs: [String]) async throws {
-        for jobID in jobIDs {
-            try await setStatus(status, for: jobID)
+        guard !jobIDs.isEmpty else { return }
+        let ids = jobIDs
+        let newStatus = status
+        try await store.update(Job.self, predicate: #Predicate { ids.contains($0.id) }) { job in
+            job.status = newStatus
+            job.updatedAt = Date()
         }
     }
 
@@ -168,12 +222,12 @@ public actor JobService {
     }
 
     public func archive(jobID: String) async throws {
-        try await setStatus(.passed, for: jobID)
+        try await setStatus(.archived, for: jobID)
     }
 
     public func delete(jobID: String) async throws {
         let id = jobID
-        try await store.delete(Job.self, predicate: #Predicate { $0.id == id })
+        try await store.deleteOne(Job.self, predicate: #Predicate { $0.id == id }, id: jobID)
     }
 
     public func markOpened(jobID: String) async throws {
@@ -309,6 +363,19 @@ public actor JobService {
             job.extractionStatus = .pending
             job.extractionError = nil
             job.extractedAt = nil
+            job.company = nil
+            job.title = nil
+            job.location = nil
+            job.remoteType = nil
+            job.salaryMin = nil
+            job.salaryMax = nil
+            job.salaryCurrency = nil
+            job.salaryNote = nil
+            job.employmentType = nil
+            job.seniority = nil
+            job.extractedJSON = nil
+            job.extractionModel = nil
+            job.extractionConfidence = nil
             job.updatedAt = Date()
         }
         try await queue.enqueue(jobIDs: [jobID], mode: .extract)
@@ -330,7 +397,11 @@ public actor JobService {
         location: String?? = .none,
         remoteType: RemoteType?? = .none,
         applicationURL: String?? = .none,
-        duplicateOfJobID: String?? = .none
+        duplicateOfJobID: String?? = .none,
+        salaryMin: Int?? = .none,
+        salaryMax: Int?? = .none,
+        salaryCurrency: String?? = .none,
+        salaryNote: String?? = .none
     ) async throws {
         let id = jobID
         try await store.update(Job.self, predicate: #Predicate { $0.id == id }) { job in
@@ -340,6 +411,10 @@ public actor JobService {
             if let v = remoteType { job.remoteType = v }
             if let v = applicationURL { job.applicationURL = v }
             if let v = duplicateOfJobID { job.duplicateOfJobID = v }
+            if let v = salaryMin { job.salaryMin = v }
+            if let v = salaryMax { job.salaryMax = v }
+            if let v = salaryCurrency { job.salaryCurrency = v }
+            if let v = salaryNote { job.salaryNote = v }
             job.updatedAt = Date()
         }
     }
@@ -358,17 +433,24 @@ public actor JobService {
     // MARK: - MCP read queries
 
     public func listJobs(status: String?, limit: Int) async throws -> [JobListRecord] {
-        let descriptor = FetchDescriptor<Job>(
-            sortBy: [SortDescriptor(\Job.createdAt, order: .reverse)]
-        )
-        let all = try await store.fetch(descriptor)
-        let filtered: [Job]
         if let statusRaw = status, let jobStatus = JobStatus(rawValue: statusRaw) {
-            filtered = all.filter { $0.status == jobStatus }
+            // Status filter: SwiftData can't predicate on enum types, so fetch sorted then filter
+            // in memory. fetchLimit is omitted here because it would count pre-filter rows.
+            let descriptor = FetchDescriptor<Job>(
+                sortBy: [SortDescriptor(\Job.createdAt, order: .reverse)]
+            )
+            let all = try await store.fetch(descriptor)
+            return Array(all.lazy.filter { $0.status == jobStatus }.prefix(limit))
+                .map { JobListRecord(job: $0) }
         } else {
-            filtered = all
+            // No filter: fetchLimit lets SwiftData avoid materialising every row.
+            var descriptor = FetchDescriptor<Job>(
+                sortBy: [SortDescriptor(\Job.createdAt, order: .reverse)]
+            )
+            descriptor.fetchLimit = limit
+            let jobs = try await store.fetch(descriptor)
+            return jobs.map { JobListRecord(job: $0) }
         }
-        return Array(filtered.prefix(limit)).map { JobListRecord(job: $0) }
     }
 
     public func getJob(byNumber number: Int) async throws -> JobDetailRecord? {
@@ -385,5 +467,45 @@ public actor JobService {
         var counts: [String: Int] = [:]
         for job in jobs { counts[job.status.rawValue, default: 0] += 1 }
         return WorkflowSnapshot(jobsTotal: jobs.count, sitesTotal: sites.count, statusCounts: counts)
+    }
+
+    // MARK: - Duplicate management
+
+    /// Clear the duplicate relationship for a job, keeping it in the job list.
+    /// Clears `duplicateOfJobID` and, if `status` was `.duplicate`, resets it to `.new`
+    /// so the job reappears in normal status folders. A non-duplicate status (e.g. `.pursuing`)
+    /// is preserved as-is.
+    public func unmarkDuplicate(jobID: String) async throws {
+        try await store.update(Job.self, predicate: #Predicate { $0.id == jobID }) { job in
+            job.duplicateOfJobID = nil
+            if job.status == .duplicate {
+                job.status = .new
+            }
+            job.updatedAt = Date()
+        }
+    }
+
+    // MARK: - Availability
+
+    /// Bulk-mark a set of jobs as expired (e.g. after availability check confirms they're gone).
+    public func markExpired(jobIDs: [String]) async throws {
+        guard !jobIDs.isEmpty else { return }
+        let ids = jobIDs
+        try await store.update(Job.self, predicate: #Predicate { ids.contains($0.id) }) { job in
+            job.status = .expired
+            job.updatedAt = Date()
+        }
+    }
+
+    // MARK: - Saved searches
+
+    /// Persist a new saved search.
+    public func insertSavedSearch(_ search: SavedSearch) async throws {
+        try await store.insert(search)
+    }
+
+    /// Delete a saved search by ID.
+    public func deleteSavedSearch(id: String) async throws {
+        try await store.delete(SavedSearch.self, predicate: #Predicate { $0.id == id })
     }
 }

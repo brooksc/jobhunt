@@ -28,7 +28,7 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         applyWindowPolicy()
 
         eventTask = Task { [weak self] in
-            for await event in await queue.events {
+            for await event in await queue.subscribe() {
                 await self?.handleEvent(event)
             }
         }

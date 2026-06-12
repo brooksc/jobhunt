@@ -3,6 +3,11 @@ import Foundation
 /// Google Generative Language API provider (generateContent).
 /// Concurrency limit 3. Returns JSON via responseMimeType.
 /// Mirrors postGoogleCompletion() from server/extract.js.
+///
+/// **API key transport:** uses the `x-goog-api-key` request header rather than a URL query
+/// parameter (`?key=`). The header approach keeps credentials out of server-side access logs,
+/// proxy logs, and crash reports that may capture URLs. Both transports are accepted by the
+/// Google Generative Language v1beta API.
 public final class GoogleProvider: LLMProvider, @unchecked Sendable {
     public let id = "google"
     public let concurrencyLimit = 3
@@ -41,8 +46,7 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
             payload["systemInstruction"] = ["parts": [["text": sys.content]]]
         }
 
-        let encodedKey = apiKey.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? apiKey
-        let urlStr = "https://generativelanguage.googleapis.com/v1beta/models/\(request.model):generateContent?key=\(encodedKey)"
+        let urlStr = "https://generativelanguage.googleapis.com/v1beta/models/\(request.model):generateContent"
         guard let url = URL(string: urlStr) else { throw LLMProviderError.unavailable(reason: "Invalid Google URL") }
 
         let body = try JSONSerialization.data(withJSONObject: payload)
@@ -50,6 +54,7 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
         urlRequest.httpMethod = "POST"
         urlRequest.timeoutInterval = Double(timeoutSeconds)
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         urlRequest.httpBody = body
 
         let (data, response) = try await session.data(for: urlRequest)

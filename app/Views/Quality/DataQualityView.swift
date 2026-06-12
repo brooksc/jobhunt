@@ -88,6 +88,11 @@ struct DataQualityView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+        .focusedSceneValue(\.qualityCommands, QualityCommandHandlers(
+            hasSelection: !selectedJobIDs.isEmpty,
+            markReviewed: markReviewedSelected,
+            queueReextraction: queueReextractionSelected
+        ))
     }
 
     // MARK: - Summary header
@@ -170,6 +175,8 @@ struct DataQualityView: View {
                 ))
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+        .accessibilityValue(isActive ? "on" : "off")
     }
 
     // MARK: - Job list
@@ -325,7 +332,7 @@ struct DataQualityView: View {
         let queue = appServices.queueActor
         Task {
             do {
-                try await svc.enqueueLLM(jobIDs: ids, mode: .extract)
+                try await svc.resetExtractionBulk(jobIDs: ids)
                 await queue.startProcessing()
             } catch {
                 await MainActor.run { errorMessage = error.localizedDescription }

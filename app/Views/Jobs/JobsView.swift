@@ -24,9 +24,17 @@ struct JobsView: View {
     @State private var jobIDsToDelete: [String] = []
     // Mirror of router.sidebarJobFilter as @State so SwiftUI reliably re-renders.
     @State private var localSidebarFilter: JobStatus?
+    /// Cached result of the full filter+sort pipeline. Updated when any filter input changes.
+    /// Avoids recomputing the list twice per render (once for List body, once for filteredJobIDs).
+    @State private var cachedFilteredJobs: [Job] = []
 
     var body: some View {
-        jobList
+        jobListWithModifiers
+            .focusedSceneValue(\.jobCommands, currentJobCommandHandlers)
+    }
+
+    private var jobListWithModifiers: some View {
+        jobListWithFilterObservers
         .searchable(text: $searchText, tokens: $searchTokens, prompt: "Search jobs…") { token in
             Label(token.label, systemImage: token.systemImage)
         }
@@ -36,7 +44,9 @@ struct JobsView: View {
         .toolbar { toolbarItems }
         .navigationTitle(navTitle)
         .sheet(isPresented: $showAddJobSheet) { AddJobSheet() }
-        .sheet(isPresented: $showSaveSheet) { SaveSearchSheet(filterState: filterState) }
+        .sheet(isPresented: $showSaveSheet) {
+            SaveSearchSheet(filterState: filterState, searchText: searchText, searchTokens: searchTokens)
+        }
         .confirmationDialog(
             "Delete \(jobIDsToDelete.count == 1 ? "Job" : "\(jobIDsToDelete.count) Jobs")?",
             isPresented: .init(get: { !jobIDsToDelete.isEmpty }, set: { if !$0 { jobIDsToDelete = [] } }),
@@ -45,9 +55,15 @@ struct JobsView: View {
             Button("Delete", role: .destructive) {
                 let ids = jobIDsToDelete
                 let svc = appServices.jobService
-                Task { for id in ids { try? await svc.delete(jobID: id) } }
+                let toast = appServices.toastStore
                 jobIDsToDelete = []
-                selectedJobIDs = []
+                Task {
+                    for id in ids {
+                        do { try await svc.delete(jobID: id) }
+                        catch { toast.show("Delete failed: \(error.localizedDescription)", isError: true) }
+                    }
+                    await MainActor.run { selectedJobIDs = selectedJobIDs.subtracting(ids) }
+                }
             }
             Button("Cancel", role: .cancel) { jobIDsToDelete = [] }
         } message: {
@@ -62,9 +78,9 @@ struct JobsView: View {
             router.activeSavedSearchID = nil
             searchTokens = []
         }
-        .onAppear { localSidebarFilter = router.sidebarJobFilter }
         .onChange(of: searchTokens) { _, _ in
             router.activeSavedSearchID = nil
+            cachedFilteredJobs = computeFilteredJobs()
         }
         .onChange(of: filteredJobIDs) { _, newIDs in
             // Remove stale selections when filter changes
@@ -95,6 +111,28 @@ struct JobsView: View {
                 }
             }
         }
+    }
+
+    private var currentJobCommandHandlers: JobCommandHandlers {
+        JobCommandHandlers(
+            hasSelection: !selectedJobIDs.isEmpty,
+            reEnqueueSelected: {
+                let ids = Array(selectedJobIDs)
+                Task { try? await appServices.jobService.resetExtractionBulk(jobIDs: ids) }
+            },
+            archiveSelected: {
+                let ids = Array(selectedJobIDs)
+                let svc = appServices.jobService
+                let toast = appServices.toastStore
+                Task {
+                    for id in ids {
+                        do { try await svc.archive(jobID: id) }
+                        catch { toast.show("Archive failed: \(error.localizedDescription)", isError: true) }
+                    }
+                    await MainActor.run { selectedJobIDs = [] }
+                }
+            }
+        )
     }
 
     // MARK: - Toolbar
@@ -165,15 +203,21 @@ struct JobsView: View {
                 if !selectedJobIDs.isEmpty {
                     Button {
                         let ids = Array(selectedJobIDs)
-                        Task { try? await appServices.queueActor.enqueue(jobIDs: ids, mode: .extract) }
+                        Task { try? await appServices.jobService.resetExtractionBulk(jobIDs: ids) }
                     } label: {
                         Label("Re-run AI on \(selectedJobIDs.count) Selected", systemImage: "arrow.clockwise")
                     }
                     Button {
                         let ids = Array(selectedJobIDs)
                         let svc = appServices.jobService
-                        Task { for id in ids { try? await svc.archive(jobID: id) } }
-                        selectedJobIDs = []
+                        let toast = appServices.toastStore
+                        Task {
+                            for id in ids {
+                                do { try await svc.archive(jobID: id) }
+                                catch { toast.show("Archive failed: \(error.localizedDescription)", isError: true) }
+                            }
+                            await MainActor.run { selectedJobIDs = [] }
+                        }
                     } label: {
                         Label("Archive Selected", systemImage: "archivebox")
                     }
@@ -182,8 +226,9 @@ struct JobsView: View {
                 Button {
                     exportCSV()
                 } label: {
-                    Label("Export to CSV…", systemImage: "square.and.arrow.up")
+                    Label("Export Job List to CSV…", systemImage: "square.and.arrow.up")
                 }
+                .help("Exports job list fields only. Use Back Up Data in Settings for a complete backup.")
                 Divider()
                 if hasActiveFilters || !searchTokens.isEmpty {
                     Button(role: .destructive) {
@@ -200,6 +245,20 @@ struct JobsView: View {
     }
 
     // MARK: - Status filter bar
+
+    // MARK: - Filter observers (extracted to reduce modifier chain length for type-checker)
+
+    private var jobListWithFilterObservers: some View {
+        jobList
+            .onAppear {
+                localSidebarFilter = router.sidebarJobFilter
+                cachedFilteredJobs = computeFilteredJobs()
+            }
+            .onChange(of: allJobs) { _, _ in cachedFilteredJobs = computeFilteredJobs() }
+            .onChange(of: searchText) { _, _ in cachedFilteredJobs = computeFilteredJobs() }
+            .onChange(of: filterState) { _, _ in cachedFilteredJobs = computeFilteredJobs() }
+            .onChange(of: localSidebarFilter) { _, _ in cachedFilteredJobs = computeFilteredJobs() }
+    }
 
     // MARK: - Job list (extracted to help compiler type-check)
 
@@ -306,6 +365,8 @@ struct JobsView: View {
                 .foregroundStyle(active ? .white : .primary).clipShape(Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(active ? .isSelected : [])
+        .accessibilityValue(active ? "on" : "off")
     }
 
     private func fitScoreChip(_ value: Int?, label: String) -> some View {
@@ -317,6 +378,8 @@ struct JobsView: View {
                 .foregroundStyle(active ? .white : .primary).clipShape(Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(active ? .isSelected : [])
+        .accessibilityValue(active ? "on" : "off")
     }
 
     private func ratingChip(_ value: Int?, label: String) -> some View {
@@ -328,6 +391,8 @@ struct JobsView: View {
                 .foregroundStyle(active ? .white : .primary).clipShape(Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(active ? .isSelected : [])
+        .accessibilityValue(active ? "on" : "off")
     }
 
     private func salaryChip(_ value: Int?, label: String) -> some View {
@@ -339,6 +404,8 @@ struct JobsView: View {
                 .foregroundStyle(active ? .white : .primary).clipShape(Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(active ? .isSelected : [])
+        .accessibilityValue(active ? "on" : "off")
     }
 
     private func recentChip(_ value: Int?, label: String) -> some View {
@@ -350,6 +417,8 @@ struct JobsView: View {
                 .foregroundStyle(active ? .white : .primary).clipShape(Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(active ? .isSelected : [])
+        .accessibilityValue(active ? "on" : "off")
     }
 
     // MARK: - Computed
@@ -366,10 +435,12 @@ struct JobsView: View {
     }
 
     private var filteredJobIDs: Set<String> {
-        Set(filteredJobs.map(\.id))
+        Set(cachedFilteredJobs.map(\.id))
     }
 
-    private var filteredJobs: [Job] {
+    private var filteredJobs: [Job] { cachedFilteredJobs }
+
+    private func computeFilteredJobs() -> [Job] {
         let base = allJobs.filter { job in
             // Sidebar smart-folder filter (use @State mirror for reliable re-render)
             if let sidebarStatus = localSidebarFilter {
@@ -433,7 +504,6 @@ struct JobsView: View {
         let targets: [String] = selectedJobIDs.contains(job.id) ? Array(selectedJobIDs) : [job.id]
         let label: String = targets.count > 1 ? "\(targets.count) Jobs" : "Job"
         let svc = appServices.jobService
-        let queue = appServices.queueActor
 
         Menu("Set Status") {
             ForEach(JobStatus.allCases, id: \.self) { status in
@@ -444,7 +514,7 @@ struct JobsView: View {
         }
         Button { Task { for id in targets { try? await svc.archive(jobID: id) } } }
             label: { Label("Archive \(label)", systemImage: "archivebox") }
-        Button { Task { try? await queue.enqueue(jobIDs: targets, mode: .extract) } }
+        Button { Task { try? await svc.resetExtractionBulk(jobIDs: targets) } }
             label: { Label("Re-run AI on \(label)", systemImage: "arrow.clockwise") }
         Divider()
         Button(role: .destructive) { jobIDsToDelete = targets }
@@ -481,8 +551,11 @@ struct JobsView: View {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.commaSeparatedText]
         panel.nameFieldStringValue = "jobs.csv"
-        if panel.runModal() == .OK, let url = panel.url {
-            try? ExportService.write(csv, to: url)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try ExportService.write(csv, to: url)
+        } catch {
+            appServices.toastStore.show("Export failed: \(error.localizedDescription)", isError: true)
         }
     }
 

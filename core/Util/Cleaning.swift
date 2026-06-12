@@ -12,13 +12,19 @@ public func cleanDescription(
     structuredData: [[String: Any]] = []
 ) -> String {
     let selected = selectedText.trimmingCharacters(in: .whitespaces)
-    if !selected.isEmpty {
-        return normalizeWhitespace(selected)
-    }
+    let visibleTrimmed = visibleText.trimmingCharacters(in: .whitespaces)
 
     var parts: [String] = []
-    let visibleTrimmed = visibleText.trimmingCharacters(in: .whitespaces)
-    if !visibleTrimmed.isEmpty { parts.append(visibleTrimmed) }
+    if !selected.isEmpty && !visibleTrimmed.isEmpty {
+        // Both present: selected text first as the most relevant section, then full page text
+        parts.append(selected)
+        parts.append("---")
+        parts.append(visibleTrimmed)
+    } else if !selected.isEmpty {
+        return normalizeWhitespace(selected)
+    } else if !visibleTrimmed.isEmpty {
+        parts.append(visibleTrimmed)
+    }
 
     let jsonLdDesc = extractJsonLdDescription(structuredData)
     if !jsonLdDesc.isEmpty { parts.append(jsonLdDesc) }

@@ -66,11 +66,11 @@ final class FitScorerTests: XCTestCase {
     }
 
     func testPartialDimensionsNormalized() {
-        // Only required_qualifications (0.45) supplied with score 100.
-        // totalWeight = 0.45, weightedSum = 100 * 0.45.
-        // baseScore = round(45 / 0.45) = 100
+        // Only required_qualifications supplied with score 100; missing dimensions score 0.
+        // weightedSum = 100 * 0.45 = 45, totalWeight = 1.0 (all expected dims)
+        // baseScore = round(45 / 1.0) = 45
         let result = FitScorer.computeScore(dimensions: ["required_qualifications": 100])
-        XCTAssertEqual(result.overall, 100)
+        XCTAssertEqual(result.overall, 45)
     }
 
     // MARK: - Penalty model
@@ -261,6 +261,45 @@ final class FitScorerTests: XCTestCase {
         XCTAssertEqual(decoded.penalty, result.penalty)
         XCTAssertEqual(decoded.penaltyReasons, result.penaltyReasons)
         XCTAssertEqual(decoded.breakdown.count, result.breakdown.count)
+    }
+
+    // MARK: - TASK-254: Missing dimensions are treated as 0, not excluded from normalization
+
+    func testAllDimensionsPresent_sameResultAsExpected() {
+        // With all dims present, result is identical to the heterogeneous test above.
+        let dims: [String: Double] = [
+            "required_qualifications": 80,
+            "preferred_qualifications": 60,
+            "skills": 70,
+            "experience_level": 90,
+            "domain_fit": 50
+        ]
+        let result = FitScorer.computeScore(dimensions: dims)
+        // weighted = 80*0.45 + 60*0.05 + 70*0.15 + 90*0.20 + 50*0.15 = 75
+        XCTAssertEqual(result.overall, 75)
+    }
+
+    func testMissingOneDimension_lowerScoreThanIfPresent() {
+        // With all dims at 100, overall == 100.
+        let full = FitScorer.computeScore(dimensions: allDimensions(100))
+        XCTAssertEqual(full.overall, 100)
+
+        // Drop domain_fit (weight 0.15). Missing dims score 0, so:
+        // weightedSum = 100*(0.45+0.05+0.15+0.20) = 100*0.85 = 85
+        // totalWeight = 1.0 → baseScore = 85
+        var partial = FitScorer.dimensionWeights.keys.reduce(into: [String: Double]()) { d, k in
+            d[k] = 100
+        }
+        partial.removeValue(forKey: "domain_fit")
+        let result = FitScorer.computeScore(dimensions: partial)
+        XCTAssertEqual(result.overall, 85)
+        XCTAssertLessThan(result.overall, full.overall,
+                          "A partial response must score lower than a full response with the same values")
+    }
+
+    func testAllDimensionsMissing_scoreIsZero() {
+        let result = FitScorer.computeScore(dimensions: [:])
+        XCTAssertEqual(result.overall, 0)
     }
 
     // MARK: - Empty dimensions

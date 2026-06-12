@@ -10,6 +10,13 @@ public enum ModelContainerFactory {
         return try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
     }
 
+    /// On-disk container at an explicit path — used by UI tests for isolation from the production store.
+    public static func test(at url: URL) throws -> ModelContainer {
+        let schema = Schema(SchemaV1.models)
+        let config = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
+        return try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
+    }
+
     /// In-memory container for unit tests — isolated, never touches disk.
     public static func inMemory() throws -> ModelContainer {
         let schema = Schema(SchemaV1.models)
@@ -17,7 +24,7 @@ public enum ModelContainerFactory {
         return try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
     }
 
-    private static func productionStoreURL() -> URL {
+    public static func productionStoreURL() -> URL {
         // urls(for:in:) returns an empty array only on simulator/tests; guard is a safety net.
         guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
         else {

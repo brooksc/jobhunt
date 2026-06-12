@@ -342,6 +342,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         let capture = Capture(url: url, pageTitle: title, rawHash: UUID().uuidString, capturedAt: capturedAt)
         let job = Job(title: title, status: status)
         job.capture = capture
+        job.capturedAtDenormalized = capturedAt
         context.insert(capture)
         context.insert(job)
         try context.save()
@@ -436,6 +437,44 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         XCTAssertEqual(result.unavailable, 1)
         _ = freshJob // Suppress unused warning — it should NOT be checked.
         _ = staleJob
+    }
+
+    // AC#3 for TASK-147: active stale jobs must be found even when many earlier-created jobs are archived.
+    // The old limit*10 over-fetch could miss active jobs if archived jobs filled the fetch window.
+    func testCheckStaleJobs_findsActiveJobsBeyondArchivedWindow() async throws {
+        let staleDate = Date().addingTimeInterval(-30 * 86400)
+
+        // Create many archived stale jobs that would fill a limit*10 fetch window.
+        for i in 0 ..< 15 {
+            let archivedDate = staleDate.addingTimeInterval(-Double(i) * 3600)
+            _ = try makeJobWithCapture(
+                url: "https://archived.example.com/job/\(i)",
+                title: "Archived Job \(i)",
+                status: .archived,
+                capturedAt: archivedDate
+            )
+        }
+
+        // Active stale job created after the archived block.
+        MockURLProtocol.handlers = [(
+            "active-stale.example.com",
+            { _ in makeResponse(url: "https://active-stale.example.com/job/active", status: 200, body: "still open") }
+        )]
+        _ = try makeJobWithCapture(
+            url: "https://active-stale.example.com/job/active",
+            title: "Active Stale Job",
+            status: .pursuing,
+            capturedAt: staleDate
+        )
+
+        let result = await AvailabilityChecker.checkStaleJobs(
+            store: store,
+            staleDays: 21,
+            limit: 5,
+            session: session
+        )
+
+        XCTAssertEqual(result.checked, 1, "Active stale job must be checked even when earlier archived jobs fill the window")
     }
 
     func testMaybeRunStaleCheckSkipsWhenDisabled() async {

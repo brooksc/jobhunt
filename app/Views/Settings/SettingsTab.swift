@@ -1,6 +1,8 @@
+import AppKit
 import JobhuntCore
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsTab: View {
     let settings: SettingsStore
@@ -10,9 +12,11 @@ struct SettingsTab: View {
     @State private var customJDText: String = ""
     @State private var goneJobs: [GoneJobResult] = []
     @State private var showingExpiredConfirmation = false
+    @State private var showingRestoreConfirmation = false
+    @State private var pendingRestoreURL: URL?
 
     @Environment(Theme.self) private var theme
-    @Environment(\.modelContext) private var modelContext
+    @Environment(AppServices.self) private var appServices
     @Query private var allJobs: [Job]
 
     var body: some View {
@@ -22,11 +26,28 @@ struct SettingsTab: View {
             intervalsSection
             availabilitySection
             customExtractionSection
+            dataSection
             appInfoSection
         }
         .formStyle(.grouped)
         .onAppear {
             customJDText = settings.string(forKey: SettingsKey.jobDescriptionMarkdown)
+        }
+        .confirmationDialog(
+            "Replace Current Data?",
+            isPresented: $showingRestoreConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Restore and Relaunch", role: .destructive) {
+                if let url = pendingRestoreURL { performRestore(from: url) }
+            }
+            Button("Cancel", role: .cancel) { pendingRestoreURL = nil }
+        } message: {
+            Text(
+                "All current jobs, captures, settings, and resumes will be replaced with the backup. " +
+                "A pre-restore backup will be saved automatically. " +
+                "The app must relaunch to apply the restored data."
+            )
         }
         .sheet(isPresented: $showingExpiredConfirmation) {
             ExpiredConfirmationSheet(
@@ -81,10 +102,6 @@ struct SettingsTab: View {
                 TextField("Preferred locations (comma-separated)", text: Binding(
                     get: { settings.preferredLocations },
                     set: { settings.preferredLocations = $0 }
-                ))
-                TextField("Preferred metros (comma-separated)", text: Binding(
-                    get: { settings.preferredMetros },
-                    set: { settings.preferredMetros = $0 }
                 ))
             }
         }
@@ -190,6 +207,28 @@ struct SettingsTab: View {
         }
     }
 
+    // MARK: - Data section
+
+    private var dataSection: some View {
+        Section("Data") {
+            HStack {
+                Button {
+                    backUpData()
+                } label: {
+                    Label("Back Up Data…", systemImage: "externaldrive.badge.checkmark")
+                }
+
+                Spacer()
+
+                Button(role: .destructive) {
+                    chooseRestoreFile()
+                } label: {
+                    Label("Restore from Backup…", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                }
+            }
+        }
+    }
+
     // MARK: - App info
 
     private var appInfoSection: some View {
@@ -249,15 +288,88 @@ struct SettingsTab: View {
         }
     }
 
+    private func backUpData() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "sqlite") ?? .data]
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        panel.nameFieldStringValue = "jobhunt-backup-\(formatter.string(from: Date())).sqlite"
+        panel.title = "Save Jobhunt Backup"
+        panel.message = "Choose where to save the backup file."
+        guard panel.runModal() == .OK, let dest = panel.url else { return }
+        let storeURL = ModelContainerFactory.productionStoreURL()
+        do {
+            try BackupService.backup(storeURL: storeURL, to: dest)
+            appServices.toastStore.show("Backup saved to \(dest.lastPathComponent)")
+        } catch {
+            appServices.toastStore.show("Backup failed: \(error.localizedDescription)", isError: true)
+        }
+    }
+
+    private func chooseRestoreFile() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "sqlite") ?? .data]
+        panel.title = "Select Backup to Restore"
+        panel.message = "Choose a .sqlite backup file created by Jobhunt."
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        guard BackupService.isValidSQLite(at: url) else {
+            appServices.toastStore.show(
+                "The selected file is not a valid SQLite backup.", isError: true
+            )
+            return
+        }
+
+        pendingRestoreURL = url
+        showingRestoreConfirmation = true
+    }
+
+    private func performRestore(from backupURL: URL) {
+        let storeURL = ModelContainerFactory.productionStoreURL()
+
+        // Auto-backup current data before replacing
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd-HHmmss"
+        let autoBackupURL = storeURL.deletingLastPathComponent()
+            .appendingPathComponent("pre-restore-\(formatter.string(from: Date())).sqlite")
+
+        do {
+            try? BackupService.backup(storeURL: storeURL, to: autoBackupURL)
+            try BackupService.restore(from: backupURL, to: storeURL)
+        } catch {
+            appServices.toastStore.show("Restore failed: \(error.localizedDescription)", isError: true)
+            pendingRestoreURL = nil
+            return
+        }
+
+        pendingRestoreURL = nil
+
+        // Prompt relaunch — restore is on disk but the live container still sees old data
+        let alert = NSAlert()
+        alert.messageText = "Restore Complete — Relaunch Required"
+        alert.informativeText =
+            "Your data has been restored from \(backupURL.lastPathComponent). " +
+            "Quit and reopen Jobhunt to load the restored data."
+        alert.addButton(withTitle: "Relaunch Now")
+        alert.addButton(withTitle: "Later")
+        if alert.runModal() == .alertFirstButtonReturn {
+            let url = Bundle.main.bundleURL
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            task.arguments = [url.path]
+            try? task.run()
+            NSApp.terminate(nil)
+        }
+    }
+
     private func markExpired(_ jobs: [GoneJobResult]) {
         showingExpiredConfirmation = false
-        let ids = Set(jobs.map(\.jobID))
-        for job in allJobs where ids.contains(job.id) {
-            job.status = .expired
-            job.updatedAt = Date()
-        }
-        try? modelContext.save()
-        availabilityCheckMessage = "\(jobs.count) job(s) marked expired"
+        let ids = jobs.map(\.jobID)
+        let count = ids.count
+        Task { try? await appServices.jobService.markExpired(jobIDs: ids) }
+        availabilityCheckMessage = "\(count) job(s) marked expired"
     }
 }
 

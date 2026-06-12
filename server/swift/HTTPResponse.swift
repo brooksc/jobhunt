@@ -29,14 +29,23 @@ struct HTTPResponse {
         HTTPResponse(statusCode: 204, headers: [:], body: Data())
     }
 
+    /// Add CORS headers for the given chrome-extension:// origin (used on both
+    /// preflight and actual responses). `isPreflight` also adds PNA header.
+    func withCORS(origin: String, isPreflight: Bool = false) -> HTTPResponse {
+        var h = headers
+        h["Access-Control-Allow-Origin"] = origin
+        h["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+        h["Access-Control-Allow-Headers"] = "Content-Type"
+        if isPreflight {
+            h["Access-Control-Allow-Private-Network"] = "true"
+        }
+        return HTTPResponse(statusCode: statusCode, headers: h, body: body)
+    }
+
     func toHTTPBytes() -> Data {
         let statusText = Self.statusText(for: statusCode)
         var headerLines = "HTTP/1.1 \(statusCode) \(statusText)\r\n"
         headerLines += "Content-Length: \(body.count)\r\n"
-        headerLines += "Access-Control-Allow-Origin: *\r\n"
-        headerLines += "Access-Control-Allow-Methods: GET,POST,OPTIONS\r\n"
-        headerLines += "Access-Control-Allow-Headers: Content-Type\r\n"
-        headerLines += "Access-Control-Allow-Private-Network: true\r\n"
         for (key, value) in headers {
             headerLines += "\(key): \(value)\r\n"
         }

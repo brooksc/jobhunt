@@ -96,6 +96,34 @@ final class MCPTests: XCTestCase {
         }
     }
 
+    // MARK: - TASK-265: job_get schema has include_raw_text and correct description
+
+    func testJobGet_schema_hasIncludeRawTextParameter() {
+        let jobGetTool = tools.first { $0["name"] as? String == "job_get" }
+        let schema = jobGetTool?["inputSchema"] as? [String: Any]
+        let properties = schema?["properties"] as? [String: Any]
+        XCTAssertNotNil(properties?["include_raw_text"], "job_get schema must include include_raw_text property")
+        let rawTextProp = properties?["include_raw_text"] as? [String: Any]
+        XCTAssertEqual(rawTextProp?["type"] as? String, "boolean", "include_raw_text must be boolean")
+        let desc = rawTextProp?["description"] as? String ?? ""
+        XCTAssertTrue(desc.contains("Omitted by default") || desc.contains("omitted") || desc.contains("default"),
+                      "include_raw_text description must mention it is omitted by default")
+    }
+
+    func testJobGet_description_mentionsOmittedByDefault() {
+        let jobGetTool = tools.first { $0["name"] as? String == "job_get" }
+        let description = jobGetTool?["description"] as? String ?? ""
+        XCTAssertTrue(
+            description.contains("omitted") || description.contains("Omitted") || description.contains("default"),
+            "job_get description must state that raw text is omitted by default"
+        )
+        // Must not claim raw text is included by default
+        XCTAssertFalse(
+            description.lowercased().contains("included by default") || description.lowercased().contains("including raw"),
+            "job_get description must not claim raw text is included by default"
+        )
+    }
+
     // MARK: - readToken returns nil when file absent
 
     func testReadToken_returnsNilWhenFileMissing() {

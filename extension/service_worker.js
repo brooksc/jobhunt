@@ -262,36 +262,23 @@ async function captureTabPayload(tabId, userNote = "") {
 async function submitOrQueue(payload) {
   await flushQueuedCaptures();
 
-  // Debug: log what was captured so you can inspect in the service worker console
-  const vt = payload.visible_text || '';
-  const workdayRe = /\b(\d{2,3}(?:,\d{3})+)\s*[-–—]\s*(\d{2,3}(?:,\d{3})+)\s+(?:USD|CAD|EUR|GBP)\s+Annual\b/i;
-  const salaryShortRe = /\$[\d,]+\s*[-–]\s*\$?[\d,]+|\d+[kK]\s*[-–]\s*\d+[kK]|annually|per year|\/yr/i;
-  const vtLines = vt.split('\n');
-  const salaryLines = vtLines.filter(l => salaryShortRe.test(l) || workdayRe.test(l));
-  console.log("[jobhunt] captured:", {
-    url: payload.url,
-    title: payload.page_title,
-    visible_text_length: vt.length,
-    visible_text_head: vt.slice(0, 500),
-    visible_text_tail: vt.slice(-500),
-    structured_data_count: payload.structured_data?.length,
-    structured_data: JSON.stringify(payload.structured_data),
-    salary_lines_found: salaryLines,
-  });
-
   try {
     const result = await submitCapture(payload);
     await showBadge(result.duplicate ? "DUP" : "OK", "#137333");
     return result;
   } catch (_error) {
-    const { length, duplicate } = await jobhuntRetryQueue.enqueueCapture(chrome.storage.local, payload);
-    if (duplicate) {
+    const enqueueResult = await jobhuntRetryQueue.enqueueCapture(chrome.storage.local, payload);
+    if (enqueueResult.duplicate) {
       await showBadge("DUP", "#f9ab00");
       return { queued: false, localDuplicate: true };
     }
+    if (enqueueResult.error) {
+      await showBadge("ERR", "#c0392b");
+      return { queued: false, error: enqueueResult.error };
+    }
     await showBadge("Q", "#f9ab00");
-    await showQueuedStatus(length);
-    return { queued: true, queueLength: length };
+    await showQueuedStatus(enqueueResult.length);
+    return { queued: true, queueLength: enqueueResult.length };
   }
 }
 
@@ -310,9 +297,12 @@ async function capturePendingNote(note) {
     throw new Error("No pending tab for note capture");
   }
 
-  await chrome.storage.session.remove("pendingNoteTabId");
+  // Remove pending state only after capture succeeds so a transient failure
+  // (script injection error, network unavailable) leaves the context intact for retry.
   const { payload } = await captureTabPayload(tabId, note);
-  return submitOrQueue(payload);
+  const captureResult = await submitOrQueue(payload);
+  await chrome.storage.session.remove("pendingNoteTabId");
+  return captureResult;
 }
 
 async function submitCapture(payload) {

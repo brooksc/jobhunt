@@ -26,10 +26,20 @@ struct LLMQueueView: View {
     let queueActor: QueueActor
     let settings: SettingsStore
 
-    // MARK: Query — all requests, newest first
+    // MARK: Query — bounded to 500 most recent, newest first.
+    // Active requests (queued/running) are always newest, so counts remain accurate within this window.
 
-    @Query(sort: \LLMRequest.createdAt, order: .reverse)
-    private var allRequests: [LLMRequest]
+    @Query private var recentRequests: [LLMRequest]
+
+    init(queueActor: QueueActor, settings: SettingsStore) {
+        self.queueActor = queueActor
+        self.settings = settings
+        var descriptor = FetchDescriptor<LLMRequest>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = 500
+        _recentRequests = Query(descriptor)
+    }
 
     // MARK: Filter state
 
@@ -40,9 +50,11 @@ struct LLMQueueView: View {
 
     @State private var selection: Set<String> = []
 
-    // MARK: Pause state (mirrors settings, kept in sync via event stream)
+    // MARK: Pause state — derived from settings, not local @State
 
-    @State private var isPaused: Bool = false
+    private var isPaused: Bool {
+        settings.llmQueuePaused
+    }
 
     // MARK: Expanded rows (showing attempt detail)
 
@@ -58,8 +70,14 @@ struct LLMQueueView: View {
 
     // MARK: - Computed
 
+    /// Active/attention requests — used for toolbar button state and summary bar.
+    /// Derived from recentRequests (active requests are always newest, so they appear in the 500-row window).
+    private var activeRequests: [LLMRequest] {
+        recentRequests.filter { $0.status == .queued || $0.status == .running }
+    }
+
     private var filteredRequests: [LLMRequest] {
-        allRequests.filter { req in
+        recentRequests.filter { req in
             let typeOK: Bool = switch typeFilter {
             case .all: true
             case .extract: req.requestType == .extract
@@ -79,7 +97,7 @@ struct LLMQueueView: View {
     var body: some View {
         VStack(spacing: 0) {
             QueueSummaryBar(
-                requests: allRequests,
+                requests: recentRequests,
                 isPaused: isPaused,
                 onTogglePause: togglePause
             )
@@ -168,7 +186,7 @@ struct LLMQueueView: View {
         .navigationTitle("LLM Queue")
         .toolbar { toolbarContent }
         .confirmationDialog(
-            "Delete all \(allRequests.count) queue records?",
+            "Delete all queue records?",
             isPresented: $showingDeleteAllConfirm,
             titleVisibility: .visible
         ) {
@@ -187,13 +205,15 @@ struct LLMQueueView: View {
             Text("This permanently removes all history. It cannot be undone.")
         }
         .task {
-            // Sync isPaused from settings
-            isPaused = settings.llmQueuePaused
             // Listen for QueueActor events
-            for await event in queueActor.events {
+            for await event in await queueActor.subscribe() {
                 handleQueueEvent(event)
             }
         }
+        .focusedSceneValue(\.queueCommands, QueueCommandHandlers(
+            isPaused: isPaused,
+            togglePause: { Task { await togglePause() } }
+        ))
     }
 
     // MARK: - Toolbar
@@ -236,7 +256,7 @@ struct LLMQueueView: View {
                 Label("Process All", systemImage: "sparkles")
             }
             .help("Start processing all queued requests")
-            .disabled(isPaused || allRequests.filter { $0.status == .queued }.isEmpty)
+            .disabled(isPaused || activeRequests.filter { $0.status == .queued }.isEmpty)
 
             // Cancel Queued
             Button {
@@ -245,7 +265,7 @@ struct LLMQueueView: View {
                 Label("Cancel Queued", systemImage: "stop.circle")
             }
             .help("Cancel all queued and running requests (does not delete history)")
-            .disabled(allRequests.filter { $0.status == .queued || $0.status == .running }.isEmpty)
+            .disabled(activeRequests.isEmpty)
 
             // Delete All
             Button(role: .destructive) {
@@ -354,12 +374,10 @@ struct LLMQueueView: View {
     // MARK: - Queue actions
 
     private func togglePause() async {
-        let next = !isPaused
-        isPaused = next
-        if next {
-            await queueActor.pauseQueue()
-        } else {
+        if isPaused {
             await queueActor.resumeQueue()
+        } else {
+            await queueActor.pauseQueue()
         }
     }
 
@@ -368,11 +386,18 @@ struct LLMQueueView: View {
     }
 
     private func processSelected(_ ids: [String]) async {
-        // Reset selected items to queued then start processing
+        var resetCount = 0
         for id in ids {
-            try? await queueActor.resetRequest(id: id)
+            do {
+                try await queueActor.resetRequest(id: id)
+                resetCount += 1
+            } catch {
+                errorMessage = "Reset failed: \(error.localizedDescription)"
+            }
         }
-        await queueActor.startProcessing()
+        if resetCount > 0 {
+            await queueActor.startProcessing()
+        }
     }
 
     private func cancelSelected(_ ids: [String]) async {
@@ -420,11 +445,7 @@ struct LLMQueueView: View {
 
     private func handleQueueEvent(_ event: QueueEvent) {
         switch event {
-        case .autoPaused:
-            isPaused = true
-        case .processingComplete:
-            isPaused = false
-        case .jobReady, .jobUnavailable:
+        case .autoPaused, .processingComplete, .jobReady, .jobUnavailable:
             break
         }
     }

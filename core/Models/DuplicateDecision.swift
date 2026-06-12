@@ -3,7 +3,9 @@ import SwiftData
 
 @Model
 public final class DuplicateDecision {
-    public var cleanedHash: String
+    // Safe to mark unique on fresh installs. For existing stores with duplicate cleanedHash rows,
+    // deduplicate before opening the store with this constraint active.
+    @Attribute(.unique) public var cleanedHash: String
     public var decision: String
     public var keepJobID: String?
     public var note: String?

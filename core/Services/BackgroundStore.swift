@@ -1,6 +1,19 @@
 import Foundation
 import SwiftData
 
+// MARK: - BackgroundStore errors
+
+public enum BackgroundStoreError: Error, LocalizedError, Sendable {
+    case notFound(String)
+    case multipleMatches(count: Int)
+    public var errorDescription: String? {
+        switch self {
+        case let .notFound(id): return "Record not found: \(id)"
+        case let .multipleMatches(count): return "Expected exactly one match but found \(count)"
+        }
+    }
+}
+
 // MARK: - Atomic ingest types
 
 public struct AtomicIngestInput: Sendable {
@@ -59,6 +72,39 @@ public actor BackgroundStore {
         try modelContext.save()
     }
 
+    /// Apply a mutation to exactly one model matching `predicate`.
+    /// Throws `notFound` if no row matches, or `multipleMatches` if more than one row matches.
+    public func updateOne<T: PersistentModel>(
+        _: T.Type,
+        predicate: Predicate<T>,
+        id: String,
+        mutation: (T) -> Void
+    ) throws {
+        var descriptor = FetchDescriptor<T>()
+        descriptor.predicate = predicate
+        let items = try modelContext.fetch(descriptor)
+        guard !items.isEmpty else { throw BackgroundStoreError.notFound(id) }
+        guard items.count == 1 else { throw BackgroundStoreError.multipleMatches(count: items.count) }
+        mutation(items[0])
+        try modelContext.save()
+    }
+
+    /// Delete exactly one model matching `predicate`.
+    /// Throws `notFound` if no row matches, or `multipleMatches` if more than one row matches.
+    public func deleteOne<T: PersistentModel>(
+        _: T.Type,
+        predicate: Predicate<T>,
+        id: String
+    ) throws {
+        var descriptor = FetchDescriptor<T>()
+        descriptor.predicate = predicate
+        let items = try modelContext.fetch(descriptor)
+        guard !items.isEmpty else { throw BackgroundStoreError.notFound(id) }
+        guard items.count == 1 else { throw BackgroundStoreError.multipleMatches(count: items.count) }
+        modelContext.delete(items[0])
+        try modelContext.save()
+    }
+
     /// Delete all models matching a predicate, then save.
     public func delete<T: PersistentModel>(
         _: T.Type,
@@ -81,6 +127,21 @@ public actor BackgroundStore {
     /// Delete a single known model object, then save.
     public func deleteObject(_ model: some PersistentModel) throws {
         modelContext.delete(model)
+        try modelContext.save()
+    }
+
+    /// Delete models matching `predicate` that also pass an in-memory `filter`, then save.
+    /// Use when the predicate can narrow the fetch (e.g. by date) but the final filter
+    /// requires enum comparison that SwiftData predicates cannot express.
+    public func deleteFiltered<T: PersistentModel>(
+        _: T.Type,
+        predicate: Predicate<T>,
+        where filter: (T) -> Bool
+    ) throws {
+        var descriptor = FetchDescriptor<T>()
+        descriptor.predicate = predicate
+        let items = try modelContext.fetch(descriptor)
+        items.filter(filter).forEach { modelContext.delete($0) }
         try modelContext.save()
     }
 
@@ -133,13 +194,40 @@ public actor BackgroundStore {
         try modelContext.save()
     }
 
+    /// Delete all JobFitScore records for a resume and reset denormalized fit fields on affected jobs.
+    /// Called when resume text changes so stale scores are not shown as current.
+    public func deleteFitScores(forResumeID resumeID: String) throws {
+        let allScores = try modelContext.fetch(FetchDescriptor<JobFitScore>())
+        let toDelete = allScores.filter { $0.resume?.id == resumeID }
+        guard !toDelete.isEmpty else { return }
+
+        let affectedJobs = toDelete.compactMap(\.job)
+        for score in toDelete { modelContext.delete(score) }
+        try modelContext.save()
+
+        for job in affectedJobs {
+            if job.fitScores.isEmpty {
+                job.fitScore = nil
+                job.fitStatus = .none
+                job.fitScoreJSON = nil
+            } else if let best = job.fitScores.max(by: { ($0.fitScore ?? 0) < ($1.fitScore ?? 0) }) {
+                job.fitScore = best.fitScore
+                job.fitStatus = best.fitStatus
+                job.fitScoreJSON = best.fitScoreJSON
+            }
+            job.updatedAt = Date()
+        }
+        try modelContext.save()
+    }
+
     /// Atomically dedup-check, assign job number, and insert Capture + Job + extraction LLMRequest
     /// in a single modelContext.save(). No other BackgroundStore call can interleave mid-operation.
     public func insertCaptureAtomically(_ input: AtomicIngestInput) throws -> AtomicIngestResult {
-        let allCaptures = try modelContext.fetch(FetchDescriptor<Capture>())
-
-        // Raw hash: exact duplicate — return existing
-        if let existing = allCaptures.first(where: { $0.rawHash == input.rawHash }),
+        // Raw hash: exact duplicate — fetch only the matching row (O(1) via predicate)
+        let rawHashValue = input.rawHash
+        var rawDescriptor = FetchDescriptor<Capture>(predicate: #Predicate { $0.rawHash == rawHashValue })
+        rawDescriptor.fetchLimit = 1
+        if let existing = try modelContext.fetch(rawDescriptor).first,
            let existingJob = existing.job {
             return AtomicIngestResult(
                 captureID: existing.id,
@@ -148,23 +236,27 @@ public actor BackgroundStore {
             )
         }
 
-        // Cleaned hash: semantic duplicate — link but don't block
+        // Cleaned hash: semantic duplicate — fetch only rows matching the hash, filter URL in memory
+        // (typically 0-1 rows match, so full scan never materialises)
         var duplicateOfJobID: String?
         if let cHash = input.cleanedHash {
             let url = input.url
             let canonical = input.canonicalURL
-            if let dup = allCaptures.first(where: {
-                $0.cleanedHash == cHash &&
-                    $0.url != url &&
-                    ($0.canonicalURL ?? "") != (canonical ?? "")
+            var cleanedDescriptor = FetchDescriptor<Capture>(predicate: #Predicate { $0.cleanedHash == cHash })
+            cleanedDescriptor.fetchLimit = 10
+            let candidates = try modelContext.fetch(cleanedDescriptor)
+            if let dup = candidates.first(where: {
+                $0.url != url && ($0.canonicalURL ?? "") != (canonical ?? "")
             }) {
                 duplicateOfJobID = dup.job?.id
             }
         }
 
-        // Atomic job number: no suspension between fetch and insert
-        let allJobs = try modelContext.fetch(FetchDescriptor<Job>())
-        let jobNumber = (allJobs.compactMap(\.jobNumber).max() ?? 0) + 1
+        // Job number: sort descending, fetch only the top row — O(1) instead of O(N)
+        var jobDescriptor = FetchDescriptor<Job>(sortBy: [SortDescriptor(\.jobNumber, order: .reverse)])
+        jobDescriptor.fetchLimit = 1
+        let maxJobNumber = try modelContext.fetch(jobDescriptor).first?.jobNumber ?? 0
+        let jobNumber = maxJobNumber + 1
 
         // Build the three linked records
         let capture = Capture(
@@ -180,7 +272,18 @@ public actor BackgroundStore {
             rawHash: input.rawHash,
             cleanedHash: input.cleanedHash
         )
-        let job = Job(id: input.jobID, jobNumber: jobNumber, duplicateOfJobID: duplicateOfJobID)
+        let job = Job(
+            id: input.jobID,
+            jobNumber: jobNumber,
+            status: duplicateOfJobID != nil ? .duplicate : .new,
+            duplicateOfJobID: duplicateOfJobID
+        )
+        job.rawTextBytes = max(
+            input.selectedText?.utf8.count ?? 0,
+            input.visibleText?.utf8.count ?? 0
+        )
+        job.cleanedTextBytes = input.cleanedDescription?.utf8.count ?? 0
+        job.capturedAtDenormalized = capture.capturedAt
         job.capture = capture
 
         let llmRequest = LLMRequest(requestType: .extract, status: .queued)

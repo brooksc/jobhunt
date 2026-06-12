@@ -43,7 +43,9 @@ nice xcodebuild build \
 
 # 3. Tests
 if [ "$SKIP_TESTS" = false ]; then
-    echo "→ Running tests..."
+    # Fast gate: CoreTests + ServerTests + MCPTests (~30s). Matches CI.
+    # AppUITests and LLMEval are opt-in — run them separately before a release.
+    echo "→ Running fast gate (CoreTests + ServerTests + MCPTests)..."
     nice xcodebuild test \
         -project Jobhunt.xcodeproj \
         -scheme "$SCHEME" \
@@ -51,6 +53,8 @@ if [ "$SKIP_TESTS" = false ]; then
         -destination 'platform=macOS' \
         -derivedDataPath "$DERIVED_DATA" \
         -only-testing:CoreTests \
+        -only-testing:ServerTests \
+        -only-testing:MCPTests \
         CODE_SIGNING_ALLOWED=NO \
         | xcbeautify 2>/dev/null || xcodebuild test \
             -project Jobhunt.xcodeproj \
@@ -59,6 +63,8 @@ if [ "$SKIP_TESTS" = false ]; then
             -destination 'platform=macOS' \
             -derivedDataPath "$DERIVED_DATA" \
             -only-testing:CoreTests \
+            -only-testing:ServerTests \
+            -only-testing:MCPTests \
             CODE_SIGNING_ALLOWED=NO
 fi
 

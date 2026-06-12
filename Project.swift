@@ -150,18 +150,21 @@ let appInfoPlist: [String: Plist.Value] = [
     ]),
 ]
 
-let dmgEntitlements: Path = "build/Jobhunt-DMG.entitlements"
-let masEntitlements: Path = "build/Jobhunt-MAS.entitlements"
+let dmgEntitlements: Path = "config/entitlements/Jobhunt-DMG.entitlements"
+let masEntitlements: Path = "config/entitlements/Jobhunt-MAS.entitlements"
 
 let appConfigurations: [Configuration] = [
-    .debug(name: "Debug-DMG", settings: ["CODE_SIGN_ENTITLEMENTS": .string("build/Jobhunt-DMG.entitlements")]),
-    .release(name: "Release-DMG", settings: ["CODE_SIGN_ENTITLEMENTS": .string("build/Jobhunt-DMG.entitlements")]),
+    .debug(name: "Debug-DMG", settings: ["CODE_SIGN_ENTITLEMENTS": .string("config/entitlements/Jobhunt-DMG.entitlements")]),
+    .release(name: "Release-DMG", settings: [
+        "CODE_SIGN_ENTITLEMENTS": .string("config/entitlements/Jobhunt-DMG.entitlements"),
+        "ENABLE_HARDENED_RUNTIME": .string("YES"),
+    ]),
     .debug(name: "Debug-MAS", settings: [
-        "CODE_SIGN_ENTITLEMENTS": .string("build/Jobhunt-MAS.entitlements"),
+        "CODE_SIGN_ENTITLEMENTS": .string("config/entitlements/Jobhunt-MAS.entitlements"),
         "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "MAS_BUILD",
     ]),
     .release(name: "Release-MAS", settings: [
-        "CODE_SIGN_ENTITLEMENTS": .string("build/Jobhunt-MAS.entitlements"),
+        "CODE_SIGN_ENTITLEMENTS": .string("config/entitlements/Jobhunt-MAS.entitlements"),
         "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "MAS_BUILD",
     ]),
 ]
@@ -175,6 +178,25 @@ let appTarget = Target.target(
     infoPlist: .extendingDefault(with: appInfoPlist),
     sources: ["app/**/*.swift"],
     resources: ["app/Resources/**"],
+    scripts: [
+        // Copy jobhunt-mcp into Contents/Helpers/ for DMG builds so it is available at the documented path.
+        // MAS builds skip this (no MCP entitlement in sandbox).
+        .post(
+            script: """
+            case "$CONFIGURATION" in
+              *MAS*) exit 0 ;;
+            esac
+            MCP_SRC="${BUILT_PRODUCTS_DIR}/jobhunt-mcp"
+            HELPERS="${BUILT_PRODUCTS_DIR}/${WRAPPER_NAME}/Contents/Helpers"
+            if [ -f "$MCP_SRC" ]; then
+              mkdir -p "$HELPERS"
+              cp "$MCP_SRC" "$HELPERS/jobhunt-mcp"
+            fi
+            """,
+            name: "Copy MCP Helper into Contents/Helpers (DMG only)",
+            basedOnDependencyAnalysis: false
+        )
+    ],
     dependencies: [
         .target(name: "JobhuntCore"),
         .target(name: "JobhuntServer"),
@@ -188,10 +210,16 @@ let appTarget = Target.target(
 
 // MARK: - Test targets
 
+// Migration.swift and SQLiteHelpers.swift are compiled directly into CoreTests because
+// JobhuntMigrator is a commandLineTool and cannot be linked as a dependency.
 let coreTestsTarget = testTarget(
     name: "CoreTests",
     bundleSuffix: "CoreTests",
-    sources: ["Tests/CoreTests/**/*.swift"],
+    sources: [
+        "tests/CoreTests/**/*.swift",
+        "tools/migrator/Migration.swift",
+        "tools/migrator/SQLiteHelpers.swift",
+    ],
     deps: [.target(name: "JobhuntCore")]
 )
 
@@ -241,6 +269,7 @@ let dmgScheme = Scheme.scheme(
         [
             .testableTarget(target: .target("CoreTests")),
             .testableTarget(target: .target("ServerTests")),
+            .testableTarget(target: .target("MCPTests")),
         ],
         configuration: "Debug-DMG"
     ),

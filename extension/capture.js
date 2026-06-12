@@ -268,6 +268,21 @@
         "padding:12px"
       ].join(";");
 
+      // Build the static skeleton; no page-derived values in innerHTML.
+      root.innerHTML = `
+        <div style="font-weight:700;font-size:14px;margin-bottom:8px;">Jobhunt capture preflight</div>
+        <div data-jh-rows></div>
+        <div data-jh-stats style="margin-top:8px;color:#9ca3af;font-size:12px;line-height:1.35;"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;">
+          <span data-jh-countdown style="font-size:13px;color:#86efac;font-weight:600;line-height:1.4;">Saving in 5…</span>
+          <div style="display:flex;gap:8px;">
+            <button data-jh-cancel style="background:transparent;color:#d1d5db;border:1px solid #4b5563;border-radius:6px;padding:6px 10px;cursor:pointer;">Cancel</button>
+            <button data-jh-open style="background:transparent;color:#93c5fd;border:1px solid #3b82f6;border-radius:6px;padding:6px 10px;cursor:pointer;">Open in app</button>
+          </div>
+        </div>
+      `;
+
+      // Populate check rows using textContent so page-derived values cannot inject markup.
       const checks = [
         ["Title", preflight.titleVal],
         ["Location", preflight.locationVal],
@@ -275,12 +290,25 @@
         ["Remote/work mode", preflight.remoteVal],
       ];
       function truncate(s, n) { return s.length > n ? s.slice(0, n - 1) + "…" : s; }
-      const rows = checks.map(([label, val]) => `
-        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:3px 0;">
-          <span style="white-space:nowrap;color:#cbd5e1;font-size:12px;line-height:1.4;">${label}</span>
-          <span style="color:${val ? "#4ade80" : "#f87171"};font-size:12px;line-height:1.4;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;">${val ? truncate(val, 38) : "missing"}</span>
-        </div>
-      `).join("");
+      const rowsContainer = root.querySelector("[data-jh-rows]");
+      checks.forEach(([label, val]) => {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:3px 0;";
+        const labelEl = document.createElement("span");
+        labelEl.style.cssText = "white-space:nowrap;color:#cbd5e1;font-size:12px;line-height:1.4;";
+        labelEl.textContent = label;
+        const valEl = document.createElement("span");
+        valEl.style.cssText = `color:${val ? "#4ade80" : "#f87171"};font-size:12px;line-height:1.4;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px;`;
+        valEl.textContent = val ? truncate(val, 38) : "missing";
+        row.appendChild(labelEl);
+        row.appendChild(valEl);
+        rowsContainer.appendChild(row);
+      });
+
+      // Populate stats line — visibleChars and structuredData are numbers, safe to interpolate.
+      const statsEl = root.querySelector("[data-jh-stats]");
+      const statsText = `${preflight.visibleChars.toLocaleString()} visible chars · ${preflight.structuredData} structured item${preflight.structuredData === 1 ? "" : "s"}${preflight.selectedText ? " · selected text" : ""} · `;
+      statsEl.appendChild(document.createTextNode(statsText));
       const issueTitle = encodeURIComponent(`Capture issue: ${preflight.titleVal || preflight.url}`);
       const issueBody = encodeURIComponent([
         `**Job URL:** ${preflight.url}`,
@@ -297,22 +325,13 @@
         `<!-- Describe what was missing or incorrect -->`,
       ].join("\n"));
       const issueUrl = `https://github.com/brooksc/jobhunt/issues/new?title=${issueTitle}&body=${issueBody}`;
-
-      root.innerHTML = `
-        <div style="font-weight:700;font-size:14px;margin-bottom:8px;">Jobhunt capture preflight</div>
-        ${rows}
-        <div style="margin-top:8px;color:#9ca3af;font-size:12px;line-height:1.35;">
-          ${preflight.visibleChars.toLocaleString()} visible chars · ${preflight.structuredData} structured item${preflight.structuredData === 1 ? "" : "s"}${preflight.selectedText ? " · selected text" : ""}
-          · <a href="${issueUrl}" target="_blank" rel="noopener" style="color:#6b7280;text-decoration:underline;cursor:pointer;">Wrong data?</a>
-        </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;">
-          <span data-jh-countdown style="font-size:13px;color:#86efac;font-weight:600;line-height:1.4;">Saving in 5…</span>
-          <div style="display:flex;gap:8px;">
-            <button data-jh-cancel style="background:transparent;color:#d1d5db;border:1px solid #4b5563;border-radius:6px;padding:6px 10px;cursor:pointer;">Cancel</button>
-            <button data-jh-open style="background:transparent;color:#93c5fd;border:1px solid #3b82f6;border-radius:6px;padding:6px 10px;cursor:pointer;">Open in app</button>
-          </div>
-        </div>
-      `;
+      const issueLink = document.createElement("a");
+      issueLink.href = issueUrl;
+      issueLink.target = "_blank";
+      issueLink.rel = "noopener";
+      issueLink.style.cssText = "color:#6b7280;text-decoration:underline;cursor:pointer;";
+      issueLink.textContent = "Wrong data?";
+      statsEl.appendChild(issueLink);
       document.body.appendChild(root);
 
       let secondsLeft = 5;
@@ -369,14 +388,20 @@
   // Fetch from Greenhouse's public boards API and return a synthetic JSON-LD JobPosting.
   // Works for both job-boards.greenhouse.io (new React SPA, zero JSON-LD in DOM) and
   // the classic boards.greenhouse.io domain.
+  const GREENHOUSE_TIMEOUT_MS = 5000;
+
   async function fetchGreenhouseJobData(url) {
     const match = url.match(/(?:job-boards|boards)\.greenhouse\.io\/([^/?#]+)\/jobs\/(\d+)/);
     if (!match) return null;
     const [, board, jobId] = match;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), GREENHOUSE_TIMEOUT_MS);
     try {
       const res = await fetch(`https://boards-api.greenhouse.io/v1/boards/${board}/jobs/${jobId}`, {
-        headers: { Accept: 'application/json' }
+        headers: { Accept: 'application/json' },
+        signal: controller.signal
       });
+      clearTimeout(timer);
       if (!res.ok) return null;
       const data = await res.json();
       const posting = { '@type': 'JobPosting', title: data.title || null, description: data.content || '' };
@@ -393,7 +418,10 @@
         };
       }
       return { posting, rawTitle: data.title || null };
-    } catch (_) { return null; }
+    } catch (_) {
+      clearTimeout(timer);
+      return null;
+    }
   }
 
   async function capturePage(win, doc) {
@@ -443,7 +471,9 @@
       structured_data: structuredData,
       user_note: "",
       source: {
-        extension_version: "0.2.0",
+        extension_version: (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest)
+          ? chrome.runtime.getManifest().version
+          : "unknown",
         browser: "chrome"
       }
     };

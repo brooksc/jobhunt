@@ -2,6 +2,19 @@ import Foundation
 
 // MARK: - Types
 
+/// Output from a live fit-scoring LLM call: computed score + merged JSON for storage.
+/// The JSON merges the raw LLM explanation fields (dimensions/rationales, requirements_met,
+/// summary) with the computed score fields so nothing is lost on the way to the database.
+public struct FitScoreOutput: Sendable {
+    public let score: FitScoreResult
+    /// Merged JSON ready to store in `fitScoreJSON`. Nil only if serialization fails.
+    public let fitScoreJSON: String?
+    /// Character count of the prompt sent to the LLM.
+    public let promptChars: Int
+    /// Character count of the raw LLM response.
+    public let responseChars: Int
+}
+
 /// Result of a fit score computation.
 public struct FitScoreResult: Codable, Sendable {
     /// Overall score 0–100 (weighted sum minus penalty, floored at 0).
@@ -68,17 +81,18 @@ public enum FitScorer {
         dimensions: [String: Double],
         requirementsNotMet: [String] = []
     ) -> FitScoreResult {
-        // Weighted sum: sum(score * weight) / sum(weights_present)
+        // Weighted sum: sum(score * weight) / sum(ALL expected weights)
+        // Missing dimensions score 0 so a partial response doesn't inflate the score.
         var weightedSum: Double = 0
         var totalWeight: Double = 0
         var breakdown: [String: Double] = [:]
 
         for (name, weight) in dimensionWeights {
-            guard let raw = dimensions[name] else { continue }
+            totalWeight += weight
+            let raw = dimensions[name] ?? 0
             let clamped = min(100, max(0, raw.rounded()))
             breakdown[name] = clamped
             weightedSum += clamped * weight
-            totalWeight += weight
         }
 
         let baseScore = if totalWeight > 0 {
@@ -156,6 +170,24 @@ public enum FitScorer {
     /// or `JobFitScore.fitScoreJSON`.
     public static func encode(_ result: FitScoreResult) -> String? {
         guard let data = try? JSONEncoder().encode(result) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    /// Build merged JSON that retains raw LLM explanation fields (dimensions with rationales,
+    /// requirements_met, summary) while overlaying the computed score fields.
+    /// Use this when storing a freshly scored result so the UI can render explanations.
+    public static func buildMergedJSON(result: FitScoreResult, rawLLMDict: [String: Any]) -> String? {
+        var merged = rawLLMDict
+        merged["overall"] = result.overall
+        merged["breakdown"] = result.breakdown
+        merged["penalty"] = result.penalty
+        merged["penaltyReasons"] = result.penaltyReasons
+        merged["scoreWeights"] = result.scoreWeights
+        // Ensure requirements_not_met key matches projection expectations
+        if merged["requirements_not_met"] == nil {
+            merged["requirements_not_met"] = result.penaltyReasons
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: merged) else { return nil }
         return String(data: data, encoding: .utf8)
     }
 

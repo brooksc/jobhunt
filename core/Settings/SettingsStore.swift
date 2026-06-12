@@ -18,7 +18,6 @@ private let settingsDefaults: [String: String] = [
     SettingsKey.locationAllowHybrid: "true",
     SettingsKey.locationAllowOnsite: "true",
     SettingsKey.llmQueuePaused: "false",
-    SettingsKey.llmDebugLevel: "errors",
     SettingsKey.availabilityAutoCheckEnabled: "true",
     SettingsKey.availabilityAutoCheckIntervalDays: "1",
     SettingsKey.availabilityStaleDays: "21",
@@ -37,6 +36,11 @@ public final class SettingsStore {
     private var modelContext: ModelContext
     private var keychain: KeychainStore
     private var cache: [String: String] = [:]
+    /// Set when a keychain write fails; cleared on the next successful write.
+    public var keychainWriteError: String?
+    /// Set when a SwiftData persist fails; cleared on the next successful write.
+    /// Contains the key name and error type — never the setting value.
+    public var lastSettingsError: String?
 
     public init(modelContext: ModelContext, keychain: KeychainStore = KeychainStore()) {
         self.modelContext = modelContext
@@ -55,7 +59,12 @@ public final class SettingsStore {
 
     public func set(_ value: String, forKey key: String) {
         if SettingsKey.keychainKeys.contains(key) {
-            try? keychain.set(value, forKey: key)
+            do {
+                try keychain.set(value, forKey: key)
+                keychainWriteError = nil
+            } catch {
+                keychainWriteError = error.localizedDescription
+            }
             return
         }
         cache[key] = value
@@ -154,6 +163,27 @@ public final class SettingsStore {
         set { setInt(newValue, forKey: SettingsKey.followupDefaultDays) }
     }
 
+    // MARK: - Per-provider model memory
+
+    private static let providerDefaultModels: [String: String] = [
+        "lmstudio": "gemma-4-e4b-it-mlx",
+        "openai": "gpt-4o-mini",
+        "anthropic": "claude-haiku-4-5-20251001",
+        "google": "gemini-2.0-flash",
+        "openrouter": "mistralai/mistral-7b-instruct:free"
+    ]
+
+    public func modelForProvider(_ provider: String) -> String {
+        let stored = string(forKey: "llm_model_\(provider)")
+        if !stored.isEmpty { return stored }
+        return Self.providerDefaultModels[provider] ?? llmModel
+    }
+
+    public func setModelForProvider(_ model: String, provider: String) {
+        set(model, forKey: "llm_model_\(provider)")
+        llmModel = model
+    }
+
     // MARK: - Keychain API key accessors
 
     public func apiKey(forProvider provider: String) -> String {
@@ -163,7 +193,12 @@ public final class SettingsStore {
 
     public func setAPIKey(_ value: String, forProvider provider: String) {
         let key = provider == "default" ? SettingsKey.llmAPIKey : "llm_api_key_\(provider)"
-        try? keychain.set(value, forKey: key)
+        do {
+            try keychain.set(value, forKey: key)
+            keychainWriteError = nil
+        } catch {
+            keychainWriteError = error.localizedDescription
+        }
     }
 
     // MARK: - Private
@@ -175,14 +210,81 @@ public final class SettingsStore {
         }
     }
 
+    // MARK: - ExtractionSettings snapshot
+
+    /// Sendable snapshot of the fields needed by ExtractionEngine.
+    /// Callers on background actors should use this instead of holding a live SettingsStore reference.
+    public func extractionSettings() -> ExtractionSettings {
+        let provider = llmProvider
+        let baseURL = llmBaseURL
+        let consentGranted = ConsentHelper.isConsented(provider: provider, settings: self)
+        return ExtractionSettings(
+            llmModel: llmModel,
+            llmProvider: provider,
+            llmBaseURL: baseURL,
+            consentGranted: consentGranted,
+            preferredLocations: preferredLocations,
+            locationFilterEnabled: locationFilterEnabled,
+            locationAllowRemote: locationAllowRemote,
+            locationAllowHybrid: locationAllowHybrid,
+            locationAllowOnsite: locationAllowOnsite
+        )
+    }
+
+    // MARK: - Private
+
     private func persistToStore(key: String, value: String) {
         let descriptor = FetchDescriptor<Setting>(predicate: #Predicate { $0.key == key })
-        if let existing = (try? modelContext.fetch(descriptor))?.first {
-            existing.value = value
-            existing.updatedAt = Date()
-        } else {
-            modelContext.insert(Setting(key: key, value: value))
+        do {
+            if let existing = try modelContext.fetch(descriptor).first {
+                existing.value = value
+                existing.updatedAt = Date()
+            } else {
+                modelContext.insert(Setting(key: key, value: value))
+            }
+            try modelContext.save()
+        } catch {
+            NSLog("SettingsStore: failed to persist \(key): \(error)")
+            lastSettingsError = "Failed to save '\(key)': \(type(of: error))"
         }
-        try? modelContext.save()
+    }
+}
+
+// MARK: - ExtractionSettings
+
+/// Sendable snapshot of settings consumed by ExtractionEngine.
+/// Capture this once on the main actor before crossing into background actors.
+public struct ExtractionSettings: Sendable {
+    public let llmModel: String
+    public let llmProvider: String
+    public let llmBaseURL: String
+    /// True when the current provider has explicit consent to receive job/resume data.
+    public let consentGranted: Bool
+    public let preferredLocations: String
+    public let locationFilterEnabled: Bool
+    public let locationAllowRemote: Bool
+    public let locationAllowHybrid: Bool
+    public let locationAllowOnsite: Bool
+
+    public init(
+        llmModel: String,
+        llmProvider: String = "lmstudio",
+        llmBaseURL: String = "http://127.0.0.1:1234",
+        consentGranted: Bool = true,
+        preferredLocations: String,
+        locationFilterEnabled: Bool,
+        locationAllowRemote: Bool,
+        locationAllowHybrid: Bool,
+        locationAllowOnsite: Bool
+    ) {
+        self.llmModel = llmModel
+        self.llmProvider = llmProvider
+        self.llmBaseURL = llmBaseURL
+        self.consentGranted = consentGranted
+        self.preferredLocations = preferredLocations
+        self.locationFilterEnabled = locationFilterEnabled
+        self.locationAllowRemote = locationAllowRemote
+        self.locationAllowHybrid = locationAllowHybrid
+        self.locationAllowOnsite = locationAllowOnsite
     }
 }

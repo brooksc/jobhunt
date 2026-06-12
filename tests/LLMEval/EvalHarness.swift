@@ -6,11 +6,14 @@ import XCTest
 // swiftlint:disable type_body_length
 /// Eval harness for LLM extraction accuracy.
 ///
-/// Run with a local provider:
+/// Reporting mode (default): prints field-by-field accuracy but never fails.
 ///   JOBHUNT_LLM_URL=http://127.0.0.1:1234 xcodebuild test -scheme Jobhunt-DMG -only-testing:LLMEval
 ///
+/// Threshold mode: fails when overall accuracy falls below the configured minimum.
+///   JOBHUNT_LLM_URL=http://127.0.0.1:1234 JOBHUNT_LLM_MIN_ACCURACY=80 \
+///     xcodebuild test -scheme Jobhunt-DMG -only-testing:LLMEval
+///
 /// The test skips gracefully when no provider is configured.
-/// It prints a field-by-field accuracy report but does NOT fail on low accuracy.
 final class LLMEvalHarness: XCTestCase {
     // MARK: - Fixtures
 
@@ -23,7 +26,7 @@ final class LLMEvalHarness: XCTestCase {
         // Expected field values (nil = not asserted)
         let expectedCompany: String?
         let expectedTitleContains: String?
-        let expectedRemoteType: String?
+        let expectedRemoteType: RemoteType?
         let expectedSalaryMin: Int?
         let expectedSalaryMax: Int?
         let expectedSalaryCurrency: String?
@@ -62,7 +65,7 @@ final class LLMEvalHarness: XCTestCase {
             pageTitle: "Principal Technical Program Manager, AI Platform - ExampleCloud Careers",
             expectedCompany: "ExampleCloud",
             expectedTitleContains: "Technical Program Manager",
-            expectedRemoteType: "remote",
+            expectedRemoteType: .remote,
             expectedSalaryMin: 185_000,
             expectedSalaryMax: 285_000,
             expectedSalaryCurrency: "USD",
@@ -96,7 +99,7 @@ final class LLMEvalHarness: XCTestCase {
             pageTitle: "Technical Program Manager, Payments",
             expectedCompany: "PayWorks",
             expectedTitleContains: "Technical Program Manager",
-            expectedRemoteType: "hybrid",
+            expectedRemoteType: .hybrid,
             expectedSalaryMin: nil, // hourly conversion varies by normalizer
             expectedSalaryMax: nil,
             expectedSalaryCurrency: "USD",
@@ -129,7 +132,7 @@ final class LLMEvalHarness: XCTestCase {
             pageTitle: "Senior Product Manager | Microsoft Careers",
             expectedCompany: "Microsoft",
             expectedTitleContains: "Product Manager",
-            expectedRemoteType: "remote",
+            expectedRemoteType: .remote,
             expectedSalaryMin: 119_800,
             expectedSalaryMax: 234_700,
             expectedSalaryCurrency: "USD",
@@ -146,19 +149,29 @@ final class LLMEvalHarness: XCTestCase {
             throw XCTSkip("No LLM provider configured — set JOBHUNT_LLM_URL env var to run eval")
         }
 
-        let provider = LMStudioProvider(baseURL: providerURL, model: resolveModel())
+        let model = resolveModel()
+        let provider = LMStudioProvider(baseURL: providerURL, model: model)
+        let minAccuracy = resolveMinAccuracy()
 
         print("\n=== LLM Extraction Eval ===")
         print("Provider URL: \(providerURL)")
-        print("Model: \(resolveModel())\n")
+        print("Model: \(model)")
+        if let min = minAccuracy {
+            print("Threshold mode: fail below \(min)%")
+        } else {
+            print("Reporting mode: no accuracy threshold")
+        }
+        print("")
 
         var totalChecks = 0
         var passedChecks = 0
 
+        let settings = makeExtractionSettings(model: model, providerURL: providerURL)
+
         for fixture in Self.fixtures {
             print("--- \(fixture.name) ---")
             do {
-                let result = try await runExtraction(fixture: fixture, provider: provider)
+                let result = try await runExtraction(fixture: fixture, provider: provider, settings: settings)
                 let (passed, total) = scoreFixture(fixture: fixture, result: result)
                 passedChecks += passed
                 totalChecks += total
@@ -172,7 +185,14 @@ final class LLMEvalHarness: XCTestCase {
 
         let overallPct = totalChecks > 0 ? Int(Double(passedChecks) / Double(totalChecks) * 100) : 0
         print("=== Overall: \(passedChecks)/\(totalChecks) checks passed (\(overallPct)%) ===\n")
-        // Intentionally not failing — this is a reporting harness, not a correctness gate.
+
+        if let min = minAccuracy {
+            XCTAssertGreaterThanOrEqual(
+                overallPct, min,
+                "Accuracy \(overallPct)% is below threshold \(min)%. Set JOBHUNT_LLM_MIN_ACCURACY to adjust."
+            )
+        }
+        // Without a threshold, the test always passes (reporting mode).
     }
 
     // MARK: - Private helpers
@@ -193,49 +213,48 @@ final class LLMEvalHarness: XCTestCase {
         ProcessInfo.processInfo.environment["JOBHUNT_LLM_MODEL"] ?? "gemma-4-e4b-it-mlx"
     }
 
-    private func runExtraction(
-        fixture: ExtractionFixture,
-        provider: some LLMProvider
-    ) async throws -> [String: Any] {
-        let messages = PromptBuilder.buildExtractionPrompt(
-            description: fixture.description,
-            url: fixture.url,
-            pageTitle: fixture.pageTitle
-        )
-        let request = ChatRequest(messages: messages, model: resolveModel())
-        let response = try await provider.complete(request)
-        print("  Model: \(response.model)  chars: \(response.content.count)")
-
-        // Best-effort JSON parse — same repair path the app uses
-        let repaired = (try? repairExtractedJSON(response.content)) ?? response.content
-        guard let data = repaired.data(using: .utf8),
-              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            print("  WARN: could not parse response as JSON")
-            return [:]
-        }
-        return parsed
+    /// Returns the minimum accuracy percentage from JOBHUNT_LLM_MIN_ACCURACY, or nil for reporting mode.
+    private func resolveMinAccuracy() -> Int? {
+        guard let raw = ProcessInfo.processInfo.environment["JOBHUNT_LLM_MIN_ACCURACY"],
+              let value = Int(raw), value > 0 else { return nil }
+        return value
     }
 
-    /// Attempts to extract JSON from a raw LLM response (handles markdown code fences).
-    private func repairExtractedJSON(_ raw: String) throws -> String {
-        let stripped = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Strip ```json ... ``` fences
-        if stripped.hasPrefix("```") {
-            let lines = stripped.components(separatedBy: "\n")
-            let inner = lines.dropFirst().dropLast().joined(separator: "\n")
-            return inner.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        // Find first { ... }
-        if let start = stripped.firstIndex(of: "{"),
-           let end = stripped.lastIndex(of: "}") {
-            return String(stripped[start ... end])
-        }
-        return stripped
+    private func makeExtractionSettings(model: String, providerURL: String) -> ExtractionSettings {
+        ExtractionSettings(
+            llmModel: model,
+            llmProvider: "lmstudio",
+            llmBaseURL: providerURL,
+            consentGranted: true,
+            preferredLocations: "",
+            locationFilterEnabled: false,
+            locationAllowRemote: true,
+            locationAllowHybrid: true,
+            locationAllowOnsite: true
+        )
+    }
+
+    private func runExtraction(
+        fixture: ExtractionFixture,
+        provider: some LLMProvider,
+        settings: ExtractionSettings
+    ) async throws -> ExtractionResult {
+        let snapshot = JobExtractionSnapshot(
+            captureURL: fixture.url,
+            captureCanonicalURL: nil,
+            capturePageTitle: fixture.pageTitle,
+            captureCleanedDescription: fixture.description,
+            captureVisibleText: nil,
+            captureSelectedText: nil
+        )
+        let result = try await ExtractionEngine.extract(snapshot: snapshot, provider: provider, settings: settings)
+        print("  Model: \(result.extractionModel)  chars: \(result.responseChars)")
+        return result
     }
 
     private func scoreFixture(
         fixture: ExtractionFixture,
-        result: [String: Any]
+        result: ExtractionResult
     ) -> (passed: Int, total: Int) {
         var passed = 0
         var total = 0
@@ -244,120 +263,61 @@ final class LLMEvalHarness: XCTestCase {
             print("  [\(ok ? "PASS" : "FAIL")] \(label): got=\(got)  expected=\(expected)")
             if ok { passed += 1 }
         }
-        let fields = extractFields(from: result)
-        scoreScalarFields(fixture: fixture, fields: fields, check: check)
-        scoreListFields(fixture: fixture, fields: fields, check: check)
+
+        if let exp = fixture.expectedCompany {
+            check("company", (result.company ?? "").lowercased().contains(exp.lowercased()),
+                  got: result.company ?? "", expected: exp)
+        }
+        if let exp = fixture.expectedTitleContains {
+            check("title", (result.title ?? "").lowercased().contains(exp.lowercased()),
+                  got: result.title ?? "", expected: "contains '\(exp)'")
+        }
+        if let exp = fixture.expectedRemoteType {
+            check("remote_type", result.remoteType == exp,
+                  got: result.remoteType?.rawValue ?? "nil", expected: exp.rawValue)
+        }
+        if let exp = fixture.expectedSalaryMin {
+            check("salary_min", result.salaryMin == exp,
+                  got: result.salaryMin.map(String.init) ?? "nil", expected: "\(exp)")
+        }
+        if let exp = fixture.expectedSalaryMax {
+            check("salary_max", result.salaryMax == exp,
+                  got: result.salaryMax.map(String.init) ?? "nil", expected: "\(exp)")
+        }
+        if let exp = fixture.expectedSalaryCurrency {
+            check("salary_currency", (result.salaryCurrency ?? "").lowercased() == exp.lowercased(),
+                  got: result.salaryCurrency ?? "", expected: exp)
+        }
+
+        // Skills and requirements come from extractedJSON since ExtractionResult doesn't expose them directly
+        if !fixture.expectedSkillsAny.isEmpty || !fixture.expectedRequirementsAny.isEmpty {
+            let rawDict = parseExtractedJSON(result.extractedJSON)
+            let skills = (rawDict["skills"] as? [Any])?.compactMap { $0 as? String } ?? []
+            let reqs = (rawDict["requirements"] as? [Any])?.compactMap { $0 as? String } ?? []
+
+            if !fixture.expectedSkillsAny.isEmpty {
+                let text = skills.joined(separator: " ").lowercased()
+                let hit = fixture.expectedSkillsAny.contains { text.contains($0.lowercased()) }
+                check("skills (any-of)", hit,
+                      got: skills.prefix(3).joined(separator: ", "),
+                      expected: "any of: \(fixture.expectedSkillsAny.prefix(3).joined(separator: ", "))")
+            }
+            if !fixture.expectedRequirementsAny.isEmpty {
+                let text = reqs.joined(separator: " ").lowercased()
+                let hit = fixture.expectedRequirementsAny.contains { text.contains($0.lowercased()) }
+                check("requirements (any-of)", hit,
+                      got: reqs.prefix(2).joined(separator: "; "),
+                      expected: "any of: \(fixture.expectedRequirementsAny.prefix(3).joined(separator: ", "))")
+            }
+        }
+
         return (passed, total)
     }
 
-    // swiftlint:disable:next large_tuple
-    private func extractFields(from result: [String: Any]) -> (
-        company: String, title: String, remoteType: String,
-        salaryMin: Int?, salaryMax: Int?, currency: String,
-        skills: [String], requirements: [String]
-    ) {
-        (
-            company: (result["company"] as? String) ?? "",
-            title: (result["title"] as? String) ?? "",
-            remoteType: (result["remote_type"] as? String) ?? "",
-            salaryMin: result["salary_min"] as? Int,
-            salaryMax: result["salary_max"] as? Int,
-            currency: (result["salary_currency"] as? String) ?? "",
-            skills: (result["skills"] as? [Any])?.compactMap { $0 as? String } ?? [],
-            requirements: (result["requirements"] as? [Any])?.compactMap { $0 as? String } ?? []
-        )
-    }
-
-    private func scoreScalarFields(
-        fixture: ExtractionFixture,
-        // swiftlint:disable:next large_tuple
-        fields: (
-            company: String,
-            title: String,
-            remoteType: String,
-            salaryMin: Int?,
-            salaryMax: Int?,
-            currency: String,
-            skills: [String],
-            requirements: [String]
-        ),
-        check: (String, Bool, String, String) -> Void
-    ) {
-        if let exp = fixture.expectedCompany {
-            check("company", fields.company.lowercased().contains(exp.lowercased()), got: fields.company, expected: exp)
-        }
-        if let exp = fixture.expectedTitleContains {
-            check(
-                "title",
-                fields.title.lowercased().contains(exp.lowercased()),
-                got: fields.title,
-                expected: "contains '\(exp)'"
-            )
-        }
-        if let exp = fixture.expectedRemoteType {
-            check("remote_type", fields.remoteType == exp, got: fields.remoteType, expected: exp)
-        }
-        if let exp = fixture.expectedSalaryMin {
-            check(
-                "salary_min",
-                fields.salaryMin == exp,
-                got: fields.salaryMin.map(String.init) ?? "nil",
-                expected: "\(exp)"
-            )
-        }
-        if let exp = fixture.expectedSalaryMax {
-            check(
-                "salary_max",
-                fields.salaryMax == exp,
-                got: fields.salaryMax.map(String.init) ?? "nil",
-                expected: "\(exp)"
-            )
-        }
-        if let exp = fixture.expectedSalaryCurrency {
-            check(
-                "salary_currency",
-                fields.currency.lowercased() == exp.lowercased(),
-                got: fields.currency,
-                expected: exp
-            )
-        }
-    }
-
-    private func scoreListFields(
-        fixture: ExtractionFixture,
-        // swiftlint:disable:next large_tuple
-        fields: (
-            company: String,
-            title: String,
-            remoteType: String,
-            salaryMin: Int?,
-            salaryMax: Int?,
-            currency: String,
-            skills: [String],
-            requirements: [String]
-        ),
-        check: (String, Bool, String, String) -> Void
-    ) {
-        if !fixture.expectedSkillsAny.isEmpty {
-            let text = fields.skills.joined(separator: " ").lowercased()
-            let hit = fixture.expectedSkillsAny.contains { text.contains($0.lowercased()) }
-            check(
-                "skills (any-of)",
-                hit,
-                got: fields.skills.prefix(3).joined(separator: ", "),
-                expected: "any of: \(fixture.expectedSkillsAny.prefix(3).joined(separator: ", "))"
-            )
-        }
-        if !fixture.expectedRequirementsAny.isEmpty {
-            let text = fields.requirements.joined(separator: " ").lowercased()
-            let hit = fixture.expectedRequirementsAny.contains { text.contains($0.lowercased()) }
-            check(
-                "requirements (any-of)",
-                hit,
-                got: fields.requirements.prefix(2).joined(separator: "; "),
-                expected: "any of: \(fixture.expectedRequirementsAny.prefix(3).joined(separator: ", "))"
-            )
-        }
+    private func parseExtractedJSON(_ json: String) -> [String: Any] {
+        guard let data = json.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        return dict
     }
 }
 

@@ -40,15 +40,30 @@ public func repairJSON(_ input: String) throws -> String {
     text = removeTrailingCommas(text)
 
     // Validate it parses
-    guard let data = text.data(using: .utf8),
-          (try? JSONSerialization.jsonObject(with: data)) != nil else {
-        throw JSONRepairError.unparseable(text)
+    if let data = text.data(using: .utf8),
+       (try? JSONSerialization.jsonObject(with: data)) != nil {
+        return text
     }
-    return text
+
+    // Last resort: scan for the first { or [ and last } or ] and extract that substring.
+    // This handles prose before/after the JSON object that a text-mode model emits.
+    if let extracted = extractBracketedSubstring(text) {
+        let repaired = removeTrailingCommas(extracted)
+        if let data = repaired.data(using: .utf8),
+           (try? JSONSerialization.jsonObject(with: data)) != nil {
+            return repaired
+        }
+    }
+
+    throw JSONRepairError.unparseable(text)
 }
 
-public enum JSONRepairError: Error {
+public enum JSONRepairError: Error, LocalizedError {
     case unparseable(String)
+
+    public var errorDescription: String? {
+        switch self { case .unparseable: "Model response could not be parsed as valid JSON" }
+    }
 }
 
 // MARK: - Repair steps
@@ -89,6 +104,34 @@ private func quoteUnquotedKeys(_ text: String) -> String {
         with: #"$1"$2":"#,
         options: .regularExpression
     )
+}
+
+/// Scans for the first `{` or `[` and the last matching `}` or `]`, returning that substring.
+/// Returns nil if no bracketed region is found or indices are in the wrong order.
+private func extractBracketedSubstring(_ text: String) -> String? {
+    let firstCurly = text.firstIndex(of: "{")
+    let firstSquare = text.firstIndex(of: "[")
+
+    // Determine which opener comes first
+    let useObject: Bool
+    switch (firstCurly, firstSquare) {
+    case (.none, .none):
+        return nil
+    case (.some, .none):
+        useObject = true
+    case (.none, .some):
+        useObject = false
+    case let (.some(c), .some(s)):
+        useObject = c < s
+    }
+
+    if useObject {
+        guard let open = firstCurly, let close = text.lastIndex(of: "}"), open <= close else { return nil }
+        return String(text[open ... close])
+    } else {
+        guard let open = firstSquare, let close = text.lastIndex(of: "]"), open <= close else { return nil }
+        return String(text[open ... close])
+    }
 }
 
 /// Convert single-quoted strings to double-quoted strings.

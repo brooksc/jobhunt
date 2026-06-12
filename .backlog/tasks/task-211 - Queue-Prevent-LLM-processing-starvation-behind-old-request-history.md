@@ -1,9 +1,10 @@
 ---
 id: TASK-211
 title: 'Queue: Prevent LLM processing starvation behind old request history'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 00:41'
+updated_date: '2026-06-12 02:00'
 labels:
   - performance
   - queue

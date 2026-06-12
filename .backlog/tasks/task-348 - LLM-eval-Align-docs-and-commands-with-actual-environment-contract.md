@@ -1,9 +1,10 @@
 ---
 id: TASK-348
 title: 'LLM eval: Align docs and commands with actual environment contract'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:39'
+updated_date: '2026-06-12 20:58'
 labels:
   - audit
   - tests

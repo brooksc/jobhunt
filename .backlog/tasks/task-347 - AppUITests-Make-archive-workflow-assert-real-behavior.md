@@ -1,9 +1,10 @@
 ---
 id: TASK-347
 title: 'AppUITests: Make archive workflow assert real behavior'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:39'
+updated_date: '2026-06-12 20:58'
 labels:
   - audit
   - tests

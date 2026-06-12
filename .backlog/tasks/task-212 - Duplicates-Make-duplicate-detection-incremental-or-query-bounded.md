@@ -1,9 +1,10 @@
 ---
 id: TASK-212
 title: 'Duplicates: Make duplicate detection incremental or query-bounded'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 00:41'
+updated_date: '2026-06-12 02:08'
 labels:
   - performance
   - duplicates

@@ -1,9 +1,10 @@
 ---
 id: TASK-346
 title: 'CI: Add an automated AppUITests smoke lane'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:39'
+updated_date: '2026-06-12 20:51'
 labels:
   - audit
   - tests

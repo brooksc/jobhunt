@@ -1,9 +1,10 @@
 ---
 id: TASK-239
 title: 'Data recovery: Expose full-fidelity backup from the app UI'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 02:00'
+updated_date: '2026-06-12 02:08'
 labels:
   - backup
   - recovery

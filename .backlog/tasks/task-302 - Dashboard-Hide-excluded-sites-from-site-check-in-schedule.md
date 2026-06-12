@@ -1,9 +1,10 @@
 ---
 id: TASK-302
 title: 'Dashboard: Hide excluded sites from site check-in schedule'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 05:01'
+updated_date: '2026-06-12 05:47'
 labels:
   - audit
   - dashboard

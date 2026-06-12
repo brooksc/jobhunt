@@ -1,9 +1,10 @@
 ---
 id: TASK-356
 title: 'Release workflows: Clean up signing certificate material explicitly'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:44'
+updated_date: '2026-06-12 21:53'
 labels:
   - audit
   - supply-chain

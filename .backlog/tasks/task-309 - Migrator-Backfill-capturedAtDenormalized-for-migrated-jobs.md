@@ -1,9 +1,10 @@
 ---
 id: TASK-309
 title: 'Migrator: Backfill capturedAtDenormalized for migrated jobs'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 19:34'
+updated_date: '2026-06-12 19:50'
 labels:
   - audit
   - migration

@@ -1,9 +1,10 @@
 ---
 id: TASK-225
 title: 'Release: Package Chrome extension without tests or development-only files'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 01:32'
+updated_date: '2026-06-12 02:16'
 labels:
   - release
   - extension

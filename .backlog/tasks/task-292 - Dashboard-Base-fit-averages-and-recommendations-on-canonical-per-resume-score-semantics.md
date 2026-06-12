@@ -3,9 +3,10 @@ id: TASK-292
 title: >-
   Dashboard: Base fit averages and recommendations on canonical per-resume score
   semantics
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 04:39'
+updated_date: '2026-06-12 05:47'
 labels:
   - audit
   - dashboard

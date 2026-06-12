@@ -3,9 +3,10 @@ id: TASK-226
 title: >-
   Release: Correct MAS validation documentation after fit-scoring consent
   enforcement is fixed
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 01:32'
+updated_date: '2026-06-12 02:16'
 labels:
   - release
   - privacy

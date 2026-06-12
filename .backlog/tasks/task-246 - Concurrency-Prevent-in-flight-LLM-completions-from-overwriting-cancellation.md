@@ -1,9 +1,10 @@
 ---
 id: TASK-246
 title: 'Concurrency: Prevent in-flight LLM completions from overwriting cancellation'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 02:19'
+updated_date: '2026-06-12 02:25'
 labels:
   - concurrency
   - queue

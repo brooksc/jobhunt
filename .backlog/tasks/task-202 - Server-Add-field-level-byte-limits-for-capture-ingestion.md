@@ -1,9 +1,10 @@
 ---
 id: TASK-202
 title: 'Server: Add field-level byte limits for capture ingestion'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 00:17'
+updated_date: '2026-06-12 02:16'
 labels:
   - server
   - capture

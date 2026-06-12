@@ -1,9 +1,10 @@
 ---
 id: TASK-306
 title: 'Persistence: Recompute job fit mirrors when active resume changes'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 19:34'
+updated_date: '2026-06-12 19:50'
 labels:
   - audit
   - persistence

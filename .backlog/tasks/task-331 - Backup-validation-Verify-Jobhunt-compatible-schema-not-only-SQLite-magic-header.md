@@ -3,9 +3,10 @@ id: TASK-331
 title: >-
   Backup validation: Verify Jobhunt-compatible schema, not only SQLite magic
   header
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:06'
+updated_date: '2026-06-12 20:58'
 labels:
   - audit
   - backup

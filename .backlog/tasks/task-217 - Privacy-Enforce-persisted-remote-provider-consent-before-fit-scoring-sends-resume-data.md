@@ -3,9 +3,10 @@ id: TASK-217
 title: >-
   Privacy: Enforce persisted remote-provider consent before fit scoring sends
   resume data
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 01:04'
+updated_date: '2026-06-12 02:00'
 labels:
   - privacy
   - llm

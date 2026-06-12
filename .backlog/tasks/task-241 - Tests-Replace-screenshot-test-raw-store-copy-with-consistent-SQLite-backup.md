@@ -1,9 +1,10 @@
 ---
 id: TASK-241
 title: 'Tests: Replace screenshot-test raw store copy with consistent SQLite backup'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 02:01'
+updated_date: '2026-06-12 02:16'
 labels:
   - tests
   - backup

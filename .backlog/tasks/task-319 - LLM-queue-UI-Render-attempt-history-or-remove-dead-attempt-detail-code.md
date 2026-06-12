@@ -1,9 +1,10 @@
 ---
 id: TASK-319
 title: 'LLM queue UI: Render attempt history or remove dead attempt-detail code'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 19:42'
+updated_date: '2026-06-12 20:03'
 labels:
   - audit
   - llm-queue

@@ -3,9 +3,10 @@ id: TASK-277
 title: >-
   Fit scoring: Reflect queued and running fit state in persisted job/resume
   state
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 03:34'
+updated_date: '2026-06-12 03:44'
 labels:
   - audit
   - fit-scoring

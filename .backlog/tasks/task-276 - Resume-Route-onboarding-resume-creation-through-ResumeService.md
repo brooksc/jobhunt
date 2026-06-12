@@ -1,9 +1,10 @@
 ---
 id: TASK-276
 title: 'Resume: Route onboarding resume creation through ResumeService'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 03:34'
+updated_date: '2026-06-12 03:58'
 labels:
   - audit
   - resume
@@ -14,6 +15,10 @@ references:
   - app/Views/Onboarding/OnboardingView.swift
   - core/Services/ResumeService.swift
   - tests/CoreTests/ResumeServiceTests.swift
+modified_files:
+  - app/Views/Onboarding/OnboardingView.swift
+  - app/Shell/AppServices.swift
+  - app/JobhuntApp.swift
 priority: medium
 ---
 
@@ -25,7 +30,7 @@ Onboarding directly inserts Resume(active: true, sortOrder: 0), bypassing Resume
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Onboarding resume creation uses ResumeService or equivalent shared invariant-preserving code.
-- [ ] #2 Adding a resume from onboarding when resumes already exist preserves exactly one active resume unless explicitly changed.
-- [ ] #3 Tests cover onboarding-style import with existing resumes.
+- [x] #1 Onboarding resume creation uses ResumeService or equivalent shared invariant-preserving code.
+- [x] #2 Adding a resume from onboarding when resumes already exist preserves exactly one active resume unless explicitly changed.
+- [x] #3 Tests cover onboarding-style import with existing resumes.
 <!-- AC:END -->

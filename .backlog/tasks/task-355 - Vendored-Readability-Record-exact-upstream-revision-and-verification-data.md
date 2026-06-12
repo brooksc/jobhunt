@@ -1,9 +1,10 @@
 ---
 id: TASK-355
 title: 'Vendored Readability: Record exact upstream revision and verification data'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:43'
+updated_date: '2026-06-12 21:53'
 labels:
   - audit
   - supply-chain

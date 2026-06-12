@@ -1,9 +1,10 @@
 ---
 id: TASK-322
 title: 'OpenRouter: Wire or remove free-model rotation setting'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:01'
+updated_date: '2026-06-12 20:18'
 labels:
   - audit
   - llm-provider

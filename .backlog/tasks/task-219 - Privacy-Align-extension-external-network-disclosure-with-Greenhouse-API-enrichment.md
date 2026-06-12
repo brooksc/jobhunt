@@ -3,9 +3,10 @@ id: TASK-219
 title: >-
   Privacy: Align extension external-network disclosure with Greenhouse API
   enrichment
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 01:05'
+updated_date: '2026-06-12 02:00'
 labels:
   - privacy
   - extension

@@ -15,7 +15,8 @@ jobs:
       contents: write   # required to upload release artifacts
       id-token: write   # reserved for future OIDC/attestation use
     steps:
-      - uses: actions/checkout@v4
+      # actions/checkout@v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Verify version consistency
         run: |
           TAG="${{ github.ref_name }}"
@@ -110,7 +111,8 @@ jobs:
           security delete-keychain build.keychain 2>/dev/null || true
           echo "Signing material cleaned up"
       - name: Upload .pkg as artifact
-        uses: actions/upload-artifact@v4
+        # actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: Jobhunt-MAS-${{ github.ref_name }}.pkg
           path: build/export-mas/*.pkg

@@ -17,7 +17,8 @@ jobs:
     env:
       DEVELOPER_TEAM: ${{ secrets.APPLE_TEAM_ID }}
     steps:
-      - uses: actions/checkout@v4
+      # actions/checkout@v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Verify version consistency
         run: |
@@ -144,7 +145,8 @@ jobs:
           cat provenance.txt
 
       - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v2
+        # softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           files: |
             build/Jobhunt-${{ github.ref_name }}.dmg

@@ -7,6 +7,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: macos-latest
@@ -14,11 +17,11 @@ jobs:
       # actions/checkout@v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - name: Install Tuist (pinned via .mise.toml)
-        run: mise install tuist
+      - name: Install mise
+        run: curl -Ls https://mise.run | sh && echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Install swiftlint / swiftformat
-        run: brew install swiftlint swiftformat
+      - name: Install pinned tools (Tuist, SwiftLint, SwiftFormat)
+        run: mise install
 
       - name: Generate Xcode project
         run: tuist generate --no-open

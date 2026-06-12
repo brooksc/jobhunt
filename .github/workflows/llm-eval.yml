@@ -17,11 +17,15 @@ on:
   schedule:
     - cron: '0 2 * * 0'
 
+permissions:
+  contents: read
+
 jobs:
   llm-eval:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      # actions/checkout@v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Install Tuist (pinned via .mise.toml)
         run: mise install tuist
@@ -44,7 +48,8 @@ jobs:
 
       - name: Upload eval results
         if: always()
-        uses: actions/upload-artifact@v4
+        # actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: llm-eval-results-${{ github.run_id }}
           path: |

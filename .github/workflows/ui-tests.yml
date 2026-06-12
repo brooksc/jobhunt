@@ -5,11 +5,15 @@ on:
     - cron: '0 8 * * 1'  # Monday 8am UTC
   workflow_dispatch:      # Allow manual trigger
 
+permissions:
+  contents: read
+
 jobs:
   ui-tests:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      # actions/checkout@v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Install Tuist
         run: curl -Ls https://install.tuist.io | bash
@@ -34,7 +38,8 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        # actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ui-test-results
           path: build/UITestResults.xcresult

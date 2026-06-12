@@ -1,9 +1,10 @@
 ---
 id: TASK-268
 title: 'Capture: Preserve full posting context when selected text is present'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 03:26'
+updated_date: '2026-06-12 03:30'
 labels:
   - audit
   - capture

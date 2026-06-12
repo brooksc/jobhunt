@@ -3,9 +3,10 @@ id: TASK-263
 title: >-
   Integration: Make MCP `update_job` persist advertised salary fields or remove
   them from schema
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 02:56'
+updated_date: '2026-06-12 03:13'
 labels:
   - audit
   - integration

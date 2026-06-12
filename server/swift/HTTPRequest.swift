@@ -63,12 +63,14 @@ func parseHTTPRequest(_ data: Data) -> HTTPRequest? {
     }
 
     // Slice body from raw Data using Content-Length as a byte count (not character count).
+    // Return nil if body bytes haven't fully arrived yet — caller should read more data.
     var bodyData: Data?
     let bodyStart = sepRange.upperBound
     if let contentLengthStr = headers["content-length"],
        let contentLength = Int(contentLengthStr),
-       contentLength > 0,
-       bodyStart < data.endIndex {
+       contentLength > 0 {
+        let bodyBytesAvailable = bodyStart <= data.endIndex ? (data.endIndex - bodyStart) : 0
+        guard bodyBytesAvailable >= contentLength else { return nil }
         bodyData = Data(data[bodyStart...].prefix(contentLength))
     }
 

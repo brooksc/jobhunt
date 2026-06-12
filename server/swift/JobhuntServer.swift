@@ -131,9 +131,9 @@ public actor JobhuntServer {
         #endif
     }
 
-    /// Try ports 8765–8769 in order, start listening on first available.
+    /// Try fixed ports 8765–8784; fall back to an OS-assigned ephemeral port.
     public func start() async throws {
-        let candidatePorts: [UInt16] = [8765, 8766, 8767, 8768, 8769]
+        let candidatePorts: [UInt16] = Array(8765 ... 8784)
 
         for candidate in candidatePorts {
             do {
@@ -141,15 +141,34 @@ public actor JobhuntServer {
                 port = candidate
                 return
             } catch {
-                // try next port
                 continue
             }
         }
-        throw ServerError.noPortAvailable
+        // Fall back to an OS-assigned ephemeral port (port 0). This always succeeds
+        // and the actual port is read back from the listener in startListener.
+        try await startListener(on: 0)
+    }
+
+    /// Start on an OS-assigned ephemeral port. Suitable for tests where the exact port
+    /// doesn't matter and port reuse/TIME_WAIT must be avoided.
+    public func startOnAnyPort() async throws {
+        try await startListener(on: 0)
     }
 
     public func stop() async {
-        listener?.cancel()
+        guard let l = listener else { return }
+        // Wait for the listener to reach .cancelled state so the OS port is released
+        // before returning — prevents the next test's server from getting a RST.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            var didResume = false
+            l.stateUpdateHandler = { state in
+                if case .cancelled = state, !didResume {
+                    didResume = true
+                    continuation.resume()
+                }
+            }
+            l.cancel()
+        }
         listener = nil
         port = 0
     }
@@ -162,44 +181,70 @@ public actor JobhuntServer {
 
     private func startListener(on candidatePort: UInt16) async throws {
         let params = NWParameters.tcp
-        guard let nwPort = NWEndpoint.Port(rawValue: candidatePort) else {
-            throw JobhuntServerError.invalidPort(candidatePort)
-        }
+        // candidatePort == 0 lets the OS assign an ephemeral port (used in tests).
+        let nwPort: NWEndpoint.Port = candidatePort == 0 ? .any : {
+            guard let p = NWEndpoint.Port(rawValue: candidatePort) else { return .any }
+            return p
+        }()
 
         let listener = try NWListener(using: params, on: nwPort)
 
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            var didResume = false
-            let resume: (Result<Void, Error>) -> Void = { result in
-                if !didResume {
-                    didResume = true
-                    continuation.resume(with: result)
+        // Continuation carries the actual bound port so we read it inside the .ready callback,
+        // where NWListener.port is guaranteed to be set.
+        // A 3-second timeout guards against NWListener staying in .waiting forever
+        // (observed when nw_path_create_evaluator fails in test environments).
+        let boundPort: UInt16 = try await withThrowingTaskGroup(of: UInt16.self) { group in
+            group.addTask {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<UInt16, Error>) in
+                    var didResume = false
+                    let resume: (Result<UInt16, Error>) -> Void = { result in
+                        if !didResume {
+                            didResume = true
+                            continuation.resume(with: result)
+                        }
+                    }
+
+                    listener.stateUpdateHandler = { state in
+                        switch state {
+                        case .ready:
+                            let actual = listener.port?.rawValue ?? candidatePort
+                            resume(.success(actual))
+                        case let .failed(error):
+                            resume(.failure(error))
+                        case .cancelled:
+                            resume(.failure(ServerError.listenerCancelled))
+                        case .waiting:
+                            // .waiting means the port is temporarily unavailable — treat as failure
+                            // so the caller can try the next candidate port.
+                            resume(.failure(ServerError.listenerWaiting))
+                        default:
+                            break
+                        }
+                    }
+
+                    listener.newConnectionHandler = { [weak self] connection in
+                        Task { [weak self] in
+                            await self?.handleConnection(connection)
+                        }
+                    }
+
+                    listener.start(queue: .global(qos: .userInitiated))
                 }
             }
-
-            listener.stateUpdateHandler = { state in
-                switch state {
-                case .ready:
-                    resume(.success(()))
-                case let .failed(error):
-                    resume(.failure(error))
-                case .cancelled:
-                    resume(.failure(ServerError.listenerCancelled))
-                default:
-                    break
-                }
+            group.addTask {
+                try await Task.sleep(nanoseconds: 3_000_000_000) // 3-second timeout
+                listener.cancel()
+                throw ServerError.listenerTimeout
             }
-
-            listener.newConnectionHandler = { [weak self] connection in
-                Task { [weak self] in
-                    await self?.handleConnection(connection)
-                }
-            }
-
-            listener.start(queue: .global(qos: .userInitiated))
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
         }
 
         self.listener = listener
+        if boundPort != 0 {
+            port = boundPort
+        }
     }
 
     private func handleConnection(_ connection: NWConnection) {
@@ -207,21 +252,41 @@ public actor JobhuntServer {
         receiveRequest(on: connection)
     }
 
-    private func receiveRequest(on connection: NWConnection) {
-        // Read up to 1MB of data
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 1_048_576) { [weak self] data, _, isComplete, _ in
-            guard let self else { return }
+    // nonisolated: only touches NWConnection and spawns Tasks back onto the actor.
+    // Accumulates TCP chunks until a complete HTTP request is available before processing.
+    private nonisolated func receiveRequest(on connection: NWConnection, accumulated: Data = Data()) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 1_048_576) { [self] data, _, isComplete, _ in
+            var buffer = accumulated
             if let data, !data.isEmpty {
+                buffer.append(data)
+            }
+
+            if let request = parseHTTPRequest(buffer) {
                 Task {
-                    await self.processReceivedData(data, on: connection)
+                    await self.processRequest(request, on: connection)
                 }
-            } else if !isComplete {
-                // If we didn't get data and it's not complete, try reading more
-                receiveRequest(on: connection)
+                return
+            }
+
+            if !isComplete, buffer.count < 2 * 1_048_576 {
+                // Need more data
+                self.receiveRequest(on: connection, accumulated: buffer)
             } else {
-                connection.cancel()
+                // Connection closed or buffer too large without a parseable request
+                let response = HTTPResponse.error("Bad request", code: 400)
+                Task { await self.sendResponse(response, on: connection) }
             }
         }
+    }
+
+    private func processRequest(_ request: HTTPRequest, on connection: NWConnection) async {
+        var response = await routeRequest(request)
+        let origin = request.headers["origin"] ?? ""
+        if isAllowedExtensionOrigin(origin) {
+            let isPreflight = request.method == "OPTIONS"
+            response = response.withCORS(origin: origin, isPreflight: isPreflight)
+        }
+        sendResponse(response, on: connection)
     }
 
     // TASK-334: Only the Jobhunt extension may receive reflected CORS headers.
@@ -251,25 +316,6 @@ public actor JobhuntServer {
         }
         // Allowlist is empty (no CWS ID assigned yet): permit any chrome-extension:// origin.
         return true
-    }
-
-    private func processReceivedData(_ data: Data, on connection: NWConnection) async {
-        guard let request = parseHTTPRequest(data) else {
-            let response = HTTPResponse.error("Bad request", code: 400)
-            sendResponse(response, on: connection)
-            return
-        }
-
-        var response = await routeRequest(request)
-
-        // Attach CORS headers only for allowed extension origins (TASK-334).
-        let origin = request.headers["origin"] ?? ""
-        if isAllowedExtensionOrigin(origin) {
-            let isPreflight = request.method == "OPTIONS"
-            response = response.withCORS(origin: origin, isPreflight: isPreflight)
-        }
-
-        sendResponse(response, on: connection)
     }
 
     private func sendResponse(_ response: HTTPResponse, on connection: NWConnection) {
@@ -452,6 +498,8 @@ public actor JobhuntServer {
 enum ServerError: Error {
     case noPortAvailable
     case listenerCancelled
+    case listenerWaiting
+    case listenerTimeout
 }
 
 enum JobhuntServerError: Error {

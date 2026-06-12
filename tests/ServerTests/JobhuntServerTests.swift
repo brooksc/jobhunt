@@ -20,10 +20,16 @@ private func makeTestServer() throws -> JobhuntServer {
     let store = BackgroundStore(modelContainer: container)
     let context = ModelContext(container)
     let settings = SettingsStore(modelContext: context)
-    let queue = QueueActor(store: store, settings: settings, providerFactory: { NoOpProvider() })
+    let queue = QueueActor(
+        store: store,
+        isPaused: { false },
+        onSetPaused: { _ in },
+        readExtractionSettings: { settings.extractionSettings() },
+        providerFactory: { NoOpProvider() }
+    )
     let jobService = JobService(store: store, queue: queue)
     let siteService = SiteService(store: store)
-    return JobhuntServer(jobService: jobService, siteService: siteService, appVersion: "1.0.0-test", store: store)
+    return JobhuntServer(jobService: jobService, siteService: siteService, appVersion: "1.0.0-test", store: store, mcpToken: "test-token-abc123")
 }
 
 // MARK: - Response decodables (file-scope to avoid nesting violations)
@@ -49,16 +55,22 @@ private struct CaptureBody: Decodable {
 // MARK: - JobhuntServerTests
 
 final class JobhuntServerTests: XCTestCase {
+    // Shared across all tests in this class — avoids per-test server create/destroy which
+    // triggers NWListener port RST issues in sequential test runs.
+    private static var sharedServer: JobhuntServer?
     private var server: JobhuntServer!
 
     override func setUp() async throws {
         try await super.setUp()
-        server = try makeTestServer()
-        try await server.start()
+        if Self.sharedServer == nil {
+            let s = try makeTestServer()
+            try await s.startOnAnyPort()
+            Self.sharedServer = s
+        }
+        server = Self.sharedServer!
     }
 
     override func tearDown() async throws {
-        await server.stop()
         server = nil
         try await super.tearDown()
     }

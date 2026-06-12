@@ -292,6 +292,8 @@ private struct DetailFooter: View {
     let job: Job
     @Environment(\.jobService) private var jobService
     @Environment(Router.self) private var router
+    @Environment(AppServices.self) private var appServices
+    @State private var showApplyConfirmation = false
 
     private var pendingAction: JobAction? {
         let now = Date()

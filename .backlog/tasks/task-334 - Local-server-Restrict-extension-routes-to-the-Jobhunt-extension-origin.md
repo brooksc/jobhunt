@@ -1,9 +1,10 @@
 ---
 id: TASK-334
 title: 'Local server: Restrict extension routes to the Jobhunt extension origin'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:26'
+updated_date: '2026-06-12 20:51'
 labels:
   - audit
   - security

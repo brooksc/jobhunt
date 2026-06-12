@@ -1,9 +1,10 @@
 ---
 id: TASK-323
 title: 'Google provider: Respect requested response format'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:02'
+updated_date: '2026-06-12 20:18'
 labels:
   - audit
   - llm-provider

@@ -3,9 +3,10 @@ id: TASK-296
 title: >-
   CSV export: Add reporting fields for fit, follow-ups, summary, and application
   context
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 04:39'
+updated_date: '2026-06-12 05:47'
 labels:
   - audit
   - export

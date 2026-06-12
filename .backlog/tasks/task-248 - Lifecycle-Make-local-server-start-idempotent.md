@@ -1,9 +1,10 @@
 ---
 id: TASK-248
 title: 'Lifecycle: Make local server start idempotent'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 02:21'
+updated_date: '2026-06-12 02:27'
 labels:
   - lifecycle
   - server

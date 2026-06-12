@@ -1,9 +1,10 @@
 ---
 id: TASK-207
 title: 'Migrator: Handle orphan related rows explicitly'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 00:37'
+updated_date: '2026-06-12 02:16'
 labels:
   - migration
   - persistence

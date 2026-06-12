@@ -70,8 +70,13 @@ struct JobsView: View {
             Text("This will permanently delete the job and all related data.")
         }
         .onChange(of: router.activeSavedSearchID) { _, id in
-            guard let id, let search = savedSearches.first(where: { $0.id == id }) else { return }
-            applySearchToTokens(search)
+            if let id, let search = savedSearches.first(where: { $0.id == id }) {
+                applySearchToTokens(search)
+            } else if id == nil {
+                searchTokens = []
+                searchText = ""
+                filterState = JobsFilterState()
+            }
         }
         .onChange(of: router.sidebarJobFilter) { _, status in
             localSidebarFilter = status
@@ -458,7 +463,7 @@ struct JobsView: View {
                 case .minRating(let n):   if (job.rating ?? 0) < n { return false }
                 case .recentDays(let d):
                     let cutoff = Calendar.current.date(byAdding: .day, value: -d, to: Date()) ?? Date()
-                    if job.createdAt < cutoff { return false }
+                    if (job.capturedAtDenormalized ?? job.createdAt) < cutoff { return false }
                 }
             }
             // Advanced filter state
@@ -480,7 +485,7 @@ struct JobsView: View {
             }
             if let days = filterState.recentDays {
                 let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
-                guard job.createdAt >= cutoff else { return false }
+                guard (job.capturedAtDenormalized ?? job.createdAt) >= cutoff else { return false }
             }
             // Text search
             let q = searchText.trimmingCharacters(in: .whitespaces)
@@ -537,6 +542,8 @@ struct JobsView: View {
         if let days = search.recentDays { tokens.append(.recentDays(days)) }
         searchTokens = tokens
         searchText = search.searchText
+        filterState.sortKey = JobsSortKey(rawValue: search.sortKeyRaw) ?? .capturedAt
+        filterState.sortAscending = search.sortAscending
     }
 
     private func clearAllFilters() {

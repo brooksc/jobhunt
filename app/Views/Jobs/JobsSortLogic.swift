@@ -30,7 +30,7 @@ enum JobsSortLogic {
         case .rating:
             compareOptionalInt(a.rating, b.rating)
         case .capturedAt:
-            compareDate(a.createdAt, b.createdAt)
+            compareDate(a.capturedAtDenormalized ?? a.createdAt, b.capturedAtDenormalized ?? b.createdAt)
         case .extractedAt:
             compareOptionalDate(a.extractedAt, b.extractedAt)
         }

@@ -1,9 +1,10 @@
 ---
 id: TASK-204
 title: 'Server: Validate site review interval bounds'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 00:17'
+updated_date: '2026-06-12 02:16'
 labels:
   - server
   - sites

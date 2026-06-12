@@ -1,9 +1,10 @@
 ---
 id: TASK-275
 title: 'Fit scoring: Reconcile job-level fitScore with per-resume fit scores'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 03:34'
+updated_date: '2026-06-12 03:44'
 labels:
   - audit
   - fit-scoring

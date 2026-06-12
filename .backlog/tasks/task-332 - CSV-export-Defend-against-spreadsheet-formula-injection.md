@@ -1,9 +1,10 @@
 ---
 id: TASK-332
 title: 'CSV export: Defend against spreadsheet formula injection'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:06'
+updated_date: '2026-06-12 20:50'
 labels:
   - audit
   - export
@@ -24,7 +25,7 @@ ExportService.escapeCsv handles CSV quoting but does not neutralize formula-like
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 CSV export neutralizes spreadsheet formula injection for untrusted text fields while preserving readable values.
-- [ ] #2 Tests cover formula-leading company/title/location/source values and normal CSV quoting behavior.
-- [ ] #3 The chosen escaping policy is documented or encoded in tests so future column additions apply it consistently.
+- [x] #1 CSV export neutralizes spreadsheet formula injection for untrusted text fields while preserving readable values.
+- [x] #2 Tests cover formula-leading company/title/location/source values and normal CSV quoting behavior.
+- [x] #3 The chosen escaping policy is documented or encoded in tests so future column additions apply it consistently.
 <!-- AC:END -->

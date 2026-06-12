@@ -8,9 +8,24 @@ final class JobStatusSummaryTests: XCTestCase {
                          extractionStatus: ExtractionStatus = .pending) -> Job {
         let j = Job(jobNumber: Int.random(in: 1...10000), status: status)
         j.fitScore = fitScore
+        if fitScore != nil { j.fitStatus = .succeeded }
         j.company = company
         j.title = title
         j.extractionStatus = extractionStatus
+        return j
+    }
+
+    /// Returns a job with no QualityChecker issues.
+    private func makeCleanJob() -> Job {
+        let j = Job(jobNumber: Int.random(in: 1...10000), status: .pursuing)
+        j.company = "Acme"
+        j.title = "Engineer"
+        j.location = "Remote"
+        j.remoteType = .remote
+        j.salaryMin = 100000
+        j.extractionStatus = .succeeded
+        j.rawTextBytes = 2000
+        j.cleanedTextBytes = 1500
         return j
     }
 
@@ -76,12 +91,12 @@ final class JobStatusSummaryTests: XCTestCase {
         XCTAssertEqual(s.avgFitDisplay, "—")
     }
 
-    func testIssueCount_countsFailedAndMissingFields() {
+    func testIssueCount_countsJobsWithAnyIssue() {
         let jobs: [Job] = [
-            makeJob(extractionStatus: .failed),
-            makeJob(company: nil),
-            makeJob(title: nil),
-            makeJob(),  // clean job — not counted
+            makeJob(extractionStatus: .failed),  // has issues
+            makeJob(company: nil),               // has issues
+            makeJob(title: nil),                 // has issues
+            makeCleanJob(),                      // no issues — not counted
         ]
         let s = JobStatusSummary(jobs: jobs)
         XCTAssertEqual(s.issueCount, 3)

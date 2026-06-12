@@ -231,9 +231,9 @@ struct JobsView: View {
                 Button {
                     exportCSV()
                 } label: {
-                    Label("Export Job List to CSV…", systemImage: "square.and.arrow.up")
+                    Label("Export Filtered List to CSV…", systemImage: "square.and.arrow.up")
                 }
-                .help("Exports job list fields only. Use Back Up Data in Settings for a complete backup.")
+                .help("Exports the current filtered/sorted list (\(filteredJobs.count) jobs). Use Back Up Data in Settings for a complete backup.")
                 Divider()
                 if hasActiveFilters || !searchTokens.isEmpty {
                     Button(role: .destructive) {
@@ -557,7 +557,7 @@ struct JobsView: View {
         let csv = ExportService.jobsCSV(jobs: filteredJobs)
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.commaSeparatedText]
-        panel.nameFieldStringValue = "jobs.csv"
+        panel.nameFieldStringValue = "jobs-filtered.csv"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             try ExportService.write(csv, to: url)

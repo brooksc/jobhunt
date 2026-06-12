@@ -174,11 +174,15 @@
         let intervalDays: Int
         let note: String
         let createdAt: String
+        let nextReviewAt: String?
+        let lastReviewedAt: String?
 
         enum CodingKeys: String, CodingKey {
             case id, url, name, state, note
             case intervalDays = "interval_days"
             case createdAt = "created_at"
+            case nextReviewAt = "next_review_at"
+            case lastReviewedAt = "last_reviewed_at"
         }
     }
 
@@ -502,7 +506,9 @@
                     state: r.state.rawValue,
                     intervalDays: r.intervalDays,
                     note: r.note,
-                    createdAt: formatDate(r.createdAt)
+                    createdAt: formatDate(r.createdAt),
+                    nextReviewAt: r.nextReviewAt.map { formatDate($0) } ?? nil,
+                    lastReviewedAt: r.lastReviewedAt.map { formatDate($0) } ?? nil
                 )
             }
             return HTTPResponse.ok(summaries)
@@ -536,18 +542,19 @@
             return HTTPResponse.error("Invalid JSON body")
         }
 
-        let state: SiteState? = if let stateStr = req.state {
-            SiteState(rawValue: stateStr)
-        } else {
-            nil
+        if let stateStr = req.state, SiteState(rawValue: stateStr) == nil {
+            let valid = SiteState.allCases.map(\.rawValue).joined(separator: ", ")
+            return HTTPResponse.error("Unknown site state: '\(stateStr)'; valid values: \(valid)", code: 400)
         }
+        let state: SiteState? = req.state.flatMap { SiteState(rawValue: $0) }
+        let boundedIntervalDays: Int? = req.intervalDays.map { max(1, min(365, $0)) }
 
         do {
             try await siteService.updateSite(
                 id: req.id,
                 name: req.name,
                 excludeState: state,
-                intervalDays: req.intervalDays
+                intervalDays: boundedIntervalDays
             )
             return HTTPResponse.ok(MCPOKResponse(ok: true))
         } catch {

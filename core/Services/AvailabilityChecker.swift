@@ -208,7 +208,7 @@ public enum AvailabilityChecker {
             let id: String; let jobNumber: Int?; let title: String; let url: URL
         }
         let specs: [JobSpec] = eligible.compactMap { job in
-            let urlString = job.capture?.canonicalURL ?? job.capture?.url ?? ""
+            let urlString = job.applicationURL ?? job.capture?.canonicalURL ?? job.capture?.url ?? ""
             guard !urlString.isEmpty, let url = URL(string: urlString) else { return nil }
             return JobSpec(id: job.id, jobNumber: job.jobNumber, title: job.title ?? "", url: url)
         }
@@ -246,19 +246,20 @@ public enum AvailabilityChecker {
         let jobID: String
         let jobNumber: Int?
         let title: String
+        let url: URL
         let result: URLAvailabilityResult
     }
 
-    /// Checks all non-archived, non-unavailable jobs in parallel (max 10 concurrent).
+    /// Checks actively-pursued jobs in parallel (max 10 concurrent).
+    /// Auto-expiry is restricted to pursuing jobs only — applied/interview/offer/rejected/duplicate
+    /// jobs are protected from automatic status changes.
     /// Jobs found gone are marked `.expired` and a `jobUnavailable` notification is posted.
     public static func checkJobs(
         _ jobs: [Job],
         store: BackgroundStore,
         session: URLSession = .shared
     ) async -> (checked: Int, unavailable: Int, marked: Int) {
-        let eligible = jobs.filter {
-            $0.status != .passed && $0.status != .archived && $0.status != .closed && $0.status != .expired
-        }
+        let eligible = jobs.filter { $0.status == .pursuing }
         guard !eligible.isEmpty else { return (0, 0, 0) }
 
         // Extract lightweight metadata before entering async task group (avoids sending Job across actors).
@@ -269,7 +270,7 @@ public enum AvailabilityChecker {
             let url: URL
         }
         let specs: [JobSpec] = eligible.compactMap { job in
-            let urlString = job.capture?.canonicalURL ?? job.capture?.url ?? ""
+            let urlString = job.applicationURL ?? job.capture?.canonicalURL ?? job.capture?.url ?? ""
             guard !urlString.isEmpty, let url = URL(string: urlString) else { return nil }
             return JobSpec(id: job.id, jobNumber: job.jobNumber, title: job.title ?? "", url: url)
         }
@@ -296,7 +297,7 @@ public enum AvailabilityChecker {
                 inFlight += 1
                 group.addTask {
                     let checkResult = await checkURL(url, title: title, session: session)
-                    return CheckedJob(jobID: id, jobNumber: jobNumber, title: title, result: checkResult)
+                    return CheckedJob(jobID: id, jobNumber: jobNumber, title: title, url: url, result: checkResult)
                 }
             }
 
@@ -319,6 +320,16 @@ public enum AvailabilityChecker {
                         job.updatedAt = Date()
                     }
                     markedCount += 1
+                    // Record audit event for the auto-expiry.
+                    let matchedJobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == idToMatch }))
+                    if let job = matchedJobs.first {
+                        let event = JobEvent(
+                            eventType: "availability",
+                            note: "Auto-expired: \(reason). Checked: \(checked.url.absoluteString)"
+                        )
+                        event.job = job
+                        try await store.insert(event)
+                    }
                     NotificationCenter.default.post(
                         name: .jobUnavailable,
                         object: nil,

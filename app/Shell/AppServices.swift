@@ -52,5 +52,21 @@ final class AppServices: @unchecked Sendable {
         Task {
             try? await queue.requeueRunningOnLaunch()
         }
+
+        // Update last-check timestamp when a scheduled availability check completes.
+        NotificationCenter.default.addObserver(
+            forName: .availabilityCheckCompleted,
+            object: nil,
+            queue: .main
+        ) { notification in
+            if let timestamp = notification.userInfo?["timestamp"] as? String {
+                settingsStore.set(timestamp, forKey: SettingsKey.availabilityLastAutoCheckAt)
+            }
+        }
+
+        Task {
+            // Run on launch; maybeRunStaleCheck gates on interval internally.
+            await AvailabilityChecker.maybeRunStaleCheck(store: store, settings: settingsStore)
+        }
     }
 }

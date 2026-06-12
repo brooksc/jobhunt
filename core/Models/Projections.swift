@@ -136,7 +136,7 @@ public struct JobListRecord: Sendable {
         rating = job.rating
         pageTitle = job.capture?.pageTitle
         sourceURL = job.capture?.url
-        capturedAt = job.capture?.createdAt
+        capturedAt = job.capture?.capturedAt ?? job.capture?.createdAt
         createdAt = job.createdAt
     }
 }
@@ -188,7 +188,7 @@ public struct JobDetailRecord: Sendable {
         rating = job.rating
         pageTitle = job.capture?.pageTitle
         sourceURL = job.capture?.url
-        capturedAt = job.capture?.createdAt
+        capturedAt = job.capture?.capturedAt ?? job.capture?.createdAt
         createdAt = job.createdAt
         selectedText = job.capture?.selectedText
         visibleText = job.capture?.visibleText
@@ -203,6 +203,8 @@ public struct SiteListRecord: Sendable {
     public let intervalDays: Int
     public let note: String
     public let createdAt: Date
+    public let nextReviewAt: Date?
+    public let lastReviewedAt: Date?
 
     init(site: Site) {
         id = site.id
@@ -212,6 +214,8 @@ public struct SiteListRecord: Sendable {
         intervalDays = site.intervalDays
         note = site.note
         createdAt = site.createdAt
+        nextReviewAt = site.nextReviewAt
+        lastReviewedAt = site.lastReviewedAt
     }
 }
 

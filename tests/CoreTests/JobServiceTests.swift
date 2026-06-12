@@ -330,7 +330,7 @@ final class JobServiceTests: XCTestCase {
 
         let header = lines[0]
         let columns = header.components(separatedBy: ",")
-        XCTAssertEqual(columns.count, 19, "Expected 19 CSV columns, got \(columns.count): \(header)")
+        XCTAssertEqual(columns.count, 23, "Expected 23 CSV columns, got \(columns.count): \(header)")
     }
 
     // MARK: - testCSVEscaping

@@ -28,10 +28,8 @@ public struct JobStatusSummary {
 
         for job in jobs {
             byStatus[job.status, default: 0] += 1
-            if let score = job.fitScore { fitSum += score; fitCount += 1 }
-            if job.extractionStatus == .failed || job.company == nil || job.title == nil {
-                issues += 1
-            }
+            if let score = job.fitScore, job.fitStatus == .succeeded { fitSum += score; fitCount += 1 }
+            if !QualityChecker.issues(for: job).isEmpty { issues += 1 }
         }
 
         total = jobs.count

@@ -2,12 +2,13 @@ import Foundation
 
 /// Exports jobs to CSV. Ports server/export.js exactly.
 public enum ExportService {
-    /// The 19 CSV columns in order, matching export.js CSV_COLUMNS.
+    /// The 23 CSV columns in order.
     static let columns = [
         "job_number", "capture_id", "job_id", "status", "rating", "extraction_status",
         "company", "title", "location", "remote_type", "salary_min", "salary_max",
         "salary_currency", "salary_note", "application_url", "extraction_model",
-        "source_url", "captured_at", "extracted_at"
+        "source_url", "captured_at", "extracted_at",
+        "fit_score", "fit_status", "has_pending_actions", "open_actions_count"
     ]
 
     /// Returns a complete CSV string (headers + rows) for the given jobs.
@@ -40,7 +41,11 @@ public enum ExportService {
                 "extraction_model": job.extractionModel ?? "",
                 "source_url": sourceURL,
                 "captured_at": capturedAt,
-                "extracted_at": extractedAt
+                "extracted_at": extractedAt,
+                "fit_score": job.fitScore.map(String.init) ?? "",
+                "fit_status": job.fitStatus.rawValue,
+                "has_pending_actions": job.actions.contains { $0.completedAt == nil } ? "true" : "false",
+                "open_actions_count": String(job.actions.filter { $0.completedAt == nil }.count)
             ]
 
             let rowCSV = columns.map { col in escapeCsv(row[col] ?? "") }.joined(separator: ",")

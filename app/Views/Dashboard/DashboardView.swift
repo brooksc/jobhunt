@@ -66,7 +66,7 @@ struct DashboardView: View {
 
     private var recommendedToApplySection: some View {
         let recommended = jobs
-            .filter { $0.status == .pursuing && ($0.fitScore ?? 0) > 0 }
+            .filter { $0.status == .pursuing && $0.fitStatus == .succeeded && ($0.fitScore ?? 0) > 0 }
             .sorted { ($0.fitScore ?? 0) > ($1.fitScore ?? 0) }
             .prefix(4)
 
@@ -204,8 +204,8 @@ struct DashboardView: View {
                 }
             }
             .sorted { a, b in
-                let aDate = a.actions.filter { $0.completedAt == nil }.map(\.dueDate).min() ?? Date.distantFuture
-                let bDate = b.actions.filter { $0.completedAt == nil }.map(\.dueDate).min() ?? Date.distantFuture
+                let aDate = a.actions.filter { $0.completedAt == nil && ($0.snoozedUntil == nil || $0.snoozedUntil! <= now) }.map(\.dueDate).min() ?? Date.distantFuture
+                let bDate = b.actions.filter { $0.completedAt == nil && ($0.snoozedUntil == nil || $0.snoozedUntil! <= now) }.map(\.dueDate).min() ?? Date.distantFuture
                 return aDate < bDate
             }
             .prefix(4)
@@ -237,7 +237,7 @@ struct DashboardView: View {
                                 router.selectedJobID = job.id
                                 router.selectedSection = .jobs
                             } label: {
-                                let action = job.actions.filter { $0.completedAt == nil }.sorted { $0.dueDate < $1.dueDate }.first
+                                let action = job.actions.filter { $0.completedAt == nil && ($0.snoozedUntil == nil || $0.snoozedUntil! <= now) }.sorted { $0.dueDate < $1.dueDate }.first
                                 HStack(spacing: 8) {
                                     if let action {
                                         DueBadge(date: action.dueDate)
@@ -390,7 +390,7 @@ struct DashboardView: View {
         let now = Date()
         let upcoming: [(site: Site, overdue: Bool)] = sites
             .compactMap { site -> (site: Site, overdue: Bool)? in
-                guard let reviewAt = site.nextReviewAt else { return nil }
+                guard let reviewAt = site.nextReviewAt, site.state != .exclude else { return nil }
                 return (site: site, overdue: reviewAt < now)
             }
             .sorted { $0.site.nextReviewAt ?? now < $1.site.nextReviewAt ?? now }
@@ -444,7 +444,8 @@ struct DashboardView: View {
     // MARK: - Quality Summary
 
     private var qualitySummarySection: some View {
-        QualitySummarySection(issueCount: summary.issueCount)
+        let issueCount = jobs.count(where: { !QualityChecker.issues(for: $0).isEmpty })
+        return QualitySummarySection(issueCount: issueCount)
     }
 
     // MARK: - Helpers
@@ -582,7 +583,7 @@ private struct QualitySummarySection: View {
                             .font(.title2)
                             .fontWeight(.bold)
                             .foregroundStyle(issueCount == 0 ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.orange))
-                        Text("Jobs with extraction issues")
+                        Text("Jobs with quality issues")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

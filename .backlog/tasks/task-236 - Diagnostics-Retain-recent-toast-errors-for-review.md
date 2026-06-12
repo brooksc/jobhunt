@@ -1,9 +1,10 @@
 ---
 id: TASK-236
 title: 'Diagnostics: Retain recent toast errors for review'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 01:51'
+updated_date: '2026-06-12 02:16'
 labels:
   - diagnostics
   - ux

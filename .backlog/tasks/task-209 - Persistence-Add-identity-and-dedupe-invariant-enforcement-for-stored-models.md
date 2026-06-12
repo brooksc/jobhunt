@@ -1,9 +1,10 @@
 ---
 id: TASK-209
 title: 'Persistence: Add identity and dedupe invariant enforcement for stored models'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 00:38'
+updated_date: '2026-06-12 01:12'
 labels:
   - persistence
   - data-integrity
@@ -25,7 +26,7 @@ Core identity and dedupe fields such as Capture.id, Capture.rawHash, Job.id, and
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Supported unique constraints are added for identity fields, or writes are centralized behind invariant-checking store APIs.
-- [ ] #2 Migration/import paths handle existing duplicates deterministically before constraints are applied.
-- [ ] #3 Tests cover duplicate identity/dedupe attempts through service and import/store paths.
+- [x] #1 Supported unique constraints are added for identity fields, or writes are centralized behind invariant-checking store APIs.
+- [x] #2 Migration/import paths handle existing duplicates deterministically before constraints are applied.
+- [x] #3 Tests cover duplicate identity/dedupe attempts through service and import/store paths.
 <!-- AC:END -->

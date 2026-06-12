@@ -1,9 +1,10 @@
 ---
 id: TASK-318
 title: 'LLM queue UI: Count active requests outside the 500-row recent window'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 19:41'
+updated_date: '2026-06-12 20:03'
 labels:
   - audit
   - llm-queue

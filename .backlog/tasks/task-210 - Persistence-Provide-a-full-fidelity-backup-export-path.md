@@ -1,9 +1,10 @@
 ---
 id: TASK-210
 title: 'Persistence: Provide a full-fidelity backup/export path'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 00:39'
+updated_date: '2026-06-12 01:12'
 labels:
   - persistence
   - backup
@@ -26,7 +27,7 @@ The app currently exports a jobs CSV summary, but local-first user data includes
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The app offers or documents a full-fidelity backup path that preserves all user-owned models.
-- [ ] #2 The backup includes enough data to restore captures, jobs, related records, resumes, sites, and settings safely.
-- [ ] #3 Tests or a documented verification procedure prove that a backup can be restored without losing core records.
+- [x] #1 The app offers or documents a full-fidelity backup path that preserves all user-owned models.
+- [x] #2 The backup includes enough data to restore captures, jobs, related records, resumes, sites, and settings safely.
+- [x] #3 Tests or a documented verification procedure prove that a backup can be restored without losing core records.
 <!-- AC:END -->

@@ -3,9 +3,10 @@ id: TASK-249
 title: >-
   Queue UI: Keep paused state synchronized with persisted settings after
   completion events
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 02:21'
+updated_date: '2026-06-12 02:27'
 labels:
   - queue
   - ux

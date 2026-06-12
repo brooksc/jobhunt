@@ -1,9 +1,10 @@
 ---
 id: TASK-260
 title: 'Persistence: Add guided restore or start-fresh flow to store recovery UI'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 02:52'
+updated_date: '2026-06-12 03:09'
 labels:
   - audit
   - persistence

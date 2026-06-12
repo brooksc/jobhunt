@@ -1,9 +1,10 @@
 ---
 id: TASK-291
 title: 'Dashboard: Use QualityChecker for dashboard quality count'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 04:39'
+updated_date: '2026-06-12 05:47'
 labels:
   - audit
   - dashboard

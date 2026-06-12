@@ -1,9 +1,10 @@
 ---
 id: TASK-278
 title: 'Fit scoring: Accept numeric dimension scores in projections'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 03:34'
+updated_date: '2026-06-12 03:58'
 labels:
   - audit
   - fit-scoring
@@ -14,6 +15,9 @@ references:
   - core/Models/Projections.swift
   - tests/CoreTests/ProjectionsTests.swift
   - core/Services/FitScorer.swift
+modified_files:
+  - core/Models/Projections.swift
+  - tests/CoreTests/ProjectionsTests.swift
 priority: low
 ---
 
@@ -25,7 +29,7 @@ FitScoreProjection only accepts Int dimension scores even though LLM JSON and Fi
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 FitScoreProjection accepts both Int and Double dimension scores.
-- [ ] #2 Projection tests cover integer and floating-point score values.
-- [ ] #3 UI rounds or formats projected scores consistently with FitScorer.
+- [x] #1 FitScoreProjection accepts both Int and Double dimension scores.
+- [x] #2 Projection tests cover integer and floating-point score values.
+- [x] #3 UI rounds or formats projected scores consistently with FitScorer.
 <!-- AC:END -->

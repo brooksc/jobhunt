@@ -1,9 +1,10 @@
 ---
 id: TASK-201
 title: 'Server: Decide and enforce access control for job lookup by URL'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 00:16'
+updated_date: '2026-06-12 02:16'
 labels:
   - server
   - api

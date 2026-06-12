@@ -1,9 +1,10 @@
 ---
 id: TASK-203
 title: 'MCP: Clamp jobs list limit and avoid fetch-all pagination'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 00:17'
+updated_date: '2026-06-12 02:16'
 labels:
   - mcp
   - server

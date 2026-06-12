@@ -1,9 +1,10 @@
 ---
 id: TASK-200
 title: 'Server: Enforce a hard maximum request body size'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 00:16'
+updated_date: '2026-06-12 02:08'
 labels:
   - server
   - api

@@ -1,9 +1,10 @@
 ---
 id: TASK-266
 title: 'LLM: Request structured JSON for extraction and fit scoring'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 03:25'
+updated_date: '2026-06-12 03:30'
 labels:
   - audit
   - llm

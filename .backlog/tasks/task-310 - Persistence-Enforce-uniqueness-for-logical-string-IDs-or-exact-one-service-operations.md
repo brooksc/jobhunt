@@ -3,9 +3,10 @@ id: TASK-310
 title: >-
   Persistence: Enforce uniqueness for logical string IDs or exact-one service
   operations
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 19:34'
+updated_date: '2026-06-12 19:50'
 labels:
   - audit
   - persistence

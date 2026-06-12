@@ -1,9 +1,10 @@
 ---
 id: TASK-340
 title: 'MAS build: Do not generate MCP token files'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:35'
+updated_date: '2026-06-12 20:50'
 labels:
   - audit
   - release
@@ -26,7 +27,7 @@ AppServices always calls MCPTokenManager.generateAndWrite(), even for MAS builds
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 MAS builds do not create or write ~/.jobhunt-mcp-token.
-- [ ] #2 DMG builds still create the token and enable MCP routes.
+- [x] #1 MAS builds do not create or write ~/.jobhunt-mcp-token.
+- [x] #2 DMG builds still create the token and enable MCP routes.
 - [ ] #3 Tests or build assertions cover MAS_BUILD behavior for MCP token setup.
 <!-- AC:END -->

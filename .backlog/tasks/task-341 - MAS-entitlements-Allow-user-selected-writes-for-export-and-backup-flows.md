@@ -1,9 +1,10 @@
 ---
 id: TASK-341
 title: 'MAS entitlements: Allow user-selected writes for export and backup flows'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:35'
+updated_date: '2026-06-12 20:51'
 labels:
   - audit
   - release

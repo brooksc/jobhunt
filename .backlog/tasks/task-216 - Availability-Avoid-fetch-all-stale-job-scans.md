@@ -1,9 +1,10 @@
 ---
 id: TASK-216
 title: 'Availability: Avoid fetch-all stale job scans'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 00:42'
+updated_date: '2026-06-12 02:00'
 labels:
   - performance
   - availability

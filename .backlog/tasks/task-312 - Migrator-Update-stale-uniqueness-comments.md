@@ -1,9 +1,10 @@
 ---
 id: TASK-312
 title: 'Migrator: Update stale uniqueness comments'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 19:35'
+updated_date: '2026-06-12 19:50'
 labels:
   - audit
   - migration

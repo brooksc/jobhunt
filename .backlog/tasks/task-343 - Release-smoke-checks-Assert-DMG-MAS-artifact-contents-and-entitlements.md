@@ -1,9 +1,10 @@
 ---
 id: TASK-343
 title: 'Release smoke checks: Assert DMG/MAS artifact contents and entitlements'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:36'
+updated_date: '2026-06-12 20:51'
 labels:
   - audit
   - release

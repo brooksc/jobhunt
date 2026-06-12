@@ -1,9 +1,10 @@
 ---
 id: TASK-227
 title: 'Release: Add post-export smoke checks and polished DMG layout'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 01:32'
+updated_date: '2026-06-12 02:21'
 labels:
   - release
   - packaging

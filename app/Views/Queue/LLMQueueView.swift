@@ -26,20 +26,10 @@ struct LLMQueueView: View {
     let queueActor: QueueActor
     let settings: SettingsStore
 
-    // MARK: Query — bounded to 500 most recent, newest first.
-    // Active requests (queued/running) are always newest, so counts remain accurate within this window.
+    // MARK: Query — all requests, newest first
 
-    @Query private var recentRequests: [LLMRequest]
-
-    init(queueActor: QueueActor, settings: SettingsStore) {
-        self.queueActor = queueActor
-        self.settings = settings
-        var descriptor = FetchDescriptor<LLMRequest>(
-            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
-        )
-        descriptor.fetchLimit = 500
-        _recentRequests = Query(descriptor)
-    }
+    @Query(sort: \LLMRequest.createdAt, order: .reverse)
+    private var allRequests: [LLMRequest]
 
     // MARK: Filter state
 
@@ -50,19 +40,9 @@ struct LLMQueueView: View {
 
     @State private var selection: Set<String> = []
 
-    // MARK: Pause state — derived from settings, not local @State
+    // MARK: Pause state (mirrors settings, kept in sync via event stream)
 
-    private var isPaused: Bool {
-        settings.llmQueuePaused
-    }
-
-    // MARK: Expanded rows (showing attempt detail)
-
-    @State private var expandedIDs: Set<String> = []
-
-    // MARK: Confirmation
-
-    @State private var showingDeleteAllConfirm = false
+    @State private var isPaused: Bool = false
 
     // MARK: Error toast
 
@@ -70,14 +50,14 @@ struct LLMQueueView: View {
 
     // MARK: - Computed
 
-    /// Active/attention requests — used for toolbar button state and summary bar.
-    /// Derived from recentRequests (active requests are always newest, so they appear in the 500-row window).
+    /// All non-terminal requests — used for accurate queued/running counts regardless
+    /// of how many terminal rows exist beyond the display window.
     private var activeRequests: [LLMRequest] {
-        recentRequests.filter { $0.status == .queued || $0.status == .running }
+        allRequests.filter { $0.finishedAt == nil }
     }
 
     private var filteredRequests: [LLMRequest] {
-        recentRequests.filter { req in
+        allRequests.filter { req in
             let typeOK: Bool = switch typeFilter {
             case .all: true
             case .extract: req.requestType == .extract
@@ -97,7 +77,8 @@ struct LLMQueueView: View {
     var body: some View {
         VStack(spacing: 0) {
             QueueSummaryBar(
-                requests: recentRequests,
+                requests: allRequests,
+                activeRequests: activeRequests,
                 isPaused: isPaused,
                 onTogglePause: togglePause
             )
@@ -177,43 +158,16 @@ struct LLMQueueView: View {
             .contextMenu(forSelectionType: String.self) { ids in
                 selectionContextMenu(for: ids)
             }
-            .onDeleteCommand {
-                if !selection.isEmpty {
-                    deleteSelected(Array(selection))
-                }
-            }
         }
-        .navigationTitle("LLM Queue")
         .toolbar { toolbarContent }
-        .confirmationDialog(
-            "Delete all queue records?",
-            isPresented: $showingDeleteAllConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Delete All", role: .destructive) {
-                Task {
-                    do {
-                        try await queueActor.deleteAll()
-                        selection.removeAll()
-                    } catch {
-                        errorMessage = "Delete failed: \(error.localizedDescription)"
-                    }
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This permanently removes all history. It cannot be undone.")
-        }
         .task {
+            // Sync isPaused from settings
+            isPaused = settings.llmQueuePaused
             // Listen for QueueActor events
-            for await event in await queueActor.subscribe() {
+            for await event in queueActor.events {
                 handleQueueEvent(event)
             }
         }
-        .focusedSceneValue(\.queueCommands, QueueCommandHandlers(
-            isPaused: isPaused,
-            togglePause: { Task { await togglePause() } }
-        ))
     }
 
     // MARK: - Toolbar
@@ -226,25 +180,14 @@ struct LLMQueueView: View {
                 Button("Process Selected") {
                     Task { await processSelected(Array(selection)) }
                 }
-                .help("Re-queue and immediately process the selected requests")
-                .disabled(isPaused)
 
-                Button("Cancel Selected") {
+                Button("Cancel Selected", role: .destructive) {
                     Task { await cancelSelected(Array(selection)) }
                 }
-                .help("Cancel the selected queued/running requests")
 
                 Button("Reset Selected") {
                     Task { await resetSelected(Array(selection)) }
                 }
-                .help("Reset the selected requests back to Queued so they run again")
-
-                Button(role: .destructive) {
-                    deleteSelected(Array(selection))
-                } label: {
-                    Label("Delete Selected", systemImage: "trash")
-                }
-                .help("Permanently delete the selected records")
 
                 Divider()
             }
@@ -255,25 +198,13 @@ struct LLMQueueView: View {
             } label: {
                 Label("Process All", systemImage: "sparkles")
             }
-            .help("Start processing all queued requests")
-            .disabled(isPaused || activeRequests.filter { $0.status == .queued }.isEmpty)
 
-            // Cancel Queued
-            Button {
+            // Cancel All
+            Button(role: .destructive) {
                 Task { await cancelAll() }
             } label: {
-                Label("Cancel Queued", systemImage: "stop.circle")
+                Label("Cancel All", systemImage: "trash")
             }
-            .help("Cancel all queued and running requests (does not delete history)")
-            .disabled(activeRequests.isEmpty)
-
-            // Delete All
-            Button(role: .destructive) {
-                showingDeleteAllConfirm = true
-            } label: {
-                Label("Delete All", systemImage: "trash")
-            }
-            .help("Permanently delete all queue records")
         }
 
         ToolbarItemGroup(placement: .secondaryAction) {
@@ -310,11 +241,8 @@ struct LLMQueueView: View {
                 Task { await resetSelected(Array(ids)) }
             }
             Divider()
-            Button("Cancel Selected") {
+            Button("Cancel Selected", role: .destructive) {
                 Task { await cancelSelected(Array(ids)) }
-            }
-            Button("Delete Selected", role: .destructive) {
-                deleteSelected(Array(ids))
             }
         }
     }
@@ -374,41 +302,45 @@ struct LLMQueueView: View {
     // MARK: - Queue actions
 
     private func togglePause() async {
-        if isPaused {
-            await queueActor.resumeQueue()
-        } else {
+        let next = !isPaused
+        isPaused = next
+        if next {
             await queueActor.pauseQueue()
+        } else {
+            await queueActor.resumeQueue()
         }
     }
 
     private func processAll() async {
-        await queueActor.startProcessing()
+        // Enqueue pending jobs that aren't yet in the queue
+        // The queue actor's startProcessing handles the actual processing
+        do {
+            let pendingJobIDs = allRequests
+                .filter { $0.status == .queued }
+                .compactMap { $0.job?.id }
+            if !pendingJobIDs.isEmpty {
+                await queueActor.startProcessing()
+            }
+        }
     }
 
     private func processSelected(_ ids: [String]) async {
-        var resetCount = 0
+        // Reset selected items to queued then start processing
         for id in ids {
-            do {
-                try await queueActor.resetRequest(id: id)
-                resetCount += 1
-            } catch {
-                errorMessage = "Reset failed: \(error.localizedDescription)"
-            }
+            try? await queueActor.resetRequest(id: id)
         }
-        if resetCount > 0 {
-            await queueActor.startProcessing()
-        }
+        await queueActor.startProcessing()
     }
 
     private func cancelSelected(_ ids: [String]) async {
         for id in ids {
             do {
                 try await queueActor.cancelRequest(id: id)
-                selection.remove(id)
             } catch {
                 errorMessage = "Cancel failed: \(error.localizedDescription)"
             }
         }
+        selection.removeAll()
     }
 
     private func resetSelected(_ ids: [String]) async {
@@ -430,104 +362,17 @@ struct LLMQueueView: View {
         }
     }
 
-    private func deleteSelected(_ ids: [String]) {
-        Task {
-            do {
-                try await queueActor.deleteRequests(ids: ids)
-                selection.removeAll()
-            } catch {
-                errorMessage = "Delete failed: \(error.localizedDescription)"
-            }
-        }
-    }
-
     // MARK: - Event handler
 
     private func handleQueueEvent(_ event: QueueEvent) {
         switch event {
-        case .autoPaused, .processingComplete, .jobReady, .jobUnavailable:
+        case .autoPaused:
+            isPaused = true
+        case .processingComplete:
+            break
+        case .jobReady, .jobUnavailable:
             break
         }
     }
 }
 
-// MARK: - Attempt Detail Subview
-
-private struct AttemptDetailView: View {
-    let attempts: [LLMRequestAttempt]
-
-    var body: some View {
-        if attempts.isEmpty {
-            Text("No attempt history")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.vertical, 4)
-        } else {
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(attempts.sorted(by: { $0.attempt < $1.attempt }), id: \.id) { attempt in
-                    AttemptRow(attempt: attempt)
-                }
-            }
-        }
-    }
-}
-
-private struct AttemptRow: View {
-    let attempt: LLMRequestAttempt
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text("#\(attempt.attempt)")
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-                .frame(width: 24)
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(attempt.status.rawValue.capitalized)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundStyle(attempt.status == .succeeded ? .green : .red)
-
-                    if let ms = attempt.durationMs {
-                        Text(formatMs(ms))
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if let modelReq = attempt.modelRequested {
-                    HStack(spacing: 4) {
-                        Text("Requested:")
-                            .foregroundStyle(.secondary)
-                        Text(modelReq)
-                    }
-                    .font(.caption.monospaced())
-                }
-
-                if let modelRet = attempt.modelReturned {
-                    HStack(spacing: 4) {
-                        Text("Returned:")
-                            .foregroundStyle(.secondary)
-                        Text(modelRet)
-                    }
-                    .font(.caption.monospaced())
-                }
-
-                if let error = attempt.error {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .lineLimit(3)
-                }
-            }
-        }
-        .padding(.vertical, 2)
-    }
-
-    private func formatMs(_ ms: Int) -> String {
-        let s = max(0, ms / 1000)
-        if s < 60 { return "\(s)s" }
-        return "\(s / 60)m \(s % 60)s"
-    }
-}

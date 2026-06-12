@@ -5,15 +5,18 @@ import SwiftUI
 /// Small summary bar showing queue counts and a Pause/Resume toggle.
 struct QueueSummaryBar: View {
     let requests: [LLMRequest]
+    /// All non-terminal requests (finishedAt == nil) — used for accurate queued/running counts
+    /// regardless of how many terminal rows exist beyond the display window.
+    let activeRequests: [LLMRequest]
     let isPaused: Bool
     let onTogglePause: () async -> Void
 
     private var queued: Int {
-        requests.count(where: { $0.status == .queued })
+        activeRequests.count(where: { $0.status == .queued })
     }
 
     private var running: Int {
-        requests.count(where: { $0.status == .running })
+        activeRequests.count(where: { $0.status == .running })
     }
 
     private var failed: Int {
@@ -42,7 +45,6 @@ struct QueueSummaryBar: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .tint(isPaused ? .green : .orange)
-            .help(isPaused ? "Resume processing queued requests" : "Pause the queue — in-flight requests finish, new ones wait")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)

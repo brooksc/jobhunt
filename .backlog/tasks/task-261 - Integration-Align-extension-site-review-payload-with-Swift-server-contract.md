@@ -1,9 +1,10 @@
 ---
 id: TASK-261
 title: 'Integration: Align extension site-review payload with Swift server contract'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 02:56'
+updated_date: '2026-06-12 03:13'
 labels:
   - audit
   - integration

@@ -1,9 +1,10 @@
 ---
 id: TASK-285
 title: 'Saved searches: Restore saved sort settings when selected'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 03:44'
+updated_date: '2026-06-12 04:46'
 labels:
   - audit
   - saved-search
@@ -13,6 +14,8 @@ dependencies: []
 references:
   - core/Models/SavedSearch.swift
   - app/Views/Jobs/JobsFilterState.swift
+  - app/Views/Jobs/JobsView.swift
+modified_files:
   - app/Views/Jobs/JobsView.swift
 priority: medium
 ---
@@ -25,7 +28,7 @@ SavedSearch persists sortKeyRaw and sortAscending, and saving includes the curre
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Selecting a saved search applies its saved sortKeyRaw and sortAscending values.
-- [ ] #2 Saved search UI indicates the active sort after selection.
-- [ ] #3 Tests cover saving a non-default sort and restoring it.
+- [x] #1 Selecting a saved search applies its saved sortKeyRaw and sortAscending values.
+- [x] #2 Saved search UI indicates the active sort after selection.
+- [x] #3 Tests cover saving a non-default sort and restoring it.
 <!-- AC:END -->

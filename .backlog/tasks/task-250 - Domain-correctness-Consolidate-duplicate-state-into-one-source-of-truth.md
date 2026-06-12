@@ -1,9 +1,10 @@
 ---
 id: TASK-250
 title: 'Domain correctness: Consolidate duplicate state into one source of truth'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 02:41'
+updated_date: '2026-06-12 03:09'
 labels:
   - audit
   - domain

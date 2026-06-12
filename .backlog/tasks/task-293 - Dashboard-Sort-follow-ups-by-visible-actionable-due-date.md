@@ -1,9 +1,10 @@
 ---
 id: TASK-293
 title: 'Dashboard: Sort follow-ups by visible actionable due date'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 04:39'
+updated_date: '2026-06-12 05:47'
 labels:
   - audit
   - dashboard

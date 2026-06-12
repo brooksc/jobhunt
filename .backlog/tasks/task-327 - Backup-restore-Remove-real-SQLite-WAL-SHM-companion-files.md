@@ -1,9 +1,10 @@
 ---
 id: TASK-327
 title: 'Backup restore: Remove real SQLite WAL/SHM companion files'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:05'
+updated_date: '2026-06-12 20:58'
 labels:
   - audit
   - backup

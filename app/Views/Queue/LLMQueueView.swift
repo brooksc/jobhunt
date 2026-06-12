@@ -25,6 +25,7 @@ struct LLMQueueView: View {
 
     let queueActor: QueueActor
     let settings: SettingsStore
+    let toastStore: ToastStore
 
     // MARK: Query — all requests, newest first
 
@@ -164,7 +165,7 @@ struct LLMQueueView: View {
             // Sync isPaused from settings
             isPaused = settings.llmQueuePaused
             // Listen for QueueActor events
-            for await event in queueActor.events {
+            for await event in queueActor.subscribe() {
                 handleQueueEvent(event)
             }
         }
@@ -192,11 +193,11 @@ struct LLMQueueView: View {
                 Divider()
             }
 
-            // Process All
+            // Resume Queue (starts drain loop for already-queued requests)
             Button {
                 Task { await processAll() }
             } label: {
-                Label("Process All", systemImage: "sparkles")
+                Label("Resume Queue", systemImage: "sparkles")
             }
 
             // Cancel All
@@ -312,16 +313,13 @@ struct LLMQueueView: View {
     }
 
     private func processAll() async {
-        // Enqueue pending jobs that aren't yet in the queue
-        // The queue actor's startProcessing handles the actual processing
-        do {
-            let pendingJobIDs = allRequests
-                .filter { $0.status == .queued }
-                .compactMap { $0.job?.id }
-            if !pendingJobIDs.isEmpty {
-                await queueActor.startProcessing()
-            }
+        // Starts the drain loop for already-queued requests.
+        let hasQueued = allRequests.contains { $0.status == .queued }
+        guard hasQueued else {
+            errorMessage = "No jobs pending in queue."
+            return
         }
+        await queueActor.startProcessing()
     }
 
     private func processSelected(_ ids: [String]) async {
@@ -337,7 +335,9 @@ struct LLMQueueView: View {
             do {
                 try await queueActor.cancelRequest(id: id)
             } catch {
-                errorMessage = "Cancel failed: \(error.localizedDescription)"
+                let msg = "Cancel failed: \(error.localizedDescription)"
+                errorMessage = msg
+                toastStore.show(msg, isError: true)
             }
         }
         selection.removeAll()
@@ -348,7 +348,9 @@ struct LLMQueueView: View {
             do {
                 try await queueActor.resetRequest(id: id)
             } catch {
-                errorMessage = "Reset failed: \(error.localizedDescription)"
+                let msg = "Reset failed: \(error.localizedDescription)"
+                errorMessage = msg
+                toastStore.show(msg, isError: true)
             }
         }
     }
@@ -358,7 +360,9 @@ struct LLMQueueView: View {
             try await queueActor.cancelAll()
             selection.removeAll()
         } catch {
-            errorMessage = "Cancel all failed: \(error.localizedDescription)"
+            let msg = "Cancel all failed: \(error.localizedDescription)"
+            errorMessage = msg
+            toastStore.show(msg, isError: true)
         }
     }
 

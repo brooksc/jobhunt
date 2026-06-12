@@ -72,7 +72,7 @@ struct ContentView: View {
             NeedsActionView()
                 .navigationSplitViewColumnWidth(min: 600, ideal: 900)
         case .llmQueue:
-            LLMQueueView(queueActor: appServices.queueActor, settings: appServices.settings)
+            LLMQueueView(queueActor: appServices.queueActor, settings: appServices.settings, toastStore: appServices.toastStore)
                 .navigationSplitViewColumnWidth(min: 600, ideal: 900)
         case .sites:
             SitesView(siteService: appServices.siteService)

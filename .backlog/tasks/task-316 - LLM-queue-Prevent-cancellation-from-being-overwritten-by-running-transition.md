@@ -1,15 +1,18 @@
 ---
 id: TASK-316
 title: 'LLM queue: Prevent cancellation from being overwritten by running transition'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 19:39'
+updated_date: '2026-06-12 19:58'
 labels:
   - audit
   - llm-queue
   - cancellation
 dependencies: []
 references:
+  - core/LLM/QueueActor.swift
+modified_files:
   - core/LLM/QueueActor.swift
 priority: medium
 ---
@@ -26,3 +29,9 @@ fetchQueuedRequests snapshots queued items, then processRequest marks by ID as r
 - [ ] #2 If a request was cancelled after fetch, processing skips it without invoking the provider.
 - [ ] #3 Regression tests cover cancellation between fetch and running transition.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added `guard req.status == .queued else { return }` in the running-transition update inside processRequest, then verify the transition succeeded by re-fetching and checking `current?.status == .running` before proceeding.
+<!-- SECTION:FINAL_SUMMARY:END -->

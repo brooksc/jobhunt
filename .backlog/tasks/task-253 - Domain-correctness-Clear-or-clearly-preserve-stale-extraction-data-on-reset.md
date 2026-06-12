@@ -1,9 +1,10 @@
 ---
 id: TASK-253
 title: 'Domain correctness: Clear or clearly preserve stale extraction data on reset'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 02:42'
+updated_date: '2026-06-12 03:09'
 labels:
   - audit
   - domain

@@ -1,9 +1,10 @@
 ---
 id: TASK-305
 title: 'MCP sites: Expose schedule fields and validate updates'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 05:01'
+updated_date: '2026-06-12 05:47'
 labels:
   - audit
   - mcp

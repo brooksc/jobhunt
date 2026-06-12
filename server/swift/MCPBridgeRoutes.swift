@@ -312,7 +312,7 @@
             }
             return HTTPResponse.ok(summaries)
         } catch {
-            return HTTPResponse.error(error.localizedDescription, code: 500)
+            return HTTPResponse.error(safeServerError(error, context: "handleMCPJobsList"), code: 500)
         }
     }
 
@@ -349,7 +349,7 @@
             )
             return HTTPResponse.ok(detail)
         } catch {
-            return HTTPResponse.error(error.localizedDescription, code: 500)
+            return HTTPResponse.error(safeServerError(error, context: "handleMCPJobGet"), code: 500)
         }
     }
 
@@ -395,7 +395,7 @@
                 duplicate: result.isDuplicate
             ))
         } catch {
-            return HTTPResponse.error(error.localizedDescription, code: 500)
+            return HTTPResponse.error(safeServerError(error, context: "handleMCPCaptureAdd"), code: 500)
         }
     }
 
@@ -425,7 +425,7 @@
             )
             return HTTPResponse.ok(MCPOKResponse(ok: true))
         } catch {
-            return HTTPResponse.error(error.localizedDescription, code: 500)
+            return HTTPResponse.error(safeServerError(error, context: "handleMCPJobUpdate"), code: 500)
         }
     }
 
@@ -449,7 +449,7 @@
             try await jobService.setStatus(status, for: jobID)
             return HTTPResponse.ok(MCPOKResponse(ok: true))
         } catch {
-            return HTTPResponse.error(error.localizedDescription, code: 500)
+            return HTTPResponse.error(safeServerError(error, context: "handleMCPJobStatus"), code: 500)
         }
     }
 
@@ -470,7 +470,7 @@
             try await jobService.addNote(req.note, to: jobID)
             return HTTPResponse.ok(MCPOKResponse(ok: true))
         } catch {
-            return HTTPResponse.error(error.localizedDescription, code: 500)
+            return HTTPResponse.error(safeServerError(error, context: "handleMCPJobNote"), code: 500)
         }
     }
 
@@ -491,7 +491,7 @@
             try await jobService.resetExtraction(jobID: jobID)
             return HTTPResponse.ok(MCPOKResponse(ok: true))
         } catch {
-            return HTTPResponse.error(error.localizedDescription, code: 500)
+            return HTTPResponse.error(safeServerError(error, context: "handleMCPJobRerun"), code: 500)
         }
     }
 
@@ -513,7 +513,7 @@
             }
             return HTTPResponse.ok(summaries)
         } catch {
-            return HTTPResponse.error(error.localizedDescription, code: 500)
+            return HTTPResponse.error(safeServerError(error, context: "handleMCPSitesList"), code: 500)
         }
     }
 
@@ -533,7 +533,7 @@
             }
             return HTTPResponse.ok(AddResult(ok: true, id: siteID))
         } catch {
-            return HTTPResponse.error(error.localizedDescription, code: 500)
+            return HTTPResponse.error(safeServerError(error, context: "handleMCPSiteAdd"), code: 500)
         }
     }
 
@@ -558,7 +558,7 @@
             )
             return HTTPResponse.ok(MCPOKResponse(ok: true))
         } catch {
-            return HTTPResponse.error(error.localizedDescription, code: 500)
+            return HTTPResponse.error(safeServerError(error, context: "handleMCPSiteUpdate"), code: 500)
         }
     }
 
@@ -571,7 +571,7 @@
             try await siteService.deleteSite(id: req.id)
             return HTTPResponse.ok(MCPOKResponse(ok: true))
         } catch {
-            return HTTPResponse.error(error.localizedDescription, code: 500)
+            return HTTPResponse.error(safeServerError(error, context: "handleMCPSiteDelete"), code: 500)
         }
     }
 
@@ -585,7 +585,7 @@
             )
             return HTTPResponse.ok(response)
         } catch {
-            return HTTPResponse.error(error.localizedDescription, code: 500)
+            return HTTPResponse.error(safeServerError(error, context: "handleMCPSnapshot"), code: 500)
         }
     }
 

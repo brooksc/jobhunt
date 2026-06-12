@@ -267,4 +267,52 @@ final class JobhuntServerTests: XCTestCase {
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 404)
     }
+
+    // TASK-358: Error bodies must not expose file paths or SwiftData internals.
+    func testCaptureRoute_storeError_returnsInternalError() async throws {
+        // Send malformed JSON to trigger a 400; the body must be a stable string
+        // with no file-system paths or SwiftData class names.
+        // swiftlint:disable:next force_unwrapping
+        let url = await URL(string: baseURL() + "/captures")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("chrome-extension://testextension", forHTTPHeaderField: "Origin")
+        req.httpBody = Data("{bad json}".utf8)
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+        XCTAssertEqual(http.statusCode, 400)
+
+        let bodyString = String(decoding: data, as: UTF8.self)
+        XCTAssertFalse(bodyString.contains("/Users/"), "Error body must not contain file paths")
+        XCTAssertFalse(bodyString.contains("SwiftData"), "Error body must not contain SwiftData internals")
+        XCTAssertFalse(bodyString.contains("ModelContext"), "Error body must not expose ModelContext")
+        struct ErrorBody: Decodable { let error: String }
+        let body = try JSONDecoder().decode(ErrorBody.self, from: data)
+        XCTAssertFalse(body.error.isEmpty)
+    }
+
+    // TASK-358: Invalid MCP request must return a stable JSON error, not raw localizedDescription.
+    func testMCPRoute_invalidRequest_returnsSafeErrorCode() async throws {
+        // Provide a wrong MCP token — server returns 401 with a stable message.
+        // swiftlint:disable:next force_unwrapping
+        let url = await URL(string: baseURL() + "/mcp/jobs/get")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("wrong-token", forHTTPHeaderField: "X-MCP-Token")
+        req.httpBody = Data("{\"job_number\": 1}".utf8)
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+        XCTAssertEqual(http.statusCode, 401)
+
+        let bodyString = String(decoding: data, as: UTF8.self)
+        XCTAssertFalse(bodyString.contains("/Users/"), "Error body must not contain file paths")
+        XCTAssertFalse(bodyString.contains("SwiftData"), "Error body must not expose SwiftData")
+        struct ErrorBody: Decodable { let error: String }
+        let body = try JSONDecoder().decode(ErrorBody.self, from: data)
+        XCTAssertFalse(body.error.isEmpty)
+    }
 }

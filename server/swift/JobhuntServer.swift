@@ -375,7 +375,7 @@ public actor JobhuntServer {
                 duplicate: result.isDuplicate
             ))
         } catch {
-            return HTTPResponse.error(error.localizedDescription)
+            return HTTPResponse.error(safeServerError(error, context: "handleCapture"), code: 500)
         }
     }
 
@@ -399,7 +399,7 @@ public actor JobhuntServer {
             )
             return HTTPResponse.ok(SiteReviewResponse(isOK: true, siteReviewID: siteReviewID))
         } catch {
-            return HTTPResponse.error(error.localizedDescription)
+            return HTTPResponse.error(safeServerError(error, context: "handleSiteReview"), code: 500)
         }
     }
 
@@ -417,7 +417,7 @@ public actor JobhuntServer {
                 return HTTPResponse.error("not found", code: 404)
             }
         } catch {
-            return HTTPResponse.error(error.localizedDescription, code: 500)
+            return HTTPResponse.error(safeServerError(error, context: "handleJobByURL"), code: 500)
         }
     }
 

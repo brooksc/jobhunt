@@ -250,7 +250,7 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
     func testReturnsErrorOnNetworkFailure() async throws {
         let failingSession = FailingURLProtocol.makeSession()
         let result = await AvailabilityChecker.checkURL(
-            XCTUnwrap(URL(string: "https://example.com/job/999")),
+            try XCTUnwrap(URL(string: "https://example.com/job/999")),
             title: "Some Job",
             session: failingSession
         )

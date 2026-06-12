@@ -362,7 +362,7 @@ final class MCPTokenManagerTests: XCTestCase {
 
     func testGenerateAndWriteSetsCorrectPermissions() throws {
         // Use MCPTokenManager directly and verify permissions
-        let token = MCPTokenManager.generateAndWrite()
+        let token = try MCPTokenManager.generateAndWrite()
         XCTAssertFalse(token.isEmpty)
         let attrs = try FileManager.default.attributesOfItem(atPath: MCPTokenManager.tokenURL.path)
         let perms = attrs[.posixPermissions] as? Int ?? 0

@@ -3,9 +3,10 @@ id: TASK-213
 title: >-
   Dashboard: Move repeated full-dataset projections into bounded or memoized
   metrics
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 00:41'
+updated_date: '2026-06-12 02:00'
 labels:
   - performance
   - dashboard

@@ -1,9 +1,10 @@
 ---
 id: TASK-269
 title: 'LLM: Make extracted typed fields reflect latest extraction result'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 03:26'
+updated_date: '2026-06-12 03:30'
 labels:
   - audit
   - llm

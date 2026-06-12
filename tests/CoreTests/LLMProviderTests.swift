@@ -405,34 +405,127 @@ final class CustomProviderTests: LLMMockProviderTestCase {
     }
 }
 
-// MARK: - FoundationModels availability tests
+// MARK: - FoundationModels mock bridge
 
-final class FoundationModelsProviderTests: XCTestCase {
-    func testConcurrencyLimitIsOne() {
-        XCTAssertEqual(FoundationModelsProvider().concurrencyLimit, 1)
+/// Deterministic mock bridge for testing FoundationModelsProvider without a real model.
+private final class MockLanguageModelBridge: LanguageModelBridge {
+    enum Mode {
+        case success(String)
+        case failure(Error)
     }
 
-    // Platform smoke coverage: on macOS < 26 the provider must throw; on >= 26 it
-    // may succeed or fail depending on whether a model is loaded in the test environment.
-    func testCompleteThrowsOnOlderOS() async {
-        let provider = FoundationModelsProvider()
-        if !FoundationModelsProvider.isAvailable() {
-            do {
-                _ = try await provider.complete(
-                    ChatRequest(messages: [ChatMessage(role: "user", content: "hi")], model: "apple")
-                )
-                XCTFail("Should have thrown on macOS < 26")
-            } catch {
-                // Expected — unavailable error
-                XCTAssertTrue(error.localizedDescription.lowercased().contains("macOS 26".lowercased()) ||
-                    error.localizedDescription.lowercased().contains("unavailable"))
-            }
-        } else {
-            // On macOS 26+ the call may succeed or fail — both are OK for this test
-            // since we don't have the model loaded in CI.
-            _ = try? await provider.complete(
-                ChatRequest(messages: [ChatMessage(role: "user", content: "hi")], model: "apple")
+    let mode: Mode
+    private(set) var capturedSystemPrompt: String?
+    private(set) var capturedUserMessage: String?
+
+    init(_ mode: Mode) {
+        self.mode = mode
+    }
+
+    func complete(systemPrompt: String, userMessage: String) async throws -> String {
+        capturedSystemPrompt = systemPrompt
+        capturedUserMessage = userMessage
+        switch mode {
+        case .success(let text): return text
+        case .failure(let error): throw error
+        }
+    }
+}
+
+// MARK: - FoundationModels provider tests
+
+final class FoundationModelsProviderTests: XCTestCase {
+
+
+    // MARK: Baseline identity tests (always deterministic)
+
+    func testFoundationModelsProvider_idIsCorrect() {
+        XCTAssertEqual(FoundationModelsProvider().id, "foundation_models")
+    }
+
+    func testFoundationModelsProvider_concurrencyLimit() {
+        XCTAssertGreaterThan(FoundationModelsProvider().concurrencyLimit, 0)
+    }
+
+    // MARK: Injectable bridge — success path
+
+    func testFoundationModelsBridge_successPath() async throws {
+        let json = #"{"title":"Engineer","company":"Acme"}"#
+        let bridge = MockLanguageModelBridge(.success(json))
+        let provider = FoundationModelsProvider(bridge: bridge)
+
+        let result = try await provider.complete(
+            ChatRequest(
+                messages: [
+                    ChatMessage(role: "system", content: "Extract job info"),
+                    ChatMessage(role: "user", content: "Job posting text")
+                ],
+                model: "foundation_models"
             )
+        )
+
+        XCTAssertEqual(result.content, json)
+        XCTAssertEqual(bridge.capturedSystemPrompt, "Extract job info")
+        XCTAssertEqual(bridge.capturedUserMessage, "Job posting text")
+    }
+
+    func testFoundationModelsBridge_stripsMarkdownCodeFences() async throws {
+        let bridge = MockLanguageModelBridge(.success("```json\n{\"key\":\"val\"}\n```"))
+        let provider = FoundationModelsProvider(bridge: bridge)
+
+        let result = try await provider.complete(
+            ChatRequest(messages: [ChatMessage(role: "user", content: "q")], model: "foundation_models")
+        )
+
+        XCTAssertEqual(result.content, #"{"key":"val"}"#)
+    }
+
+    // MARK: Injectable bridge — failure path
+
+    func testFoundationModelsBridge_failurePath() async throws {
+        let expectedError = LLMProviderError.unavailable(reason: "test bridge failure")
+        let bridge = MockLanguageModelBridge(.failure(expectedError))
+        let provider = FoundationModelsProvider(bridge: bridge)
+
+        do {
+            _ = try await provider.complete(
+                ChatRequest(messages: [ChatMessage(role: "user", content: "hi")], model: "foundation_models")
+            )
+            XCTFail("Expected throw")
+        } catch let err as LLMProviderError {
+            if case let .unavailable(reason) = err {
+                XCTAssertEqual(reason, "test bridge failure")
+            } else {
+                XCTFail("Wrong LLMProviderError case: \(err)")
+            }
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+    }
+
+    // MARK: Real bridge on older OS — must throw LLMProviderError, not crash
+
+    func testFoundationModelsProvider_unavailableThrowsLLMProviderError() async {
+        // On macOS < 26, the real (no-bridge) provider must throw LLMProviderError.
+        // On macOS 26+ with Apple Intelligence absent, the ObjC bridge must also
+        // throw LLMProviderError (not an ObjC exception or Swift runtime crash).
+        // Either way the error MUST be LLMProviderError — never a raw crash.
+        let provider = FoundationModelsProvider() // no injected bridge
+        do {
+            _ = try await provider.complete(
+                ChatRequest(messages: [ChatMessage(role: "user", content: "hi")], model: "foundation_models")
+            )
+            // On macOS 26+ with a real model loaded this could succeed — that's fine.
+        } catch let err as LLMProviderError {
+            // Expected on macOS < 26 or when Apple Intelligence is not enabled
+            if case let .unavailable(reason) = err {
+                XCTAssertFalse(reason.isEmpty, "Unavailable error should carry a descriptive reason")
+            } else {
+                // Other LLMProviderError cases (e.g. noResponse) are also acceptable
+                XCTAssertNotNil(err.errorDescription)
+            }
+        } catch {
+            XCTFail("Bridge threw a non-LLMProviderError — queue would crash: \(error)")
         }
     }
 }

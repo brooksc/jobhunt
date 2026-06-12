@@ -1,5 +1,16 @@
 import Foundation
 
+// MARK: - LanguageModelBridge protocol
+
+/// Abstracts the Apple FoundationModels API so callers can be tested
+/// without a real model session. The real implementation lives in
+/// `RealLanguageModelBridge`; tests inject a mock.
+public protocol LanguageModelBridge: Sendable {
+    func complete(systemPrompt: String, userMessage: String) async throws -> String
+}
+
+// MARK: - FoundationModelsProvider
+
 /// Apple Foundation Models provider — calls LanguageModelSession in-process.
 /// Requires macOS 26+. Concurrency limit 1 (single on-device model).
 /// Replaces the Node subprocess bridge (server/apple-foundation.js + native/foundation-models/).
@@ -8,13 +19,33 @@ public final class FoundationModelsProvider: LLMProvider, @unchecked Sendable {
     public let id = "foundation_models"
     public let concurrencyLimit = 1
 
-    public init() {}
+    private let bridge: LanguageModelBridge?
+
+    /// - Parameter bridge: Override for testing. Pass `nil` (default) to use the
+    ///   real `RealLanguageModelBridge` on macOS 26+, or surface an unavailable error.
+    public init(bridge: LanguageModelBridge? = nil) {
+        self.bridge = bridge
+    }
 
     public func complete(_ request: ChatRequest) async throws -> ChatResponse {
+        let systemContent = request.messages.first(where: { $0.role == "system" })?.content
+            ?? "You are a helpful assistant. Follow the user's instructions precisely."
+        let userMsgs = request.messages.filter { $0.role == "user" }
+        let prompt = userMsgs.map(\.content).joined(separator: "\n")
+
+        // Use an injected bridge if provided (test path), otherwise fall through
+        // to the real implementation (which requires macOS 26+).
+        if let bridge {
+            let result = try await bridge.complete(systemPrompt: systemContent, userMessage: prompt)
+            return makeResponse(rawResult: result)
+        }
+
         // FoundationModels framework requires macOS 26+.
         // On older systems we surface a clear error rather than silently failing.
         if #available(macOS 26.0, *) {
-            return try await runOnDevice(request)
+            let realBridge = RealLanguageModelBridge()
+            let result = try await realBridge.complete(systemPrompt: systemContent, userMessage: prompt)
+            return makeResponse(rawResult: result)
         } else {
             throw LLMProviderError.unavailable(
                 reason: "Apple Foundation Models requires macOS 26 (Tahoe) or later"
@@ -30,27 +61,11 @@ public final class FoundationModelsProvider: LLMProvider, @unchecked Sendable {
         return false
     }
 
-    // MARK: - Private
+    // MARK: - Private helpers
 
-    /// Performs the actual LanguageModelSession call on macOS 26+.
-    /// Compiled only when targeting macOS 26+.
-    @available(macOS 26.0, *)
-    private func runOnDevice(_ request: ChatRequest) async throws -> ChatResponse {
-        let systemContent = request.messages.first(where: { $0.role == "system" })?.content
-            ?? "You are a helpful assistant. Follow the user's instructions precisely."
-        let userMsgs = request.messages.filter { $0.role == "user" }
-        let prompt = userMsgs.map(\.content).joined(separator: "\n")
-
-        // Use the FoundationModels framework (macOS 26+).
-        // Dynamic symbol lookup avoids a hard compile-time framework dependency
-        // while still calling the real API at runtime on macOS 26+.
-        let result = try await FoundationModelsBridge.respond(
-            to: prompt,
-            instructions: systemContent
-        )
-
+    private func makeResponse(rawResult: String) -> ChatResponse {
         // Strip markdown code fences the model may wrap around JSON output
-        let content = result
+        let content = rawResult
             .replacingOccurrences(of: "^```(?:json)?\\s*", with: "", options: .regularExpression)
             .replacingOccurrences(of: "\\s*```$", with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -63,10 +78,32 @@ public final class FoundationModelsProvider: LLMProvider, @unchecked Sendable {
     }
 }
 
+// MARK: - RealLanguageModelBridge
+
+/// Real implementation that calls Apple's LanguageModelSession via ObjC runtime.
+/// Compiled for all targets but only functional on macOS 26+ (the #available guard
+/// in FoundationModelsProvider.complete ensures we only instantiate this on 26+).
+public struct RealLanguageModelBridge: LanguageModelBridge {
+    public init() {}
+
+    public func complete(systemPrompt: String, userMessage: String) async throws -> String {
+        if #available(macOS 26.0, *) {
+            return try await FoundationModelsBridge.respond(
+                to: userMessage,
+                instructions: systemPrompt
+            )
+        } else {
+            throw LLMProviderError.unavailable(
+                reason: "Apple Foundation Models requires macOS 26 (Tahoe) or later"
+            )
+        }
+    }
+}
+
 // MARK: - FoundationModelsBridge
 
 /// Thin compile-time bridge to LanguageModelSession.
-/// The #available guard in FoundationModelsProvider.runOnDevice ensures this
+/// The #available guard in RealLanguageModelBridge.complete ensures this
 /// only runs on macOS 26+. The code here compiles against the 26 SDK.
 @available(macOS 26.0, *)
 enum FoundationModelsBridge {
@@ -87,30 +124,27 @@ enum FoundationModelsBridge {
             throw LLMProviderError.unavailable(reason: "LanguageModelSession does not respond to initWithInstructions:")
         }
 
-        // Allocate and initialize the session object
-        let sessionObj = sessionClass.init()
-        guard sessionObj.responds(to: initSel) else {
-            throw LLMProviderError.unavailable(reason: "Failed to create LanguageModelSession")
+        // Allocate and initialize the session object with instructions.
+        // sessionClass.init() allocates an uninitialized instance (equivalent to alloc);
+        // we then call initWithInstructions: to produce the real, initialized object.
+        let allocatedObj = sessionClass.init()
+        guard let initializedSession = allocatedObj.perform(initSel, with: instructions)?.takeUnretainedValue() as AnyObject? else {
+            throw LLMProviderError.unavailable(reason: "Failed to initialize LanguageModelSession with instructions")
         }
 
-        // We need to pass instructions: use a simpler approach — NSInvocation is not
-        // available in Swift. Use unmanaged perform:withObject: instead.
-        // For the macOS 26 target this will link directly; the guard above ensures
-        // we only reach here on 26+.
-        let initializedSession = sessionObj.perform(initSel, with: instructions)?.takeUnretainedValue() as AnyObject
-
-        // Call respond(to:) — this is async in the real API, so we use a callback shim
+        // Verify that the respond selector exists before calling it.
+        // This catches cases where Apple updated the API method signature.
         let respondSel = NSSelectorFromString("respondTo:completionHandler:")
         guard initializedSession.responds(to: respondSel) else {
             throw LLMProviderError
-                .unavailable(reason: "LanguageModelSession does not respond to respondTo:completionHandler:")
+                .unavailable(reason: "LanguageModelSession does not respond to respondTo:completionHandler: — API may have changed")
         }
 
         return try await withCheckedThrowingContinuation { continuation in
             typealias CompletionBlock = @convention(block) (AnyObject?, NSError?) -> Void
             let block: CompletionBlock = { result, error in
                 if let error {
-                    continuation.resume(throwing: error)
+                    continuation.resume(throwing: LLMProviderError.unavailable(reason: error.localizedDescription))
                 } else if let responseObj = result {
                     let text = (responseObj.value(forKey: "content") as? String) ?? ""
                     continuation.resume(returning: text)
@@ -118,7 +152,7 @@ enum FoundationModelsBridge {
                     continuation.resume(returning: "")
                 }
             }
-            initializedSession.perform(respondSel, with: prompt, with: block)
+            _ = initializedSession.perform(respondSel, with: prompt, with: block)
         }
     }
 }

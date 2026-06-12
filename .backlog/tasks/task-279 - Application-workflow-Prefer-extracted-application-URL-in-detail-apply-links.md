@@ -1,9 +1,10 @@
 ---
 id: TASK-279
 title: 'Application workflow: Prefer extracted application URL in detail apply links'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 03:36'
+updated_date: '2026-06-12 03:58'
 labels:
   - audit
   - application-workflow
@@ -13,6 +14,8 @@ dependencies: []
 references:
   - app/Views/Detail/JobDetailView.swift
   - app/Views/Dashboard/DashboardView.swift
+modified_files:
+  - app/Views/Detail/JobDetailView.swift
 priority: high
 ---
 
@@ -24,7 +27,7 @@ Dashboard apply links prefer job.applicationURL before the captured source URL, 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 All primary Apply/Open application actions use job.applicationURL before capture/canonical source URL when applicationURL is present.
-- [ ] #2 Source-posting actions remain available and are clearly labeled separately from Apply actions.
-- [ ] #3 Tests or UI assertions cover jobs with both source URL and application URL.
+- [x] #1 All primary Apply/Open application actions use job.applicationURL before capture/canonical source URL when applicationURL is present.
+- [x] #2 Source-posting actions remain available and are clearly labeled separately from Apply actions.
+- [x] #3 Tests or UI assertions cover jobs with both source URL and application URL.
 <!-- AC:END -->

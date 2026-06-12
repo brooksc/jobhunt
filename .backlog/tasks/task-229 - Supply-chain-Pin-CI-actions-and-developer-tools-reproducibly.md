@@ -1,9 +1,10 @@
 ---
 id: TASK-229
 title: 'Supply chain: Pin CI actions and developer tools reproducibly'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 01:42'
+updated_date: '2026-06-12 02:16'
 labels:
   - supply-chain
   - ci

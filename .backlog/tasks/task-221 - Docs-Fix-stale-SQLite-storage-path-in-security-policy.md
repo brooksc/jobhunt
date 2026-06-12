@@ -1,9 +1,10 @@
 ---
 id: TASK-221
 title: 'Docs: Fix stale SQLite storage path in security policy'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 01:06'
+updated_date: '2026-06-12 02:00'
 labels:
   - docs
   - security

@@ -1,9 +1,10 @@
 ---
 id: TASK-270
 title: 'LLM: Enforce allowed remote modes outside the prompt'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 03:26'
+updated_date: '2026-06-12 03:30'
 labels:
   - audit
   - llm

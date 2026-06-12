@@ -1,9 +1,10 @@
 ---
 id: TASK-274
 title: 'Fit scoring: Persist per-resume failure state'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 03:33'
+updated_date: '2026-06-12 03:44'
 labels:
   - audit
   - fit-scoring

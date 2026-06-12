@@ -1,9 +1,10 @@
 ---
 id: TASK-337
 title: 'Privacy docs: Align Greenhouse external request disclosure across surfaces'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:26'
+updated_date: '2026-06-12 20:58'
 labels:
   - audit
   - privacy

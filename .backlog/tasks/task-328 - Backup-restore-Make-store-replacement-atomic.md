@@ -1,9 +1,10 @@
 ---
 id: TASK-328
 title: 'Backup restore: Make store replacement atomic'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:05'
+updated_date: '2026-06-12 20:58'
 labels:
   - audit
   - backup

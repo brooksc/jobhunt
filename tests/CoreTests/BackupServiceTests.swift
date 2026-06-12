@@ -1,7 +1,4 @@
-<<<<<<< HEAD
-=======
 import SQLite3
->>>>>>> fc2bf70 (Implement TASK-327/328/329/330/331/333: backup/restore hardening — companion files, atomic replace, blocking pre-restore backup, forced relaunch, schema validation)
 import SwiftData
 import XCTest
 @testable import JobhuntCore
@@ -131,8 +128,6 @@ final class BackupServiceTests: XCTestCase {
         XCTAssertEqual(jobs.first?.capture?.rawHash, "h1", "Capture-Job relationship must survive backup/restore")
         XCTAssertEqual(events.first?.job?.jobNumber, 1, "Event-Job relationship must survive backup/restore")
     }
-<<<<<<< HEAD
-=======
 
     // MARK: - TASK-333 Regression tests
 
@@ -236,5 +231,4 @@ final class BackupServiceTests: XCTestCase {
 
         XCTAssertTrue(BackupService.isValidSQLite(at: backupURL), "Backup produced by BackupService must be valid")
     }
->>>>>>> fc2bf70 (Implement TASK-327/328/329/330/331/333: backup/restore hardening — companion files, atomic replace, blocking pre-restore backup, forced relaunch, schema validation)
 }

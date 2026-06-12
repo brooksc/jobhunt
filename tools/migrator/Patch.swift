@@ -68,7 +68,10 @@ func patch(src: DBHandle, context: ModelContext) -> PatchSummary {
             let jobCompany = row.str("company") ?? "?"
             // Save first so the job gets a persistent ID before linking relationships
             do { try context.save() } catch { fputs("Error saving new job: \(error)\n", stderr) }
-            if let capId, let cap = captureMap[capId] { j.capture = cap }
+            if let capId, let cap = captureMap[capId] {
+                j.capture = cap
+                j.capturedAtDenormalized = cap.capturedAt
+            }
             s.jobsInserted += 1
             print("  job \(jobLabel) (\(jobTitle) @ \(jobCompany)) → inserted")
         }

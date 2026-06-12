@@ -210,14 +210,15 @@ let appTarget = Target.target(
 
 // MARK: - Test targets
 
-// Migration.swift and SQLiteHelpers.swift are compiled directly into CoreTests because
-// JobhuntMigrator is a commandLineTool and cannot be linked as a dependency.
+// Migration.swift, Patch.swift, and SQLiteHelpers.swift are compiled directly into CoreTests
+// because JobhuntMigrator is a commandLineTool and cannot be linked as a dependency.
 let coreTestsTarget = testTarget(
     name: "CoreTests",
     bundleSuffix: "CoreTests",
     sources: [
         "tests/CoreTests/**/*.swift",
         "tools/migrator/Migration.swift",
+        "tools/migrator/Patch.swift",
         "tools/migrator/SQLiteHelpers.swift",
     ],
     deps: [.target(name: "JobhuntCore")]

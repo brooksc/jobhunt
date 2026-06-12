@@ -387,6 +387,123 @@ final class MigratorTests: XCTestCase {
                        "Store should not grow after a skipped second run")
         XCTAssertEqual(try context.fetch(FetchDescriptor<Job>()).count, 1)
     }
+
+    /// migrate() must set capturedAtDenormalized from the capture's capturedAt,
+    /// not from the job's createdAt (which may differ).
+    func testMigration_setsCapturedAtDenormalized() throws {
+        // Use distinct dates so we can verify the right field is used.
+        let capturedAt = "2024-03-15T10:00:00Z"
+        let createdAt  = "2024-01-01T00:00:00Z"
+
+        let dbPath = try makeTempDB { db in
+            createMinimalSchema(db)
+            exec(db, """
+                INSERT INTO captures (id, url, page_title, raw_hash, captured_at, created_at)
+                VALUES ('cap1', 'https://example.com/jobs/1', 'Engineer', 'hash_xyz',
+                        '\(capturedAt)', '\(createdAt)')
+            """)
+            exec(db, """
+                INSERT INTO jobs (id, job_number, capture_id, status, manual_overrides,
+                                  extraction_status, fit_status, unread, created_at, updated_at)
+                VALUES ('job1', 1, 'cap1', 'saved', '[]', 'pending', 'none', 0,
+                        '\(createdAt)', '\(createdAt)')
+            """)
+        }
+        defer { try? FileManager.default.removeItem(atPath: dbPath) }
+
+        var srcDB: OpaquePointer?
+        XCTAssertEqual(sqlite3_open_v2(dbPath, &srcDB, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil), SQLITE_OK)
+        guard let srcDB else { return XCTFail("Could not open source DB") }
+        defer { sqlite3_close(srcDB) }
+
+        let (context, outPath) = try makeOutputContext()
+        defer { try? FileManager.default.removeItem(atPath: outPath) }
+
+        let summary = migrate(src: srcDB, context: context)
+        try context.save()
+
+        XCTAssertEqual(summary.jobs, 1)
+        let job = try XCTUnwrap(context.fetch(FetchDescriptor<Job>()).first)
+
+        // capturedAtDenormalized must be set to the capture's capturedAt date.
+        let denormalized = try XCTUnwrap(job.capturedAtDenormalized,
+                                         "capturedAtDenormalized must not be nil after migration")
+
+        // Parse the expected dates using the same ISO-8601 UTC formatter the migrator uses.
+        let fmt = ISO8601DateFormatter()
+        let expectedCapturedAt = try XCTUnwrap(fmt.date(from: capturedAt))
+        let expectedCreatedAt  = try XCTUnwrap(fmt.date(from: createdAt))
+
+        XCTAssertEqual(denormalized, expectedCapturedAt,
+                       "capturedAtDenormalized should equal capture.capturedAt")
+        XCTAssertNotEqual(denormalized, expectedCreatedAt,
+                          "capturedAtDenormalized must not equal job.createdAt (different dates)")
+    }
+
+    /// patch() must also set capturedAtDenormalized from the capture's capturedAt.
+    func testPatch_setsCapturedAtDenormalized() throws {
+        // Use distinct dates so we can verify the right field is used.
+        let capturedAt = "2024-03-15T10:00:00Z"
+        let createdAt  = "2024-01-01T00:00:00Z"
+
+        let dbPath = try makeTempDB { db in
+            createMinimalSchema(db)
+            exec(db, """
+                INSERT INTO captures (id, url, page_title, raw_hash, captured_at, created_at)
+                VALUES ('cap1', 'https://example.com/jobs/1', 'Engineer', 'hash_xyz',
+                        '\(capturedAt)', '\(createdAt)')
+            """)
+            exec(db, """
+                INSERT INTO jobs (id, job_number, capture_id, status, manual_overrides,
+                                  extraction_status, fit_status, unread, created_at, updated_at)
+                VALUES ('job1', 1, 'cap1', 'saved', '[]', 'pending', 'none', 0,
+                        '\(createdAt)', '\(createdAt)')
+            """)
+        }
+        defer { try? FileManager.default.removeItem(atPath: dbPath) }
+
+        var srcDB: OpaquePointer?
+        XCTAssertEqual(sqlite3_open_v2(dbPath, &srcDB, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nil), SQLITE_OK)
+        guard let srcDB else { return XCTFail("Could not open source DB") }
+        defer { sqlite3_close(srcDB) }
+
+        let (context, outPath) = try makeOutputContext()
+        defer { try? FileManager.default.removeItem(atPath: outPath) }
+
+        // Pre-populate the capture (patch() expects captures to already be in SwiftData).
+        let fmt = ISO8601DateFormatter()
+        let capturedAtDate = try XCTUnwrap(fmt.date(from: capturedAt))
+        let createdAtDate  = try XCTUnwrap(fmt.date(from: createdAt))
+        let cap = Capture(
+            id: "cap1",
+            url: "https://example.com/jobs/1",
+            canonicalURL: nil,
+            pageTitle: "Engineer",
+            selectedText: nil,
+            visibleText: nil,
+            cleanedDescription: nil,
+            structuredDataJSON: nil,
+            userNote: nil,
+            rawHash: "hash_xyz",
+            cleanedHash: nil,
+            capturedAt: capturedAtDate,
+            createdAt: createdAtDate
+        )
+        context.insert(cap)
+        try context.save()
+
+        let summary = patch(src: srcDB, context: context)
+        XCTAssertEqual(summary.jobsInserted, 1)
+
+        let job = try XCTUnwrap(context.fetch(FetchDescriptor<Job>()).first)
+
+        let denormalized = try XCTUnwrap(job.capturedAtDenormalized,
+                                         "capturedAtDenormalized must not be nil after patch")
+        XCTAssertEqual(denormalized, capturedAtDate,
+                       "capturedAtDenormalized should equal capture.capturedAt")
+        XCTAssertNotEqual(denormalized, createdAtDate,
+                          "capturedAtDenormalized must not equal job.createdAt (different dates)")
+    }
 }
 
 // swiftlint:enable file_length

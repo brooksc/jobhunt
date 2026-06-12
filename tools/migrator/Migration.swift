@@ -48,8 +48,10 @@ func migrate(src: DBHandle, context: ModelContext) -> MigrationSummary {
     var s = MigrationSummary()
 
     // Guard: refuse to run on a non-empty store to prevent duplicate records.
-    // Capture.rawHash and Job.id have no @Attribute(.unique) DB constraint, so a second
-    // migration run would silently create duplicate rows rather than failing safely.
+    // Capture.rawHash IS marked @Attribute(.unique) — a second migration run would
+    // conflict on duplicate raw hashes (SwiftData silently merges or throws).
+    // Job.id is NOT marked @Attribute(.unique) — without this guard a second run
+    // would silently create duplicate job rows rather than failing safely.
     let existingCaptures = (try? context.fetch(FetchDescriptor<Capture>())) ?? []
     if !existingCaptures.isEmpty {
         s.skippedNonEmpty = true
@@ -125,6 +127,7 @@ func migrate(src: DBHandle, context: ModelContext) -> MigrationSummary {
             )
             if let capId = row.str("capture_id"), let cap = captureMap[capId] {
                 j.capture = cap
+                j.capturedAtDenormalized = cap.capturedAt
             }
             context.insert(j)
             s.jobs += 1

@@ -1,9 +1,10 @@
 ---
 id: TASK-234
 title: 'Diagnostics: Implement or remove advertised LLM debug logging'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 01:50'
+updated_date: '2026-06-12 02:08'
 labels:
   - diagnostics
   - docs

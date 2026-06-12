@@ -1,9 +1,10 @@
 ---
 id: TASK-280
 title: 'Application workflow: Create timeline events for status changes'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 03:36'
+updated_date: '2026-06-12 03:58'
 labels:
   - audit
   - application-workflow
@@ -14,6 +15,9 @@ references:
   - core/Services/JobService.swift
   - core/Models/JobEvent.swift
   - app/Views/Detail/JobDetailView.swift
+modified_files:
+  - core/Services/JobService.swift
+  - tests/CoreTests/JobServiceTests.swift
 priority: high
 ---
 
@@ -25,7 +29,7 @@ setStatus and setStatusBulk update the job status without writing JobEvent recor
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Single status changes create timeline events with old and new status context.
-- [ ] #2 Bulk status changes create appropriate events without excessive duplicate writes.
-- [ ] #3 Tests cover status changes creating visible timeline/history records.
+- [x] #1 Single status changes create timeline events with old and new status context.
+- [x] #2 Bulk status changes create appropriate events without excessive duplicate writes.
+- [x] #3 Tests cover status changes creating visible timeline/history records.
 <!-- AC:END -->

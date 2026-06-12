@@ -1,9 +1,10 @@
 ---
 id: TASK-299
 title: 'Availability: Record audit context when auto-expiring jobs'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 05:01'
+updated_date: '2026-06-12 05:47'
 labels:
   - audit
   - availability

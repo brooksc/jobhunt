@@ -1,9 +1,10 @@
 ---
 id: TASK-231
 title: 'Supply chain: Add third-party notice handling for vendored Readability code'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 01:43'
+updated_date: '2026-06-12 02:16'
 labels:
   - supply-chain
   - license

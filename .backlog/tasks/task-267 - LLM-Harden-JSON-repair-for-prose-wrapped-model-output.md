@@ -1,9 +1,10 @@
 ---
 id: TASK-267
 title: 'LLM: Harden JSON repair for prose-wrapped model output'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 03:25'
+updated_date: '2026-06-12 03:30'
 labels:
   - audit
   - llm

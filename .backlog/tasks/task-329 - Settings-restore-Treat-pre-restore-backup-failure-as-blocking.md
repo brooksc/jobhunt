@@ -1,9 +1,10 @@
 ---
 id: TASK-329
 title: 'Settings restore: Treat pre-restore backup failure as blocking'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:05'
+updated_date: '2026-06-12 20:58'
 labels:
   - audit
   - backup

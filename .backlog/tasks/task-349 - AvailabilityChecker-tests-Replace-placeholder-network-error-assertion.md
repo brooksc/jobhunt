@@ -1,9 +1,10 @@
 ---
 id: TASK-349
 title: 'AvailabilityChecker tests: Replace placeholder network-error assertion'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:40'
+updated_date: '2026-06-12 20:58'
 labels:
   - audit
   - tests

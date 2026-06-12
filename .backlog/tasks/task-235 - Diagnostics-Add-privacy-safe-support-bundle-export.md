@@ -1,9 +1,10 @@
 ---
 id: TASK-235
 title: 'Diagnostics: Add privacy-safe support bundle export'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 01:50'
+updated_date: '2026-06-12 02:16'
 labels:
   - diagnostics
   - support

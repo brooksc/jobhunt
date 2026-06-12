@@ -2,7 +2,7 @@ import Foundation
 
 struct HTTPResponse {
     let statusCode: Int
-    let headers: [String: String]
+    var headers: [String: String]
     let body: Data
 
     static func ok(_ value: some Encodable) -> HTTPResponse {
@@ -29,17 +29,17 @@ struct HTTPResponse {
         HTTPResponse(statusCode: 204, headers: [:], body: Data())
     }
 
-    /// Add CORS headers for the given chrome-extension:// origin (used on both
-    /// preflight and actual responses). `isPreflight` also adds PNA header.
-    func withCORS(origin: String, isPreflight: Bool = false) -> HTTPResponse {
-        var h = headers
-        h["Access-Control-Allow-Origin"] = origin
-        h["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
-        h["Access-Control-Allow-Headers"] = "Content-Type"
+    /// Returns a copy of this response with CORS headers set for the given extension origin.
+    /// Only call this for origins that have already been validated by `isAllowedExtensionOrigin`.
+    func withCORS(origin: String, isPreflight: Bool) -> HTTPResponse {
+        var updated = self
+        updated.headers["Access-Control-Allow-Origin"] = origin
+        updated.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+        updated.headers["Access-Control-Allow-Headers"] = "Content-Type,X-MCP-Token"
         if isPreflight {
-            h["Access-Control-Allow-Private-Network"] = "true"
+            updated.headers["Access-Control-Allow-Private-Network"] = "true"
         }
-        return HTTPResponse(statusCode: statusCode, headers: h, body: body)
+        return updated
     }
 
     func toHTTPBytes() -> Data {
@@ -61,8 +61,12 @@ struct HTTPResponse {
         case 201: "Created"
         case 204: "No Content"
         case 400: "Bad Request"
+        case 401: "Unauthorized"
+        case 403: "Forbidden"
         case 404: "Not Found"
+        case 413: "Request Entity Too Large"
         case 500: "Internal Server Error"
+        case 503: "Service Unavailable"
         default: "Unknown"
         }
     }

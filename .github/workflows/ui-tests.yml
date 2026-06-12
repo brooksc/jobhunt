@@ -1,0 +1,41 @@
+name: UI Tests (Scheduled)
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'  # Monday 8am UTC
+  workflow_dispatch:      # Allow manual trigger
+
+jobs:
+  ui-tests:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tuist
+        run: curl -Ls https://install.tuist.io | bash
+
+      - name: Install dependencies
+        run: tuist install || true
+
+      - name: Generate project
+        run: tuist generate --no-open
+
+      - name: Run AppUITests
+        run: |
+          nice xcodebuild test \
+            -project Jobhunt.xcodeproj \
+            -scheme Jobhunt-DMG \
+            -destination 'platform=macOS' \
+            -only-testing AppUITests \
+            -resultBundlePath build/UITestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tail -50
+        continue-on-error: true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-results
+          path: build/UITestResults.xcresult
+          retention-days: 7

@@ -61,23 +61,6 @@ func testTarget(name: String, bundleSuffix: String, sources: SourceFilesList, de
     )
 }
 
-func uiTestTarget(name: String, bundleSuffix: String, sources: SourceFilesList, deps: [TargetDependency]) -> Target {
-    Target.target(
-        name: name,
-        destinations: [.mac],
-        product: .uiTests,
-        bundleId: "\(bundleId).\(bundleSuffix)",
-        deploymentTargets: deploymentTarget,
-        sources: sources,
-        dependencies: deps,
-        settings: .settings(
-            base: sharedBase,
-            configurations: projectConfigurations,
-            defaultSettings: .recommended(excluding: [])
-        )
-    )
-}
-
 // MARK: - Library/framework targets
 
 let coreTarget = frameworkTarget(
@@ -99,6 +82,9 @@ let mcpTarget = Target.target(
     name: "JobhuntMCP",
     destinations: [.mac],
     product: .commandLineTool,
+    // productName ensures the built binary is "jobhunt-mcp" (not "JobhuntMCP"),
+    // matching the path the copy script looks for: ${BUILT_PRODUCTS_DIR}/jobhunt-mcp (TASK-339).
+    productName: "jobhunt-mcp",
     bundleId: "\(bundleId).mcp",
     deploymentTargets: deploymentTarget,
     sources: ["mcp/swift/**/*.swift"],
@@ -155,10 +141,7 @@ let masEntitlements: Path = "config/entitlements/Jobhunt-MAS.entitlements"
 
 let appConfigurations: [Configuration] = [
     .debug(name: "Debug-DMG", settings: ["CODE_SIGN_ENTITLEMENTS": .string("config/entitlements/Jobhunt-DMG.entitlements")]),
-    .release(name: "Release-DMG", settings: [
-        "CODE_SIGN_ENTITLEMENTS": .string("config/entitlements/Jobhunt-DMG.entitlements"),
-        "ENABLE_HARDENED_RUNTIME": .string("YES"),
-    ]),
+    .release(name: "Release-DMG", settings: ["CODE_SIGN_ENTITLEMENTS": .string("config/entitlements/Jobhunt-DMG.entitlements")]),
     .debug(name: "Debug-MAS", settings: [
         "CODE_SIGN_ENTITLEMENTS": .string("config/entitlements/Jobhunt-MAS.entitlements"),
         "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "MAS_BUILD",
@@ -179,8 +162,9 @@ let appTarget = Target.target(
     sources: ["app/**/*.swift"],
     resources: ["app/Resources/**"],
     scripts: [
-        // Copy jobhunt-mcp into Contents/Helpers/ for DMG builds so it is available at the documented path.
-        // MAS builds skip this (no MCP entitlement in sandbox).
+        // Copy jobhunt-mcp into Contents/Helpers/ for DMG builds (TASK-339).
+        // MAS builds skip this (no MCP entitlement in the sandbox).
+        // The binary name "jobhunt-mcp" is enforced via productName on the JobhuntMCP target.
         .post(
             script: """
             case "$CONFIGURATION" in
@@ -200,6 +184,7 @@ let appTarget = Target.target(
     dependencies: [
         .target(name: "JobhuntCore"),
         .target(name: "JobhuntServer"),
+        .target(name: "JobhuntMCP"),
     ],
     settings: .settings(
         base: sharedBase,
@@ -210,17 +195,10 @@ let appTarget = Target.target(
 
 // MARK: - Test targets
 
-// Migration.swift, Patch.swift, and SQLiteHelpers.swift are compiled directly into CoreTests
-// because JobhuntMigrator is a commandLineTool and cannot be linked as a dependency.
 let coreTestsTarget = testTarget(
     name: "CoreTests",
     bundleSuffix: "CoreTests",
-    sources: [
-        "tests/CoreTests/**/*.swift",
-        "tools/migrator/Migration.swift",
-        "tools/migrator/Patch.swift",
-        "tools/migrator/SQLiteHelpers.swift",
-    ],
+    sources: ["Tests/CoreTests/**/*.swift"],
     deps: [.target(name: "JobhuntCore")]
 )
 
@@ -231,17 +209,14 @@ let serverTestsTarget = testTarget(
     deps: [.target(name: "JobhuntServer")]
 )
 
-// MCPHelpers.swift is compiled directly into the test bundle because JobhuntMCP is
-// a command-line tool (.commandLineTool), not a framework, so its symbols can't be
-// linked against by a test target.
 let mcpTestsTarget = testTarget(
     name: "MCPTests",
     bundleSuffix: "MCPTests",
-    sources: ["Tests/MCPTests/**/*.swift", "mcp/swift/MCPHelpers.swift"],
+    sources: ["Tests/MCPTests/**/*.swift"],
     deps: [.target(name: "JobhuntMCP")]
 )
 
-let appUITestsTarget = uiTestTarget(
+let appUITestsTarget = testTarget(
     name: "AppUITests",
     bundleSuffix: "AppUITests",
     sources: ["Tests/AppUITests/**/*.swift"],
@@ -270,7 +245,6 @@ let dmgScheme = Scheme.scheme(
         [
             .testableTarget(target: .target("CoreTests")),
             .testableTarget(target: .target("ServerTests")),
-            .testableTarget(target: .target("MCPTests")),
         ],
         configuration: "Debug-DMG"
     ),

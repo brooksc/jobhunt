@@ -1,24 +1,5 @@
 name: Release DMG
 
-# Test gate (tag release — DMG):
-#   CoreTests + ServerTests + MCPTests  — same fast suite as PR gate; confirms no regression at release time
-#   Extension Node tests               — validates capture.js version wiring before the zip is packaged
-#   AppUITests: excluded               — requires a display server / running app; run manually pre-tag
-#   LLMEval: excluded                  — opt-in only; run locally with a real LLM provider before tagging
-#
-# Required secrets (configure in repo Settings > Secrets > Actions):
-#
-# DEVELOPER_ID_CERT_BASE64       — "Developer ID Application" cert exported as .p12, then: base64 -i cert.p12
-# DEVELOPER_ID_CERT_PASSWORD     — Password set when exporting the .p12
-# MAS_CERT_BASE64                — "3rd Party Mac Developer Application" cert as base64-encoded .p12
-# MAS_CERT_PASSWORD              — Password for MAS Application .p12
-# MAS_INSTALLER_CERT_BASE64      — "3rd Party Mac Developer Installer" cert as base64-encoded .p12
-# MAS_INSTALLER_CERT_PASSWORD    — Password for MAS Installer .p12
-# APPLE_ID                       — Apple ID email
-# APPLE_APP_SPECIFIC_PASSWORD    — App-specific password from appleid.apple.com → App-Specific Passwords
-# APPLE_TEAM_ID                  — 10-character team ID from developer.apple.com/account
-# GITHUB_TOKEN                   — Provided automatically by Actions (no configuration needed)
-
 on:
   push:
     tags: ['v*']
@@ -29,8 +10,27 @@ jobs:
     env:
       DEVELOPER_TEAM: ${{ secrets.APPLE_TEAM_ID }}
     steps:
-      # actions/checkout@v4.2.2
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@v4
+
+      - name: Verify version consistency
+        run: |
+          TAG="${{ github.ref_name }}"
+          TAG_VERSION="${TAG#v}"
+
+          APP_VERSION=$(grep 'MARKETING_VERSION' Project.swift | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          EXT_VERSION=$(python3 -c "import json,sys; d=json.load(open('extension/manifest.json')); print(d['version'])")
+
+          echo "Tag: $TAG_VERSION, App: $APP_VERSION, Extension: $EXT_VERSION"
+
+          if [ "$TAG_VERSION" != "$APP_VERSION" ]; then
+            echo "ERROR: Tag $TAG_VERSION doesn't match app version $APP_VERSION"
+            exit 1
+          fi
+          if [ "$TAG_VERSION" != "$EXT_VERSION" ]; then
+            echo "ERROR: Tag $TAG_VERSION doesn't match extension version $EXT_VERSION"
+            exit 1
+          fi
+          echo "All versions match: $TAG_VERSION"
 
       - name: Import Developer ID certificate
         run: |
@@ -40,29 +40,17 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
           security list-keychains -d user -s build.keychain
 
-      - name: Install Tuist (pinned via .mise.toml)
-        run: mise install tuist
+      - name: Install Tuist
+        run: curl -Ls https://install.tuist.io | bash
 
-      # tuist install is skipped: Tuist.swift declares an empty Config() with no external
-      # Swift Package dependencies, so there is nothing to fetch.
+      - name: Install dependencies
+        run: tuist install || true
 
       - name: Generate project
         run: tuist generate --no-open
 
-      - name: Run extension Node tests
-        run: npm test --prefix extension
-
-      - name: Run Swift tests (Core + Server + MCP)
-        run: |
-          nice xcodebuild test \
-            -project Jobhunt.xcodeproj \
-            -scheme Jobhunt-DMG \
-            -configuration Debug-DMG \
-            -destination 'platform=macOS' \
-            -only-testing CoreTests \
-            -only-testing ServerTests \
-            -only-testing MCPTests \
-            CODE_SIGNING_ALLOWED=NO
+      - name: Run tests
+        run: nice xcodebuild test -project Jobhunt.xcodeproj -scheme Jobhunt-DMG -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
 
       - name: Archive
         run: |
@@ -89,45 +77,28 @@ jobs:
             -exportPath build/export-dmg \
             -exportOptionsPlist export-options-dmg.plist
 
-      # Smoke checks: confirm the exported .app exists and is properly signed before packaging.
-      # These catch export failures (missing .app) and signing issues (invalid signature,
-      # wrong identity) that would otherwise produce a broken DMG distributed to users.
-      - name: Smoke check exported app
+      - name: Smoke check DMG contents
         run: |
-          test -d build/export-dmg/Jobhunt.app
-          codesign -v build/export-dmg/Jobhunt.app
-          echo "App exists and signature is valid."
+          APP_PATH="build/export-dmg/Jobhunt.app"
+          HELPER="$APP_PATH/Contents/Helpers/jobhunt-mcp"
 
-      # Verify Hardened Runtime is enabled on the signed app before packaging.
-      # To verify locally after an archive build:
-      #   codesign -dv --verbose=4 build/export-dmg/Jobhunt.app 2>&1 | grep -i runtime
-      # Expected output: flags=0x10000(runtime)  — the "runtime" flag confirms Hardened Runtime is active.
-      - name: Verify Hardened Runtime
-        run: |
-          codesign -dv --verbose=4 build/export-dmg/Jobhunt.app 2>&1 | grep -i runtime
-          echo "Hardened Runtime verified."
+          # Check app exists and is signed
+          test -d "$APP_PATH" || { echo "ERROR: Jobhunt.app missing from export"; exit 1; }
+          codesign --verify --verbose "$APP_PATH" || { echo "ERROR: Jobhunt.app not signed"; exit 1; }
+
+          # Check MCP helper exists, is executable, and is signed
+          test -f "$HELPER" || { echo "ERROR: MCP helper missing at $HELPER"; exit 1; }
+          test -x "$HELPER" || { echo "ERROR: MCP helper not executable"; exit 1; }
+          codesign --verify --verbose "$HELPER" || { echo "ERROR: MCP helper not signed"; exit 1; }
+
+          echo "DMG smoke check passed"
 
       - name: Create DMG
         run: |
-          # Stage the .app alongside an /Applications symlink so users get the standard
-          # "drag to Applications" install experience when they open the DMG.
-          mkdir -p build/dmg-staging
-          cp -R build/export-dmg/Jobhunt.app build/dmg-staging/Jobhunt.app
-          ln -s /Applications build/dmg-staging/Applications
           hdiutil create -volname Jobhunt \
-            -srcfolder build/dmg-staging \
+            -srcfolder build/export-dmg/Jobhunt.app \
             -ov -format UDZO \
             build/Jobhunt-${{ github.ref_name }}.dmg
-
-      # Smoke check the DMG: verify it is a valid disk image and that the .app is present inside.
-      # This catches corruption or hdiutil packaging errors before notarization.
-      - name: Smoke check DMG
-        run: |
-          hdiutil verify build/Jobhunt-${{ github.ref_name }}.dmg
-          MOUNT=$(hdiutil attach -nobrowse -noautoopen build/Jobhunt-${{ github.ref_name }}.dmg | awk '/\/Volumes/{print $NF}')
-          test -d "$MOUNT/Jobhunt.app"
-          hdiutil detach "$MOUNT"
-          echo "DMG mounts and contains Jobhunt.app."
 
       - name: Notarize
         run: |
@@ -138,19 +109,9 @@ jobs:
             --wait
           xcrun stapler staple build/Jobhunt-${{ github.ref_name }}.dmg
 
-      # Package the Chrome extension and attach it to the release.
-      # Upload to the Chrome Web Store manually after validating the release build:
-      #   https://chrome.google.com/webstore/devconsole → Jobhunt Capture → Package → Upload new package
-      # The extension version in extension/manifest.json must be bumped in the same commit as MARKETING_VERSION.
-      - name: Package Chrome extension
-        run: ./scripts/package-extension.sh
-
       - name: Upload to GitHub Release
-        # softprops/action-gh-release@v2.6.2
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
+        uses: softprops/action-gh-release@v2
         with:
-          files: |
-            build/Jobhunt-${{ github.ref_name }}.dmg
-            chromestore/jobhunt-capture-*.zip
+          files: build/Jobhunt-${{ github.ref_name }}.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,11 +1,4 @@
 name: Release MAS
-
-# Test gate (tag release — MAS):
-#   CoreTests + ServerTests  — MAS scheme intentionally excludes MCPTests (MCP not shipped in sandbox build)
-#   Extension tests: excluded — DMG workflow covers; no extension dependency in MAS flow
-#   AppUITests: excluded      — requires a display server; run manually pre-tag
-#   LLMEval: excluded         — opt-in only; run locally with a real LLM provider before tagging
-
 on:
   push:
     tags: ['v*']
@@ -13,8 +6,26 @@ jobs:
   build-mas:
     runs-on: macos-latest
     steps:
-      # actions/checkout@v4.2.2
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@v4
+      - name: Verify version consistency
+        run: |
+          TAG="${{ github.ref_name }}"
+          TAG_VERSION="${TAG#v}"
+
+          APP_VERSION=$(grep 'MARKETING_VERSION' Project.swift | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          EXT_VERSION=$(python3 -c "import json,sys; d=json.load(open('extension/manifest.json')); print(d['version'])")
+
+          echo "Tag: $TAG_VERSION, App: $APP_VERSION, Extension: $EXT_VERSION"
+
+          if [ "$TAG_VERSION" != "$APP_VERSION" ]; then
+            echo "ERROR: Tag $TAG_VERSION doesn't match app version $APP_VERSION"
+            exit 1
+          fi
+          if [ "$TAG_VERSION" != "$EXT_VERSION" ]; then
+            echo "ERROR: Tag $TAG_VERSION doesn't match extension version $EXT_VERSION"
+            exit 1
+          fi
+          echo "All versions match: $TAG_VERSION"
       - name: Import MAS certificates
         run: |
           echo "${{ secrets.MAS_CERT_BASE64 }}" | base64 --decode > mas.p12
@@ -24,22 +35,14 @@ jobs:
           security import installer.p12 -k build.keychain -P "${{ secrets.MAS_INSTALLER_CERT_PASSWORD }}" -T /usr/bin/productbuild
           security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
           security list-keychains -d user -s build.keychain
-      - name: Install Tuist (pinned via .mise.toml)
-        run: mise install tuist
-      # tuist install is skipped: Tuist.swift declares an empty Config() with no external
-      # Swift Package dependencies, so there is nothing to fetch.
+      - name: Install Tuist
+        run: curl -Ls https://install.tuist.io | bash
+      - name: Install dependencies
+        run: tuist install || true
       - name: Generate project
         run: tuist generate --no-open
-      - name: Run Swift tests (Core + Server)
-        run: |
-          nice xcodebuild test \
-            -project Jobhunt.xcodeproj \
-            -scheme Jobhunt-MAS \
-            -configuration Debug-MAS \
-            -destination 'platform=macOS' \
-            -only-testing CoreTests \
-            -only-testing ServerTests \
-            CODE_SIGNING_ALLOWED=NO
+      - name: Run tests
+        run: nice xcodebuild test -project Jobhunt.xcodeproj -scheme Jobhunt-MAS -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
       - name: Archive (MAS)
         run: |
           nice xcodebuild archive \
@@ -63,9 +66,27 @@ jobs:
             -archivePath build/Jobhunt-MAS.xcarchive \
             -exportPath build/export-mas \
             -exportOptionsPlist export-options-mas.plist
+      - name: Smoke check MAS artifact
+        run: |
+          APP_PATH="build/export-mas/Jobhunt.app"
+          HELPER="$APP_PATH/Contents/Helpers/jobhunt-mcp"
+
+          # App must exist
+          test -d "$APP_PATH" || { echo "ERROR: Jobhunt.app missing from MAS export"; exit 1; }
+
+          # MAS build must NOT include the MCP helper (not allowed in sandbox)
+          if [ -f "$HELPER" ]; then
+            echo "ERROR: MCP helper should not be present in MAS build"
+            exit 1
+          fi
+
+          # Check sandbox entitlement is present
+          ENTITLEMENTS=$(codesign --display --entitlements :- "$APP_PATH" 2>/dev/null || true)
+          echo "$ENTITLEMENTS" | grep -q "app-sandbox" || { echo "ERROR: MAS build missing app-sandbox entitlement"; exit 1; }
+
+          echo "MAS smoke check passed"
       - name: Upload .pkg as artifact
-        # actions/upload-artifact@v4.6.2
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@v4
         with:
           name: Jobhunt-MAS-${{ github.ref_name }}.pkg
           path: build/export-mas/*.pkg

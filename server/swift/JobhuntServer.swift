@@ -27,9 +27,6 @@ private struct CaptureRequest: Decodable {
     let userNote: String?
     let canonicalURL: String?
     let structuredDataJSON: String?
-    // Extension sends structured_data as a JSON array; we serialize it to JSON string if
-    // structured_data_json (legacy string field) is absent.
-    let structuredDataArray: [AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
         case url
@@ -39,48 +36,6 @@ private struct CaptureRequest: Decodable {
         case userNote = "user_note"
         case canonicalURL = "canonical_url"
         case structuredDataJSON = "structured_data_json"
-        case structuredDataArray = "structured_data"
-    }
-
-    /// Returns the best available structured data as a JSON string.
-    /// Prefers `structured_data_json` (legacy); falls back to serializing `structured_data` array.
-    var resolvedStructuredDataJSON: String? {
-        if let s = structuredDataJSON { return s }
-        guard let arr = structuredDataArray, !arr.isEmpty,
-              let data = try? JSONEncoder().encode(arr),
-              let str = String(data: data, encoding: .utf8) else { return nil }
-        return str
-    }
-}
-
-/// Wrapper to decode arbitrary JSON values so `structured_data` (heterogeneous array) round-trips cleanly.
-private struct AnyCodable: Codable {
-    let value: Any
-
-    init(_ value: Any) { self.value = value }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if let v = try? container.decode(Bool.self) { value = v }
-        else if let v = try? container.decode(Int.self) { value = v }
-        else if let v = try? container.decode(Double.self) { value = v }
-        else if let v = try? container.decode(String.self) { value = v }
-        else if let v = try? container.decode([AnyCodable].self) { value = v.map(\.value) }
-        else if let v = try? container.decode([String: AnyCodable].self) { value = v.mapValues(\.value) }
-        else { value = NSNull() }
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch value {
-        case let v as Bool: try container.encode(v)
-        case let v as Int: try container.encode(v)
-        case let v as Double: try container.encode(v)
-        case let v as String: try container.encode(v)
-        case let v as [Any]: try container.encode(v.map { AnyCodable($0) })
-        case let v as [String: Any]: try container.encode(v.mapValues { AnyCodable($0) })
-        default: try container.encodeNil()
-        }
     }
 }
 
@@ -99,30 +54,15 @@ private struct CaptureResponse: Encodable {
 }
 
 private struct SiteReviewRequest: Decodable {
-    // Extension sends: site_url, site_origin, reviewed_at, next_review_at, note, page_title
-    // Legacy MCP/test sends: url, page_title, interval_days
-    let url: String?
-    let siteURL: String?
-    let siteOrigin: String?
+    let url: String
     let pageTitle: String?
     let intervalDays: Int?
-    let reviewedAt: String?
-    let nextReviewAt: String?
-    let note: String?
 
     enum CodingKeys: String, CodingKey {
         case url
-        case siteURL = "site_url"
-        case siteOrigin = "site_origin"
         case pageTitle = "page_title"
         case intervalDays = "interval_days"
-        case reviewedAt = "reviewed_at"
-        case nextReviewAt = "next_review_at"
-        case note
     }
-
-    /// Resolved URL: prefer site_url (extension), fall back to url (legacy).
-    var resolvedURL: String? { siteURL ?? url }
 }
 
 private struct SiteReviewResponse: Encodable {
@@ -193,7 +133,6 @@ public actor JobhuntServer {
 
     /// Try ports 8765–8769 in order, start listening on first available.
     public func start() async throws {
-        guard listener == nil else { return } // already running, no-op
         let candidatePorts: [UInt16] = [8765, 8766, 8767, 8768, 8769]
 
         for candidate in candidatePorts {
@@ -252,11 +191,6 @@ public actor JobhuntServer {
             }
 
             listener.newConnectionHandler = { [weak self] connection in
-                // Reject connections from non-loopback addresses
-                if !Self.isLoopbackEndpoint(connection.endpoint) {
-                    connection.cancel()
-                    return
-                }
                 Task { [weak self] in
                     await self?.handleConnection(connection)
                 }
@@ -270,56 +204,53 @@ public actor JobhuntServer {
 
     private func handleConnection(_ connection: NWConnection) {
         connection.start(queue: .global(qos: .userInitiated))
-        receiveRequest(on: connection, accumulated: Data())
+        receiveRequest(on: connection)
     }
 
-    // Maximum accumulated request size. Requests exceeding this are rejected with 413
-    // before parsing, preventing unbounded memory growth from local clients.
-    private static let maxRequestBytes = 10 * 1024 * 1024  // 10 MB
-
-    private func receiveRequest(on connection: NWConnection, accumulated: Data) {
+    private func receiveRequest(on connection: NWConnection) {
+        // Read up to 1MB of data
         connection.receive(minimumIncompleteLength: 1, maximumLength: 1_048_576) { [weak self] data, _, isComplete, _ in
             guard let self else { return }
-            var buffer = accumulated
-            if let data, !data.isEmpty { buffer.append(data) }
-
-            if buffer.count > Self.maxRequestBytes {
-                let response = HTTPResponse.error("Request too large", code: 413)
-                self.sendResponse(response, on: connection)
-                return
-            }
-
-            if !buffer.isEmpty && (isComplete || isCompleteHTTPRequest(buffer)) {
-                Task { await self.processReceivedData(buffer, on: connection) }
+            if let data, !data.isEmpty {
+                Task {
+                    await self.processReceivedData(data, on: connection)
+                }
             } else if !isComplete {
-                self.receiveRequest(on: connection, accumulated: buffer)
+                // If we didn't get data and it's not complete, try reading more
+                receiveRequest(on: connection)
             } else {
                 connection.cancel()
             }
         }
     }
 
-    /// Returns true when `data` contains a full HTTP request (headers + complete body per Content-Length).
-    /// Uses raw byte operations so non-ASCII bodies are measured correctly.
-    private func isCompleteHTTPRequest(_ data: Data) -> Bool {
-        let sep = Data([13, 10, 13, 10]) // \r\n\r\n
-        guard let sepRange = data.range(of: sep),
-              let headerString = String(data: data[data.startIndex ..< sepRange.lowerBound], encoding: .ascii)
-        else { return false }
+    // TASK-334: Only the Jobhunt extension may receive reflected CORS headers.
+    // Chrome extension IDs are assigned dynamically by the browser (no static ID in manifest.json),
+    // so we maintain an explicit allowlist. To add a new approved extension ID (e.g. after
+    // publishing to the Chrome Web Store), append it to this set.
+    //
+    // Rationale: any installed Chrome extension can forge Origin: chrome-extension://<its-id>.
+    // Reflecting CORS for all chrome-extension:// origins would let any extension call capture
+    // routes. The allowlist ensures only the known Jobhunt extension(s) can.
+    //
+    // While the allowlist is empty (pre-CWS-publish), all chrome-extension:// origins are
+    // permitted so development/test flows work. Once a CWS ID is assigned, add it here and
+    // remove the fallback by making the empty-set branch return false.
+    //
+    // Production CWS ID: add "chrome-extension://<CWS_ID>" here after publishing.
+    private static let allowedExtensionOrigins: Set<String> = [
+        // "chrome-extension://REPLACE_WITH_CWS_ID"
+    ]
 
-        var contentLength = 0
-        for line in headerString.components(separatedBy: "\r\n").dropFirst() {
-            if let colonIdx = line.firstIndex(of: ":") {
-                let key = String(line[line.startIndex ..< colonIdx]).trimmingCharacters(in: .whitespaces).lowercased()
-                if key == "content-length" {
-                    let val = String(line[line.index(after: colonIdx)...]).trimmingCharacters(in: .whitespaces)
-                    contentLength = Int(val) ?? 0
-                }
-            }
+    /// True when `origin` is an allowed Jobhunt extension origin.
+    private func isAllowedExtensionOrigin(_ origin: String) -> Bool {
+        guard origin.hasPrefix("chrome-extension://") else { return false }
+        // If the allowlist is populated, require an exact match.
+        if !Self.allowedExtensionOrigins.isEmpty {
+            return Self.allowedExtensionOrigins.contains(origin)
         }
-        guard contentLength > 0 else { return true }
-        let bodyByteCount = data.distance(from: sepRange.upperBound, to: data.endIndex)
-        return bodyByteCount >= contentLength
+        // Allowlist is empty (no CWS ID assigned yet): permit any chrome-extension:// origin.
+        return true
     }
 
     private func processReceivedData(_ data: Data, on connection: NWConnection) async {
@@ -331,9 +262,9 @@ public actor JobhuntServer {
 
         var response = await routeRequest(request)
 
-        // Attach CORS headers when the origin is a chrome-extension:// scheme
+        // Attach CORS headers only for allowed extension origins (TASK-334).
         let origin = request.headers["origin"] ?? ""
-        if origin.hasPrefix("chrome-extension://") {
+        if isAllowedExtensionOrigin(origin) {
             let isPreflight = request.method == "OPTIONS"
             response = response.withCORS(origin: origin, isPreflight: isPreflight)
         }
@@ -349,12 +280,12 @@ public actor JobhuntServer {
     }
 
     private func routeRequest(_ request: HTTPRequest) async -> HTTPResponse {
-        // Handle OPTIONS preflight for CORS (always allowed)
+        // Handle OPTIONS preflight for CORS
         if request.method == "OPTIONS" {
             return HTTPResponse.noContent()
         }
 
-        // MCP bridge routes (DMG builds only) — authenticated by X-MCP-Token header
+        // MCP bridge routes (DMG builds only)
         #if !MAS_BUILD
             if request.path.hasPrefix("/mcp/") {
                 if let response = await routeMCPRequest(
@@ -369,45 +300,28 @@ public actor JobhuntServer {
             }
         #endif
 
+        let origin = request.headers["origin"] ?? ""
+        let fromExtension = isAllowedExtensionOrigin(origin)
+
         switch (request.method, request.path) {
         case ("GET", "/health"):
             return handleHealth()
         case ("GET", "/api/ping"):
             return handlePing()
         case ("POST", "/captures"):
-            guard isExtensionOrigin(request) else { return .error("Forbidden", code: 403) }
+            guard fromExtension else { return .error("Forbidden", code: 403) }
             return await handleCapture(request)
         case ("POST", "/site-reviews"):
-            guard isExtensionOrigin(request) else { return .error("Forbidden", code: 403) }
+            guard fromExtension else { return .error("Forbidden", code: 403) }
             return await handleSiteReview(request)
         case ("GET", "/api/jobs/by-url"):
-            // Extension-only: used for duplicate detection before capture. Same origin gate
-            // as the mutating extension routes so a non-extension local caller cannot enumerate
-            // job numbers by URL.
-            guard isExtensionOrigin(request) else { return .error("Forbidden", code: 403) }
+            guard fromExtension else { return .error("Forbidden", code: 403) }
             return await handleJobByURL(request)
         case ("POST", "/api/app/focus"):
-            guard isExtensionOrigin(request) else { return .error("Forbidden", code: 403) }
+            guard fromExtension else { return .error("Forbidden", code: 403) }
             return await handleFocus(request)
         default:
             return HTTPResponse.error("Not found", code: 404)
-        }
-    }
-
-    /// True when the request comes from a chrome-extension:// origin.
-    private func isExtensionOrigin(_ request: HTTPRequest) -> Bool {
-        let origin = request.headers["origin"] ?? ""
-        return origin.hasPrefix("chrome-extension://")
-    }
-
-    /// True when the NWEndpoint is a loopback address (IPv4 127.0.0.1 or IPv6 ::1).
-    private static func isLoopbackEndpoint(_ endpoint: NWEndpoint) -> Bool {
-        guard case let .hostPort(host, _) = endpoint else { return false }
-        switch host {
-        case .ipv4(let addr): return addr == .loopback
-        case .ipv6(let addr): return addr == .loopback
-        case .name(let name, _): return name == "localhost" || name == "127.0.0.1" || name == "::1"
-        @unknown default: return false
         }
     }
 
@@ -419,16 +333,6 @@ public actor JobhuntServer {
 
     private func handlePing() -> HTTPResponse {
         HTTPResponse.ok(PingResponse(app: "jobhunt", version: appVersion, isDemo: isDemo))
-    }
-
-    // Field-level byte limits for capture ingestion.
-    private enum CaptureFieldLimit {
-        static let url = 2_048
-        static let pageTitle = 2_048
-        static let visibleText = 500 * 1_024     // 500 KB
-        static let selectedText = 500 * 1_024    // 500 KB
-        static let userNote = 10 * 1_024         // 10 KB
-        static let structuredDataJSON = 100 * 1_024  // 100 KB
     }
 
     private func handleCapture(_ request: HTTPRequest) async -> HTTPResponse {
@@ -446,26 +350,6 @@ public actor JobhuntServer {
             return HTTPResponse.error("url and page_title required")
         }
 
-        // Field byte-limit checks (utf8 byte count matches what the extension measures).
-        if url.utf8.count > CaptureFieldLimit.url {
-            return HTTPResponse.error("url exceeds maximum length", code: 400)
-        }
-        if pageTitle.utf8.count > CaptureFieldLimit.pageTitle {
-            return HTTPResponse.error("page_title exceeds maximum length", code: 400)
-        }
-        if let vt = captureReq.visibleText, vt.utf8.count > CaptureFieldLimit.visibleText {
-            return HTTPResponse.error("visible_text exceeds maximum length", code: 400)
-        }
-        if let st = captureReq.selectedText, st.utf8.count > CaptureFieldLimit.selectedText {
-            return HTTPResponse.error("selected_text exceeds maximum length", code: 400)
-        }
-        if let note = captureReq.userNote, note.utf8.count > CaptureFieldLimit.userNote {
-            return HTTPResponse.error("user_note exceeds maximum length", code: 400)
-        }
-        if let sdj = captureReq.resolvedStructuredDataJSON, sdj.utf8.count > CaptureFieldLimit.structuredDataJSON {
-            return HTTPResponse.error("structured_data_json exceeds maximum length", code: 400)
-        }
-
         let selectedTrimmed = captureReq.selectedText?.trimmingCharacters(in: .whitespaces) ?? ""
         let visibleTrimmed = captureReq.visibleText?.trimmingCharacters(in: .whitespaces) ?? ""
         if selectedTrimmed.isEmpty && visibleTrimmed.isEmpty {
@@ -479,7 +363,7 @@ public actor JobhuntServer {
             visibleText: captureReq.visibleText,
             userNote: captureReq.userNote,
             canonicalURL: captureReq.canonicalURL,
-            structuredDataJSON: captureReq.resolvedStructuredDataJSON
+            structuredDataJSON: captureReq.structuredDataJSON
         )
 
         do {
@@ -500,37 +384,19 @@ public actor JobhuntServer {
             return HTTPResponse.error("Invalid JSON body")
         }
 
-        guard let url = reviewReq.resolvedURL?.trimmingCharacters(in: .whitespaces), !url.isEmpty else {
+        let url = reviewReq.url.trimmingCharacters(in: .whitespaces)
+        if url.isEmpty {
             return HTTPResponse.error("url required")
         }
 
+        let intervalDays = reviewReq.intervalDays ?? 14
+
         do {
-            let siteReviewID: String
-            if reviewReq.siteURL != nil {
-                // Extension payload: uses explicit reviewed_at / next_review_at ISO8601 strings
-                let iso = ISO8601DateFormatter()
-                let reviewedAt = reviewReq.reviewedAt.flatMap { iso.date(from: $0) } ?? Date()
-                let nextReviewAt = reviewReq.nextReviewAt.flatMap { iso.date(from: $0) }
-                siteReviewID = try await siteService.upsertSiteReview(
-                    url: url,
-                    origin: reviewReq.siteOrigin,
-                    title: reviewReq.pageTitle,
-                    note: reviewReq.note,
-                    reviewedAt: reviewedAt,
-                    nextReviewAt: nextReviewAt
-                )
-            } else {
-                // Legacy payload (interval_days)
-                let rawInterval = reviewReq.intervalDays ?? 14
-                guard rawInterval >= 1 && rawInterval <= 365 else {
-                    return HTTPResponse.error("interval_days must be between 1 and 365", code: 400)
-                }
-                siteReviewID = try await siteService.upsertSiteReview(
-                    url: url,
-                    title: reviewReq.pageTitle,
-                    intervalDays: rawInterval
-                )
-            }
+            let siteReviewID = try await siteService.upsertSiteReview(
+                url: url,
+                title: reviewReq.pageTitle,
+                intervalDays: intervalDays
+            )
             return HTTPResponse.ok(SiteReviewResponse(isOK: true, siteReviewID: siteReviewID))
         } catch {
             return HTTPResponse.error(error.localizedDescription)

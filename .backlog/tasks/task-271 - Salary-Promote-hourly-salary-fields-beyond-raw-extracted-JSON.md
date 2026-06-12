@@ -1,9 +1,10 @@
 ---
 id: TASK-271
 title: 'Salary: Promote hourly salary fields beyond raw extracted JSON'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 03:26'
+updated_date: '2026-06-12 03:30'
 labels:
   - audit
   - salary

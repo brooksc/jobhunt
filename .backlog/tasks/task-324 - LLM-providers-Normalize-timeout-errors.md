@@ -1,9 +1,10 @@
 ---
 id: TASK-324
 title: 'LLM providers: Normalize timeout errors'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:02'
+updated_date: '2026-06-12 20:18'
 labels:
   - audit
   - llm-provider

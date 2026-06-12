@@ -1,9 +1,10 @@
 ---
 id: TASK-223
 title: 'Release: Add CI guard for app and extension version parity'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 01:32'
+updated_date: '2026-06-12 02:16'
 labels:
   - release
   - ci

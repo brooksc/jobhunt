@@ -1,9 +1,10 @@
 ---
 id: TASK-243
 title: 'Resume import: Surface Settings import failures consistently'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 02:02'
+updated_date: '2026-06-12 02:16'
 labels:
   - resumes
   - import

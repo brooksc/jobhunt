@@ -1,9 +1,10 @@
 ---
 id: TASK-313
 title: 'LLM queue: Preserve retry and retry-exhausted states after failures'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 19:38'
+updated_date: '2026-06-12 19:58'
 labels:
   - audit
   - llm-queue
@@ -12,6 +13,8 @@ dependencies: []
 references:
   - core/LLM/QueueActor.swift
   - tests/CoreTests/ExtractionEngineTests.swift
+modified_files:
+  - core/LLM/QueueActor.swift
 priority: high
 ---
 
@@ -27,3 +30,9 @@ processExtractRequest and processFitRequest requeue retryable failures or mark r
 - [ ] #2 Final failures remain retryExhausted rather than being overwritten to failed.
 - [ ] #3 Tests cover retryable extraction and fit failures across attempts, including final exhausted state.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added `guard req.status == .running else { return }` in `markRequestFailed` so retry and retryExhausted states set by inner process functions are never overwritten by the outer catch block.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,9 +1,10 @@
 ---
 id: TASK-307
 title: 'Persistence: Clear or recompute job fit mirrors when deleting active resume'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 19:34'
+updated_date: '2026-06-12 19:50'
 labels:
   - audit
   - persistence

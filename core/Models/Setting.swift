@@ -42,7 +42,6 @@ public enum SettingsKey {
     public static let availabilityLastAutoCheckAt = "availability_last_auto_check_at"
     public static let llmPriceInput = "llm_price_input"
     public static let llmPriceOutput = "llm_price_output"
-    public static let llmOpenRouterFreeRotate = "llm_openrouter_free_rotate"
     public static let llmConsentAnthropic = "llm_consent_anthropic"
     public static let llmConsentGoogle = "llm_consent_google"
     public static let llmConsentOpenRouter = "llm_consent_openrouter"

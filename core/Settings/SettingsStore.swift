@@ -24,7 +24,6 @@ private let settingsDefaults: [String: String] = [
     SettingsKey.availabilityLastAutoCheckAt: "",
     SettingsKey.llmPriceInput: "0",
     SettingsKey.llmPriceOutput: "0",
-    SettingsKey.llmOpenRouterFreeRotate: "false",
     SettingsKey.llmConsentAnthropic: "0",
     SettingsKey.llmConsentGoogle: "0",
     SettingsKey.llmConsentOpenRouter: "0",

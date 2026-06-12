@@ -276,7 +276,7 @@ private struct AIProviderStep: View {
                 privacyURL: "https://openrouter.ai/privacy"
             ),
             ProviderOption(id: "custom", label: "Custom", isCloud: false, privacyURL: nil),
-            ProviderOption(id: "apple", label: "Apple Intelligence", isCloud: false, privacyURL: nil)
+            ProviderOption(id: "foundation_models", label: "Apple Intelligence", isCloud: false, privacyURL: nil)
         ]
 
         static func find(_ id: String) -> ProviderOption? {
@@ -316,7 +316,7 @@ private struct AIProviderStep: View {
                         }
                 }
 
-                if selectedProviderID != "apple" {
+                if selectedProviderID != "foundation_models" {
                     TextField("Model", text: $modelText)
                         .onChange(of: modelText) { _, new in settings.llmModel = new }
                 }
@@ -664,7 +664,7 @@ private struct FinishStep: View {
             "google": "Google",
             "openrouter": "OpenRouter",
             "custom": "Custom",
-            "apple": "Apple Intelligence"
+            "foundation_models": "Apple Intelligence"
         ]
         return providerLabels[settings.llmProvider] ?? settings.llmProvider
     }

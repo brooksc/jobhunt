@@ -1,4 +1,5 @@
 // swiftlint:disable force_unwrapping file_length
+import SwiftData
 import XCTest
 @testable import JobhuntCore
 
@@ -526,6 +527,50 @@ final class LLMProviderErrorTests: LLMMockProviderTestCase {
         let err = LLMProviderError.noResponse
         let description = err.localizedDescription
         XCTAssertFalse(description.isEmpty)
+    }
+}
+
+// MARK: - TASK-320/321/322 factory tests
+
+final class LLMProviderFactoryMakeProviderTests: XCTestCase {
+    private func makeSettings(provider: String, model: String = "test-model") throws -> SettingsStore {
+        let container = try ModelContainerFactory.inMemory()
+        let context = ModelContext(container)
+        let settings = SettingsStore(modelContext: context)
+        settings.llmProvider = provider
+        settings.llmModel = model
+        return settings
+    }
+
+    // TASK-320: "apple" legacy ID maps to FoundationModelsProvider
+    func testOnboardingAppleIDMapsToFoundationModels() throws {
+        let settings = try makeSettings(provider: "apple")
+        let provider = LLMProviderFactory.makeProvider(settings: settings)
+        XCTAssertEqual(provider.id, "foundation_models")
+    }
+
+    // TASK-320: canonical "foundation_models" ID also maps to FoundationModelsProvider
+    func testFoundationModelsIDMapsToFoundationModels() throws {
+        let settings = try makeSettings(provider: "foundation_models")
+        let provider = LLMProviderFactory.makeProvider(settings: settings)
+        XCTAssertEqual(provider.id, "foundation_models")
+    }
+
+    // TASK-321: factory builds a provider whose id is the provider type, not the model string
+    func testProviderFactoryUsesConfiguredModel() throws {
+        let settings = try makeSettings(provider: "openai", model: "gpt-4o")
+        let provider = LLMProviderFactory.makeProvider(settings: settings)
+        // Provider id is the provider type ("openai"), not the model name
+        XCTAssertEqual(provider.id, "openai")
+        XCTAssertNotEqual(provider.id, "gpt-4o")
+    }
+
+    // TASK-321: model passed to ChatRequest is the source of truth (provider id != model name)
+    func testProviderIDIsNotTheModelName() throws {
+        let settings = try makeSettings(provider: "anthropic", model: "claude-opus-4-5")
+        let provider = LLMProviderFactory.makeProvider(settings: settings)
+        XCTAssertEqual(provider.id, "anthropic")
+        XCTAssertNotEqual(provider.id, settings.llmModel)
     }
 }
 

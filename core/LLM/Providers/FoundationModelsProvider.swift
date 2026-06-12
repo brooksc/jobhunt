@@ -5,7 +5,7 @@ import Foundation
 /// Replaces the Node subprocess bridge (server/apple-foundation.js + native/foundation-models/).
 /// Mirrors postAppleFoundationCompletion() from server/extract.js.
 public final class FoundationModelsProvider: LLMProvider, @unchecked Sendable {
-    public let id = "apple"
+    public let id = "foundation_models"
     public let concurrencyLimit = 1
 
     public init() {}

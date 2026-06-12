@@ -40,7 +40,7 @@ public actor ResumeService {
         let existing = try await store.fetch(FetchDescriptor<Resume>(predicate: #Predicate { $0.id == id }))
         let textChanged = existing.first.map { $0.text != text } ?? false
 
-        try await store.update(Resume.self, predicate: #Predicate { $0.id == id }) { r in
+        try await store.updateOne(Resume.self, predicate: #Predicate { $0.id == id }, id: id) { r in
             r.name = name
             r.text = text
             r.charCount = text.count
@@ -54,17 +54,22 @@ public actor ResumeService {
 
     // MARK: - Delete
 
-    /// Delete a resume by ID. If it was active, promotes the next resume.
+    /// Delete a resume by ID. If it was active, promotes the next resume and recomputes job fit mirrors.
     public func deleteResume(id: String) async throws {
         let all = try await store.fetch(FetchDescriptor<Resume>(sortBy: [SortDescriptor(\.sortOrder)]))
         guard let target = all.first(where: { $0.id == id }) else { return }
         let wasActive = target.active
-        try await store.delete(Resume.self, predicate: #Predicate { $0.id == id })
+        try await store.deleteOne(Resume.self, predicate: #Predicate { $0.id == id }, id: id)
+        var promotedID: String? = nil
         if wasActive {
             let remaining = all.filter { $0.id != id }
             if let nextID = (remaining.first(where: { !$0.active }) ?? remaining.first)?.id {
                 try await store.update(Resume.self, predicate: #Predicate { $0.id == nextID }) { $0.active = true }
+                promotedID = nextID
             }
+        }
+        if wasActive {
+            try await store.recomputeJobFitMirrors(activeResumeID: promotedID)
         }
     }
 
@@ -79,9 +84,10 @@ public actor ResumeService {
             throw ResumeServiceError.resumeNotFound(id)
         }
         try await store.update(Resume.self, predicate: nil) { r in r.active = false }
-        try await store.update(Resume.self, predicate: #Predicate { $0.id == id }) { r in
+        try await store.updateOne(Resume.self, predicate: #Predicate { $0.id == id }, id: id) { r in
             r.active = true
             r.updatedAt = Date()
         }
+        try await store.recomputeJobFitMirrors(activeResumeID: id)
     }
 }

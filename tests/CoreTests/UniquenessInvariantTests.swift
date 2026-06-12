@@ -173,4 +173,33 @@ final class UniquenessInvariantTests: XCTestCase {
         XCTAssertEqual(fetched.count, 2,
             "Two DuplicateDecisions with distinct cleanedHashes must both persist")
     }
+
+    // MARK: - TASK-310: updateOne/deleteOne service-level uniqueness path
+
+    /// Verifies that BackgroundStore.updateOne succeeds when exactly one record matches.
+    /// This proves the exact-one update path is reachable and correct.
+    func testUpdateOneSucceedsForSingleMatch() throws {
+        let (container, url) = try makeFileContainer()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let store = BackgroundStore(modelContainer: container)
+        let id = "resume-unique-001"
+        let resume = Resume(name: "Test", text: "text", charCount: 4, active: false, sortOrder: 0)
+        // Directly insert with a known ID via a local context
+        let ctx = ModelContext(container)
+        ctx.insert(resume)
+        try ctx.save()
+        let fetchedID = try ctx.fetch(FetchDescriptor<Resume>()).first!.id
+
+        // updateOne should succeed — no throw means single-match path works
+        var didMutate = false
+        try store.updateOne(Resume.self, predicate: #Predicate { $0.id == fetchedID }, id: fetchedID) { r in
+            r.name = "Updated"
+            didMutate = true
+        }
+        XCTAssertTrue(didMutate, "Mutation closure must be called for a single-match updateOne")
+
+        let after = try ctx.fetch(FetchDescriptor<Resume>()).first!
+        XCTAssertEqual(after.name, "Updated")
+    }
 }

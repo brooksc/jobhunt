@@ -255,6 +255,27 @@ public actor BackgroundStore {
         try modelContext.save()
     }
 
+    /// Recompute Job.fitScore/fitStatus/fitScoreJSON mirrors for all jobs.
+    /// Sets each job's mirror from the active-resume's JobFitScore if one exists,
+    /// or resets to .none/nil if the new active resume has no score for that job.
+    /// Pass nil activeResumeID when no resume remains active.
+    public func recomputeJobFitMirrors(activeResumeID: String?) throws {
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>())
+        for job in jobs {
+            let activeScore: JobFitScore?
+            if let rid = activeResumeID {
+                activeScore = job.fitScores.first { $0.resume?.id == rid }
+            } else {
+                activeScore = nil
+            }
+            job.fitScore = activeScore?.fitScore
+            job.fitStatus = activeScore?.fitStatus ?? .none
+            job.fitScoreJSON = activeScore?.fitScoreJSON
+            job.updatedAt = Date()
+        }
+        try modelContext.save()
+    }
+
     private func fitScoreRecord(job: Job, resumeID: String) throws -> JobFitScore {
         if let existing = job.fitScores.first(where: { $0.resume?.id == resumeID }) {
             return existing

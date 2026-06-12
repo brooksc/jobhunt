@@ -187,6 +187,177 @@ final class ResumeServiceTests: XCTestCase {
         XCTAssertEqual(activeCount, 1, "Exactly one resume must be active")
         XCTAssertEqual(updated.first(where: \.active)?.name, "C")
     }
+
+    // MARK: - TASK-306: Fit mirror recompute on active resume change
+
+    func testSetActiveResume_recomputesJobFitMirrors() async throws {
+        try await service.addResume(name: "Resume1", text: "First resume text")
+        try await service.addResume(name: "Resume2", text: "Second resume text")
+
+        let ctx = ModelContext(container)
+        let resumes = try ctx.fetch(FetchDescriptor<Resume>(sortBy: [SortDescriptor(\.sortOrder)]))
+        let r1 = resumes[0]
+        let r2 = resumes[1]
+
+        // Create a job and scores for both resumes
+        let job = Job(jobNumber: 1, title: "SWE")
+        ctx.insert(job)
+        let score1 = JobFitScore(fitScore: 80, fitStatus: .succeeded)
+        score1.job = job
+        score1.resume = r1
+        ctx.insert(score1)
+        let score2 = JobFitScore(fitScore: 60, fitStatus: .succeeded)
+        score2.job = job
+        score2.resume = r2
+        ctx.insert(score2)
+        try ctx.save()
+
+        // r1 starts active; set it explicitly and verify mirror
+        try await service.setActiveResume(id: r1.id)
+        let afterR1 = try ctx.fetch(FetchDescriptor<Job>()).first!
+        XCTAssertEqual(afterR1.fitScore, 80, "Mirror should reflect resume-1 score")
+
+        // Switch to r2
+        try await service.setActiveResume(id: r2.id)
+        let afterR2 = try ctx.fetch(FetchDescriptor<Job>()).first!
+        XCTAssertEqual(afterR2.fitScore, 60, "Mirror should reflect resume-2 score")
+        XCTAssertEqual(afterR2.fitStatus, .succeeded)
+
+        // Switch back to r1
+        try await service.setActiveResume(id: r1.id)
+        let backToR1 = try ctx.fetch(FetchDescriptor<Job>()).first!
+        XCTAssertEqual(backToR1.fitScore, 80, "Mirror should reflect resume-1 score again")
+    }
+
+    func testSetActiveResume_clearsJobMirrorWhenNoScore() async throws {
+        try await service.addResume(name: "Resume1", text: "First resume text")
+        try await service.addResume(name: "Resume2", text: "Second resume text")
+
+        let ctx = ModelContext(container)
+        let resumes = try ctx.fetch(FetchDescriptor<Resume>(sortBy: [SortDescriptor(\.sortOrder)]))
+        let r1 = resumes[0]
+        let r2 = resumes[1]
+
+        // Score only for r1
+        let job = Job(jobNumber: 2, title: "PM")
+        ctx.insert(job)
+        let score1 = JobFitScore(fitScore: 75, fitStatus: .succeeded)
+        score1.job = job
+        score1.resume = r1
+        ctx.insert(score1)
+        try ctx.save()
+
+        // Activate r1, verify mirror
+        try await service.setActiveResume(id: r1.id)
+        let afterR1 = try ctx.fetch(FetchDescriptor<Job>()).first!
+        XCTAssertEqual(afterR1.fitScore, 75)
+
+        // Switch to r2 — no score, mirror should clear
+        try await service.setActiveResume(id: r2.id)
+        let afterR2 = try ctx.fetch(FetchDescriptor<Job>()).first!
+        XCTAssertNil(afterR2.fitScore, "Mirror should be nil when active resume has no score")
+        XCTAssertEqual(afterR2.fitStatus, .none)
+    }
+
+    // MARK: - TASK-307: Fit mirror recompute on delete active resume
+
+    func testDeleteActiveResume_recomputesFromPromotedResume() async throws {
+        try await service.addResume(name: "Resume1", text: "First resume text")
+        try await service.addResume(name: "Resume2", text: "Second resume text")
+
+        let ctx = ModelContext(container)
+        let resumes = try ctx.fetch(FetchDescriptor<Resume>(sortBy: [SortDescriptor(\.sortOrder)]))
+        let r1 = resumes[0]  // active
+        let r2 = resumes[1]
+
+        let job = Job(jobNumber: 3, title: "Dev")
+        ctx.insert(job)
+        let score1 = JobFitScore(fitScore: 80, fitStatus: .succeeded)
+        score1.job = job
+        score1.resume = r1
+        ctx.insert(score1)
+        let score2 = JobFitScore(fitScore: 60, fitStatus: .succeeded)
+        score2.job = job
+        score2.resume = r2
+        ctx.insert(score2)
+        try ctx.save()
+
+        // Set r1 active and confirm mirror
+        try await service.setActiveResume(id: r1.id)
+
+        // Delete r1 — r2 gets promoted
+        try await service.deleteResume(id: r1.id)
+
+        let afterDelete = try ctx.fetch(FetchDescriptor<Job>()).first!
+        XCTAssertEqual(afterDelete.fitScore, 60, "Mirror should reflect promoted resume-2 score")
+    }
+
+    func testDeleteActiveResume_clearsJobMirrorWhenNoRemainingResume() async throws {
+        try await service.addResume(name: "Only", text: "Only resume")
+
+        let ctx = ModelContext(container)
+        let resume = try ctx.fetch(FetchDescriptor<Resume>()).first!
+
+        let job = Job(jobNumber: 4, title: "Lead")
+        ctx.insert(job)
+        let score = JobFitScore(fitScore: 70, fitStatus: .succeeded)
+        score.job = job
+        score.resume = resume
+        ctx.insert(score)
+        try ctx.save()
+
+        // Set active and confirm mirror
+        try await service.setActiveResume(id: resume.id)
+
+        // Delete the only resume
+        try await service.deleteResume(id: resume.id)
+
+        let afterDelete = try ctx.fetch(FetchDescriptor<Job>()).first!
+        XCTAssertNil(afterDelete.fitScore, "Mirror should be nil when no resume remains")
+        XCTAssertEqual(afterDelete.fitStatus, .none)
+    }
+
+    func testDeleteInactiveResume_doesNotAffectJobMirrors() async throws {
+        try await service.addResume(name: "Active", text: "Active resume text")
+        try await service.addResume(name: "Inactive", text: "Inactive resume text")
+
+        let ctx = ModelContext(container)
+        let resumes = try ctx.fetch(FetchDescriptor<Resume>(sortBy: [SortDescriptor(\.sortOrder)]))
+        let r1 = resumes[0]  // active
+        let r2 = resumes[1]  // inactive
+
+        let job = Job(jobNumber: 5, title: "Engineer")
+        ctx.insert(job)
+        let score1 = JobFitScore(fitScore: 80, fitStatus: .succeeded)
+        score1.job = job
+        score1.resume = r1
+        ctx.insert(score1)
+        let score2 = JobFitScore(fitScore: 50, fitStatus: .succeeded)
+        score2.job = job
+        score2.resume = r2
+        ctx.insert(score2)
+        try ctx.save()
+
+        // Confirm r1 is active and set mirror
+        try await service.setActiveResume(id: r1.id)
+
+        // Delete inactive r2 — should not affect mirror
+        try await service.deleteResume(id: r2.id)
+
+        let afterDelete = try ctx.fetch(FetchDescriptor<Job>()).first!
+        XCTAssertEqual(afterDelete.fitScore, 80, "Mirror should be unchanged after deleting inactive resume")
+    }
+
+    // MARK: - TASK-310: updateOne path
+
+    func testUpdateResume_throwsNotFoundForUnknownID() async throws {
+        do {
+            try await service.updateResume(id: "nonexistent-id", name: "X", text: "Y")
+            XCTFail("Expected an error for unknown resume ID")
+        } catch BackgroundStoreError.notFound {
+            // expected — proves updateOne path is used
+        }
+    }
 }
 
 // MARK: - SavedSearchServiceTests (via JobService)

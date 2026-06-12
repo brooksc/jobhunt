@@ -1,9 +1,10 @@
 ---
 id: TASK-333
 title: 'Export/backup tests: Cover restore behavior and CSV contract'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:06'
+updated_date: '2026-06-12 20:58'
 labels:
   - audit
   - tests

@@ -1,9 +1,10 @@
 ---
 id: TASK-345
 title: 'Test gate: Add release-critical regression tests and smoke checks'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:39'
+updated_date: '2026-06-12 20:51'
 labels:
   - audit
   - tests

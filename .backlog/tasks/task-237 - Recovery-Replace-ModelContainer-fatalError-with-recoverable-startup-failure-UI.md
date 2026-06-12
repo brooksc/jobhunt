@@ -3,9 +3,10 @@ id: TASK-237
 title: >-
   Recovery: Replace ModelContainer fatalError with recoverable startup failure
   UI
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 01:51'
+updated_date: '2026-06-12 02:16'
 labels:
   - diagnostics
   - recovery

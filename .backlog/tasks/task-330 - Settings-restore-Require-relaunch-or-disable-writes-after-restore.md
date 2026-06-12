@@ -1,9 +1,10 @@
 ---
 id: TASK-330
 title: 'Settings restore: Require relaunch or disable writes after restore'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:06'
+updated_date: '2026-06-12 20:58'
 labels:
   - audit
   - backup

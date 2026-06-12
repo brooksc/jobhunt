@@ -1,9 +1,10 @@
 ---
 id: TASK-240
 title: 'Data recovery: Add guided restore workflow for full-fidelity backups'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 02:00'
+updated_date: '2026-06-12 02:08'
 labels:
   - backup
   - restore

@@ -1,9 +1,10 @@
 ---
 id: TASK-220
 title: 'Privacy: Make MCP job_get raw capture text opt-in or scoped'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 01:06'
+updated_date: '2026-06-12 02:00'
 labels:
   - privacy
   - mcp

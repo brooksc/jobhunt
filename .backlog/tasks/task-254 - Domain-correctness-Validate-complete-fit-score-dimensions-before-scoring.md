@@ -1,9 +1,10 @@
 ---
 id: TASK-254
 title: 'Domain correctness: Validate complete fit-score dimensions before scoring'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 02:42'
+updated_date: '2026-06-12 03:09'
 labels:
   - audit
   - domain

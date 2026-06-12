@@ -3,9 +3,10 @@ id: TASK-252
 title: >-
   Domain correctness: Prevent resolved duplicates from reappearing in duplicate
   review
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 02:41'
+updated_date: '2026-06-12 03:09'
 labels:
   - audit
   - domain

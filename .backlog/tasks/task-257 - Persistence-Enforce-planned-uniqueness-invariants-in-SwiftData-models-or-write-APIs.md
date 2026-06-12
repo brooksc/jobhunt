@@ -3,9 +3,10 @@ id: TASK-257
 title: >-
   Persistence: Enforce planned uniqueness invariants in SwiftData models or
   write APIs
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 02:50'
+updated_date: '2026-06-12 03:09'
 labels:
   - audit
   - persistence

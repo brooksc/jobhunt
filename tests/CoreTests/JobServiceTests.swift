@@ -927,3 +927,119 @@ final class JobServiceTests: XCTestCase {
         }
     }
 }
+
+// MARK: - Fit scoring state persistence tests
+
+final class FitScoringStateTests: XCTestCase {
+    private func makeStore(_ container: ModelContainer) -> BackgroundStore { BackgroundStore(modelContainer: container) }
+
+    // MARK: - TASK-275: saveFitScore only updates Job fields for active resume
+
+    func testSaveFitScore_inactiveResume_doesNotUpdateJobFields() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+
+        let job = Job(id: "job-fit-1", jobNumber: 1)
+        let activeResume = Resume(name: "Active", text: "Swift developer", charCount: 15, active: true, sortOrder: 0)
+        let inactiveResume = Resume(name: "Inactive", text: "Python developer", charCount: 16, active: false, sortOrder: 1)
+        try await store.insert(job)
+        try await store.insert(activeResume)
+        try await store.insert(inactiveResume)
+
+        try await store.saveFitScore(
+            jobID: "job-fit-1",
+            resumeID: inactiveResume.id,
+            overall: 75,
+            fitJSON: "{\"overall\":75}",
+            model: "test-model",
+            scoredAt: Date()
+        )
+
+        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-fit-1" }))
+        let updatedJob = try XCTUnwrap(jobs.first)
+        XCTAssertNil(updatedJob.fitScore, "Job.fitScore must not be set when scored resume is inactive")
+        XCTAssertEqual(updatedJob.fitStatus, .none, "Job.fitStatus must remain .none when scored resume is inactive")
+        XCTAssertNil(updatedJob.fitScoreJSON, "Job.fitScoreJSON must not be set when scored resume is inactive")
+
+        let scores = try await store.fetch(FetchDescriptor<JobFitScore>())
+        XCTAssertEqual(scores.count, 1, "JobFitScore record must be created even for inactive resume")
+        XCTAssertEqual(scores.first?.fitScore, 75)
+        XCTAssertEqual(scores.first?.fitStatus, .succeeded)
+    }
+
+    func testSaveFitScore_activeResume_updatesJobFields() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+
+        let job = Job(id: "job-fit-2", jobNumber: 2)
+        let activeResume = Resume(name: "Active", text: "Swift developer", charCount: 15, active: true, sortOrder: 0)
+        try await store.insert(job)
+        try await store.insert(activeResume)
+
+        try await store.saveFitScore(
+            jobID: "job-fit-2",
+            resumeID: activeResume.id,
+            overall: 88,
+            fitJSON: "{\"overall\":88}",
+            model: "test-model",
+            scoredAt: Date()
+        )
+
+        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-fit-2" }))
+        let updatedJob = try XCTUnwrap(jobs.first)
+        XCTAssertEqual(updatedJob.fitScore, 88, "Job.fitScore must be updated for active resume")
+        XCTAssertEqual(updatedJob.fitStatus, .succeeded, "Job.fitStatus must be .succeeded for active resume")
+        XCTAssertEqual(updatedJob.fitScoreJSON, "{\"overall\":88}")
+    }
+
+    // MARK: - TASK-277: enqueueFit creates JobFitScore with .pending status
+
+    func testEnqueueFit_createsPendingFitScoreRecord() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let queue = QueueActor(
+            store: store,
+            isPaused: { false },
+            onSetPaused: { _ in },
+            readExtractionSettings: { ExtractionSettings(llmModel: "", preferredLocations: "", locationFilterEnabled: false, locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true) },
+            providerFactory: { NoOpProvider() }
+        )
+        let svc = JobService(store: store, queue: queue)
+
+        _ = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/fit1", pageTitle: "Eng", visibleText: "Swift engineer role"))
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        let jobID = try XCTUnwrap(jobs.first?.id)
+
+        let resume = Resume(name: "My Resume", text: "Swift iOS developer", charCount: 20, active: true, sortOrder: 0)
+        try await store.insert(resume)
+
+        try await queue.enqueueFit(jobIDs: [jobID], resumeID: resume.id)
+
+        let scores = try await store.fetch(FetchDescriptor<JobFitScore>())
+        XCTAssertEqual(scores.count, 1, "enqueueFit must create a JobFitScore record")
+        XCTAssertEqual(scores.first?.fitStatus, .pending, "JobFitScore must have fitStatus = .pending after enqueue")
+        XCTAssertEqual(scores.first?.resume?.id, resume.id)
+        XCTAssertEqual(scores.first?.job?.id, jobID)
+    }
+
+    // MARK: - TASK-274: markFitScoreFailed persists failure state
+
+    func testMarkFitScoreFailed_createsFailedRecord() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+
+        let job = Job(id: "job-fail-1", jobNumber: 10)
+        let resume = Resume(name: "Resume", text: "text", charCount: 4, active: true, sortOrder: 0)
+        try await store.insert(job)
+        try await store.insert(resume)
+
+        try await store.markFitScoreFailed(jobID: "job-fail-1", resumeID: resume.id, errorMessage: "rate limit exceeded")
+
+        let scores = try await store.fetch(FetchDescriptor<JobFitScore>())
+        XCTAssertEqual(scores.count, 1, "markFitScoreFailed must create a JobFitScore record")
+        let score = try XCTUnwrap(scores.first)
+        XCTAssertEqual(score.fitStatus, .failed)
+        XCTAssertNotNil(score.fitScoreJSON, "fitScoreJSON must contain the error message")
+        XCTAssertTrue(score.fitScoreJSON?.contains("rate limit exceeded") == true, "fitScoreJSON must include the error text")
+    }
+}

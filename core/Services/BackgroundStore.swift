@@ -156,7 +156,8 @@ public actor BackgroundStore {
     }
 
     /// Update job fit fields AND create/update the JobFitScore record for a (job, resume) pair.
-    /// Call this instead of a bare `update(Job.self...)` after fit scoring so the FitTab has data.
+    /// Job-level fitScore/fitStatus/fitScoreJSON reflect the active resume's score only —
+    /// if the resume is not active, only the JobFitScore record is updated.
     public func saveFitScore(
         jobID: String,
         resumeID: String,
@@ -168,21 +169,19 @@ public actor BackgroundStore {
         let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
         guard let job = jobs.first else { return }
 
-        job.fitScore = overall
-        job.fitStatus = .succeeded
-        job.fitScoreJSON = fitJSON
-        job.updatedAt = Date()
-
         let existing = job.fitScores.first { $0.resume?.id == resumeID }
         let record: JobFitScore
+        let resume: Resume?
         if let existing {
             record = existing
+            resume = existing.resume
         } else {
             record = JobFitScore()
             modelContext.insert(record)
             record.job = job
             let resumes = try modelContext.fetch(FetchDescriptor<Resume>(predicate: #Predicate { $0.id == resumeID }))
-            record.resume = resumes.first
+            resume = resumes.first
+            record.resume = resume
         }
         record.fitScore = overall
         record.fitStatus = .succeeded
@@ -190,6 +189,13 @@ public actor BackgroundStore {
         record.model = model
         record.scoredAt = scoredAt
         record.updatedAt = Date()
+
+        if resume?.active == true {
+            job.fitScore = overall
+            job.fitStatus = .succeeded
+            job.fitScoreJSON = fitJSON
+            job.updatedAt = Date()
+        }
 
         try modelContext.save()
     }
@@ -206,19 +212,61 @@ public actor BackgroundStore {
         try modelContext.save()
 
         for job in affectedJobs {
-            if job.fitScores.isEmpty {
-                job.fitScore = nil
-                job.fitStatus = .none
-                job.fitScoreJSON = nil
-            } else if let best = job.fitScores.max(by: { ($0.fitScore ?? 0) < ($1.fitScore ?? 0) }) {
-                job.fitScore = best.fitScore
-                job.fitStatus = best.fitStatus
-                job.fitScoreJSON = best.fitScoreJSON
-            }
+            // After deletion, set denormalized fields from the active-resume score if any remain.
+            let activeScore = job.fitScores.first { $0.resume?.active == true }
+            job.fitScore = activeScore?.fitScore
+            job.fitStatus = activeScore?.fitStatus ?? .none
+            job.fitScoreJSON = activeScore?.fitScoreJSON
             job.updatedAt = Date()
         }
         try modelContext.save()
     }
+
+    /// Create or update a JobFitScore record with fitStatus = .pending.
+    public func markFitScorePending(jobID: String, resumeID: String) throws {
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
+        guard let job = jobs.first else { return }
+        let record = try fitScoreRecord(job: job, resumeID: resumeID)
+        record.fitStatus = .pending
+        record.updatedAt = Date()
+        try modelContext.save()
+    }
+
+    /// Create or update a JobFitScore record with fitStatus = .running.
+    public func markFitScoreRunning(jobID: String, resumeID: String) throws {
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
+        guard let job = jobs.first else { return }
+        let record = try fitScoreRecord(job: job, resumeID: resumeID)
+        record.fitStatus = .running
+        record.updatedAt = Date()
+        try modelContext.save()
+    }
+
+    /// Create or update a JobFitScore record with fitStatus = .failed, storing the error in fitScoreJSON.
+    public func markFitScoreFailed(jobID: String, resumeID: String, errorMessage: String?) throws {
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
+        guard let job = jobs.first else { return }
+        let record = try fitScoreRecord(job: job, resumeID: resumeID)
+        record.fitStatus = .failed
+        if let msg = errorMessage {
+            record.fitScoreJSON = "{\"error\":\"\(msg.replacingOccurrences(of: "\"", with: "\\\""))\"}"
+        }
+        record.updatedAt = Date()
+        try modelContext.save()
+    }
+
+    private func fitScoreRecord(job: Job, resumeID: String) throws -> JobFitScore {
+        if let existing = job.fitScores.first(where: { $0.resume?.id == resumeID }) {
+            return existing
+        }
+        let record = JobFitScore()
+        modelContext.insert(record)
+        record.job = job
+        let resumes = try modelContext.fetch(FetchDescriptor<Resume>(predicate: #Predicate { $0.id == resumeID }))
+        record.resume = resumes.first
+        return record
+    }
+
 
     /// Atomically dedup-check, assign job number, and insert Capture + Job + extraction LLMRequest
     /// in a single modelContext.save(). No other BackgroundStore call can interleave mid-operation.

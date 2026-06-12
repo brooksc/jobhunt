@@ -106,8 +106,7 @@ public actor QueueActor {
     }
 
     /// Enqueue fit-scoring requests for a set of job IDs against a specific resume.
-    /// Unlike `enqueue(jobIDs:mode:)`, this links each LLMRequest to the resume so
-    /// `processFitRequest` can find it and won't cancel due to a missing resumeID.
+    /// Also creates/updates a JobFitScore record for each (job, resume) pair with fitStatus = .pending.
     public func enqueueFit(jobIDs: [String], resumeID: String) async throws {
         guard !jobIDs.isEmpty else { return }
         let ids = jobIDs
@@ -115,14 +114,14 @@ public actor QueueActor {
         let jobMap = Dictionary(jobs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let resumes = try await store.fetch(FetchDescriptor<Resume>(predicate: #Predicate { $0.id == resumeID }))
         guard let resume = resumes.first else { return }
-        let requests = jobIDs.compactMap { jobID -> LLMRequest? in
-            guard let job = jobMap[jobID] else { return nil }
+        for jobID in jobIDs {
+            guard let job = jobMap[jobID] else { continue }
             let req = LLMRequest(requestType: .fit, status: .queued)
             req.job = job
             req.resume = resume
-            return req
+            try await store.insert(req)
+            try? await store.markFitScorePending(jobID: jobID, resumeID: resumeID)
         }
-        try await store.insertBatch(requests)
     }
 
     /// On app launch, reset any requests stuck in "running" back to "queued",
@@ -549,6 +548,8 @@ public actor QueueActor {
         )
         let resumeSnap = ResumeSnapshot(text: resume.text)
 
+        try? await store.markFitScoreRunning(jobID: jobID, resumeID: resumeID)
+
         do {
             let fitOutput = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, model: fitModel, provider: provider)
             let fitResult = fitOutput.score
@@ -622,6 +623,7 @@ public actor QueueActor {
                     req.finishedAt = Date()
                     req.error = errorStr
                 }
+                try? await store.markFitScoreFailed(jobID: jobID, resumeID: resumeID, errorMessage: errorStr)
                 try await store.update(
                     Job.self,
                     predicate: #Predicate { $0.id == jobID }

@@ -32,7 +32,19 @@ final class AppServices: @unchecked Sendable {
         )
         let js = JobService(store: store, queue: queue)
         let ss = SiteService(store: store)
-        let mcpToken = MCPTokenManager.generateAndWrite()
+        #if !MAS_BUILD
+        // Only generate MCP token for DMG builds where the MCP helper is bundled.
+        // MAS sandbox builds exclude the MCP target entirely.
+        let mcpToken: String
+        do {
+            mcpToken = try MCPTokenManager.generateAndWrite()
+        } catch {
+            NSLog("AppServices: MCP token setup failed — MCP will be unavailable: \(error)")
+            mcpToken = ""
+        }
+        #else
+        let mcpToken = ""
+        #endif
         let localServer = JobhuntServer(jobService: js, siteService: ss, store: store, mcpToken: mcpToken)
         jobService = js
         siteService = ss

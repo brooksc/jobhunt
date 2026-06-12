@@ -8,17 +8,15 @@ public enum MCPTokenManager {
 
     /// Generate a fresh UUID token, write it to ~/.jobhunt-mcp-token with 0600
     /// permissions (owner read/write only), and return the token.
+    /// Throws if the file cannot be written or permissions cannot be set — callers
+    /// must not start MCP routes if this fails.
     @discardableResult
-    public static func generateAndWrite() -> String {
+    public static func generateAndWrite() throws -> String {
         let token = UUID().uuidString
         let path = tokenURL.path
         // Write atomically then lock down permissions immediately
-        do {
-            try token.write(to: tokenURL, atomically: true, encoding: .utf8)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
-        } catch {
-            NSLog("MCPTokenManager: failed to write token: \(error)")
-        }
+        try token.write(to: tokenURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
         return token
     }
 

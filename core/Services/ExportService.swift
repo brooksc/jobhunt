@@ -29,17 +29,17 @@ public enum ExportService {
                 "status": job.status.rawValue,
                 "rating": job.rating.map(String.init) ?? "",
                 "extraction_status": job.extractionStatus.rawValue,
-                "company": job.company ?? "",
-                "title": job.title ?? "",
-                "location": job.location ?? "",
+                "company": sanitizeCsvCell(job.company ?? ""),
+                "title": sanitizeCsvCell(job.title ?? ""),
+                "location": sanitizeCsvCell(job.location ?? ""),
                 "remote_type": job.remoteType?.rawValue ?? "",
                 "salary_min": job.salaryMin.map(String.init) ?? "",
                 "salary_max": job.salaryMax.map(String.init) ?? "",
                 "salary_currency": job.salaryCurrency ?? "",
-                "salary_note": job.salaryNote ?? "",
+                "salary_note": sanitizeCsvCell(job.salaryNote ?? ""),
                 "application_url": job.applicationURL ?? "",
                 "extraction_model": job.extractionModel ?? "",
-                "source_url": sourceURL,
+                "source_url": sanitizeCsvCell(sourceURL),
                 "captured_at": capturedAt,
                 "extracted_at": extractedAt,
                 "fit_score": job.fitScore.map(String.init) ?? "",
@@ -67,6 +67,18 @@ public enum ExportService {
     static func escapeCsv(_ value: String) -> String {
         if value.contains(",") || value.contains("\"") || value.contains("\n") {
             return "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        }
+        return value
+    }
+
+    // MARK: - Formula injection defense (OWASP CSV injection)
+
+    /// Prefix cells that start with a spreadsheet formula trigger character with a
+    /// single quote so Excel/Google Sheets treat them as literals, not formulas.
+    static func sanitizeCsvCell(_ value: String) -> String {
+        let formulaTriggers: [Character] = ["=", "+", "-", "@", "\t", "\r"]
+        if let first = value.first, formulaTriggers.contains(first) {
+            return "'" + value
         }
         return value
     }

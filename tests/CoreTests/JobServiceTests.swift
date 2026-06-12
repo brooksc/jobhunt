@@ -1259,4 +1259,39 @@ final class StatusTimelineEventTests: XCTestCase {
         let fetched = try await store.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == reqID }))
         XCTAssertEqual(fetched.first?.status, .cancelled, "Cancelled request must not be transitioned to running")
     }
+
+    // MARK: - TASK-332: CSV formula injection defense
+
+    func testCsvExport_formulaTitle_isSanitized() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let job = Job(id: "job-fi-1", jobNumber: 10, title: "=HYPERLINK(\"evil.com\",\"click\")", status: .pursuing)
+        try await store.insert(job)
+
+        let csv = ExportService.jobsCSV(jobs: [job])
+        XCTAssertTrue(csv.contains("'=HYPERLINK"), "Formula-prefixed title must be sanitized with leading single quote")
+        XCTAssertFalse(csv.contains(",=HYPERLINK"), "Unsanitized formula must not appear bare in CSV")
+    }
+
+    func testCsvExport_plusPrefix_isSanitized() {
+        let result = ExportService.sanitizeCsvCell("+malicious")
+        XCTAssertEqual(result, "'+malicious")
+    }
+
+    func testCsvExport_normalTitle_isUnchanged() {
+        let result = ExportService.sanitizeCsvCell("Software Engineer")
+        XCTAssertEqual(result, "Software Engineer")
+    }
+
+    func testCsvExport_columnHeaders_assertExactOrder() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let job = Job(id: "job-hdr", jobNumber: 1, status: .pursuing)
+        try await store.insert(job)
+
+        let csv = ExportService.jobsCSV(jobs: [job])
+        let header = csv.components(separatedBy: "\n").first ?? ""
+        let expected = "job_number,capture_id,job_id,status,rating,extraction_status,company,title,location,remote_type,salary_min,salary_max,salary_currency,salary_note,application_url,extraction_model,source_url,captured_at,extracted_at,fit_score,fit_status,has_pending_actions,open_actions_count"
+        XCTAssertEqual(header, expected, "CSV header columns must match exact order")
+    }
 }

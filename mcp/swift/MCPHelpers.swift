@@ -16,6 +16,12 @@ struct MCPError: Error {
 func readToken() -> String? {
     let tokenURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".jobhunt-mcp-token")
+    let path = tokenURL.path
+    // Refuse to use the token if the file has group or world-readable bits (must be 0600).
+    var st = stat()
+    guard stat(path, &st) == 0,
+          (st.st_mode & 0o177) == 0
+    else { return nil }
     guard let token = try? String(contentsOf: tokenURL, encoding: .utf8) else { return nil }
     return token.trimmingCharacters(in: .whitespacesAndNewlines)
 }

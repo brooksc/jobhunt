@@ -1,9 +1,10 @@
 ---
 id: TASK-298
 title: 'Availability: Restrict auto-expiry to appropriate job statuses'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 05:01'
+updated_date: '2026-06-12 05:47'
 labels:
   - audit
   - availability

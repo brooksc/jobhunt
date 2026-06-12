@@ -4,9 +4,16 @@ on:
   push:
     tags: ['v*']
 
+# TASK-353: least-privilege permissions — job-level write only for the release job
+permissions:
+  contents: read
+
 jobs:
   build-dmg:
     runs-on: macos-latest
+    permissions:
+      contents: write   # required to upload release artifacts
+      id-token: write   # required for OIDC/attestation (TASK-351 provenance)
     env:
       DEVELOPER_TEAM: ${{ secrets.APPLE_TEAM_ID }}
     steps:
@@ -109,9 +116,39 @@ jobs:
             --wait
           xcrun stapler staple build/Jobhunt-${{ github.ref_name }}.dmg
 
+      # TASK-356: Clean up signing certificate material before upload steps
+      - name: Clean up signing certificate
+        if: always()
+        run: |
+          # Remove decoded p12 file from working directory
+          rm -f cert.p12
+          # Lock and delete temporary keychain
+          security lock-keychain build.keychain 2>/dev/null || true
+          security delete-keychain build.keychain 2>/dev/null || true
+          echo "Signing material cleaned up"
+
+      # TASK-351: Generate SHA256 checksums for release artifacts
+      - name: Generate checksums
+        run: |
+          shasum -a 256 build/Jobhunt-${{ github.ref_name }}.dmg > build/Jobhunt-${{ github.ref_name }}.dmg.sha256
+          cat build/Jobhunt-${{ github.ref_name }}.dmg.sha256
+
+      # TASK-351: Record build provenance
+      - name: Record provenance
+        run: |
+          echo "Build provenance:" > provenance.txt
+          echo "  Runner: $RUNNER_OS" >> provenance.txt
+          echo "  Commit: ${{ github.sha }}" >> provenance.txt
+          echo "  Tag: ${{ github.ref_name }}" >> provenance.txt
+          echo "  Workflow: ${{ github.workflow }}" >> provenance.txt
+          cat provenance.txt
+
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/Jobhunt-${{ github.ref_name }}.dmg
+          files: |
+            build/Jobhunt-${{ github.ref_name }}.dmg
+            build/Jobhunt-${{ github.ref_name }}.dmg.sha256
+            provenance.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,10 +1,19 @@
 name: Release MAS
+
 on:
   push:
     tags: ['v*']
+
+# TASK-353: least-privilege permissions — job-level write only for the release job
+permissions:
+  contents: read
+
 jobs:
   build-mas:
     runs-on: macos-latest
+    permissions:
+      contents: write   # required to upload release artifacts
+      id-token: write   # reserved for future OIDC/attestation use
     steps:
       - uses: actions/checkout@v4
       - name: Verify version consistency
@@ -35,14 +44,19 @@ jobs:
           security import installer.p12 -k build.keychain -P "${{ secrets.MAS_INSTALLER_CERT_PASSWORD }}" -T /usr/bin/productbuild
           security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
           security list-keychains -d user -s build.keychain
+
       - name: Install Tuist
         run: curl -Ls https://install.tuist.io | bash
+
       - name: Install dependencies
         run: tuist install || true
+
       - name: Generate project
         run: tuist generate --no-open
+
       - name: Run tests
         run: nice xcodebuild test -project Jobhunt.xcodeproj -scheme Jobhunt-MAS -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
+
       - name: Archive (MAS)
         run: |
           nice xcodebuild archive \
@@ -52,6 +66,7 @@ jobs:
             -archivePath build/Jobhunt-MAS.xcarchive \
             CODE_SIGN_IDENTITY="3rd Party Mac Developer Application" \
             DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }}
+
       - name: Export .pkg
         run: |
           cat > export-options-mas.plist << 'EOF'
@@ -85,6 +100,15 @@ jobs:
           echo "$ENTITLEMENTS" | grep -q "app-sandbox" || { echo "ERROR: MAS build missing app-sandbox entitlement"; exit 1; }
 
           echo "MAS smoke check passed"
+
+      # TASK-356: Clean up signing certificate material
+      - name: Clean up signing certificates
+        if: always()
+        run: |
+          rm -f mas.p12 installer.p12
+          security lock-keychain build.keychain 2>/dev/null || true
+          security delete-keychain build.keychain 2>/dev/null || true
+          echo "Signing material cleaned up"
       - name: Upload .pkg as artifact
         uses: actions/upload-artifact@v4
         with:

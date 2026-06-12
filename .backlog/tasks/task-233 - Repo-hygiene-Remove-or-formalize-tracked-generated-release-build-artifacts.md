@@ -1,9 +1,10 @@
 ---
 id: TASK-233
 title: 'Repo hygiene: Remove or formalize tracked generated release/build artifacts'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 01:44'
+updated_date: '2026-06-12 02:21'
 labels:
   - repo-hygiene
   - release

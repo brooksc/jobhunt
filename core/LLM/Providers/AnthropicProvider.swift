@@ -46,7 +46,12 @@ public final class AnthropicProvider: LLMProvider, @unchecked Sendable {
         urlRequest.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         urlRequest.httpBody = body
 
-        let (data, response) = try await session.data(for: urlRequest)
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: urlRequest)
+        } catch let urlError as URLError where urlError.code == .timedOut {
+            throw LLMProviderError.timeout(seconds: timeoutSeconds)
+        }
         guard let http = response as? HTTPURLResponse else { throw LLMProviderError.noResponse }
         guard (200 ..< 300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""

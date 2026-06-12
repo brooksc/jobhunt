@@ -53,14 +53,26 @@ enum OpenAICompatibleTransport {
             }
             urlRequest.httpBody = body
 
-            let (data, response) = try await session.data(for: urlRequest)
+            let (data, response): (Data, URLResponse)
+            do {
+                (data, response) = try await session.data(for: urlRequest)
+            } catch let urlError as URLError where urlError.code == .timedOut {
+                throw LLMProviderError.timeout(seconds: timeoutSeconds)
+            }
             guard let http = response as? HTTPURLResponse else {
                 throw LLMProviderError.noResponse
             }
 
             if http.statusCode == 400 {
+                let bodyStr = String(data: data, encoding: .utf8) ?? ""
+                let isFormatError = bodyStr.localizedCaseInsensitiveContains("response_format")
+                    || bodyStr.localizedCaseInsensitiveContains("json_schema")
+                    || bodyStr.localizedCaseInsensitiveContains("json_object")
+                if !isFormatError {
+                    throw LLMProviderError.httpError(statusCode: 400, body: bodyStr)
+                }
                 lastBadStatusCode = 400
-                lastBadBody = String(data: data, encoding: .utf8) ?? ""
+                lastBadBody = bodyStr
                 // Try next format level
                 continue
             }

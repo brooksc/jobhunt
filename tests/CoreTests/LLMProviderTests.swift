@@ -146,9 +146,10 @@ final class OpenAIProviderTests: LLMMockProviderTestCase {
             let fmt = body?["response_format"] as? [String: Any]
 
             if callCount == 1 {
-                // First call: json_schema → return 400
+                // First call: json_schema → return 400 with format error body
                 XCTAssertEqual(fmt?["type"] as? String, "json_schema")
-                return (mockHTTPResponse(url: req.url!, statusCode: 400), Data())
+                let errBody = Data("{\"error\":{\"message\":\"response_format type json_schema not supported\"}}".utf8)
+                return (mockHTTPResponse(url: req.url!, statusCode: 400), errBody)
             } else {
                 // Second call: json_object → return 200
                 XCTAssertEqual(fmt?["type"] as? String, "json_object")
@@ -172,7 +173,8 @@ final class OpenAIProviderTests: LLMMockProviderTestCase {
         LLMMockURLProtocol.requestHandler = { req in
             callCount += 1
             if callCount <= 2 {
-                return (mockHTTPResponse(url: req.url!, statusCode: 400), Data())
+                let errBody = Data("{\"error\":{\"message\":\"response_format not supported\"}}".utf8)
+                return (mockHTTPResponse(url: req.url!, statusCode: 400), errBody)
             }
             // Third call: no format → text
             let body = try JSONSerialization.jsonObject(with: requestBody(req) ?? Data()) as? [String: Any]
@@ -571,6 +573,205 @@ final class LLMProviderFactoryMakeProviderTests: XCTestCase {
         let provider = LLMProviderFactory.makeProvider(settings: settings)
         XCTAssertEqual(provider.id, "anthropic")
         XCTAssertNotEqual(provider.id, settings.llmModel)
+    }
+}
+
+// MARK: - TASK-323: Google responseFormat tests
+
+extension GoogleProviderTests {
+    func testNilResponseFormat_doesNotSetGenerationConfig() async throws {
+        LLMMockURLProtocol.requestHandler = { req in
+            let body = try JSONSerialization.jsonObject(with: requestBody(req) ?? Data()) as? [String: Any]
+            XCTAssertNil(body?["generationConfig"], "generationConfig should not be set for nil responseFormat")
+            return (mockHTTPResponse(url: req.url!), self.googleResponse(text: "ok"))
+        }
+        let provider = GoogleProvider(apiKey: "k", session: session)
+        let req = ChatRequest(
+            messages: [ChatMessage(role: "user", content: "ping")],
+            model: "gemini-2.5-flash",
+            responseFormat: nil
+        )
+        _ = try await provider.complete(req)
+    }
+
+    func testTextResponseFormat_doesNotSetGenerationConfig() async throws {
+        LLMMockURLProtocol.requestHandler = { req in
+            let body = try JSONSerialization.jsonObject(with: requestBody(req) ?? Data()) as? [String: Any]
+            XCTAssertNil(body?["generationConfig"], "generationConfig should not be set for .text responseFormat")
+            return (mockHTTPResponse(url: req.url!), self.googleResponse(text: "ok"))
+        }
+        let provider = GoogleProvider(apiKey: "k", session: session)
+        let req = ChatRequest(
+            messages: [ChatMessage(role: "user", content: "ping")],
+            model: "gemini-2.5-flash",
+            responseFormat: .text
+        )
+        _ = try await provider.complete(req)
+    }
+
+    func testJsonObjectResponseFormat_setsResponseMimeType() async throws {
+        LLMMockURLProtocol.requestHandler = { req in
+            let body = try JSONSerialization.jsonObject(with: requestBody(req) ?? Data()) as? [String: Any]
+            let genConfig = body?["generationConfig"] as? [String: Any]
+            XCTAssertEqual(genConfig?["responseMimeType"] as? String, "application/json")
+            return (mockHTTPResponse(url: req.url!), self.googleResponse(text: "{}"))
+        }
+        let provider = GoogleProvider(apiKey: "k", session: session)
+        let req = ChatRequest(
+            messages: [ChatMessage(role: "user", content: "extract")],
+            model: "gemini-2.5-flash",
+            responseFormat: .jsonObject
+        )
+        _ = try await provider.complete(req)
+    }
+
+    func testJsonSchemaResponseFormat_setsResponseMimeType() async throws {
+        LLMMockURLProtocol.requestHandler = { req in
+            let body = try JSONSerialization.jsonObject(with: requestBody(req) ?? Data()) as? [String: Any]
+            let genConfig = body?["generationConfig"] as? [String: Any]
+            XCTAssertEqual(genConfig?["responseMimeType"] as? String, "application/json")
+            return (mockHTTPResponse(url: req.url!), self.googleResponse(text: "{}"))
+        }
+        let provider = GoogleProvider(apiKey: "k", session: session)
+        let req = ChatRequest(
+            messages: [ChatMessage(role: "user", content: "extract")],
+            model: "gemini-2.5-flash",
+            responseFormat: .jsonSchema(name: "job", schema: "{\"type\":\"object\"}")
+        )
+        _ = try await provider.complete(req)
+    }
+}
+
+// MARK: - TASK-324: Timeout normalization tests
+
+final class TimeoutNormalizationTests: XCTestCase {
+    var session: URLSession!
+
+    override func setUp() {
+        super.setUp()
+        LLMMockURLProtocol.capturedRequests = []
+        LLMMockURLProtocol.requestHandler = { _ in
+            throw URLError(.timedOut)
+        }
+        session = makeMockSession()
+    }
+
+    func testOpenAITransport_timeoutMapsToProviderError() async {
+        let provider = OpenAIProvider(apiKey: "sk-test", timeoutSeconds: 30, session: session)
+        do {
+            _ = try await provider.complete(
+                ChatRequest(messages: [ChatMessage(role: "user", content: "hi")], model: "gpt-4o")
+            )
+            XCTFail("Expected timeout error")
+        } catch let err as LLMProviderError {
+            if case let .timeout(seconds) = err {
+                XCTAssertEqual(seconds, 30)
+            } else {
+                XCTFail("Wrong error type: \(err)")
+            }
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+    }
+
+    func testGoogleProvider_timeoutMapsToProviderError() async {
+        let provider = GoogleProvider(apiKey: "gkey", timeoutSeconds: 45, session: session)
+        do {
+            _ = try await provider.complete(
+                ChatRequest(messages: [ChatMessage(role: "user", content: "hi")], model: "gemini-2.5-flash")
+            )
+            XCTFail("Expected timeout error")
+        } catch let err as LLMProviderError {
+            if case let .timeout(seconds) = err {
+                XCTAssertEqual(seconds, 45)
+            } else {
+                XCTFail("Wrong error type: \(err)")
+            }
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+    }
+
+    func testAnthropicProvider_timeoutMapsToProviderError() async {
+        let provider = AnthropicProvider(apiKey: "ant-key", timeoutSeconds: 60, session: session)
+        do {
+            _ = try await provider.complete(
+                ChatRequest(messages: [ChatMessage(role: "user", content: "hi")], model: "claude-sonnet-4-6")
+            )
+            XCTFail("Expected timeout error")
+        } catch let err as LLMProviderError {
+            if case let .timeout(seconds) = err {
+                XCTAssertEqual(seconds, 60)
+            } else {
+                XCTFail("Wrong error type: \(err)")
+            }
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+    }
+}
+
+// MARK: - TASK-326: OpenAI 400 format-error narrowing tests
+
+final class OpenAI400NarrowingTests: XCTestCase {
+    var session: URLSession!
+
+    override func setUp() {
+        super.setUp()
+        LLMMockURLProtocol.capturedRequests = []
+        session = makeMockSession()
+    }
+
+    func testFormatError400_retriesWithLowerFormat() async throws {
+        var callCount = 0
+        LLMMockURLProtocol.requestHandler = { req in
+            callCount += 1
+            if callCount == 1 {
+                let body = Data("""
+                {"error": {"message": "response_format type 'json_schema' is not supported"}}
+                """.utf8)
+                return (mockHTTPResponse(url: req.url!, statusCode: 400), body)
+            }
+            return (mockHTTPResponse(url: req.url!), openAIResponse(content: "{}"))
+        }
+        let provider = OpenAIProvider(apiKey: "sk-test", session: session)
+        let req = ChatRequest(
+            messages: [ChatMessage(role: "user", content: "extract")],
+            model: "gpt-4o",
+            responseFormat: .jsonSchema(name: "job", schema: "{\"type\":\"object\"}")
+        )
+        let result = try await provider.complete(req)
+        XCTAssertEqual(callCount, 2)
+        XCTAssertEqual(result.responseFormat, .jsonObject)
+    }
+
+    func testUnrelated400_throwsImmediatelyWithoutRetry() async {
+        var callCount = 0
+        LLMMockURLProtocol.requestHandler = { req in
+            callCount += 1
+            let body = Data("Invalid API key".utf8)
+            return (mockHTTPResponse(url: req.url!, statusCode: 400), body)
+        }
+        let provider = OpenAIProvider(apiKey: "sk-bad", session: session)
+        let req = ChatRequest(
+            messages: [ChatMessage(role: "user", content: "hi")],
+            model: "gpt-4o",
+            responseFormat: .jsonSchema(name: "job", schema: "{\"type\":\"object\"}")
+        )
+        do {
+            _ = try await provider.complete(req)
+            XCTFail("Expected httpError")
+        } catch let err as LLMProviderError {
+            if case let .httpError(code, body) = err {
+                XCTAssertEqual(code, 400)
+                XCTAssertEqual(body, "Invalid API key")
+            } else {
+                XCTFail("Wrong error: \(err)")
+            }
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        XCTAssertEqual(callCount, 1, "Should not retry on unrelated 400")
     }
 }
 

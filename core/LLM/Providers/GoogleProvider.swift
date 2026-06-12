@@ -38,10 +38,13 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
             return ["role": role, "parts": [["text": msg.content]]]
         }
 
-        var payload: [String: Any] = [
-            "contents": contents,
-            "generationConfig": ["responseMimeType": "application/json"]
-        ]
+        var payload: [String: Any] = ["contents": contents]
+        switch request.responseFormat {
+        case .jsonObject, .jsonSchema:
+            payload["generationConfig"] = ["responseMimeType": "application/json"]
+        case .text, .none:
+            break
+        }
         if let sys = systemMsg {
             payload["systemInstruction"] = ["parts": [["text": sys.content]]]
         }
@@ -57,7 +60,12 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
         urlRequest.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         urlRequest.httpBody = body
 
-        let (data, response) = try await session.data(for: urlRequest)
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: urlRequest)
+        } catch let urlError as URLError where urlError.code == .timedOut {
+            throw LLMProviderError.timeout(seconds: timeoutSeconds)
+        }
         guard let http = response as? HTTPURLResponse else { throw LLMProviderError.noResponse }
         guard (200 ..< 300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""

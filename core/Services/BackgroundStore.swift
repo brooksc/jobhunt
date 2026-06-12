@@ -243,6 +243,7 @@ public actor BackgroundStore {
     }
 
     /// Create or update a JobFitScore record with fitStatus = .failed, storing the error in fitScoreJSON.
+    /// Updates the job-level mirror only when the failed resume is the active resume.
     public func markFitScoreFailed(jobID: String, resumeID: String, errorMessage: String?) throws {
         let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
         guard let job = jobs.first else { return }
@@ -252,6 +253,34 @@ public actor BackgroundStore {
             record.fitScoreJSON = "{\"error\":\"\(msg.replacingOccurrences(of: "\"", with: "\\\""))\"}"
         }
         record.updatedAt = Date()
+        // Update job-level mirror only if this is the active resume's failure
+        if record.resume?.active == true {
+            job.fitStatus = .failed
+            job.updatedAt = Date()
+        }
+        try modelContext.save()
+    }
+
+    /// Atomically insert fit LLMRequests and mark corresponding JobFitScores as pending
+    /// for a set of (job, resume) pairs. Single save — partial enqueue is impossible.
+    public func insertFitBatch(jobs: [Job], resume: Resume) throws {
+        for job in jobs {
+            let req = LLMRequest(requestType: .fit, status: .queued)
+            req.job = job
+            req.resume = resume
+            modelContext.insert(req)
+            let record: JobFitScore
+            if let existing = job.fitScores.first(where: { $0.resume?.id == resume.id }) {
+                record = existing
+            } else {
+                record = JobFitScore()
+                modelContext.insert(record)
+                record.job = job
+                record.resume = resume
+            }
+            record.fitStatus = .pending
+            record.updatedAt = Date()
+        }
         try modelContext.save()
     }
 

@@ -107,21 +107,17 @@ public actor QueueActor {
 
     /// Enqueue fit-scoring requests for a set of job IDs against a specific resume.
     /// Also creates/updates a JobFitScore record for each (job, resume) pair with fitStatus = .pending.
+    /// Batch is inserted atomically — a single save, so partial enqueue is impossible.
     public func enqueueFit(jobIDs: [String], resumeID: String) async throws {
         guard !jobIDs.isEmpty else { return }
         let ids = jobIDs
         let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { ids.contains($0.id) }))
-        let jobMap = Dictionary(jobs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let resumes = try await store.fetch(FetchDescriptor<Resume>(predicate: #Predicate { $0.id == resumeID }))
         guard let resume = resumes.first else { return }
-        for jobID in jobIDs {
-            guard let job = jobMap[jobID] else { continue }
-            let req = LLMRequest(requestType: .fit, status: .queued)
-            req.job = job
-            req.resume = resume
-            try await store.insert(req)
-            try? await store.markFitScorePending(jobID: jobID, resumeID: resumeID)
-        }
+        let jobMap = Dictionary(jobs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let validJobs = jobIDs.compactMap { jobMap[$0] }
+        guard !validJobs.isEmpty else { return }
+        try await store.insertFitBatch(jobs: validJobs, resume: resume)
     }
 
     /// On app launch, reset any requests stuck in "running" back to "queued",
@@ -624,13 +620,6 @@ public actor QueueActor {
                     req.error = errorStr
                 }
                 try? await store.markFitScoreFailed(jobID: jobID, resumeID: resumeID, errorMessage: errorStr)
-                try await store.update(
-                    Job.self,
-                    predicate: #Predicate { $0.id == jobID }
-                ) { job in
-                    job.fitStatus = .failed
-                    job.updatedAt = Date()
-                }
             } else {
                 let backoffMs = min(Int(pow(2.0, Double(item.attempt))) * 1000, 30000)
                 try await Task.sleep(nanoseconds: UInt64(backoffMs) * 1_000_000)

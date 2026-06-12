@@ -881,6 +881,84 @@ final class JobServiceTests: XCTestCase {
         XCTAssertTrue(requests.isEmpty, "No request should be created when resume ID doesn't exist")
     }
 
+    // MARK: - TASK-308: markFitScoreFailed active-resume guard
+
+    func testMarkFitScoreFailed_activeResume_updatesJobMirror() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        let result = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/fail-active", pageTitle: "Dev", visibleText: "Engineer role"))
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        let job = jobs.first!
+
+        let resume = Resume(name: "Active Resume", text: "Swift dev", charCount: 10, active: true, sortOrder: 0)
+        try await store.insert(resume)
+
+        try await store.markFitScoreFailed(jobID: job.id, resumeID: resume.id, errorMessage: "timeout")
+
+        let updatedJobs = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertEqual(updatedJobs.first?.fitStatus, .failed, "Job mirror should be .failed when active resume fails")
+        _ = result
+    }
+
+    func testMarkFitScoreFailed_inactiveResume_doesNotUpdateJobMirror() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        let result = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/fail-inactive", pageTitle: "Dev", visibleText: "Engineer role"))
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        let job = jobs.first!
+
+        let activeResume = Resume(name: "Active Resume", text: "Swift dev", charCount: 10, active: true, sortOrder: 0)
+        let inactiveResume = Resume(name: "Inactive Resume", text: "Old resume", charCount: 10, active: false, sortOrder: 1)
+        try await store.insert(activeResume)
+        try await store.insert(inactiveResume)
+
+        // Simulate active resume already succeeded
+        try await store.saveFitScore(jobID: job.id, resumeID: activeResume.id, overall: 85, fitJSON: nil, model: nil, scoredAt: Date())
+
+        // Now fail the inactive resume's request
+        try await store.markFitScoreFailed(jobID: job.id, resumeID: inactiveResume.id, errorMessage: "timeout")
+
+        let updatedJobs = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertEqual(updatedJobs.first?.fitStatus, .succeeded, "Job mirror must not change when an inactive resume fails")
+        _ = result
+    }
+
+    // MARK: - TASK-311: enqueueFit atomic batch
+
+    func testEnqueueFit_isAtomic_allJobsEnqueued() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let queue = makeQueue(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        let result1 = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/batch1", pageTitle: "Job 1", visibleText: "role 1"))
+        let result2 = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/batch2", pageTitle: "Job 2", visibleText: "role 2"))
+        let result3 = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/batch3", pageTitle: "Job 3", visibleText: "role 3"))
+        try await queue.deleteAll()
+
+        let resume = Resume(name: "Batch Resume", text: "Swift dev", charCount: 10, active: true, sortOrder: 0)
+        try await store.insert(resume)
+
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        let jobIDs = jobs.map { $0.id }
+
+        try await queue.enqueueFit(jobIDs: jobIDs, resumeID: resume.id)
+
+        let requests = try await store.fetch(FetchDescriptor<LLMRequest>())
+        let fitReqs = requests.filter { $0.requestType == .fit }
+        XCTAssertEqual(fitReqs.count, 3, "All 3 jobs must have queued fit requests")
+        XCTAssertTrue(fitReqs.allSatisfy { $0.status == .queued }, "All fit requests must be .queued")
+
+        let scores = try await store.fetch(FetchDescriptor<JobFitScore>())
+        XCTAssertEqual(scores.count, 3, "All 3 jobs must have a pending JobFitScore")
+        XCTAssertTrue(scores.allSatisfy { $0.fitStatus == .pending }, "All JobFitScore records must be .pending")
+        _ = (result1, result2, result3)
+    }
+
     // MARK: - Data retention: Capture cascade on job delete
 
     func testDelete_jobDeleteCascadesToCapture() async throws {

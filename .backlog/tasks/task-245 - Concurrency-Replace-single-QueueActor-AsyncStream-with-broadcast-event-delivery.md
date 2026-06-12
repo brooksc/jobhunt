@@ -3,9 +3,10 @@ id: TASK-245
 title: >-
   Concurrency: Replace single QueueActor AsyncStream with broadcast event
   delivery
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 02:18'
+updated_date: '2026-06-12 02:25'
 labels:
   - concurrency
   - queue

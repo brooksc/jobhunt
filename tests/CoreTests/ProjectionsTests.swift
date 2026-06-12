@@ -114,6 +114,40 @@ final class ProjectionsTests: XCTestCase {
         XCTAssertTrue(p.dimensions.isEmpty)
     }
 
+    func testFitScoreProjection_integerDimensionScores() {
+        let json = """
+        {
+            "dimensions": [
+                {"name": "skills", "score": 85},
+                {"name": "experience_level", "score": 70}
+            ]
+        }
+        """
+        let fitScore = JobFitScore(fitScore: 85, fitStatus: .succeeded, fitScoreJSON: json)
+        let p = FitScoreProjection(fitScore: fitScore)
+        XCTAssertEqual(p.dimensions.count, 2)
+        XCTAssertEqual(p.dimensions[0].score, 85)
+        XCTAssertEqual(p.dimensions[1].score, 70)
+    }
+
+    func testFitScoreProjection_floatingPointDimensionScores() {
+        let json = """
+        {
+            "dimensions": [
+                {"name": "skills", "score": 85.5},
+                {"name": "experience_level", "score": 70.2},
+                {"name": "culture_fit", "score": 94.9}
+            ]
+        }
+        """
+        let fitScore = JobFitScore(fitScore: 85, fitStatus: .succeeded, fitScoreJSON: json)
+        let p = FitScoreProjection(fitScore: fitScore)
+        XCTAssertEqual(p.dimensions.count, 3)
+        XCTAssertEqual(p.dimensions[0].score, 86, "85.5 should round to 86")
+        XCTAssertEqual(p.dimensions[1].score, 70, "70.2 should round to 70")
+        XCTAssertEqual(p.dimensions[2].score, 95, "94.9 should round to 95")
+    }
+
     // MARK: - SalaryDisplay
 
     func testSalaryDisplay_bothMinMax_USD() {

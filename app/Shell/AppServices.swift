@@ -8,6 +8,7 @@ import SwiftData
 final class AppServices: @unchecked Sendable {
     let jobService: JobService
     let siteService: SiteService
+    let resumeService: ResumeService
     let queueActor: QueueActor
     let settings: SettingsStore
 
@@ -22,6 +23,7 @@ final class AppServices: @unchecked Sendable {
         )
         jobService = JobService(store: store, queue: queue)
         siteService = SiteService(store: store)
+        resumeService = ResumeService(store: store)
         queueActor = queue
         settings = settingsStore
     }

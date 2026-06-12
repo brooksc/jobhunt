@@ -43,7 +43,8 @@ struct JobhuntApp: App {
                     OnboardingView(
                         onboardingManager: onboardingManager,
                         settings: appServices.settings,
-                        modelContainer: modelContainer
+                        modelContainer: modelContainer,
+                        resumeService: appServices.resumeService
                     )
                 }
                 .onOpenURL { url in

@@ -133,6 +133,32 @@ public actor BackgroundStore {
         try modelContext.save()
     }
 
+    /// Delete all JobFitScore records for a resume and reset denormalized fit fields on affected jobs.
+    /// Called when resume text changes so stale scores are not shown as current.
+    public func deleteFitScores(forResumeID resumeID: String) throws {
+        let allScores = try modelContext.fetch(FetchDescriptor<JobFitScore>())
+        let toDelete = allScores.filter { $0.resume?.id == resumeID }
+        guard !toDelete.isEmpty else { return }
+
+        let affectedJobs = toDelete.compactMap(\.job)
+        for score in toDelete { modelContext.delete(score) }
+        try modelContext.save()
+
+        for job in affectedJobs {
+            if job.fitScores.isEmpty {
+                job.fitScore = nil
+                job.fitStatus = .none
+                job.fitScoreJSON = nil
+            } else if let best = job.fitScores.max(by: { ($0.fitScore ?? 0) < ($1.fitScore ?? 0) }) {
+                job.fitScore = best.fitScore
+                job.fitStatus = best.fitStatus
+                job.fitScoreJSON = best.fitScoreJSON
+            }
+            job.updatedAt = Date()
+        }
+        try modelContext.save()
+    }
+
     /// Atomically dedup-check, assign job number, and insert Capture + Job + extraction LLMRequest
     /// in a single modelContext.save(). No other BackgroundStore call can interleave mid-operation.
     public func insertCaptureAtomically(_ input: AtomicIngestInput) throws -> AtomicIngestResult {

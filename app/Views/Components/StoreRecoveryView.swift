@@ -151,12 +151,17 @@ struct StoreRecoveryView: View {
             .appendingPathComponent("jobhunt.store.corrupt-\(timestamp)")
         // Move (not delete) so the user can recover manually if needed
         try? FileManager.default.moveItem(at: storeURL, to: corruptURL)
-        // Also move companion WAL/SHM files
-        for ext in ["shm", "wal"] {
-            let companion = storeURL.appendingPathExtension(ext)
-            let corruptCompanion = corruptURL.appendingPathExtension(ext)
-            try? FileManager.default.moveItem(at: companion, to: corruptCompanion)
-        }
+        // Also move companion WAL/SHM files (hyphen-separated, as SQLite actually creates them)
+        let walFile = storeURL.deletingLastPathComponent()
+            .appendingPathComponent(storeURL.lastPathComponent + "-wal")
+        let shmFile = storeURL.deletingLastPathComponent()
+            .appendingPathComponent(storeURL.lastPathComponent + "-shm")
+        let corruptWal = corruptURL.deletingLastPathComponent()
+            .appendingPathComponent(corruptURL.lastPathComponent + "-wal")
+        let corruptShm = corruptURL.deletingLastPathComponent()
+            .appendingPathComponent(corruptURL.lastPathComponent + "-shm")
+        try? FileManager.default.moveItem(at: walFile, to: corruptWal)
+        try? FileManager.default.moveItem(at: shmFile, to: corruptShm)
         NSApp.terminate(nil)
     }
 }

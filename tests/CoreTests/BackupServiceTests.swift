@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+import SQLite3
+>>>>>>> fc2bf70 (Implement TASK-327/328/329/330/331/333: backup/restore hardening — companion files, atomic replace, blocking pre-restore backup, forced relaunch, schema validation)
 import SwiftData
 import XCTest
 @testable import JobhuntCore
@@ -127,4 +131,110 @@ final class BackupServiceTests: XCTestCase {
         XCTAssertEqual(jobs.first?.capture?.rawHash, "h1", "Capture-Job relationship must survive backup/restore")
         XCTAssertEqual(events.first?.job?.jobNumber, 1, "Event-Job relationship must survive backup/restore")
     }
+<<<<<<< HEAD
+=======
+
+    // MARK: - TASK-333 Regression tests
+
+    /// TASK-327: Restore must remove hyphen-separated WAL/SHM companions (jobhunt.store-wal, not jobhunt.store.wal)
+    func testRestore_removesHyphenWalAndShm() throws {
+        let (container, storeURL) = try makeFileBacked()
+        defer { try? FileManager.default.removeItem(at: storeURL) }
+
+        let ctx = ModelContext(container)
+        ctx.insert(Setting(key: "k", value: "v"))
+        try ctx.save()
+
+        // Create a valid backup to restore from
+        let backupURL = makeTempStoreURL()
+        defer { try? FileManager.default.removeItem(at: backupURL) }
+        try BackupService.backup(storeURL: storeURL, to: backupURL)
+
+        // Create fake hyphen-style companion files alongside the store
+        let walURL = storeURL.deletingLastPathComponent()
+            .appendingPathComponent(storeURL.lastPathComponent + "-wal")
+        let shmURL = storeURL.deletingLastPathComponent()
+            .appendingPathComponent(storeURL.lastPathComponent + "-shm")
+        FileManager.default.createFile(atPath: walURL.path, contents: Data("fake wal".utf8))
+        FileManager.default.createFile(atPath: shmURL.path, contents: Data("fake shm".utf8))
+        defer {
+            try? FileManager.default.removeItem(at: walURL)
+            try? FileManager.default.removeItem(at: shmURL)
+        }
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: walURL.path), "WAL companion must exist before restore")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: shmURL.path), "SHM companion must exist before restore")
+
+        try BackupService.restore(from: backupURL, to: storeURL)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: walURL.path), "WAL companion must be removed after restore")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: shmURL.path), "SHM companion must be removed after restore")
+    }
+
+    /// TASK-328: If copy from backup fails (non-existent source), original store must survive intact
+    func testRestore_atomicOnCopyFailure() throws {
+        let (container, storeURL) = try makeFileBacked()
+        defer { try? FileManager.default.removeItem(at: storeURL) }
+
+        let ctx = ModelContext(container)
+        ctx.insert(Setting(key: "original", value: "data"))
+        try ctx.save()
+
+        // Use a non-existent backup path — isValidSQLite will reject it, triggering notValidSQLite
+        let nonExistentBackup = URL(fileURLWithPath: "/tmp/no_such_backup_\(UUID().uuidString).store")
+
+        XCTAssertThrowsError(try BackupService.restore(from: nonExistentBackup, to: storeURL)) { error in
+            guard case BackupService.BackupError.notValidSQLite = error else {
+                XCTFail("Expected notValidSQLite, got \(error)")
+                return
+            }
+        }
+
+        // Original store must still exist and be intact
+        XCTAssertTrue(FileManager.default.fileExists(atPath: storeURL.path), "Original store must survive a failed restore")
+    }
+
+    /// TASK-331: isValidSQLite must reject a valid SQLite file that has no Jobhunt tables
+    func testIsValidSQLite_rejectsArbitrarySQLite() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("arbitrary_\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        // Create a valid SQLite database but with no Jobhunt tables
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(url.path, &db), SQLITE_OK)
+        sqlite3_exec(db, "CREATE TABLE unrelated (id INTEGER PRIMARY KEY)", nil, nil, nil)
+        sqlite3_close(db)
+
+        XCTAssertFalse(BackupService.isValidSQLite(at: url), "Arbitrary SQLite without Jobhunt tables must be rejected")
+    }
+
+    /// TASK-331: isValidSQLite must reject files with random bytes (not a SQLite file)
+    func testIsValidSQLite_rejectsCorruptedFile() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("corrupt_\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let junk = Data(repeating: 0xFF, count: 256)
+        try junk.write(to: url)
+
+        XCTAssertFalse(BackupService.isValidSQLite(at: url), "File with random bytes must be rejected")
+    }
+
+    /// TASK-331: isValidSQLite must accept a backup created by BackupService.backup
+    func testIsValidSQLite_acceptsValidBackup() throws {
+        let (container, storeURL) = try makeFileBacked()
+        defer { try? FileManager.default.removeItem(at: storeURL) }
+
+        let ctx = ModelContext(container)
+        ctx.insert(Job(jobNumber: 99, title: "Valid Backup Job"))
+        try ctx.save()
+
+        let backupURL = makeTempStoreURL()
+        defer { try? FileManager.default.removeItem(at: backupURL) }
+        try BackupService.backup(storeURL: storeURL, to: backupURL)
+
+        XCTAssertTrue(BackupService.isValidSQLite(at: backupURL), "Backup produced by BackupService must be valid")
+    }
+>>>>>>> fc2bf70 (Implement TASK-327/328/329/330/331/333: backup/restore hardening — companion files, atomic replace, blocking pre-restore backup, forced relaunch, schema validation)
 }

@@ -329,14 +329,29 @@ struct SettingsTab: View {
     private func performRestore(from backupURL: URL) {
         let storeURL = ModelContainerFactory.productionStoreURL()
 
-        // Auto-backup current data before replacing
+        // Auto-backup current data before replacing.
+        // If the safety backup fails, abort — do not proceed with a destructive restore.
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd-HHmmss"
         let autoBackupURL = storeURL.deletingLastPathComponent()
             .appendingPathComponent("pre-restore-\(formatter.string(from: Date())).sqlite")
 
         do {
-            try? BackupService.backup(storeURL: storeURL, to: autoBackupURL)
+            try BackupService.backup(storeURL: storeURL, to: autoBackupURL)
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "Safety Backup Failed"
+            alert.informativeText =
+                "Could not create a pre-restore safety backup. Restore aborted. " +
+                "Please free up disk space and try again.\n\nError: \(error.localizedDescription)"
+            alert.alertStyle = .critical
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            pendingRestoreURL = nil
+            return
+        }
+
+        do {
             try BackupService.restore(from: backupURL, to: storeURL)
         } catch {
             appServices.toastStore.show("Restore failed: \(error.localizedDescription)", isError: true)
@@ -346,22 +361,17 @@ struct SettingsTab: View {
 
         pendingRestoreURL = nil
 
-        // Prompt relaunch — restore is on disk but the live container still sees old data
+        // Restore is on disk; the live container still sees old data.
+        // Terminate immediately — the user must relaunch to load the restored data.
         let alert = NSAlert()
-        alert.messageText = "Restore Complete — Relaunch Required"
+        alert.messageText = "Restore Complete"
         alert.informativeText =
             "Your data has been restored from \(backupURL.lastPathComponent). " +
-            "Quit and reopen Jobhunt to load the restored data."
-        alert.addButton(withTitle: "Relaunch Now")
-        alert.addButton(withTitle: "Later")
-        if alert.runModal() == .alertFirstButtonReturn {
-            let url = Bundle.main.bundleURL
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-            task.arguments = [url.path]
-            try? task.run()
-            NSApp.terminate(nil)
-        }
+            "The app will now quit and must be relaunched to load the restored data."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Quit Now")
+        alert.runModal()
+        NSApp.terminate(nil)
     }
 
     private func markExpired(_ jobs: [GoneJobResult]) {

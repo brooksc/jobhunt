@@ -1,9 +1,10 @@
 ---
 id: TASK-336
 title: 'MCP startup: Fail closed when token write or chmod fails'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:26'
+updated_date: '2026-06-12 20:50'
 labels:
   - audit
   - security
@@ -24,7 +25,7 @@ MCPTokenManager.generateAndWrite logs token write/chmod failures but still retur
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Token generation reports failure to callers instead of returning a usable token after write or permission hardening fails.
-- [ ] #2 MCP endpoints are disabled or app startup surfaces a clear error when token setup fails.
+- [x] #1 Token generation reports failure to callers instead of returning a usable token after write or permission hardening fails.
+- [x] #2 MCP endpoints are disabled or app startup surfaces a clear error when token setup fails.
 - [ ] #3 Tests cover token write/chmod failure behavior where feasible.
 <!-- AC:END -->

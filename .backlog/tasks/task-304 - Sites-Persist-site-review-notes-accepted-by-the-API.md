@@ -1,9 +1,10 @@
 ---
 id: TASK-304
 title: 'Sites: Persist site review notes accepted by the API'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 05:01'
+updated_date: '2026-06-12 05:27'
 labels:
   - audit
   - sites

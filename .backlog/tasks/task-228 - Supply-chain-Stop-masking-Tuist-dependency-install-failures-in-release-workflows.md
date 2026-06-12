@@ -3,9 +3,10 @@ id: TASK-228
 title: >-
   Supply chain: Stop masking Tuist dependency install failures in release
   workflows
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 01:42'
+updated_date: '2026-06-12 02:16'
 labels:
   - supply-chain
   - ci

@@ -1,3 +1,8 @@
+// Vendored from https://github.com/mozilla/readability
+// Version: unknown (no version tag in header; see THIRD_PARTY_NOTICES.md)
+// SHA256: e9330028c8a5a4aa7d75147be2605d520f7f213c7b28474947dc0e9c984e9bed
+// See THIRD_PARTY_NOTICES.md for upstream provenance and update procedure.
+
 /*
  * Copyright (c) 2010 Arc90 Inc
  *

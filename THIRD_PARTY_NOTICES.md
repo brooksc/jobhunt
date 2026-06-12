@@ -1,35 +1,23 @@
 # Third-Party Notices
 
-This repository includes third-party software. Licenses and attributions are listed below.
+This file records provenance and license information for vendored third-party code.
 
 ---
 
 ## Readability.js
 
-**File:** `extension/Readability.js`
+- **Source**: https://github.com/mozilla/readability
+- **Version/Commit**: unknown — no version tag in file header; file references Arc90's readability.js 1.7.1 as upstream basis. See update procedure below to pin to a specific release.
+- **License**: Apache-2.0
+- **SHA256**: `e9330028c8a5a4aa7d75147be2605d520f7f213c7b28474947dc0e9c984e9bed`
+- **Vendored at**: `extension/Readability.js`
+- **Date vendored**: 2026-06-01 (from `git log --follow -- extension/Readability.js | tail -1`)
 
-**Origin:** Originally developed by Arc90 Inc as `readability.js` (version 1.7.1).
-Subsequently maintained and extended by Mozilla as part of Firefox Reader View.
+### Update procedure
 
-**Source:** https://github.com/mozilla/readability
-
-**License:** Apache License, Version 2.0
-
-```
-Copyright (c) 2010 Arc90 Inc
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-```
-
-The full text of the Apache License, Version 2.0 is available at:
-https://www.apache.org/licenses/LICENSE-2.0
+To update Readability.js to a newer version:
+1. Download the release from https://github.com/mozilla/readability/releases or the npm package `@mozilla/readability`
+2. Copy `Readability.js` to `extension/Readability.js`
+3. Verify the license header is intact
+4. Update the version, SHA256, and date in this file
+5. Run extension capture tests to verify parsing still works

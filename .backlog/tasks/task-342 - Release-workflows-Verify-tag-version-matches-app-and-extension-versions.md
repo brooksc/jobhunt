@@ -1,9 +1,10 @@
 ---
 id: TASK-342
 title: 'Release workflows: Verify tag version matches app and extension versions'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 20:36'
+updated_date: '2026-06-12 20:51'
 labels:
   - audit
   - release

@@ -1,9 +1,10 @@
 ---
 id: TASK-283
 title: 'Timeline: Preserve completed actions in visible job history'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 03:36'
+updated_date: '2026-06-12 03:58'
 labels:
   - audit
   - timeline
@@ -15,6 +16,8 @@ references:
   - core/Models/JobAction.swift
   - app/Views/Detail/JobDetailView.swift
   - app/Views/Needs/NeedsActionView.swift
+modified_files:
+  - app/Views/Detail/JobDetailView.swift
 priority: medium
 ---
 
@@ -26,7 +29,7 @@ Completing a JobAction sets completedAt, but completed actions disappear from th
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Completed actions are visible in the job timeline/history or produce completion JobEvent records.
-- [ ] #2 Needs Action still hides completed actions from active follow-up lists.
-- [ ] #3 Tests cover action completion preserving an auditable history entry.
+- [x] #1 Completed actions are visible in the job timeline/history or produce completion JobEvent records.
+- [x] #2 Needs Action still hides completed actions from active follow-up lists.
+- [x] #3 Tests cover action completion preserving an auditable history entry.
 <!-- AC:END -->

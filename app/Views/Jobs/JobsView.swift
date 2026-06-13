@@ -31,6 +31,7 @@ struct JobsView: View {
     var body: some View {
         jobListWithModifiers
             .focusedSceneValue(\.jobCommands, currentJobCommandHandlers)
+            .accessibilityIdentifier("content.jobs")
     }
 
     private var jobListWithModifiers: some View {
@@ -200,6 +201,7 @@ struct JobsView: View {
                 }
             }
             .help("Advanced filters")
+            .accessibilityLabel("Advanced filters")
             .popover(isPresented: $showFilterPopover) {
                 filterPopover
             }
@@ -272,6 +274,7 @@ struct JobsView: View {
             JobListRow(job: job, isSelected: selectedJobIDs.contains(job.id))
                 .tag(job.id)
                 .contextMenu { jobContextMenu(job) }
+                .accessibilityIdentifier("job.row.\(job.id)")
         }
         .listStyle(.inset)
     }
@@ -370,7 +373,7 @@ struct JobsView: View {
                 .foregroundStyle(active ? .white : .primary).clipShape(Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityAddTraits(active ? .isSelected : [])
+        .accessibilityIdentifier("filter.remote.\(rt.rawValue)")
         .accessibilityValue(active ? "on" : "off")
     }
 
@@ -613,7 +616,7 @@ private struct JobListRow: View {
             }
             HStack(spacing: 3) {
                 if let company = job.company {
-                    Text(company).font(.caption).foregroundStyle(.secondary)
+                    Text(company).font(.caption.weight(.semibold)).foregroundStyle(.primary)
                 }
                 if let location = job.location, !location.isEmpty {
                     Text("·").font(.caption).foregroundStyle(.quaternary)

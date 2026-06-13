@@ -61,7 +61,7 @@ struct ContentView: View {
         switch router.selectedSection {
         case .jobs:
             JobsView(selectedJobIDs: $selectedJobIDs)
-                .navigationSplitViewColumnWidth(min: 360, ideal: 480)
+                .navigationSplitViewColumnWidth(min: 300, ideal: 400)
         case .dashboard:
             DashboardView()
                 .navigationSplitViewColumnWidth(min: 600, ideal: 900)
@@ -96,7 +96,7 @@ struct ContentView: View {
         switch router.selectedSection {
         case .jobs:
             JobInspectorView(selectedJobIDs: $selectedJobIDs)
-                .navigationSplitViewColumnWidth(min: 340, ideal: 460)
+                .navigationSplitViewColumnWidth(min: 600, ideal: 820)
         case .sites:
             SiteInspectorView()
                 .navigationSplitViewColumnWidth(min: 340, ideal: 460)

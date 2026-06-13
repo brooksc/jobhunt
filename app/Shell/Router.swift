@@ -53,6 +53,22 @@ public enum SidebarItem: Hashable, Sendable {
     case dataQuality
     case settings
     case savedSearch(String)
+
+    /// The display label shown in the sidebar row (matches NSTextField text for AppKit selection).
+    var sidebarLabel: String? {
+        switch self {
+        case .dashboard:         return "Dashboard"
+        case .needsAction:       return "Needs Action"
+        case .jobsAll:           return "All Jobs"
+        case .jobs(let status):  return status.displayName
+        case .sites:             return "Sites"
+        case .duplicates:        return "Duplicates"
+        case .llmQueue:          return "LLM Queue"
+        case .dataQuality:       return "Data Quality"
+        case .settings:          return "Settings"
+        case .savedSearch:       return nil  // dynamic name — caller handles
+        }
+    }
 }
 
 @Observable

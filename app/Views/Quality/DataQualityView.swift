@@ -1,3 +1,4 @@
+import AppKit
 import JobhuntCore
 import SwiftData
 import SwiftUI
@@ -239,6 +240,18 @@ struct DataQualityView: View {
                             .lineLimit(1)
                     }
                     Spacer()
+                    if let urlStr = job.capture?.url ?? job.applicationURL, let url = URL(string: urlStr) {
+                        Button { NSWorkspace.shared.open(url) } label: {
+                            Image(systemName: "arrow.up.right.square").font(.caption2)
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Open source posting")
+                    }
+                    Button { rerun(job) } label: {
+                        Image(systemName: "arrow.clockwise").font(.caption2)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Re-run AI extraction")
                     StatusChip(status: job.status)
                     if job.qualityReview != nil {
                         Image(systemName: "checkmark.circle.fill")
@@ -337,6 +350,20 @@ struct DataQualityView: View {
         Task {
             do {
                 try await svc.resetExtractionBulk(jobIDs: ids)
+                await queue.startProcessing()
+            } catch {
+                await MainActor.run { errorMessage = error.localizedDescription }
+            }
+        }
+    }
+
+    private func rerun(_ job: Job) {
+        let id = job.id
+        let svc = appServices.jobService
+        let queue = appServices.queueActor
+        Task {
+            do {
+                try await svc.resetExtractionBulk(jobIDs: [id])
                 await queue.startProcessing()
             } catch {
                 await MainActor.run { errorMessage = error.localizedDescription }

@@ -29,10 +29,18 @@ enum JobsSortLogic {
             compareOptionalInt(a.fitScore, b.fitScore)
         case .rating:
             compareOptionalInt(a.rating, b.rating)
+        case .salaryMin:
+            compareOptionalInt(a.salaryMin, b.salaryMin)
+        case .salaryMax:
+            compareOptionalInt(a.salaryMax, b.salaryMax)
+        case .location:
+            compareOptionalString(a.location, b.location)
         case .capturedAt:
             compareDate(a.capturedAtDenormalized ?? a.createdAt, b.capturedAtDenormalized ?? b.createdAt)
         case .extractedAt:
             compareOptionalDate(a.extractedAt, b.extractedAt)
+        case .lastOpenedAt:
+            compareOptionalDate(a.lastOpenedAt, b.lastOpenedAt)
         }
     }
 

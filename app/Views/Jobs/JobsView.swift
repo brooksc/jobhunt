@@ -315,6 +315,15 @@ struct JobsView: View {
                         recentChip(90, label: "90 days")
                     }
                 }
+                Divider()
+                filterSection("Extraction") {
+                    HStack(spacing: 6) {
+                        extractionChip(nil, label: "Any")
+                        extractionChip(.succeeded, label: "OK")
+                        extractionChip(.pending, label: "Pending")
+                        extractionChip(.failed, label: "Failed")
+                    }
+                }
             }
             } // end ScrollView
         } // end outer VStack
@@ -383,6 +392,19 @@ struct JobsView: View {
     private func salaryChip(_ value: Int?, label: String) -> some View {
         let active = filterState.minSalary == value
         return Button { filterState.minSalary = active ? nil : value } label: {
+            Text(label).font(.caption)
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(active ? Color.accentColor : Color.secondary.opacity(0.1))
+                .foregroundStyle(active ? .white : .primary).clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(active ? .isSelected : [])
+        .accessibilityValue(active ? "on" : "off")
+    }
+
+    private func extractionChip(_ value: ExtractionStatus?, label: String) -> some View {
+        let active = filterState.extractionFilter == value
+        return Button { filterState.extractionFilter = active ? nil : value } label: {
             Text(label).font(.caption)
                 .padding(.horizontal, 9).padding(.vertical, 4)
                 .background(active ? Color.accentColor : Color.secondary.opacity(0.1))
@@ -466,6 +488,9 @@ struct JobsView: View {
             if let days = filterState.recentDays {
                 let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
                 guard (job.capturedAtDenormalized ?? job.createdAt) >= cutoff else { return false }
+            }
+            if let extraction = filterState.extractionFilter {
+                guard job.extractionStatus == extraction else { return false }
             }
             // Text search
             let q = searchText.trimmingCharacters(in: .whitespaces)
@@ -646,8 +671,12 @@ private extension JobsSortKey {
         case .status:      "Status"
         case .fitScore:    "Fit Score"
         case .rating:      "Rating"
+        case .salaryMin:   "Salary (min)"
+        case .salaryMax:   "Salary (max)"
+        case .location:    "Location"
         case .capturedAt:  "Date Captured"
         case .extractedAt: "Date Extracted"
+        case .lastOpenedAt: "Last Opened"
         }
     }
 }

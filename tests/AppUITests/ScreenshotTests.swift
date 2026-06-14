@@ -30,11 +30,13 @@ final class ScreenshotTests: XCTestCase {
 
     func test02_JobsAll() {
         navigate(app, label: "All Jobs")
+        // Verify the Jobs list is shown. navigate() now drives section changes via the Go-menu
+        // ⌃⌘3 shortcut, which updates the router/content but not the sidebar NSOutlineView's AX
+        // selection value — so assert on the content column, not the sidebar row's value.
         XCTAssertTrue(
-            waitUntil(timeout: 3) {
-                self.app.descendants(matching: .any).matching(identifier: "sidebar.jobs.all").firstMatch.value as? String == "1"
-            },
-            "All Jobs sidebar item should be selected"
+            app.descendants(matching: .any).matching(identifier: "content.jobs").firstMatch
+                .waitForExistence(timeout: 5),
+            "Jobs list (content.jobs) should be shown after navigating to All Jobs"
         )
         snap(app, "02-jobs-all")
     }

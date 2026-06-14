@@ -5,7 +5,6 @@ import Foundation
 ///   - OpenAI-compatible (LM Studio, Custom, OpenRouter, OpenAI): `GET {base}/v1/models` → `{data:[{id}]}`
 ///   - Anthropic: `GET /v1/models` (x-api-key + anthropic-version) → `{data:[{id}]}`
 ///   - Google: `GET /v1beta/models` (x-goog-api-key) → `{models:[{name, supportedGenerationMethods}]}`
-/// Apple Foundation Models is a single on-device model with no list endpoint, so it returns [].
 public enum ModelCatalog {
     public static func listModels(
         provider: String,
@@ -36,9 +35,6 @@ public enum ModelCatalog {
             )
         case "google":
             return try await fetchGoogle(apiKey: apiKey, session: session, timeout: timeoutSeconds)
-        case "foundation_models", "apple":
-            // Single on-device model — there is nothing to list or choose.
-            return []
         default:
             // LM Studio, Custom, and any other OpenAI-compatible local endpoint.
             let base = normalizedBase(baseURL)

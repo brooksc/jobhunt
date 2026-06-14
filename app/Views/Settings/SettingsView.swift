@@ -67,8 +67,7 @@ private struct ProviderOption: Identifiable, Hashable {
             id: "openrouter", label: "OpenRouter", isCloud: true,
             privacyURL: "https://openrouter.ai/privacy"
         ),
-        ProviderOption(id: "custom", label: "Custom", isCloud: false, privacyURL: nil),
-        ProviderOption(id: "foundation_models", label: "Apple Intelligence", isCloud: false, privacyURL: nil)
+        ProviderOption(id: "custom", label: "Custom", isCloud: false, privacyURL: nil)
     ]
 
     static func find(_ id: String) -> ProviderOption {
@@ -165,19 +164,6 @@ struct LLMTab: View {
                 }
             }
 
-            if selectedProviderID == "foundation_models" {
-                if #available(macOS 26, *) {
-                    Text("Apple Intelligence — no additional configuration required.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    Label(
-                        "Apple Intelligence requires macOS 26 or later.",
-                        systemImage: "exclamationmark.triangle"
-                    )
-                    .foregroundStyle(.orange)
-                }
-            }
-
             if selectedProviderID == "lmstudio" || selectedProviderID == "custom" {
                 TextField("Base URL", text: $baseURLText)
                     .onSubmit { settings.llmBaseURL = baseURLText }
@@ -202,80 +188,78 @@ struct LLMTab: View {
                 }
             }
 
-            if selectedProviderID != "foundation_models" {
-                HStack {
-                    if fetchedModels.isEmpty {
-                        TextField("Model", text: $modelText)
-                            .onSubmit { settings.setModelForProvider(modelText, provider: selectedProviderID) }
-                            .onChange(of: modelText) { _, new in settings.setModelForProvider(new, provider: selectedProviderID) }
-                    } else {
-                        Picker("Model", selection: $modelText) {
-                            // No silent default — the user must pick. The placeholder represents
-                            // "not yet selected" (empty model id).
-                            if !fetchedModels.contains(modelText) {
-                                Text("Select a model…").tag("")
-                            }
-                            ForEach(fetchedModels, id: \.self) { Text($0).tag($0) }
+            HStack {
+                if fetchedModels.isEmpty {
+                    TextField("Model", text: $modelText)
+                        .onSubmit { settings.setModelForProvider(modelText, provider: selectedProviderID) }
+                        .onChange(of: modelText) { _, new in settings.setModelForProvider(new, provider: selectedProviderID) }
+                } else {
+                    Picker("Model", selection: $modelText) {
+                        // No silent default — the user must pick. The placeholder represents
+                        // "not yet selected" (empty model id).
+                        if !fetchedModels.contains(modelText) {
+                            Text("Select a model…").tag("")
                         }
-                        .onChange(of: modelText) { _, new in
-                            guard !new.isEmpty else { return }
-                            settings.setModelForProvider(new, provider: selectedProviderID)
-                        }
-                        Button("Clear") { fetchedModels = [] }
-                            .buttonStyle(.borderless)
-                            .foregroundStyle(.secondary)
+                        ForEach(fetchedModels, id: \.self) { Text($0).tag($0) }
                     }
-
-                    if canFetchModels {
-                        Button {
-                            Task { await fetchModels() }
-                        } label: {
-                            if isFetchingModels {
-                                ProgressView().controlSize(.small)
-                            } else {
-                                Text("Fetch Models")
-                            }
-                        }
-                        .disabled(isFetchingModels)
+                    .onChange(of: modelText) { _, new in
+                        guard !new.isEmpty else { return }
+                        settings.setModelForProvider(new, provider: selectedProviderID)
                     }
-                }
-
-                if let fetchError {
-                    Label(fetchError, systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                } else if modelText.isEmpty {
-                    Text("Fetch models and choose one — no model is selected.")
-                        .font(.caption)
+                    Button("Clear") { fetchedModels = [] }
+                        .buttonStyle(.borderless)
                         .foregroundStyle(.secondary)
                 }
 
-                HStack {
+                if canFetchModels {
                     Button {
-                        Task { await testConnection() }
+                        Task { await fetchModels() }
                     } label: {
-                        if case .testing = connectionStatus {
+                        if isFetchingModels {
                             ProgressView().controlSize(.small)
                         } else {
-                            Label("Test Connection", systemImage: "network")
+                            Text("Fetch Models")
                         }
                     }
-                    .disabled({ if case .testing = connectionStatus { return true }; return false }())
-
-                    Spacer()
-                    connectionStatusView
+                    .disabled(isFetchingModels)
                 }
-
-                Stepper(
-                    "Timeout: \(settings.llmTimeout)s",
-                    value: Binding(
-                        get: { settings.llmTimeout },
-                        set: { settings.llmTimeout = $0 }
-                    ),
-                    in: 10 ... 600,
-                    step: 10
-                )
             }
+
+            if let fetchError {
+                Label(fetchError, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else if modelText.isEmpty {
+                Text("Fetch models and choose one — no model is selected.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Button {
+                    Task { await testConnection() }
+                } label: {
+                    if case .testing = connectionStatus {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("Test Connection", systemImage: "network")
+                    }
+                }
+                .disabled({ if case .testing = connectionStatus { return true }; return false }())
+
+                Spacer()
+                connectionStatusView
+            }
+
+            Stepper(
+                "Timeout: \(settings.llmTimeout)s",
+                value: Binding(
+                    get: { settings.llmTimeout },
+                    set: { settings.llmTimeout = $0 }
+                ),
+                in: 10 ... 600,
+                step: 10
+            )
         }
     }
 

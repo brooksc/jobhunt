@@ -3,8 +3,7 @@ import Foundation
 /// JSON Schemas for providers that support strict structured output via a JSON Schema
 /// (Anthropic `output_config.format`, OpenAI-compatible `response_format.json_schema`).
 ///
-/// These mirror the Apple FoundationModels `@Generable` shapes in `FoundationModelsSchemas.swift`
-/// and the snake_case keys that `ExtractionEngine` reads back. They stay within Anthropic's
+/// They use the snake_case keys that `ExtractionEngine` reads back and stay within Anthropic's
 /// structured-output limits: every object sets `additionalProperties: false`, nullable scalars use
 /// `["<type>", "null"]`, and no unsupported constraints (`minLength`, `minimum`, regex) are used.
 public enum StructuredOutputSchemas {

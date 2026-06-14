@@ -25,10 +25,9 @@ public enum ResponseFormat: Sendable, Equatable {
 
 // MARK: - StructuredOutputKind
 
-/// Identifies the expected structured payload so on-device providers (Apple Foundation Models)
-/// can use *guided generation* — constraining the model to a typed schema that always decodes,
-/// instead of free-form text that must be JSON-parsed. HTTP providers ignore this and rely on
-/// `responseFormat`; it only changes behaviour for `FoundationModelsProvider`.
+/// Identifies the expected structured payload so providers that support strict structured output
+/// (e.g. Anthropic's `output_config.format`) can enforce a JSON Schema and return guaranteed-valid
+/// JSON. Providers that don't support it fall back to `responseFormat`.
 public enum StructuredOutputKind: Sendable {
     case jobExtraction
     case fitScore

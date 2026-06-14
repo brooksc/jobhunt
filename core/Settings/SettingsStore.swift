@@ -47,6 +47,16 @@ public final class SettingsStore {
         self.modelContext = modelContext
         self.keychain = keychain
         loadCache()
+        migrateRemovedProviders()
+    }
+
+    /// Apple Foundation Models was removed as a provider. Redirect any saved selection to the
+    /// default local provider so the app isn't left pointing at a provider that no longer exists.
+    private func migrateRemovedProviders() {
+        let current = cache[SettingsKey.llmProvider]
+        if current == "foundation_models" || current == "apple" {
+            set("lmstudio", forKey: SettingsKey.llmProvider)
+        }
     }
 
     // MARK: - Generic accessors

@@ -1,4 +1,3 @@
-// swiftlint:disable nesting
 import Foundation
 
 /// Builds an LLMProvider from the current SettingsStore values.
@@ -26,9 +25,6 @@ public enum LLMProviderFactory {
             return GoogleProvider(apiKey: apiKey, model: model, timeoutSeconds: timeout, session: session)
         case "openrouter":
             return OpenRouterProvider(apiKey: apiKey, model: model, timeoutSeconds: timeout, session: session)
-        case "foundation_models", "apple":
-            // "apple" is kept as a legacy alias for settings saved before TASK-320.
-            return FoundationModelsProvider()
         case "custom":
             let baseURL = settings.llmBaseURL
             return CustomProvider(
@@ -65,5 +61,3 @@ public enum LLMProviderFactory {
         }
     }
 }
-
-// swiftlint:enable nesting

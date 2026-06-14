@@ -145,7 +145,6 @@ final class SettingsStoreTests: XCTestCase {
 
     func testLocalhostProviderAutoConsented() {
         XCTAssertTrue(ConsentHelper.isConsented(provider: "lmstudio", settings: store))
-        XCTAssertTrue(ConsentHelper.isConsented(provider: "foundation_models", settings: store))
         XCTAssertTrue(ConsentHelper.isConsented(provider: "custom", settings: store))
     }
 
@@ -259,7 +258,7 @@ final class ConsentHelperSnapshotTests: XCTestCase {
     //   ConsentHelper.isConsented(provider:baseURL:consentGranted:)
 
     func testAlwaysLocalProvidersIgnoreConsentFlag() {
-        for provider in ["lmstudio", "foundation_models"] {
+        for provider in ["lmstudio"] {
             XCTAssertTrue(ConsentHelper.isConsented(provider: provider, baseURL: "", consentGranted: false),
                           "\(provider) must be allowed without consent (always local)")
             XCTAssertTrue(ConsentHelper.isConsented(provider: provider, baseURL: "", consentGranted: true))

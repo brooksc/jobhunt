@@ -67,7 +67,7 @@ let coreTarget = frameworkTarget(
     name: "JobhuntCore",
     bundleSuffix: "core",
     sources: ["core/**/*.swift"],
-    deps: [.sdk(name: "FoundationModels", type: .framework, status: .optional)]
+    deps: []
 )
 
 let serverTarget = frameworkTarget(

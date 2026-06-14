@@ -92,14 +92,6 @@ final class ModelCatalogTests: LLMMockProviderTestCase {
         )
     }
 
-    func testFoundationModels_returnsEmptyWithoutRequest() async throws {
-        let models = try await ModelCatalog.listModels(
-            provider: "foundation_models", baseURL: "", apiKey: "", session: session
-        )
-        XCTAssertTrue(models.isEmpty)
-        XCTAssertTrue(LLMMockURLProtocol.capturedRequests.isEmpty)
-    }
-
     func testHTTPError_throws() async {
         LLMMockURLProtocol.requestHandler = { req in (http(req.url!, 500), Data("nope".utf8)) }
         do {
@@ -211,15 +203,6 @@ final class ModelSelectionGuardTests: XCTestCase {
         }
     }
 
-    func testExtract_emptyModel_appleProvider_proceeds() async throws {
-        let provider = StubProvider(id: "foundation_models", content: #"{"title":"T","company":"C"}"#)
-        let result = try await ExtractionEngine.extract(
-            snapshot: snapshot(), provider: provider,
-            settings: settings(model: "", provider: "foundation_models")
-        )
-        XCTAssertEqual(result.title, "T")
-    }
-
     func testScoreFit_emptyModel_throws() async {
         let provider = StubProvider(id: "openai", content: "{}")
         let job = JobFitSnapshot(
@@ -235,32 +218,6 @@ final class ModelSelectionGuardTests: XCTestCase {
         } catch {
             XCTFail("unexpected error: \(error)")
         }
-    }
-}
-
-// MARK: - Foundation Models context-window trim
-
-final class FoundationModelsTrimTests: XCTestCase {
-    func testShortText_isUnchanged() {
-        let text = "short job description"
-        let out = FoundationModelsProvider.trimToContextWindow(userText: text, systemText: "sys")
-        XCTAssertEqual(out, text)
-    }
-
-    func testLongText_isTruncatedWithMarker() {
-        let text = String(repeating: "x", count: 20000)
-        let out = FoundationModelsProvider.trimToContextWindow(userText: text, systemText: "sys")
-        XCTAssertLessThan(out.count, text.count)
-        XCTAssertTrue(out.contains("truncated"))
-    }
-
-    func testLargeSystemPrompt_shrinksUserBudget() {
-        let text = String(repeating: "x", count: 20000)
-        let bigSystem = String(repeating: "s", count: 8000)
-        let out = FoundationModelsProvider.trimToContextWindow(userText: text, systemText: bigSystem)
-        // available = max(500, 9000 - 8000) = 1000 user chars (+ marker)
-        XCTAssertTrue(out.hasPrefix(String(repeating: "x", count: 1000)))
-        XCTAssertLessThan(out.count, 1100)
     }
 }
 

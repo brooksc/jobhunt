@@ -278,8 +278,7 @@ private struct AIProviderStep: View {
                 isCloud: true,
                 privacyURL: "https://openrouter.ai/privacy"
             ),
-            ProviderOption(id: "custom", label: "Custom", isCloud: false, privacyURL: nil),
-            ProviderOption(id: "foundation_models", label: "Apple Intelligence", isCloud: false, privacyURL: nil)
+            ProviderOption(id: "custom", label: "Custom", isCloud: false, privacyURL: nil)
         ]
 
         static func find(_ id: String) -> ProviderOption? {
@@ -319,38 +318,36 @@ private struct AIProviderStep: View {
                         }
                 }
 
-                if selectedProviderID != "foundation_models" {
-                    HStack {
-                        if fetchedModels.isEmpty {
-                            TextField("Model", text: $modelText)
-                                .onChange(of: modelText) { _, new in settings.llmModel = new }
-                        } else {
-                            Picker("Model", selection: $modelText) {
-                                if !fetchedModels.contains(modelText) {
-                                    Text("Select a model…").tag("")
-                                }
-                                ForEach(fetchedModels, id: \.self) { Text($0).tag($0) }
-                            }
+                HStack {
+                    if fetchedModels.isEmpty {
+                        TextField("Model", text: $modelText)
                             .onChange(of: modelText) { _, new in settings.llmModel = new }
-                        }
-                        if canFetchModels {
-                            Button {
-                                Task { await fetchModels() }
-                            } label: {
-                                if isFetchingModels {
-                                    ProgressView().controlSize(.small)
-                                } else {
-                                    Text("Fetch Models")
-                                }
+                    } else {
+                        Picker("Model", selection: $modelText) {
+                            if !fetchedModels.contains(modelText) {
+                                Text("Select a model…").tag("")
                             }
-                            .disabled(isFetchingModels)
+                            ForEach(fetchedModels, id: \.self) { Text($0).tag($0) }
                         }
+                        .onChange(of: modelText) { _, new in settings.llmModel = new }
                     }
-                    if let fetchError {
-                        Label(fetchError, systemImage: "exclamationmark.triangle")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
+                    if canFetchModels {
+                        Button {
+                            Task { await fetchModels() }
+                        } label: {
+                            if isFetchingModels {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Text("Fetch Models")
+                            }
+                        }
+                        .disabled(isFetchingModels)
                     }
+                }
+                if let fetchError {
+                    Label(fetchError, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
                 }
 
                 HStack {
@@ -739,8 +736,7 @@ private struct FinishStep: View {
             "anthropic": "Anthropic",
             "google": "Google",
             "openrouter": "OpenRouter",
-            "custom": "Custom",
-            "foundation_models": "Apple Intelligence"
+            "custom": "Custom"
         ]
         return providerLabels[settings.llmProvider] ?? settings.llmProvider
     }

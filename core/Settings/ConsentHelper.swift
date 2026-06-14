@@ -3,11 +3,11 @@ import Foundation
 /// Localhost / on-device providers are always consented — no data leaves the device.
 /// Cloud providers require explicit user opt-in (App Store 5.1.2(i)).
 public enum ConsentHelper {
-    private static let alwaysLocalProviders: Set<String> = ["lmstudio", "foundation_models"]
+    private static let alwaysLocalProviders: Set<String> = ["lmstudio"]
 
     /// Returns true when the provider may receive job/resume data without explicit consent.
     ///
-    /// - `lmstudio` and `foundation_models` are always local.
+    /// - `lmstudio` is always local.
     /// - `custom` is local only when the configured base URL resolves to a loopback address.
     ///   A remote custom URL is treated as a cloud provider and requires explicit consent.
     /// - All other providers (openai, anthropic, google, openrouter) require explicit consent.

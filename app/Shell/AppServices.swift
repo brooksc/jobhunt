@@ -68,6 +68,7 @@ final class AppServices: @unchecked Sendable {
         }
         Task {
             try? await queue.requeueRunningOnLaunch()
+            try? await queue.backfillRequestModels()
         }
 
         // Update last-check timestamp when a scheduled availability check completes.

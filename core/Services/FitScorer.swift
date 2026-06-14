@@ -13,6 +13,8 @@ public struct FitScoreOutput: Sendable {
     public let promptChars: Int
     /// Character count of the raw LLM response.
     public let responseChars: Int
+    /// Model identifier reported by the provider (mirrors extraction's `extractionModel`).
+    public let modelReturned: String
 }
 
 /// Result of a fit score computation.

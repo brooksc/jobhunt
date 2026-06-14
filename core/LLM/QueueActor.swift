@@ -472,6 +472,9 @@ public actor QueueActor {
                 req.status = .succeeded
                 req.finishedAt = Date()
                 req.model = result.extractionModel
+                // Clear any error left over from an earlier failed attempt that was retried —
+                // otherwise a succeeded row still shows a stale error in the queue.
+                req.error = nil
             }
 
             // Timeline: record extraction as a system event.
@@ -641,6 +644,7 @@ public actor QueueActor {
                 attempt: item.attempt,
                 status: .succeeded,
                 modelRequested: provider.id,
+                modelReturned: fitOutput.modelReturned,
                 responseFormat: "json_object",
                 startedAt: startedAt,
                 finishedAt: Date(),
@@ -658,6 +662,10 @@ public actor QueueActor {
             ) { req in
                 req.status = .succeeded
                 req.finishedAt = Date()
+                // Record the model used (was previously left nil, so Fit rows showed "—")
+                // and clear any error from an earlier retried attempt.
+                req.model = fitOutput.modelReturned
+                req.error = nil
             }
 
             emit(.jobReady(

@@ -235,7 +235,10 @@ public enum ExtractionEngine {
             requirementsNotMet: requirementsNotMet
         )
         let mergedJSON = FitScorer.buildMergedJSON(result: score, rawLLMDict: raw)
-        return FitScoreOutput(score: score, fitScoreJSON: mergedJSON, promptChars: promptChars, responseChars: responseChars)
+        return FitScoreOutput(
+            score: score, fitScoreJSON: mergedJSON, promptChars: promptChars,
+            responseChars: responseChars, modelReturned: response.model
+        )
     }
 
     // MARK: - Private helpers

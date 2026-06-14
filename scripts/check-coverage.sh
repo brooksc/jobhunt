@@ -13,7 +13,7 @@
 set -euo pipefail
 
 RESULT="${1:?usage: check-coverage.sh <result.xcresult> [min_line_percent]}"
-MIN="${2:-${MIN_LINE_COVERAGE:-68}}"
+MIN="${2:-${MIN_LINE_COVERAGE:-70}}"
 TARGETS="JobhuntCore.framework JobhuntServer.framework"
 
 [ -e "$RESULT" ] || { echo "✗ result bundle not found: $RESULT" >&2; exit 1; }

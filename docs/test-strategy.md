@@ -26,7 +26,7 @@ Target: **< 30 seconds**, **0 failures**.
 
 ### Coverage gate
 
-Line coverage for `JobhuntCore` + `JobhuntServer` is measured (`-enableCodeCoverage YES`) and enforced by `scripts/check-coverage.sh`, run in `swift-build.yml` CI and locally by `rebuild-and-run.sh`. It is a **ratchet floor** (currently **68% line**; actual ≈ 69%) — raise it as coverage improves, never let it regress.
+Line coverage for `JobhuntCore` + `JobhuntServer` is measured (`-enableCodeCoverage YES`) and enforced by `scripts/check-coverage.sh`, run in `swift-build.yml` CI and locally by `rebuild-and-run.sh`. It is a **ratchet floor** (currently **70% line**; actual ≈ 71%) — raise it as coverage improves, never let it regress.
 
 > `xccov` reports **line** coverage only — there is no branch-coverage gate for the Swift code. (The old 85% line / 78% branch figure was the legacy Node/Express project's gate and does not apply here.)
 

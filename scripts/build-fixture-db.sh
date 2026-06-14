@@ -58,7 +58,7 @@ fi
 
 step "Preflight"
 
-[ -f "$PROJECT" ] || fail "$PROJECT not found. Run with --rebuild or run: tuist generate --no-open"
+[ -d "$PROJECT" ] || fail "$PROJECT not found. Run with --rebuild or run: tuist generate --no-open"
 log "project: $REPO_ROOT/$PROJECT"
 log "scheme:  $SCHEME"
 log "output:  $FIXTURE_PATH"

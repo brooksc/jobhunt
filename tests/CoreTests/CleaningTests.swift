@@ -192,6 +192,46 @@ final class CleaningTests: XCTestCase {
         XCTAssertTrue(result.contains("116K-227K Annually"), "visible text salary badge present")
         XCTAssertTrue(result.contains("San Francisco Bay Area:"), "JSON-LD band label present")
     }
+
+    // MARK: - Source preference / dedupe / boilerplate (new behaviour)
+
+    func testPrefersSubstantialJsonLdBodyOverNoisyVisibleText() {
+        let body = String(repeating: "Build and operate large-scale data systems. ", count: 6) // ~264 chars
+        let result = cleanDescription(
+            visibleText: "Home\nJobs\nApply now\nNoise nav and footer chrome lives here",
+            structuredData: [["@type": "JobPosting", "description": body]]
+        )
+        XCTAssertTrue(result.contains("Build and operate large-scale data systems"), "JSON-LD body used")
+        XCTAssertFalse(
+            result.contains("Noise nav and footer chrome lives here"),
+            "noisy visible text is not used when JSON-LD is substantial"
+        )
+    }
+
+    func testDoesNotDuplicateSelectionAlreadyInVisibleText() {
+        let selected = "We are hiring a Senior Engineer to build our platform."
+        let visible = "Header\n\(selected)\nMore details about the role and benefits package."
+        let result = cleanDescription(selectedText: selected, visibleText: visible)
+        let occurrences = result.components(separatedBy: "Senior Engineer to build our platform").count - 1
+        XCTAssertEqual(occurrences, 1, "selection should not be stored twice")
+        XCTAssertFalse(result.contains("---"), "no separator when the selection was deduped")
+    }
+
+    func testStripsCommonBoilerplateLines() {
+        let visible = """
+        Apply now
+        We use cookies to improve your experience.
+        The Role
+        Lead the data platform team.
+        © 2026 Acme Corp
+        """
+        let result = cleanDescription(visibleText: visible)
+        XCTAssertTrue(result.contains("The Role"))
+        XCTAssertTrue(result.contains("Lead the data platform team."))
+        XCTAssertFalse(result.contains("Apply now"), "apply button stripped")
+        XCTAssertFalse(result.contains("We use cookies"), "cookie banner stripped")
+        XCTAssertFalse(result.contains("© 2026"), "copyright footer stripped")
+    }
 }
 
 // swiftlint:enable line_length

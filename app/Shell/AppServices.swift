@@ -70,6 +70,14 @@ final class AppServices: @unchecked Sendable {
             try? await queue.requeueRunningOnLaunch()
             try? await queue.backfillRequestModels()
         }
+        // One-time re-clean of existing captures with the improved cleaner (JSON-LD preference,
+        // selection dedupe, boilerplate stripping). Guarded so it runs once.
+        if !settingsStore.bool(forKey: "reclean_captures_v1_done") {
+            Task {
+                _ = try? await store.recleanAllCaptures()
+                await MainActor.run { settingsStore.setBool(true, forKey: "reclean_captures_v1_done") }
+            }
+        }
 
         // Update last-check timestamp when a scheduled availability check completes.
         NotificationCenter.default.addObserver(

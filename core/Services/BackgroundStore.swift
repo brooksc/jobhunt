@@ -72,6 +72,36 @@ public actor BackgroundStore {
         try modelContext.save()
     }
 
+    /// One-time re-clean: recompute every capture's `cleanedDescription` with the current cleaner
+    /// (after improving JSON-LD preference / boilerplate stripping), refreshing the cleaned hash and
+    /// the job's byte count. Returns the number of captures whose text changed.
+    @discardableResult
+    public func recleanAllCaptures() throws -> Int {
+        var changed = 0
+        try update(Capture.self) { capture in
+            let structured: [[String: Any]]
+            if let json = capture.structuredDataJSON,
+               let data = json.data(using: .utf8),
+               let parsed = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                structured = parsed
+            } else {
+                structured = []
+            }
+            let cleaned = cleanDescription(
+                selectedText: capture.selectedText ?? "",
+                visibleText: capture.visibleText ?? "",
+                structuredData: structured
+            )
+            let newValue = cleaned.isEmpty ? nil : cleaned
+            guard capture.cleanedDescription != newValue else { return }
+            capture.cleanedDescription = newValue
+            capture.cleanedHash = newValue == nil ? nil : DuplicateDetector.cleanedHash(from: cleaned)
+            capture.job?.cleanedTextBytes = newValue?.utf8.count ?? 0
+            changed += 1
+        }
+        return changed
+    }
+
     /// Apply a mutation to exactly one model matching `predicate`.
     /// Throws `notFound` if no row matches, or `multipleMatches` if more than one row matches.
     public func updateOne<T: PersistentModel>(

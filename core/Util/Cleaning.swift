@@ -3,33 +3,104 @@
 
 import Foundation
 
+/// Minimum length for a JSON-LD posting body to be treated as the primary description.
+private let jsonLdMinChars = 200
+
 /// Cleans a job description from capture inputs.
 ///
-/// Mirrors cleaning.js `cleanDescription`.
+/// Source preference, in order:
+///   1. A substantial schema.org `JobPosting.description` (JSON-LD) — the canonical, boilerplate-
+///      free posting body that most ATS emit.
+///   2. The page's visible text, with common site chrome (nav/footer/cookie/apply) stripped.
+/// The user's highlighted selection is prepended only when it isn't already contained in the
+/// chosen body, so it is never stored twice.
 public func cleanDescription(
     selectedText: String = "",
     visibleText: String = "",
     structuredData: [[String: Any]] = []
 ) -> String {
     let selected = selectedText.trimmingCharacters(in: .whitespaces)
-    let visibleTrimmed = visibleText.trimmingCharacters(in: .whitespaces)
+    let visible = stripBoilerplate(visibleText.trimmingCharacters(in: .whitespaces))
+    let jsonLdDesc = extractJsonLdDescription(structuredData)
+
+    // Promote a substantial JSON-LD body to the primary description; otherwise use the de-chromed
+    // visible text (falling back to whatever JSON-LD exists if there's no visible text).
+    let primary = jsonLdDesc.count >= jsonLdMinChars ? jsonLdDesc : (visible.isEmpty ? jsonLdDesc : visible)
 
     var parts: [String] = []
-    if !selected.isEmpty && !visibleTrimmed.isEmpty {
-        // Both present: selected text first as the most relevant section, then full page text
-        parts.append(selected)
-        parts.append("---")
-        parts.append(visibleTrimmed)
-    } else if !selected.isEmpty {
-        return normalizeWhitespace(selected)
-    } else if !visibleTrimmed.isEmpty {
-        parts.append(visibleTrimmed)
+    let includeSelected = !selected.isEmpty && !isContained(selected, in: primary)
+    if includeSelected { parts.append(selected) }
+    if !primary.isEmpty {
+        if includeSelected { parts.append("---") }
+        parts.append(primary)
     }
-
-    let jsonLdDesc = extractJsonLdDescription(structuredData)
-    if !jsonLdDesc.isEmpty { parts.append(jsonLdDesc) }
+    // When JSON-LD wasn't promoted to primary, still append it — it often carries salary bands or a
+    // remote flag missing from the page text — unless that content is already present.
+    if jsonLdDesc.count < jsonLdMinChars, !jsonLdDesc.isEmpty, !isContained(jsonLdDesc, in: primary) {
+        parts.append(jsonLdDesc)
+    }
+    if parts.isEmpty { parts.append(selected) } // last resort: selection only
 
     return normalizeWhitespace(parts.joined(separator: "\n\n"))
+}
+
+// MARK: - Containment / dedupe
+
+/// True when `inner` is already represented in `outer` (so it shouldn't be added again).
+/// Compares whitespace/case-insensitively, with a partial-prefix fallback for near-matches.
+private func isContained(_ inner: String, in outer: String) -> Bool {
+    guard !outer.isEmpty else { return false }
+    let needle = compactForCompare(inner)
+    guard !needle.isEmpty else { return true }
+    let haystack = compactForCompare(outer)
+    if haystack.contains(needle) { return true }
+    let probe = String(needle.prefix(80))
+    return probe.count >= 40 && haystack.contains(probe)
+}
+
+private func compactForCompare(_ text: String) -> String {
+    text.lowercased()
+        .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+        .trimmingCharacters(in: .whitespaces)
+}
+
+// MARK: - Boilerplate stripping
+
+private let boilerplateExactLines: Set<String> = [
+    "apply", "apply now", "easy apply", "quick apply", "apply for this job", "apply for this role",
+    "save", "save job", "saved", "share", "share this job", "share this posting",
+    "report job", "report this job", "report",
+    "skip to content", "skip to main content", "back to search results", "back to jobs",
+    "view all jobs", "see all jobs", "all jobs", "browse jobs", "search jobs",
+    "sign in", "log in", "login", "sign up", "create account", "register",
+    "related jobs", "similar jobs", "recommended jobs", "more jobs like this", "jobs you may like",
+    "accept all cookies", "accept all", "accept cookies", "reject all", "decline", "got it",
+    "manage cookies", "cookie preferences", "cookie settings", "cookie policy",
+    "print", "print job", "email", "email job", "copy link", "follow", "following", "menu"
+]
+
+/// Removes common site-chrome lines (nav, footer, cookie/consent, apply/share buttons) from plain
+/// page text. Deliberately conservative — only drops lines that strongly match known boilerplate —
+/// to avoid cutting real description content.
+func stripBoilerplate(_ text: String) -> String {
+    guard !text.isEmpty else { return text }
+    let kept = text.split(separator: "\n", omittingEmptySubsequences: false)
+        .filter { !isBoilerplateLine(String($0)) }
+    return kept.joined(separator: "\n")
+}
+
+private func isBoilerplateLine(_ rawLine: String) -> Bool {
+    let line = rawLine.trimmingCharacters(in: .whitespaces)
+    guard !line.isEmpty else { return false } // keep blank lines (paragraph breaks)
+    let lower = line.lowercased()
+    if boilerplateExactLines.contains(lower) { return true }
+    if lower.contains("we use cookies") || lower.contains("uses cookies")
+        || lower.contains("this site uses cookies")
+        || (lower.contains("cookies") && lower.contains("by clicking")) {
+        return true
+    }
+    if line.hasPrefix("©") || lower.hasPrefix("copyright ") { return true }
+    return false
 }
 
 // MARK: - JSON-LD helpers

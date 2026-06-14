@@ -103,6 +103,13 @@ struct SettingsTab: View {
                     get: { settings.preferredLocations },
                     set: { settings.preferredLocations = $0 }
                 ))
+                TextField("Preferred metros (e.g. Bay Area, NYC)", text: Binding(
+                    get: { settings.preferredMetros },
+                    set: { settings.preferredMetros = $0 }
+                ))
+                Text("Metros expand to their cities/states and are combined with preferred locations for extraction.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }

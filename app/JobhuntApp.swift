@@ -136,6 +136,33 @@ struct JobhuntApp: App {
                 QueueMenuCommands()
                 QualityMenuCommands()
 
+                // Go menu — jump to any section via ⌃⌘<n>. A standard macOS navigation
+                // affordance, and the deterministic path UI tests use (synthesized clicks on
+                // the List(.sidebar) rows are unreliable under XCUITest on macOS 26).
+                CommandMenu("Go") {
+                    Button("Dashboard") { r.navigateToSection(.dashboard) }
+                        .keyboardShortcut("1", modifiers: [.command, .control])
+                    Button("Needs Action") { r.navigateToSection(.needsAction) }
+                        .keyboardShortcut("2", modifiers: [.command, .control])
+                    Button("Jobs") {
+                        r.activeSavedSearchID = nil
+                        r.sidebarJobFilter = nil
+                        r.navigateToSection(.jobs)
+                    }
+                    .keyboardShortcut("3", modifiers: [.command, .control])
+                    Button("Sites") { r.navigateToSection(.sites) }
+                        .keyboardShortcut("4", modifiers: [.command, .control])
+                    Button("Duplicates") { r.navigateToSection(.duplicates) }
+                        .keyboardShortcut("5", modifiers: [.command, .control])
+                    Button("LLM Queue") { r.navigateToSection(.llmQueue) }
+                        .keyboardShortcut("6", modifiers: [.command, .control])
+                    Button("Data Quality") { r.navigateToSection(.dataQuality) }
+                        .keyboardShortcut("7", modifiers: [.command, .control])
+                    Divider()
+                    Button("Settings") { r.navigateToSection(.settings) }
+                        .keyboardShortcut("8", modifiers: [.command, .control])
+                }
+
                 // ⌘N — Add Job (HIG-7)
                 CommandGroup(replacing: .newItem) {
                     Button("Add Job…") {

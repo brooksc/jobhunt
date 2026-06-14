@@ -143,6 +143,21 @@ extension XCTestCase {
         "Settings":     "sidebar.settings",
     ]
 
+    /// Section labels → the Go menu's ⌃⌘<n> shortcut digit. Keyboard shortcuts fire reliably
+    /// under XCUITest (unlike synthesized List(.sidebar) clicks on macOS 26), so navigate()
+    /// drives section changes this way. Jobs status filters (New/Pursuing/…) aren't sections and
+    /// fall back to the sidebar mechanism below.
+    private static let sectionShortcut: [String: String] = [
+        "Dashboard": "1", "Needs Action": "2", "All Jobs": "3", "Sites": "4",
+        "Duplicates": "5", "LLM Queue": "6", "Data Quality": "7", "Settings": "8",
+    ]
+
+    /// Content-column identifiers that prove a section is showing (used to verify navigation).
+    private static let contentIDs: [String: String] = [
+        "Dashboard": "content.dashboard", "Data Quality": "content.dataQuality",
+        "LLM Queue": "content.llmQueue", "All Jobs": "content.jobs",
+    ]
+
     /// Ordered sidebar items (mirrors Sidebar.swift, section headers excluded —
     /// NSOutlineView keyboard navigation skips group rows going Down AND Up).
     /// Index 0 = Dashboard. Going Down from Dashboard, each subsequent item is
@@ -167,6 +182,22 @@ extension XCTestCase {
     /// coordinate().click() synthesizes a screen-position click regardless of key window state.
     func navigate(_ app: XCUIApplication, label: String) {
         app.activate()
+
+        // Preferred path for top-level sections: the Go menu's ⌃⌘<n> shortcut. Keyboard
+        // shortcuts are reliable under XCUITest; synthesized List(.sidebar) clicks are not.
+        if let key = Self.sectionShortcut[label] {
+            let contentID = Self.contentIDs[label]
+            for _ in 0 ..< 5 {
+                app.typeKey(key, modifierFlags: [.command, .control])
+                guard let contentID else { Thread.sleep(forTimeInterval: 0.4); return }
+                let content = app.descendants(matching: .any).matching(identifier: contentID).firstMatch
+                if content.waitForExistence(timeout: 2) { return }
+                app.activate()
+            }
+            XCTFail("⌃⌘\(key) did not navigate to \(label) (\(Self.contentIDs[label] ?? "no marker"))")
+            return
+        }
+
         // Release keyboard focus from any content-area element (e.g., Data Quality list after
         // a chip click). app.activate() can restore the previously-focused element; ESC clears
         // it so the subsequent window click reliably focuses the sidebar NSOutlineView.

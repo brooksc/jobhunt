@@ -159,8 +159,10 @@ struct LLMQueueView: View {
             .contextMenu(forSelectionType: String.self) { ids in
                 selectionContextMenu(for: ids)
             }
-            .accessibilityIdentifier("content.llmQueue")
         }
+        // Identify the whole view (not just the Table) so the marker is present even when the
+        // request Table is empty — used by AppUITests.navigate() to confirm navigation.
+        .accessibilityIdentifier("content.llmQueue")
         .navigationTitle("LLM Queue")
         .toolbar { toolbarContent }
         .task {

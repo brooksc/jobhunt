@@ -280,6 +280,13 @@ public actor QueueActor {
             if await isPaused() { break }
         }
 
+        // Electron parity: detect & persist domain duplicates. Run once after draining rather
+        // than per-extraction — it's a global O(N^2) scan, so batching avoids quadratic blowup
+        // when many jobs are extracted in one session.
+        if totalProcessed > 0 {
+            _ = try? await store.detectAndPersistDomainDuplicates()
+        }
+
         emit(.processingComplete(processed: totalProcessed, failed: totalFailed))
     }
 
@@ -425,8 +432,8 @@ public actor QueueActor {
                 if !overrides.contains("remoteType") { job.remoteType = result.remoteType }
                 if !overrides.contains("salaryMin") { job.salaryMin = result.salaryMin }
                 if !overrides.contains("salaryMax") { job.salaryMax = result.salaryMax }
-                if !overrides.contains("salaryMin") { job.salaryHourlyMin = result.salaryHourlyMin }
-                if !overrides.contains("salaryMax") { job.salaryHourlyMax = result.salaryHourlyMax }
+                if !overrides.contains("salaryHourlyMin") { job.salaryHourlyMin = result.salaryHourlyMin }
+                if !overrides.contains("salaryHourlyMax") { job.salaryHourlyMax = result.salaryHourlyMax }
                 if !overrides.contains("salaryCurrency") { job.salaryCurrency = result.salaryCurrency }
                 if !overrides.contains("salaryNote") { job.salaryNote = result.salaryNote }
                 if !overrides.contains("employmentType") { job.employmentType = result.employmentType }
@@ -474,9 +481,6 @@ public actor QueueActor {
             // is active). The drain loop re-fetches queued requests, so the new fit requests
             // run on the next iteration without an explicit restart.
             _ = try? await store.enqueueFitForActiveResumes(jobID: jobID)
-
-            // Electron parity: detect & persist domain duplicates after extraction.
-            _ = try? await store.detectAndPersistDomainDuplicates()
 
             emit(.jobReady(jobNumber: item.jobNumber, title: item.jobTitle, fitScore: nil))
             return true

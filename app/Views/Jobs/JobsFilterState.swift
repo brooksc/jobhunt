@@ -8,8 +8,12 @@ enum JobsSortKey: String, CaseIterable {
     case status
     case fitScore
     case rating
+    case salaryMin
+    case salaryMax
+    case location
     case capturedAt
     case extractedAt
+    case lastOpenedAt
 }
 
 struct JobsFilterState: Equatable {
@@ -22,15 +26,19 @@ struct JobsFilterState: Equatable {
     var minRating: Int?
     var minSalary: Int?
     var recentDays: Int?
+    /// Session-only filter (not persisted to SavedSearch): extraction outcome.
+    var extractionFilter: ExtractionStatus?
 
     var hasActiveFilters: Bool {
         statusFilter != nil || remoteFilter != nil || !searchText.isEmpty
             || minFitScore != nil || minRating != nil || minSalary != nil || recentDays != nil
+            || extractionFilter != nil
     }
 
     var activeFilterCount: Int {
         [statusFilter != nil, remoteFilter != nil, !searchText.isEmpty,
-         minFitScore != nil, minRating != nil, minSalary != nil, recentDays != nil]
+         minFitScore != nil, minRating != nil, minSalary != nil, recentDays != nil,
+         extractionFilter != nil]
             .filter { $0 }.count
     }
 

@@ -9,7 +9,37 @@ struct PatchSummary {
     var siteReviews = 0
     var llmRequests = 0
     var llmRequestAttempts = 0
+    var events = 0
+    var savedSearches = 0
+    var settings = 0
+    var recleanedCaptures = 0
     var skipped = 0
+}
+
+// MARK: - Helpers
+
+/// Parses a capture's structured_data JSON into the shape cleanDescription() expects.
+func parseStructuredData(_ json: String?) -> [[String: Any]] {
+    guard let json, let data = json.data(using: .utf8),
+          let parsed = try? JSONSerialization.jsonObject(with: data) else { return [] }
+    if let arr = parsed as? [[String: Any]] { return arr }
+    if let dict = parsed as? [String: Any] { return [dict] }
+    return []
+}
+
+/// Best-effort map of a legacy saved_views rule tree to a SavedSearch free-text query:
+/// returns the value of the first company/title/location "contains" rule, else "".
+func savedViewSearchText(_ ruleTreeJSON: String?) -> String {
+    guard let ruleTreeJSON, let data = ruleTreeJSON.data(using: .utf8),
+          let tree = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let rules = tree["rules"] as? [[String: Any]] else { return "" }
+    for rule in rules {
+        guard let field = rule["field"] as? String,
+              ["company", "title", "location"].contains(field),
+              let value = rule["value"] as? String else { continue }
+        return value
+    }
+    return ""
 }
 
 // MARK: - Patch Logic
@@ -174,6 +204,75 @@ func patch(src: DBHandle, context: ModelContext) -> PatchSummary {
             s.llmRequestAttempts += 1
         }
         print("  llm_request_attempts: \(s.llmRequestAttempts) inserted")
+    }
+
+    // events → JobEvent  (jobMap is fetched from the already-saved store, so linking is reliable)
+    if tableExists(src, "events") {
+        let existingEventIDs = Set((try? context.fetch(FetchDescriptor<JobEvent>()))?.map(\.id) ?? [])
+        for row in queryRows(src, "SELECT * FROM events") {
+            guard let id = row.str("id"), let jobId = row.str("job_id") else { continue }
+            if existingEventIDs.contains(id) { s.skipped += 1; continue }
+            guard let parentJob = jobMap[jobId] else { continue }
+            let ev = JobEvent(
+                id: id,
+                eventType: row.req("event_type"),
+                note: row.str("note"),
+                occurredAt: row.dateOrNow("occurred_at"),
+                createdAt: row.dateOrNow("created_at")
+            )
+            ev.job = parentJob
+            context.insert(ev)
+            s.events += 1
+        }
+        print("  events: \(s.events) inserted")
+    }
+
+    // saved_views → SavedSearch (best-effort: legacy rule tree → discrete fields)
+    if tableExists(src, "saved_views") {
+        let existingNames = Set((try? context.fetch(FetchDescriptor<SavedSearch>()))?.map(\.name) ?? [])
+        for row in queryRows(src, "SELECT * FROM saved_views") {
+            guard let name = row.str("name") else { continue }
+            if (row.str("page") ?? "jobs") != "jobs" { continue }   // only job-scoped views map
+            if existingNames.contains(name) { s.skipped += 1; continue }
+            let search = SavedSearch(name: name, searchText: savedViewSearchText(row.str("rule_tree")))
+            if let id = row.str("id") { search.id = id }
+            if let created = row.date("created_at") { search.createdAt = created }
+            context.insert(search)
+            s.savedSearches += 1
+            print("  saved_view '\(name)' → SavedSearch (searchText=\(search.searchText))")
+        }
+    }
+
+    // settings (non-secret only — API keys must live in Keychain, never SwiftData)
+    if tableExists(src, "settings") {
+        let existingKeys = Set((try? context.fetch(FetchDescriptor<Setting>()))?.map(\.key) ?? [])
+        for row in queryRows(src, "SELECT * FROM settings") {
+            guard let key = row.str("key"), let value = row.str("value") else { continue }
+            if SettingsKey.keychainKeys.contains(key) { continue }
+            if existingKeys.contains(key) { s.skipped += 1; continue }
+            let setting = Setting(key: key, value: value, updatedAt: row.dateOrNow("updated_at"))
+            context.insert(setting)
+            s.settings += 1
+            print("  setting '\(key)' → inserted")
+        }
+    }
+
+    // Re-clean captures whose cleaned description is trivial boilerplate but whose raw page
+    // text is substantial. The old JS cleaner used selected-text-only, so a stray "$" selection
+    // produced a 1-char cleaned description that hid the full JD (still present in visible_text).
+    let allCaptures = (try? context.fetch(FetchDescriptor<Capture>())) ?? []
+    for cap in allCaptures {
+        let current = cap.cleanedDescription ?? ""
+        let visible = cap.visibleText ?? ""
+        guard current.count < 8, visible.count > 200 else { continue }
+        let structured = parseStructuredData(cap.structuredDataJSON)
+        // Drop the junk selected text — re-clean from visible text + JSON-LD only.
+        let recleaned = cleanDescription(selectedText: "", visibleText: visible, structuredData: structured)
+        guard recleaned.count >= 100 else { continue }
+        cap.cleanedDescription = recleaned
+        cap.cleanedHash = DuplicateDetector.cleanedHash(from: recleaned)
+        s.recleanedCaptures += 1
+        print("  re-cleaned capture \(cap.id.prefix(16))… (\(current.count)→\(recleaned.count) chars)")
     }
 
     do {

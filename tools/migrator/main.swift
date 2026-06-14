@@ -109,6 +109,10 @@ case let .patch(inputPath, storePath):
     print("  site reviews inserted:       \(patchSummary.siteReviews)")
     print("  llm requests inserted:       \(patchSummary.llmRequests)")
     print("  llm request attempts inserted: \(patchSummary.llmRequestAttempts)")
+    print("  events inserted:             \(patchSummary.events)")
+    print("  saved searches inserted:     \(patchSummary.savedSearches)")
+    print("  settings inserted:           \(patchSummary.settings)")
+    print("  captures re-cleaned:         \(patchSummary.recleanedCaptures)")
     print("  already-present (skipped):   \(patchSummary.skipped)")
 
 case let .repairFitScores(storePath):

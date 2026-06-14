@@ -108,7 +108,11 @@ let migratorTarget = Target.target(
     sources: ["tools/migrator/**/*.swift"],
     dependencies: [.target(name: "JobhuntCore")],
     settings: .settings(
-        base: sharedBase,
+        // Add @executable_path to the runpath so the tool can locate JobhuntCore.framework
+        // (which sits beside it in the build-products dir) when run directly from a shell.
+        base: sharedBase.merging(
+            ["LD_RUNPATH_SEARCH_PATHS": ["$(inherited)", "@executable_path"]]
+        ) { _, new in new },
         configurations: projectConfigurations,
         defaultSettings: .recommended(excluding: [])
     )

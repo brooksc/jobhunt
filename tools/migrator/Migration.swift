@@ -89,6 +89,7 @@ func migrate(src: DBHandle, context: ModelContext) -> MigrationSummary {
     }
 
     // jobs
+    var jobMap: [String: Job] = [:]
     if tableExists(src, "jobs") {
         for row in queryRows(src, "SELECT * FROM jobs") {
             guard let id = row.str("id") else { continue }
@@ -130,15 +131,15 @@ func migrate(src: DBHandle, context: ModelContext) -> MigrationSummary {
                 j.capturedAtDenormalized = cap.capturedAt
             }
             context.insert(j)
+            jobMap[id] = j
             s.jobs += 1
         }
     }
 
-    // Build job lookup for linking related rows
-    var jobMap: [String: Job] = [:]
-    if let all = try? context.fetch(FetchDescriptor<Job>()) {
-        for j in all { jobMap[j.id] = j }
-    }
+    // jobMap is accumulated above during insertion rather than rebuilt via context.fetch.
+    // A no-predicate fetch mid-transaction (before save) does not reliably return pending
+    // inserts; relying on it previously left the lookup empty and caused every event and
+    // other job-linked row to be skipped as an orphan.
 
     // events (legacy table name is "events", mapped to JobEvent)
     if tableExists(src, "events") {

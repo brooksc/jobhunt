@@ -429,6 +429,10 @@ public actor QueueActor {
                 return false
             }
 
+            // Stamp the model as soon as the request is running so the queue shows it immediately,
+            // not only once the request completes. Overwritten with the returned model on success.
+            await setRequestModel(itemID: itemID, model: extractSettings.llmModel)
+
             let result = try await ExtractionEngine.extract(snapshot: extractionSnapshot, provider: provider, settings: extractSettings)
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
 
@@ -625,6 +629,10 @@ public actor QueueActor {
 
         let fitModel = fitSettings.llmModel
 
+        // Stamp the model as soon as the request is running so the queue shows it immediately,
+        // not only once the request completes. Overwritten with the returned model on success.
+        await setRequestModel(itemID: itemID, model: fitModel)
+
         let jobSnap = JobFitSnapshot(
             title: job.title,
             company: job.company,
@@ -750,6 +758,19 @@ public actor QueueActor {
             req.status = .failed
             req.finishedAt = Date()
             req.error = errorStr
+        }
+    }
+
+    /// Records the model on a request while it is running, so the queue shows it during processing
+    /// rather than only after completion. No-op if the row is no longer running or the model is blank.
+    private func setRequestModel(itemID: String, model: String) async {
+        guard !model.isEmpty else { return }
+        try? await store.update(
+            LLMRequest.self,
+            predicate: #Predicate { $0.id == itemID }
+        ) { req in
+            guard req.status == .running else { return }
+            req.model = model
         }
     }
 

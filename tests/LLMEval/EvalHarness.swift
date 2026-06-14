@@ -3,6 +3,7 @@ import XCTest
 
 // MARK: - LLMEvalHarness
 
+// swiftlint:disable type_body_length
 /// Eval harness for LLM extraction accuracy.
 ///
 /// Reporting mode (default): prints field-by-field accuracy but never fails.
@@ -19,7 +20,16 @@ final class LLMEvalHarness: XCTestCase {
     /// Synthetic extraction fixtures ported from tests/llm-eval/eval-llm.js.
     private struct ExtractionFixture {
         let name: String
+        /// Pre-cleaned description, used directly when no raw inputs are provided.
         let description: String
+        // Optional raw capture inputs. When any is set, the fixture runs end-to-end through
+        // `cleanDescription` first (raw → clean → extract), exercising the cleaning pipeline too.
+        // The explicit `= nil` defaults are required so the memberwise init can omit them.
+        // swiftlint:disable implicit_optional_initialization
+        var rawSelectedText: String? = nil
+        var rawVisibleText: String? = nil
+        var rawStructuredDataJSON: String? = nil
+        // swiftlint:enable implicit_optional_initialization
         let url: String
         let pageTitle: String
         // Expected field values (nil = not asserted)
@@ -137,6 +147,84 @@ final class LLMEvalHarness: XCTestCase {
             expectedSalaryCurrency: "USD",
             expectedSkillsAny: ["product strategy", "cross-functional", "product delivery"],
             expectedRequirementsAny: ["4+", "product", "technical program management", "cross-functional"]
+        ),
+
+        // --- End-to-end fixtures: raw page text → cleanDescription → extract ---
+
+        ExtractionFixture(
+            name: "e2e: boilerplate-heavy page + JSON-LD salary (raw→clean→extract)",
+            description: "",
+            rawVisibleText: """
+            Skip to main content
+            Menu
+            Sign in
+            Acme Robotics
+            Senior Backend Engineer
+            San Francisco, CA (Hybrid)
+            Apply now
+            Save job
+            Share this job
+
+            About the role
+            We're hiring a Senior Backend Engineer to design and scale our fleet-management APIs.
+            You'll own services written in Go and Python, lead design reviews, and mentor engineers.
+
+            Requirements
+            - 6+ years building backend services in production.
+            - Strong experience with distributed systems and cloud infrastructure (AWS or GCP).
+            - Experience with API design and reliability.
+
+            We use cookies to improve your experience. Accept all
+            Related jobs
+            Staff Engineer
+            Engineering Manager
+            © 2026 Acme Robotics, Inc.
+            """,
+            rawStructuredDataJSON: """
+            [{"@type":"JobPosting","title":"Senior Backend Engineer",\
+            "hiringOrganization":{"name":"Acme Robotics"},\
+            "description":"Base salary: $170,000 - $210,000 USD."}]
+            """,
+            url: "https://boards.example.com/acme/senior-backend-engineer",
+            pageTitle: "Senior Backend Engineer - Acme Robotics",
+            expectedCompany: "Acme Robotics",
+            expectedTitleContains: "Backend Engineer",
+            expectedRemoteType: .hybrid,
+            expectedSalaryMin: 170_000,
+            expectedSalaryMax: 210_000,
+            expectedSalaryCurrency: "USD",
+            expectedSkillsAny: ["Go", "Python", "distributed", "AWS"],
+            expectedRequirementsAny: ["6+", "backend", "distributed", "cloud"]
+        ),
+        ExtractionFixture(
+            name: "e2e: substantial JSON-LD body preferred over nav (raw→clean→extract)",
+            description: "",
+            rawVisibleText: """
+            Home
+            Careers
+            Open Roles
+            Apply now
+            """,
+            rawStructuredDataJSON: """
+            [{"@type":"JobPosting","jobLocationType":"TELECOMMUTE",\
+            "title":"Data Platform Product Manager","hiringOrganization":{"name":"NimbusData"},\
+            "description":"<p>NimbusData is hiring a fully remote Data Platform Product Manager to own \
+            our analytics platform roadmap. You will define product strategy, partner with engineering \
+            on delivery, and run cross-functional planning across teams.</p>\
+            <p>Requirements: 5+ years of product management experience; experience with data platforms \
+            or analytics tooling; strong stakeholder communication.</p>\
+            <p>Compensation: $150,000 - $200,000 USD annually.</p>"}]
+            """,
+            url: "https://jobs.example.com/nimbusdata/data-platform-pm",
+            pageTitle: "Data Platform Product Manager - NimbusData",
+            expectedCompany: "NimbusData",
+            expectedTitleContains: "Product Manager",
+            expectedRemoteType: .remote,
+            expectedSalaryMin: 150_000,
+            expectedSalaryMax: 200_000,
+            expectedSalaryCurrency: "USD",
+            expectedSkillsAny: ["product strategy", "data", "analytics"],
+            expectedRequirementsAny: ["5+", "product", "data"]
         )
     ]
 
@@ -247,17 +335,42 @@ final class LLMEvalHarness: XCTestCase {
         provider: some LLMProvider,
         settings: ExtractionSettings
     ) async throws -> ExtractionResult {
+        let hasRawInputs = fixture.rawSelectedText != nil
+            || fixture.rawVisibleText != nil
+            || fixture.rawStructuredDataJSON != nil
+
+        let cleaned: String
+        if hasRawInputs {
+            // End-to-end: run the real cleaner over raw capture inputs first.
+            cleaned = cleanDescription(
+                selectedText: fixture.rawSelectedText ?? "",
+                visibleText: fixture.rawVisibleText ?? "",
+                structuredData: parseStructuredData(fixture.rawStructuredDataJSON)
+            )
+            print("  Cleaned: \(cleaned.count) chars (raw → clean → extract)")
+        } else {
+            cleaned = fixture.description
+        }
+
         let snapshot = JobExtractionSnapshot(
             captureURL: fixture.url,
             captureCanonicalURL: nil,
             capturePageTitle: fixture.pageTitle,
-            captureCleanedDescription: fixture.description,
+            captureCleanedDescription: cleaned,
             captureVisibleText: nil,
             captureSelectedText: nil
         )
         let result = try await ExtractionEngine.extract(snapshot: snapshot, provider: provider, settings: settings)
         print("  Model: \(result.extractionModel)  chars: \(result.responseChars)")
         return result
+    }
+
+    private func parseStructuredData(_ json: String?) -> [[String: Any]] {
+        guard let json, let data = json.data(using: .utf8),
+              let parsed = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            return []
+        }
+        return parsed
     }
 
     // swiftlint:disable:next function_body_length
@@ -329,3 +442,5 @@ final class LLMEvalHarness: XCTestCase {
         return dict
     }
 }
+
+// swiftlint:enable type_body_length

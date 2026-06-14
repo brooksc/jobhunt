@@ -50,4 +50,4 @@ nice xcodebuild test \
     -destination 'platform=macOS' \
     -only-testing:LLMEval \
     CODE_SIGNING_ALLOWED=NO \
-    2>&1 | grep -E '=== |\[PASS\]|\[FAIL\]|Score:|Model:|Overall|Provider URL:|skipped|XCTSkip|below threshold|error:|TEST (SUCCEEDED|FAILED)' || true
+    2>&1 | grep -E '=== |\[PASS\]|\[FAIL\]|Score:|Model:|Cleaned:|Overall|Provider URL:|skipped|XCTSkip|below threshold|error:|TEST (SUCCEEDED|FAILED)' || true

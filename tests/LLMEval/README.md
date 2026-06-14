@@ -51,10 +51,17 @@ Set `JOBHUNT_LLM_MIN_ACCURACY` to enable threshold mode. The base URL may also b
 
 ## Fixtures
 
-Three synthetic job descriptions covering:
+Synthetic job postings covering two paths:
+
+**Extraction-only** (pre-cleaned `description` → extract):
 - Remote role with salary bands and application URL
 - Hybrid/contract role with hourly pay
 - Multi-band US salary with metro override
+
+**End-to-end** (raw `selectedText`/`visibleText`/`structuredData` → `cleanDescription` → extract) — these
+also exercise the cleaning pipeline (boilerplate stripping, JSON-LD preference, selection dedupe):
+- Boilerplate-heavy page with the salary only in JSON-LD
+- Substantial JSON-LD body that should be preferred over page nav
 
 ## Output
 

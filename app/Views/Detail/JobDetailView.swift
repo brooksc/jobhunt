@@ -391,6 +391,9 @@ struct OverviewTabView: View {
     @State private var showAddSkill = false
     @State private var showDeleteConfirm = false
     @State private var errorMessage: String?
+    @State private var editingField: String?
+    @State private var editText: String = ""
+    @FocusState private var editFocused: Bool
 
     private var projection: JobDetailProjection { JobDetailProjection(job: job) }
     private var summary: String? { projection.summary }
@@ -632,6 +635,18 @@ struct OverviewTabView: View {
                 .padding(.bottom, 8)
 
             VStack(alignment: .leading, spacing: 0) {
+                editableRow("Company", job.company ?? "", placeholder: "Add company") { v in
+                    Task { try? await jobService?.updateJobFields(jobID: job.id, company: .some(v.isEmpty ? nil : v)) }
+                }
+                Divider()
+                editableRow("Title", job.title ?? "", placeholder: "Add title") { v in
+                    Task { try? await jobService?.updateJobFields(jobID: job.id, title: .some(v.isEmpty ? nil : v)) }
+                }
+                Divider()
+                editableRow("Location", job.location ?? "", placeholder: "Add location") { v in
+                    Task { try? await jobService?.updateJobFields(jobID: job.id, location: .some(v.isEmpty ? nil : v)) }
+                }
+                Divider()
                 if let seniority = job.seniority {
                     detailRow("Seniority", value: seniority)
                     Divider()
@@ -675,6 +690,51 @@ struct OverviewTabView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
+    }
+
+    /// A detail row that becomes an inline text field when its pencil is tapped. Committing an
+    /// edit records a manual override so re-extraction won't clobber the value.
+    @ViewBuilder
+    private func editableRow(_ label: String, _ value: String, placeholder: String,
+                             commit: @escaping (String) -> Void) -> some View {
+        HStack(spacing: 10) {
+            Text(label)
+                .font(.caption).foregroundStyle(.secondary)
+                .frame(width: 90, alignment: .leading)
+            if editingField == label {
+                TextField(placeholder, text: $editText)
+                    .textFieldStyle(.roundedBorder).font(.caption)
+                    .focused($editFocused)
+                    .onSubmit { commitEdit(current: value, commit: commit) }
+                    .onChange(of: editFocused) { _, focused in
+                        if !focused { commitEdit(current: value, commit: commit) }
+                    }
+            } else {
+                Text(value.isEmpty ? placeholder : value)
+                    .font(.caption)
+                    .foregroundStyle(value.isEmpty ? .tertiary : .primary)
+                Spacer()
+                Button {
+                    editText = value
+                    editingField = label
+                    editFocused = true
+                } label: {
+                    Image(systemName: "pencil").font(.caption2)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Edit \(label.lowercased())")
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+    }
+
+    private func commitEdit(current: String, commit: @escaping (String) -> Void) {
+        guard editingField != nil else { return }
+        editingField = nil
+        let trimmed = editText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed != current { commit(trimmed) }
     }
 
     private var captureDomain: String? {

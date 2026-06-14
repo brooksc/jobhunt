@@ -4,6 +4,7 @@ title: 'LLM queue: Stop in-flight batch work when auto-pausing'
 status: To Do
 assignee: []
 created_date: '2026-06-13 19:08'
+updated_date: '2026-06-14 00:19'
 labels:
   - bug
   - llm
@@ -28,3 +29,9 @@ priority: medium
 - [ ] #3 Queue completion accounting remains accurate after auto-pause cancellation or early stop.
 - [ ] #4 Focused tests cover auto-pause behavior with a provider concurrency limit greater than one.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Merged near-duplicate TASK-380 (audit batch, 2026-06-12) into this task — same root issue: startProcessing launches the whole provider-concurrency batch, and auto-pause does not cancel already-started sibling tasks. This task supersedes 380. Note: TASK-450 (classify cancellation vs provider failure in results) is a distinct follow-on and is intentionally kept separate.
+<!-- SECTION:NOTES:END -->

@@ -259,8 +259,8 @@ struct NeedsActionView: View {
                 ForEach(actions, id: \.id) { action in
                     NeedsActionRow(action: action) {
                         complete(action)
-                    } onSnooze: {
-                        snooze(action)
+                    } onSnooze: { days in
+                        snooze(action, days: days)
                     } onSelectJob: {
                         viewJob(for: action)
                     }
@@ -307,9 +307,9 @@ struct NeedsActionView: View {
         }
     }
 
-    private func snooze(_ action: JobAction) {
+    private func snooze(_ action: JobAction, days: Int) {
         let id = action.id
-        let until = Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date()
+        let until = Calendar.current.date(byAdding: .day, value: days, to: Date()) ?? Date()
         Task {
             do {
                 try await jobService.snoozeAction(actionID: id, until: until)
@@ -346,7 +346,7 @@ struct NeedsActionView: View {
 private struct NeedsActionRow: View {
     let action: JobAction
     let onDone: () -> Void
-    let onSnooze: () -> Void
+    let onSnooze: (Int) -> Void
     let onSelectJob: () -> Void
 
     private var job: Job? { action.job }
@@ -428,15 +428,21 @@ private struct NeedsActionRow: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
 
-                    Button {
-                        onSnooze()
+                    Menu {
+                        Button("3 days") { onSnooze(3) }
+                        Button("1 week") { onSnooze(7) }
+                        Button("2 weeks") { onSnooze(14) }
+                        Button("1 month") { onSnooze(30) }
                     } label: {
                         Image(systemName: "clock.arrow.circlepath")
                             .font(.system(size: 12))
                     }
+                    .menuStyle(.button)
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .help("Snooze 7 days")
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .help("Snooze…")
                 }
             }
             .padding(.horizontal, 14)

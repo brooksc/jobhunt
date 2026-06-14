@@ -4,6 +4,7 @@ title: 'Manual URL ingest: Avoid duplicate extraction queue requests'
 status: To Do
 assignee: []
 created_date: '2026-06-13 19:08'
+updated_date: '2026-06-14 00:19'
 labels:
   - bug
   - ingestion
@@ -29,3 +30,9 @@ Manual URL ingestion can create two extraction `LLMRequest` rows for one new job
 - [ ] #3 Browser capture ingestion still creates one extraction request for new non-duplicate jobs.
 - [ ] #4 Regression tests cover the manual URL ingest path and the normal capture ingest path.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Distinct from TASK-441 (do not auto-queue extraction for semantic *duplicate* jobs). This task is the double-enqueue bug on the manual add-by-URL path (insertCaptureAtomically enqueues, then addJobByURL enqueues again). Same file, different defects — kept separate intentionally.
+<!-- SECTION:NOTES:END -->

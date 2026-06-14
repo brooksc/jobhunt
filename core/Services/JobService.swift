@@ -476,8 +476,20 @@ public actor JobService {
         let jobs = try await store.fetch(FetchDescriptor<Job>())
         let sites = try await store.fetch(FetchDescriptor<Site>())
         var counts: [String: Int] = [:]
-        for job in jobs { counts[job.status.rawValue, default: 0] += 1 }
-        return WorkflowSnapshot(jobsTotal: jobs.count, sitesTotal: sites.count, statusCounts: counts)
+        var extractionCounts: [String: Int] = [:]
+        for job in jobs {
+            counts[job.status.rawValue, default: 0] += 1
+            extractionCounts[job.extractionStatus.rawValue, default: 0] += 1
+        }
+        let now = Date()
+        let sitesDue = sites.filter { $0.state != .exclude && ($0.nextReviewAt.map { $0 <= now } ?? true) }.count
+        return WorkflowSnapshot(
+            jobsTotal: jobs.count,
+            sitesTotal: sites.count,
+            statusCounts: counts,
+            sitesDue: sitesDue,
+            extractionStatusCounts: extractionCounts
+        )
     }
 
     // MARK: - Duplicate management

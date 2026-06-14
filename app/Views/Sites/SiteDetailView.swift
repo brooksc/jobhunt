@@ -9,6 +9,9 @@ struct SiteDetailView: View {
     @Environment(Router.self) private var router
 
     @State private var intervalDaysText: String
+    @State private var noteText: String
+    @State private var companyWebsiteText: String
+    @State private var jobsURLText: String
     @State private var showDeleteConfirmation = false
     @State private var errorMessage: String?
     @FocusState private var intervalFieldFocused: Bool
@@ -17,6 +20,9 @@ struct SiteDetailView: View {
         self.site = site
         self.siteService = siteService
         _intervalDaysText = State(initialValue: String(site.intervalDays))
+        _noteText = State(initialValue: site.note)
+        _companyWebsiteText = State(initialValue: site.companyWebsite ?? "")
+        _jobsURLText = State(initialValue: site.jobsURL ?? "")
     }
 
     private var displayName: String {
@@ -123,6 +129,31 @@ struct SiteDetailView: View {
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
+
+                    Divider().padding(.leading, 16)
+
+                    siteField(label: "Jobs URL") {
+                        TextField("https://…/careers", text: $jobsURLText)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit { saveSiteFields() }
+                    }
+
+                    Divider().padding(.leading, 16)
+
+                    siteField(label: "Company site") {
+                        TextField("https://…", text: $companyWebsiteText)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit { saveSiteFields() }
+                    }
+
+                    Divider().padding(.leading, 16)
+
+                    siteField(label: "Note") {
+                        TextField("Add a note…", text: $noteText, axis: .vertical)
+                            .textFieldStyle(.roundedBorder)
+                            .lineLimit(1 ... 4)
+                            .onSubmit { saveSiteFields() }
+                    }
                 }
 
                 if let errorMessage {
@@ -170,7 +201,24 @@ struct SiteDetailView: View {
         }
         .onChange(of: site.id) { _, _ in
             intervalDaysText = String(site.intervalDays)
+            noteText = site.note
+            companyWebsiteText = site.companyWebsite ?? ""
+            jobsURLText = site.jobsURL ?? ""
             errorMessage = nil
+        }
+    }
+
+    private func saveSiteFields() {
+        let id = site.id
+        let note = noteText
+        let website = companyWebsiteText.trimmingCharacters(in: .whitespaces)
+        let jobs = jobsURLText.trimmingCharacters(in: .whitespaces)
+        Task {
+            do {
+                try await siteService.updateSite(id: id, note: note, companyWebsite: website, jobsURL: jobs)
+            } catch {
+                errorMessage = "Save failed: \(error.localizedDescription)"
+            }
         }
     }
 

@@ -139,7 +139,16 @@ public actor SiteService {
         return site.id
     }
 
-    public func updateSite(id: String, name: String?, excludeState: SiteState?, intervalDays: Int? = nil) async throws {
+    public func updateSite(
+        id: String,
+        name: String? = nil,
+        excludeState: SiteState? = nil,
+        intervalDays: Int? = nil,
+        note: String? = nil,
+        companyWebsite: String? = nil,
+        jobsURL: String? = nil,
+        companyDescription: String? = nil
+    ) async throws {
         let siteID = id
         try await store.updateOne(Site.self, predicate: #Predicate { $0.id == siteID }, id: id) { site in
             if let name { site.companyName = name }
@@ -149,6 +158,19 @@ public actor SiteService {
                 let base = site.lastReviewedAt ?? Date()
                 site.nextReviewAt = Calendar.current.date(byAdding: .day, value: days, to: base)
             }
+            if let note { site.note = note }
+            if let companyWebsite { site.companyWebsite = companyWebsite }
+            if let jobsURL { site.jobsURL = jobsURL }
+            if let companyDescription { site.companyDescription = companyDescription }
+            site.updatedAt = Date()
+        }
+    }
+
+    /// Set an explicit next-review date offset from today, independent of the recurring interval.
+    public func setNextReview(id: String, daysFromNow: Int) async throws {
+        let siteID = id
+        try await store.updateOne(Site.self, predicate: #Predicate { $0.id == siteID }, id: id) { site in
+            site.nextReviewAt = Calendar.current.date(byAdding: .day, value: daysFromNow, to: Date())
             site.updatedAt = Date()
         }
     }

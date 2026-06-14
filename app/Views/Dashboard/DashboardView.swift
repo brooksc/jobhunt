@@ -14,6 +14,8 @@ struct DashboardView: View {
     @Query private var recentCaptures: [Capture]
     /// Sites sorted by addedAt — filtered/sorted for schedule in computed property
     @Query(sort: \Site.addedAt) private var sites: [Site]
+    /// LLM requests — used for the queue card in Housekeeping
+    @Query private var llmRequests: [LLMRequest]
 
     /// Cached aggregate metrics — recomputed only when `jobs` changes, not on every render.
     @State private var summary: JobStatusSummary = .zero
@@ -59,6 +61,7 @@ struct DashboardView: View {
         let now = Date()
         let dupCount = jobs.filter { $0.duplicateOfJobID != nil }.count
         let sitesDue = sites.filter { $0.state != .exclude && ($0.nextReviewAt.map { $0 <= now } ?? true) }.count
+        let activeQueueCount = llmRequests.filter { $0.status == .queued || $0.status == .running }.count
         return VStack(alignment: .leading, spacing: 10) {
             Text("Housekeeping").font(.headline)
             HStack(spacing: 12) {
@@ -67,6 +70,9 @@ struct DashboardView: View {
                 }
                 housekeepingCard("Sites due", count: sitesDue, systemImage: "globe") {
                     router.navigateToSection(.sites)
+                }
+                housekeepingCard("LLM queue", count: activeQueueCount, systemImage: "cpu") {
+                    router.navigateToSection(.llmQueue)
                 }
             }
         }

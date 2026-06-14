@@ -82,8 +82,13 @@ final class AppServices: @unchecked Sendable {
         }
 
         Task {
-            // Run on launch; maybeRunStaleCheck gates on interval internally.
-            await AvailabilityChecker.maybeRunStaleCheck(store: store, settings: settingsStore)
+            // Run on launch, then re-check hourly (Electron parity: AUTO_AVAILABILITY_INTERVAL_MS).
+            // maybeRunStaleCheck gates on the configured interval internally, so this only does real
+            // work when a check is actually due — a long-running session no longer stops re-checking.
+            while true {
+                await AvailabilityChecker.maybeRunStaleCheck(store: store, settings: settingsStore)
+                do { try await Task.sleep(for: .seconds(3600)) } catch { break }
+            }
         }
     }
 }

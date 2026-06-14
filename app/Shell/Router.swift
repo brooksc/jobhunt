@@ -52,6 +52,7 @@ public enum SidebarItem: Hashable, Sendable {
     case llmQueue
     case dataQuality
     case settings
+    case help
     case savedSearch(String)
 
     /// The display label shown in the sidebar row (matches NSTextField text for AppKit selection).
@@ -66,6 +67,7 @@ public enum SidebarItem: Hashable, Sendable {
         case .llmQueue:          return "LLM Queue"
         case .dataQuality:       return "Data Quality"
         case .settings:          return "Settings"
+        case .help:              return "Help"
         case .savedSearch:       return nil  // dynamic name — caller handles
         }
     }

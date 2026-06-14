@@ -107,6 +107,10 @@ struct Sidebar: View {
                 sidebarRow(.settings, id: "sidebar.settings",
                            label: Label("Settings", systemImage: "gear"))
                     .help("App settings")
+
+                sidebarRow(.help, id: "sidebar.help",
+                           label: Label("Help", systemImage: "questionmark.circle"))
+                    .help("Help and documentation")
             }
         }
         .listStyle(.sidebar)
@@ -187,6 +191,7 @@ struct Sidebar: View {
         case .llmQueue:          router.navigateToSection(.llmQueue)
         case .dataQuality:       router.navigateToSection(.dataQuality)
         case .settings:          router.navigateToSection(.settings)
+        case .help:              router.navigateToSection(.help)
         case .savedSearch(let id):
             router.activeSavedSearchID = id
             router.sidebarJobFilter = nil
@@ -208,9 +213,7 @@ struct Sidebar: View {
         case .llmQueue:    item = .llmQueue
         case .dataQuality: item = .dataQuality
         case .settings:    item = .settings
-        case .help:
-            listSelection = nil
-            return
+        case .help:        item = .help
         }
         if listSelection != item { listSelection = item }
     }

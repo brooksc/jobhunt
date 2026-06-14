@@ -3,7 +3,6 @@ import XCTest
 
 // MARK: - LLMEvalHarness
 
-// swiftlint:disable type_body_length
 /// Eval harness for LLM extraction accuracy.
 ///
 /// Reporting mode (default): prints field-by-field accuracy but never fails.
@@ -199,11 +198,14 @@ final class LLMEvalHarness: XCTestCase {
 
     // MARK: - Private helpers
 
-    private func resolveProviderURL() -> String? {
-        if let env = ProcessInfo.processInfo.environment["JOBHUNT_LLM_URL"], !env.isEmpty {
-            return env
+    /// Reads config from an env var, falling back to a `~/.jobhunt-lmstudio-<name>` file.
+    /// The file fallback exists because `xcodebuild test` does not forward the invoking shell's
+    /// environment to the XCTest process — `scripts/run-eval.sh` writes these files.
+    private func resolveConfig(env: String, file: String) -> String? {
+        if let value = ProcessInfo.processInfo.environment[env], !value.isEmpty {
+            return value
         }
-        let configFile = URL.homeDirectory.appending(path: ".jobhunt-lmstudio-url")
+        let configFile = URL.homeDirectory.appending(path: file)
         if let contents = try? String(contentsOf: configFile, encoding: .utf8) {
             let trimmed = contents.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty { return trimmed }
@@ -211,16 +213,17 @@ final class LLMEvalHarness: XCTestCase {
         return nil
     }
 
-    private func resolveModel() -> String? {
-        guard let env = ProcessInfo.processInfo.environment["JOBHUNT_LLM_MODEL"], !env.isEmpty else {
-            return nil
-        }
-        return env
+    private func resolveProviderURL() -> String? {
+        resolveConfig(env: "JOBHUNT_LLM_URL", file: ".jobhunt-lmstudio-url")
     }
 
-    /// Returns the minimum accuracy percentage from JOBHUNT_LLM_MIN_ACCURACY, or nil for reporting mode.
+    private func resolveModel() -> String? {
+        resolveConfig(env: "JOBHUNT_LLM_MODEL", file: ".jobhunt-lmstudio-model")
+    }
+
+    /// Returns the minimum accuracy percentage (env or file), or nil for reporting mode.
     private func resolveMinAccuracy() -> Int? {
-        guard let raw = ProcessInfo.processInfo.environment["JOBHUNT_LLM_MIN_ACCURACY"],
+        guard let raw = resolveConfig(env: "JOBHUNT_LLM_MIN_ACCURACY", file: ".jobhunt-lmstudio-min-accuracy"),
               let value = Int(raw), value > 0 else { return nil }
         return value
     }
@@ -257,6 +260,7 @@ final class LLMEvalHarness: XCTestCase {
         return result
     }
 
+    // swiftlint:disable:next function_body_length
     private func scoreFixture(
         fixture: ExtractionFixture,
         result: ExtractionResult
@@ -325,5 +329,3 @@ final class LLMEvalHarness: XCTestCase {
         return dict
     }
 }
-
-// swiftlint:enable type_body_length

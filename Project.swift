@@ -305,6 +305,18 @@ let masScheme = Scheme.scheme(
     archiveAction: .archiveAction(configuration: "Release-MAS")
 )
 
+// Opt-in eval scheme — runs the LLM extraction benchmark against a real OpenAI-compatible
+// endpoint (e.g. LM Studio). Kept out of the DMG/MAS schemes so it never runs in the normal
+// test gate; invoke explicitly via scripts/run-eval.sh.
+let evalScheme = Scheme.scheme(
+    name: "Jobhunt-Eval",
+    buildAction: .buildAction(targets: [.target("JobhuntCore"), .target("LLMEval")]),
+    testAction: .targets(
+        [.testableTarget(target: .target("LLMEval"))],
+        configuration: "Debug-DMG"
+    )
+)
+
 // MARK: - Project
 
 let project = Project(
@@ -327,5 +339,5 @@ let project = Project(
         appTarget, appUITestsTarget,
         llmEvalTarget,
     ],
-    schemes: [dmgScheme, masScheme]
+    schemes: [dmgScheme, masScheme, evalScheme]
 )

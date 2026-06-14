@@ -19,35 +19,35 @@ or in CI to prevent regressions.
 
 ## Prerequisites
 
-A running OpenAI-compatible LLM endpoint (e.g. LM Studio on port 1234).
+A running OpenAI-compatible LLM endpoint (e.g. LM Studio on port 1234) with a model loaded.
+Both the endpoint URL and the model id are **required** — there is no hardcoded default model.
 
 ## Running
 
-**Reporting mode:**
+The eval has its own scheme (`Jobhunt-Eval`), kept out of the normal test gate. Simplest path is
+the wrapper script:
+
 ```sh
-JOBHUNT_LLM_URL=http://127.0.0.1:1234 \
-  xcodebuild test -scheme Jobhunt-DMG -only-testing:LLMEval
+# Reporting mode (prints accuracy, never fails)
+scripts/run-eval.sh gemma-4-e2b-it-mlx
+
+# Threshold mode (fail below 80%)
+scripts/run-eval.sh gemma-4-e2b-it-mlx 80
 ```
 
-**Threshold mode (fail below 80%):**
+It defaults the endpoint to `http://127.0.0.1:1234`; override with `JOBHUNT_LLM_URL`.
+
+### Or invoke xcodebuild directly
+
 ```sh
 JOBHUNT_LLM_URL=http://127.0.0.1:1234 \
-JOBHUNT_LLM_MIN_ACCURACY=80 \
-  xcodebuild test -scheme Jobhunt-DMG -only-testing:LLMEval
+JOBHUNT_LLM_MODEL=gemma-4-e2b-it-mlx \
+  xcodebuild test -project Jobhunt.xcodeproj -scheme Jobhunt-Eval \
+  -destination 'platform=macOS' -only-testing:LLMEval CODE_SIGNING_ALLOWED=NO
 ```
 
-Override the model (defaults to `gemma-4-e4b-it-mlx`):
-```sh
-JOBHUNT_LLM_URL=http://127.0.0.1:1234 \
-JOBHUNT_LLM_MODEL=my-model-name \
-  xcodebuild test -scheme Jobhunt-DMG -only-testing:LLMEval
-```
-
-Alternatively, write the base URL to `~/.jobhunt-lmstudio-url` and omit the env var:
-```sh
-echo "http://127.0.0.1:1234" > ~/.jobhunt-lmstudio-url
-xcodebuild test -scheme Jobhunt-DMG -only-testing:LLMEval
-```
+Set `JOBHUNT_LLM_MIN_ACCURACY` to enable threshold mode. The base URL may also be written to
+`~/.jobhunt-lmstudio-url` instead of passing `JOBHUNT_LLM_URL`.
 
 ## Fixtures
 

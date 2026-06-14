@@ -1,4 +1,5 @@
 import Foundation
+import FoundationModels
 
 // MARK: - LanguageModelBridge protocol
 
@@ -13,8 +14,6 @@ public protocol LanguageModelBridge: Sendable {
 
 /// Apple Foundation Models provider — calls LanguageModelSession in-process.
 /// Requires macOS 26+. Concurrency limit 1 (single on-device model).
-/// Replaces the Node subprocess bridge (server/apple-foundation.js + native/foundation-models/).
-/// Mirrors postAppleFoundationCompletion() from server/extract.js.
 public final class FoundationModelsProvider: LLMProvider, @unchecked Sendable {
     public let id = "foundation_models"
     public let concurrencyLimit = 1
@@ -33,15 +32,11 @@ public final class FoundationModelsProvider: LLMProvider, @unchecked Sendable {
         let userMsgs = request.messages.filter { $0.role == "user" }
         let prompt = userMsgs.map(\.content).joined(separator: "\n")
 
-        // Use an injected bridge if provided (test path), otherwise fall through
-        // to the real implementation (which requires macOS 26+).
         if let bridge {
             let result = try await bridge.complete(systemPrompt: systemContent, userMessage: prompt)
             return makeResponse(rawResult: result)
         }
 
-        // FoundationModels framework requires macOS 26+.
-        // On older systems we surface a clear error rather than silently failing.
         if #available(macOS 26.0, *) {
             let realBridge = RealLanguageModelBridge()
             let result = try await realBridge.complete(systemPrompt: systemContent, userMessage: prompt)
@@ -80,79 +75,19 @@ public final class FoundationModelsProvider: LLMProvider, @unchecked Sendable {
 
 // MARK: - RealLanguageModelBridge
 
-/// Real implementation that calls Apple's LanguageModelSession via ObjC runtime.
-/// Compiled for all targets but only functional on macOS 26+ (the #available guard
-/// in FoundationModelsProvider.complete ensures we only instantiate this on 26+).
+/// Calls LanguageModelSession directly via the FoundationModels API (macOS 26+).
+/// The FoundationModels framework is weakly linked — absent on macOS 15, present on macOS 26+.
+@available(macOS 26.0, *)
 public struct RealLanguageModelBridge: LanguageModelBridge {
     public init() {}
 
     public func complete(systemPrompt: String, userMessage: String) async throws -> String {
-        if #available(macOS 26.0, *) {
-            return try await FoundationModelsBridge.respond(
-                to: userMessage,
-                instructions: systemPrompt
-            )
-        } else {
-            throw LLMProviderError.unavailable(
-                reason: "Apple Foundation Models requires macOS 26 (Tahoe) or later"
-            )
-        }
-    }
-}
-
-// MARK: - FoundationModelsBridge
-
-/// Thin compile-time bridge to LanguageModelSession.
-/// The #available guard in RealLanguageModelBridge.complete ensures this
-/// only runs on macOS 26+. The code here compiles against the 26 SDK.
-@available(macOS 26.0, *)
-enum FoundationModelsBridge {
-    static func respond(to prompt: String, instructions: String) async throws -> String {
-        // On macOS 26+, FoundationModels.LanguageModelSession is available.
-        // We call it through Objective-C selectors to avoid requiring the
-        // FoundationModels framework to be linked at compile time on macOS 15.
-        // If the framework is not present at runtime (e.g. running on a Mac
-        // without Apple Intelligence), we surface a descriptive error.
-        guard let sessionClass = NSClassFromString("LanguageModelSession") as? NSObject.Type else {
-            throw LLMProviderError.unavailable(
-                reason: "FoundationModels.LanguageModelSession not found — Apple Intelligence may not be enabled"
-            )
-        }
-
-        let initSel = NSSelectorFromString("initWithInstructions:")
-        guard sessionClass.instancesRespond(to: initSel) else {
-            throw LLMProviderError.unavailable(reason: "LanguageModelSession does not respond to initWithInstructions:")
-        }
-
-        // Allocate and initialize the session object with instructions.
-        // sessionClass.init() allocates an uninitialized instance (equivalent to alloc);
-        // we then call initWithInstructions: to produce the real, initialized object.
-        let allocatedObj = sessionClass.init()
-        guard let initializedSession = allocatedObj.perform(initSel, with: instructions)?.takeUnretainedValue() as AnyObject? else {
-            throw LLMProviderError.unavailable(reason: "Failed to initialize LanguageModelSession with instructions")
-        }
-
-        // Verify that the respond selector exists before calling it.
-        // This catches cases where Apple updated the API method signature.
-        let respondSel = NSSelectorFromString("respondTo:completionHandler:")
-        guard initializedSession.responds(to: respondSel) else {
-            throw LLMProviderError
-                .unavailable(reason: "LanguageModelSession does not respond to respondTo:completionHandler: — API may have changed")
-        }
-
-        return try await withCheckedThrowingContinuation { continuation in
-            typealias CompletionBlock = @convention(block) (AnyObject?, NSError?) -> Void
-            let block: CompletionBlock = { result, error in
-                if let error {
-                    continuation.resume(throwing: LLMProviderError.unavailable(reason: error.localizedDescription))
-                } else if let responseObj = result {
-                    let text = (responseObj.value(forKey: "content") as? String) ?? ""
-                    continuation.resume(returning: text)
-                } else {
-                    continuation.resume(returning: "")
-                }
-            }
-            _ = initializedSession.perform(respondSel, with: prompt, with: block)
+        let session = LanguageModelSession(instructions: systemPrompt)
+        do {
+            let response = try await session.respond(to: userMessage)
+            return response.content
+        } catch {
+            throw LLMProviderError.unavailable(reason: error.localizedDescription)
         }
     }
 }

@@ -30,8 +30,12 @@ final class ScreenshotTests: XCTestCase {
 
     func test02_JobsAll() {
         navigate(app, label: "All Jobs")
-        XCTAssertTrue(app.buttons["sidebar.jobs.all"].firstMatch.isSelected,
-                      "All Jobs sidebar item should be selected")
+        XCTAssertTrue(
+            waitUntil(timeout: 3) {
+                self.app.descendants(matching: .any).matching(identifier: "sidebar.jobs.all").firstMatch.value as? String == "1"
+            },
+            "All Jobs sidebar item should be selected"
+        )
         snap(app, "02-jobs-all")
     }
 

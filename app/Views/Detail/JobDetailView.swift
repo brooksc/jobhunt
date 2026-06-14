@@ -10,6 +10,7 @@ struct JobDetailView: View {
     let job: Job
     var onNavigatePrev: () -> Void = {}
     var onNavigateNext: () -> Void = {}
+    var onClose: () -> Void = {}
 
     @Environment(Router.self) private var router
     @Environment(\.jobService) private var jobService
@@ -39,7 +40,7 @@ struct JobDetailView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DetailHeader(job: job, selectedTab: $selectedTab, onNavigatePrev: onNavigatePrev, onNavigateNext: onNavigateNext)
+            DetailHeader(job: job, selectedTab: $selectedTab, onNavigatePrev: onNavigatePrev, onNavigateNext: onNavigateNext, onClose: onClose)
             Divider()
             // HIG-5: system segmented Picker replaces hand-rolled tab bar
             Picker("Tab", selection: $selectedTab) {
@@ -62,7 +63,7 @@ struct JobDetailView: View {
                 DetailFooter(job: job)
             }
         }
-        .onKeyPress(.escape) { router.selectedJobID = nil; return .handled }
+        .onKeyPress(.escape) { onClose(); return .handled }
     }
 
     @ViewBuilder
@@ -72,7 +73,7 @@ struct JobDetailView: View {
         case .fit:         FitTabView(job: job)
         case .timeline:    TimelineTabView(job: job)
         case .description: DescriptionTabView(job: job)
-        case .raw:         RawTabView(job: job)
+        case .raw:         RawTabView(job: job, onClose: onClose)
         case .compare:     CompareTabView(job: job)
         }
     }
@@ -85,11 +86,13 @@ private struct DetailHeader: View {
     @Binding var selectedTab: JobDetailView.DetailTab
     let onNavigatePrev: () -> Void
     let onNavigateNext: () -> Void
+    let onClose: () -> Void
     @Environment(\.jobService) private var jobService
     @Environment(AppServices.self) private var appServices
     @State private var showNoteSheet = false
     @State private var quickNoteText = ""
     @State private var showApplyConfirmation = false
+    @State private var isEnqueuing = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -125,7 +128,7 @@ private struct DetailHeader: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
-                    Button { router.selectedJobID = nil } label: {
+                    Button { onClose() } label: {
                         Image(systemName: "xmark").font(.caption)
                     }
                     .buttonStyle(.plain)
@@ -182,14 +185,29 @@ private struct DetailHeader: View {
                 }
 
                 Button {
-                    Task { try? await jobService?.resetExtraction(jobID: job.id) }
+                    guard !isEnqueuing else { return }
+                    isEnqueuing = true
+                    Task {
+                        try? await jobService?.resetExtraction(jobID: job.id)
+                        try? await Task.sleep(nanoseconds: 800_000_000)
+                        isEnqueuing = false
+                    }
                 } label: {
-                    Label("Re-run", systemImage: "arrow.clockwise")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if isEnqueuing {
+                        HStack(spacing: 4) {
+                            ProgressView().scaleEffect(0.5).frame(width: 10, height: 10)
+                            Text("Queued").font(.caption)
+                        }
+                        .foregroundStyle(Color.accentColor)
+                    } else {
+                        Label(job.extractionStatus == .pending ? "Run AI" : "Re-run",
+                              systemImage: "arrow.clockwise")
+                            .font(.caption)
+                            .foregroundStyle(job.extractionStatus == .pending ? Color.accentColor : .secondary)
+                    }
                 }
                 .buttonStyle(.plain)
-                .help("Re-run AI extraction")
+                .help(job.extractionStatus == .pending ? "Run AI extraction" : "Re-run AI extraction")
 
                 Button {
                     selectedTab = .timeline
@@ -752,7 +770,9 @@ struct FitTabView: View {
         job.fitScores.sorted { ($0.fitScore ?? 0) > ($1.fitScore ?? 0) }
     }
 
-    private var bestScore: JobFitScore? { sortedScores.first }
+    /// Highest *scored* resume (nil until a real score exists) — drives the hero.
+    private var bestScore: JobFitScore? { sortedScores.first { $0.fitScore != nil } }
+    private var scoredCount: Int { job.fitScores.lazy.filter { $0.fitScore != nil }.count }
 
     var body: some View {
         ScrollView {
@@ -773,7 +793,8 @@ struct FitTabView: View {
                             ForEach(sortedScores) { fs in
                                 ResumeScoreCard(
                                     fitScore: fs,
-                                    isBest: fs.persistentModelID == bestScore?.persistentModelID,
+                                    isBest: scoredCount >= 2 && fs.fitScore != nil
+                                        && fs.persistentModelID == bestScore?.persistentModelID,
                                     isOpen: openResumeName == (fs.resume?.name ?? fs.model ?? ""),
                                     isRescoring: isBusy,
                                     onToggle: {
@@ -805,11 +826,11 @@ struct FitTabView: View {
                         // No scores yet — show score button
                         HStack {
                             Spacer()
-                            Button(isBusy ? "Queuing…" : "Score against resume") {
-                                guard let resumeID = activeResumes.first?.id else { return }
+                            Button(isBusy ? "Queuing…"
+                                   : (activeResumes.count > 1 ? "Score against \(activeResumes.count) resumes" : "Score against resume")) {
                                 isBusy = true
                                 Task { defer { isBusy = false }
-                                    try? await queueActor?.enqueueFit(jobIDs: [job.id], resumeID: resumeID)
+                                    try? await queueActor?.enqueueFitForActiveResumes(jobIDs: [job.id])
                                 }
                             }
                             .disabled(isBusy || activeResumes.isEmpty)
@@ -1562,9 +1583,9 @@ struct DescriptionTabView: View {
 
 struct RawTabView: View {
     let job: Job
+    var onClose: () -> Void = {}
 
     @Environment(\.jobService) private var jobService
-    @Environment(Router.self) private var router
 
     @State private var showDeleteConfirm = false
     @State private var showArchiveConfirm = false
@@ -1619,7 +1640,7 @@ struct RawTabView: View {
                     if showDeleteConfirm {
                         Button("Confirm Delete", role: .destructive) {
                             let id = job.id
-                            router.selectedJobID = nil
+                            onClose()
                             Task { try? await jobService?.delete(jobID: id) }
                         }
                         .font(.caption)

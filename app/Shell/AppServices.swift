@@ -23,6 +23,11 @@ final class AppServices: @unchecked Sendable {
         let store = BackgroundStore(modelContainer: modelContainer)
         let context = ModelContext(modelContainer)
         let settingsStore = SettingsStore(modelContext: context)
+        // In UI test mode, keep the LLM queue paused so seeded .pending jobs
+        // retain their extractionStatus throughout the test run.
+        if CommandLine.arguments.contains("--ui-test-store") {
+            settingsStore.llmQueuePaused = true
+        }
         let queue = QueueActor(
             store: store,
             isPaused: { await MainActor.run { settingsStore.llmQueuePaused } },

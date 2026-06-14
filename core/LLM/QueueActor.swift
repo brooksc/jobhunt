@@ -96,13 +96,27 @@ public actor QueueActor {
         let ids = jobIDs
         let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { ids.contains($0.id) }))
         let jobMap = Dictionary(jobs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        // Skip jobs that already have a queued or running request for this mode.
+        // SwiftData predicates cannot compare enum cases; fetch non-terminal rows and filter in-memory.
+        let existing = try await store.fetch(FetchDescriptor<LLMRequest>(
+            predicate: #Predicate { $0.finishedAt == nil }
+        ))
+        let alreadyActive = Set(
+            existing
+                .filter { ($0.status == .queued || $0.status == .running) && $0.requestType == mode }
+                .compactMap { $0.job?.id }
+                .filter { ids.contains($0) }
+        )
         let requests = jobIDs.compactMap { jobID -> LLMRequest? in
-            guard let job = jobMap[jobID] else { return nil }
+            guard let job = jobMap[jobID], !alreadyActive.contains(jobID) else { return nil }
             let req = LLMRequest(requestType: mode, status: .queued)
             req.job = job
             return req
         }
+        guard !requests.isEmpty else { return }
         try await store.insertBatch(requests)
+        // Kick the drain loop in case it's not yet running.
+        Task { await startProcessing() }
     }
 
     /// Enqueue fit-scoring requests for a set of job IDs against a specific resume.
@@ -118,6 +132,18 @@ public actor QueueActor {
         let validJobs = jobIDs.compactMap { jobMap[$0] }
         guard !validJobs.isEmpty else { return }
         try await store.insertFitBatch(jobs: validJobs, resume: resume)
+    }
+
+    /// Queue fit scoring against all active resumes for the given jobs. No-op for a job
+    /// with no active resume. Skips (job, resume) pairs already in flight.
+    public func enqueueFitForActiveResumes(jobIDs: [String]) async throws {
+        guard !jobIDs.isEmpty else { return }
+        var anyQueued = false
+        for jobID in jobIDs {
+            let n = try await store.enqueueFitForActiveResumes(jobID: jobID)
+            if n > 0 { anyQueued = true }
+        }
+        if anyQueued { Task { await startProcessing() } }
     }
 
     /// On app launch, reset any requests stuck in "running" back to "queued",
@@ -438,6 +464,14 @@ public actor QueueActor {
                 req.finishedAt = Date()
                 req.model = result.extractionModel
             }
+
+            // Timeline: record extraction as a system event.
+            try? await store.insertJobEvent(jobID: jobID, eventType: "extraction", note: result.extractionModel)
+
+            // Electron parity: auto-score fit against all active resumes (no-op when none
+            // is active). The drain loop re-fetches queued requests, so the new fit requests
+            // run on the next iteration without an explicit restart.
+            _ = try? await store.enqueueFitForActiveResumes(jobID: jobID)
 
             emit(.jobReady(jobNumber: item.jobNumber, title: item.jobTitle, fitScore: nil))
             return true

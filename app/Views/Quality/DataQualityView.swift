@@ -77,6 +77,8 @@ struct DataQualityView: View {
             Divider()
             jobList
         }
+        .accessibilityIdentifier("content.dataQuality")
+        .navigationTitle("Data Quality")
         .toolbar { toolbarContent }
         .onChange(of: filterKind) { _, _ in selectedJobIDs = [] }
         .onChange(of: showReviewed) { _, _ in selectedJobIDs = [] }
@@ -145,8 +147,9 @@ struct DataQualityView: View {
                     let count = kindCount(kind)
                     if count > 0 {
                         filterChip(label: "\(kind.label) (\(count))", isActive: filterKind == kind) {
-                            filterKind = kind
+                            filterKind = filterKind == kind ? nil : kind
                         }
+                        .accessibilityIdentifier("chip.kind.\(kind.rawValue)")
                     }
                 }
                 Toggle("Show Reviewed", isOn: $showReviewed)
@@ -175,6 +178,7 @@ struct DataQualityView: View {
                 ))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label.components(separatedBy: " (").first ?? label)
         .accessibilityAddTraits(isActive ? .isSelected : [])
         .accessibilityValue(isActive ? "on" : "off")
     }
@@ -247,7 +251,7 @@ struct DataQualityView: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) {
+        .onTapGesture {
             router.selectedJobID = job.id
             router.navigateToSection(.jobs)
         }

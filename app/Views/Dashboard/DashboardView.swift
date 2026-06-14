@@ -46,6 +46,7 @@ struct DashboardView: View {
             }
             .padding(16)
         }
+        .accessibilityIdentifier("content.dashboard")
         .navigationTitle("Dashboard")
         .onAppear { summary = JobStatusSummary(jobs: jobs) }
         .onChange(of: jobs) { _, updated in summary = JobStatusSummary(jobs: updated) }

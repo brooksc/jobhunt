@@ -66,7 +66,8 @@ func testTarget(name: String, bundleSuffix: String, sources: SourceFilesList, de
 let coreTarget = frameworkTarget(
     name: "JobhuntCore",
     bundleSuffix: "core",
-    sources: ["core/**/*.swift"]
+    sources: ["core/**/*.swift"],
+    deps: [.sdk(name: "FoundationModels", type: .framework, status: .optional)]
 )
 
 let serverTarget = frameworkTarget(
@@ -228,11 +229,22 @@ let mcpTestsTarget = testTarget(
     deps: [.target(name: "JobhuntCore")]
 )
 
-let appUITestsTarget = testTarget(
+// AppUITests uses .uiTests (not .unitTests) so Xcode knows to launch the
+// host app rather than inject the bundle into a unit test runner process.
+// Without this, xcodebuild reports "No target application path specified".
+let appUITestsTarget = Target.target(
     name: "AppUITests",
-    bundleSuffix: "AppUITests",
+    destinations: [.mac],
+    product: .uiTests,
+    bundleId: "\(bundleId).AppUITests",
+    deploymentTargets: deploymentTarget,
     sources: ["Tests/AppUITests/**/*.swift"],
-    deps: [.target(name: "Jobhunt")]
+    dependencies: [.target(name: "Jobhunt")],
+    settings: .settings(
+        base: sharedBase,
+        configurations: projectConfigurations,
+        defaultSettings: .recommended(excluding: [])
+    )
 )
 
 let llmEvalTarget = testTarget(
@@ -258,6 +270,7 @@ let dmgScheme = Scheme.scheme(
             .testableTarget(target: .target("CoreTests")),
             .testableTarget(target: .target("ServerTests")),
             .testableTarget(target: .target("MCPTests")),
+            .testableTarget(target: .target("AppUITests")),
         ],
         configuration: "Debug-DMG"
     ),

@@ -284,6 +284,58 @@ public actor BackgroundStore {
         try modelContext.save()
     }
 
+    /// Queue fit scoring for a job against every active resume, skipping (job, resume)
+    /// pairs that already have a queued or running fit request. Returns the count queued.
+    /// Mirrors the Electron app's queueFitScoresForAllResumes auto-scoring behavior.
+    public func enqueueFitForActiveResumes(jobID: String) throws -> Int {
+        let jid = jobID
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))
+        guard let job = jobs.first else { return 0 }
+        let activeResumes = try modelContext.fetch(FetchDescriptor<Resume>(predicate: #Predicate { $0.active == true }))
+        guard !activeResumes.isEmpty else { return 0 }
+
+        // Resume IDs that already have an in-flight fit request for this job (avoid duplicates).
+        let inflight = try modelContext.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.finishedAt == nil }))
+        let busyResumeIDs = Set(
+            inflight
+                .filter { $0.requestType == .fit && $0.job?.id == jid && ($0.status == .queued || $0.status == .running) }
+                .compactMap { $0.resume?.id }
+        )
+
+        var queued = 0
+        for resume in activeResumes where !busyResumeIDs.contains(resume.id) {
+            let req = LLMRequest(requestType: .fit, status: .queued)
+            req.job = job
+            req.resume = resume
+            modelContext.insert(req)
+            let record: JobFitScore
+            if let existing = job.fitScores.first(where: { $0.resume?.id == resume.id }) {
+                record = existing
+            } else {
+                record = JobFitScore()
+                modelContext.insert(record)
+                record.job = job
+                record.resume = resume
+            }
+            record.fitStatus = .pending
+            record.updatedAt = Date()
+            queued += 1
+        }
+        if queued > 0 { try modelContext.save() }
+        return queued
+    }
+
+    /// Append a timeline event to a job.
+    public func insertJobEvent(jobID: String, eventType: String, note: String? = nil, occurredAt: Date = Date()) throws {
+        let jid = jobID
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))
+        guard let job = jobs.first else { return }
+        let event = JobEvent(eventType: eventType, note: note, occurredAt: occurredAt)
+        event.job = job
+        modelContext.insert(event)
+        try modelContext.save()
+    }
+
     /// Recompute Job.fitScore/fitStatus/fitScoreJSON mirrors for all jobs.
     /// Sets each job's mirror from the active-resume's JobFitScore if one exists,
     /// or resets to .none/nil if the new active resume has no score for that job.
@@ -389,6 +441,12 @@ public actor BackgroundStore {
         modelContext.insert(capture)
         modelContext.insert(job)
         modelContext.insert(llmRequest)
+
+        // Timeline: record the capture as a system event so the job has provenance history.
+        let captureEvent = JobEvent(eventType: "capture", occurredAt: capture.capturedAt)
+        captureEvent.job = job
+        modelContext.insert(captureEvent)
+
         try modelContext.save()
 
         return AtomicIngestResult(captureID: input.captureID, jobNumber: jobNumber, isDuplicate: false)

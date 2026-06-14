@@ -1,44 +1,5 @@
 import SwiftUI
 
-// MARK: - Job Commands
-// Published by JobsView via .focusedSceneValue(\.jobCommands, ...) when the Jobs section is active.
-
-struct JobCommandHandlers {
-    let hasSelection: Bool
-    let reEnqueueSelected: () -> Void
-    let archiveSelected: () -> Void
-}
-
-private struct JobCommandsKey: FocusedValueKey {
-    typealias Value = JobCommandHandlers
-}
-
-extension FocusedValues {
-    var jobCommands: JobCommandHandlers? {
-        get { self[JobCommandsKey.self] }
-        set { self[JobCommandsKey.self] = newValue }
-    }
-}
-
-struct JobMenuCommands: Commands {
-    @FocusedValue(\.jobCommands) var handlers: JobCommandHandlers?
-
-    var body: some Commands {
-        CommandMenu("Jobs") {
-            Button("Re-run AI Extraction") {
-                handlers?.reEnqueueSelected()
-            }
-            .keyboardShortcut("r", modifiers: [.command, .shift])
-            .disabled(handlers?.hasSelection != true)
-
-            Button("Archive Selected") {
-                handlers?.archiveSelected()
-            }
-            .disabled(handlers?.hasSelection != true)
-        }
-    }
-}
-
 // MARK: - Queue Commands
 // Published by LLMQueueView via .focusedSceneValue(\.queueCommands, ...) when Queue section is active.
 

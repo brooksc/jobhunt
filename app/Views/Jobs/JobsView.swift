@@ -30,7 +30,6 @@ struct JobsView: View {
 
     var body: some View {
         jobListWithModifiers
-            .focusedSceneValue(\.jobCommands, currentJobCommandHandlers)
             .accessibilityIdentifier("content.jobs")
     }
 
@@ -117,28 +116,6 @@ struct JobsView: View {
                 }
             }
         }
-    }
-
-    private var currentJobCommandHandlers: JobCommandHandlers {
-        JobCommandHandlers(
-            hasSelection: !selectedJobIDs.isEmpty,
-            reEnqueueSelected: {
-                let ids = Array(selectedJobIDs)
-                Task { try? await appServices.jobService.resetExtractionBulk(jobIDs: ids) }
-            },
-            archiveSelected: {
-                let ids = Array(selectedJobIDs)
-                let svc = appServices.jobService
-                let toast = appServices.toastStore
-                Task {
-                    for id in ids {
-                        do { try await svc.archive(jobID: id) }
-                        catch { toast.show("Archive failed: \(error.localizedDescription)", isError: true) }
-                    }
-                    await MainActor.run { selectedJobIDs = [] }
-                }
-            }
-        )
     }
 
     // MARK: - Toolbar

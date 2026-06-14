@@ -263,6 +263,8 @@ struct NeedsActionView: View {
                         snooze(action, days: days)
                     } onSelectJob: {
                         viewJob(for: action)
+                    } onAddNote: { text in
+                        addNote(text, for: action)
                     }
                     if action.id != actions.last?.id {
                         Divider()
@@ -319,6 +321,19 @@ struct NeedsActionView: View {
         }
     }
 
+    private func addNote(_ text: String, for action: JobAction) {
+        guard let jobID = action.job?.id else { return }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        Task {
+            do {
+                try await jobService.addNote(trimmed, to: jobID)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
     private func viewJob(for action: JobAction) {
         if let jobID = action.job?.id {
             router.selectedJobID = jobID
@@ -348,6 +363,10 @@ private struct NeedsActionRow: View {
     let onDone: () -> Void
     let onSnooze: (Int) -> Void
     let onSelectJob: () -> Void
+    let onAddNote: (String) -> Void
+
+    @State private var showNotePopover = false
+    @State private var noteText = ""
 
     private var job: Job? { action.job }
 
@@ -413,8 +432,38 @@ private struct NeedsActionRow: View {
                     StatusChip(status: job.status)
                 }
 
-                // Inline Done + Snooze
+                // Inline Note + Done + Snooze
                 HStack(spacing: 4) {
+                    Button {
+                        showNotePopover = true
+                    } label: {
+                        Image(systemName: "note.text").font(.system(size: 12))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Add a note to this job")
+                    .popover(isPresented: $showNotePopover) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Add note").font(.caption.weight(.semibold))
+                            TextField("Note…", text: $noteText, axis: .vertical)
+                                .textFieldStyle(.roundedBorder)
+                                .lineLimit(2 ... 5)
+                                .frame(width: 240)
+                            HStack {
+                                Spacer()
+                                Button("Save") {
+                                    onAddNote(noteText)
+                                    noteText = ""
+                                    showNotePopover = false
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                .disabled(noteText.trimmingCharacters(in: .whitespaces).isEmpty)
+                            }
+                        }
+                        .padding(12)
+                    }
+
                     Button {
                         onDone()
                     } label: {

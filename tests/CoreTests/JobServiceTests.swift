@@ -293,6 +293,29 @@ final class JobServiceTests: XCTestCase {
         XCTAssertTrue(events.contains { $0.eventType == "recapture" }, "re-capture must log a recapture timeline event")
     }
 
+    // MARK: - Manual field overrides (Electron parity: extraction must not clobber user edits)
+
+    func testUpdateJobFields_recordsManualOverride_andClearResets() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+        let result = try await svc.ingestCapture(CapturePayload(url: "https://o.example.com/j", pageTitle: "T", visibleText: "desc"))
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        let jobID = try XCTUnwrap(jobs.first(where: { $0.jobNumber == result.jobNumber })).id
+
+        try await svc.updateJobFields(jobID: jobID, company: "Acme Corp")
+
+        let updatedJobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
+        let updated = try XCTUnwrap(updatedJobs.first)
+        XCTAssertEqual(updated.company, "Acme Corp")
+        XCTAssertEqual(updated.manualFieldOverridesJSON?.contains("company"), true, "editing company must record a manual override")
+
+        try await svc.clearFieldOverrides(jobID: jobID)
+        let clearedJobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
+        let cleared = try XCTUnwrap(clearedJobs.first)
+        XCTAssertNil(cleared.manualFieldOverridesJSON, "clearFieldOverrides must reset overrides")
+    }
+
     // MARK: - TASK-160: archive sets .archived, not .passed
 
     func testArchive_setsArchivedStatus() async throws {

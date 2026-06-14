@@ -21,6 +21,9 @@ public final class Job {
     public var seniority: String?
     public var status: JobStatus
     public var manualOverridesJSON: String
+    /// Field-level manual overrides: a JSON array of extracted-field names the user has edited.
+    /// Extraction skips these fields so it won't clobber user edits. Nil = no overrides.
+    public var manualFieldOverridesJSON: String?
     public var extractedJSON: String?
     public var extractionStatus: ExtractionStatus
     public var extractionError: String?
@@ -87,6 +90,7 @@ public final class Job {
         seniority: String? = nil,
         status: JobStatus = .new,
         manualOverridesJSON: String = "[]",
+        manualFieldOverridesJSON: String? = nil,
         extractedJSON: String? = nil,
         extractionStatus: ExtractionStatus = .pending,
         extractionError: String? = nil,
@@ -121,6 +125,7 @@ public final class Job {
         self.seniority = seniority
         self.status = status
         self.manualOverridesJSON = manualOverridesJSON
+        self.manualFieldOverridesJSON = manualFieldOverridesJSON
         self.extractedJSON = extractedJSON
         self.extractionStatus = extractionStatus
         self.extractionError = extractionError
@@ -145,4 +150,20 @@ public final class Job {
         fitScores = []
         llmRequests = []
     }
+}
+
+// MARK: - Manual field-override helpers
+
+/// Decode the set of extracted-field names the user has manually overridden.
+func manualFieldOverrideSet(_ json: String?) -> Set<String> {
+    guard let json, let data = json.data(using: .utf8),
+          let arr = try? JSONSerialization.jsonObject(with: data) as? [String] else { return [] }
+    return Set(arr)
+}
+
+/// Encode a set of overridden field names back to JSON (nil when empty).
+func manualFieldOverrideJSON(_ set: Set<String>) -> String? {
+    guard !set.isEmpty, let data = try? JSONSerialization.data(withJSONObject: Array(set).sorted())
+    else { return nil }
+    return String(data: data, encoding: .utf8)
 }

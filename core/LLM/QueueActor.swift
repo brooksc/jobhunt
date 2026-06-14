@@ -416,20 +416,22 @@ public actor QueueActor {
                 Job.self,
                 predicate: #Predicate { $0.id == jobID }
             ) { job in
+                // Preserve fields the user manually edited (Electron parity: manual_overrides).
+                let overrides = manualFieldOverrideSet(job.manualFieldOverridesJSON)
                 job.extractedJSON = result.extractedJSON
-                job.title = result.title
-                job.company = result.company
-                job.location = result.location
-                job.remoteType = result.remoteType
-                job.salaryMin = result.salaryMin
-                job.salaryMax = result.salaryMax
-                job.salaryHourlyMin = result.salaryHourlyMin
-                job.salaryHourlyMax = result.salaryHourlyMax
-                job.salaryCurrency = result.salaryCurrency
-                job.salaryNote = result.salaryNote
-                job.employmentType = result.employmentType
-                job.seniority = result.seniority
-                job.applicationURL = result.applicationURL
+                if !overrides.contains("title") { job.title = result.title }
+                if !overrides.contains("company") { job.company = result.company }
+                if !overrides.contains("location") { job.location = result.location }
+                if !overrides.contains("remoteType") { job.remoteType = result.remoteType }
+                if !overrides.contains("salaryMin") { job.salaryMin = result.salaryMin }
+                if !overrides.contains("salaryMax") { job.salaryMax = result.salaryMax }
+                if !overrides.contains("salaryMin") { job.salaryHourlyMin = result.salaryHourlyMin }
+                if !overrides.contains("salaryMax") { job.salaryHourlyMax = result.salaryHourlyMax }
+                if !overrides.contains("salaryCurrency") { job.salaryCurrency = result.salaryCurrency }
+                if !overrides.contains("salaryNote") { job.salaryNote = result.salaryNote }
+                if !overrides.contains("employmentType") { job.employmentType = result.employmentType }
+                if !overrides.contains("seniority") { job.seniority = result.seniority }
+                if !overrides.contains("applicationURL") { job.applicationURL = result.applicationURL }
                 job.extractionConfidence = result.extractionConfidence
                 job.extractionModel = result.extractionModel
                 job.extractionStatus = .succeeded

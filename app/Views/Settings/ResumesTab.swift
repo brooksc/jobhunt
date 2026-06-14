@@ -30,6 +30,13 @@ struct ResumesTab: View {
             }
             .padding(.bottom, 8)
 
+            if !resumes.isEmpty {
+                Text("Active resumes (✓) are auto-scored against new jobs; a job's fit shows the best match across resumes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 8)
+            }
+
             if resumes.isEmpty {
                 ContentUnavailableView(
                     "No Resumes",
@@ -106,13 +113,15 @@ private struct ResumeRow: View {
         HStack(spacing: 12) {
             Button {
                 let id = resume.id
-                Task { try? await resumeService.setActiveResume(id: id) }
+                let newActive = !resume.active
+                Task { try? await resumeService.setResumeActive(id: id, active: newActive) }
             } label: {
                 Image(systemName: resume.active ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(resume.active ? .green : .secondary)
                     .font(.title3)
             }
             .buttonStyle(.plain)
+            .help(resume.active ? "Active — auto-scored against new jobs. Click to deactivate." : "Inactive. Click to activate (auto-scored against new jobs).")
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(resume.name)

@@ -1040,7 +1040,10 @@ final class FitScoringStateTests: XCTestCase {
 
     // MARK: - TASK-275: saveFitScore only updates Job fields for active resume
 
-    func testSaveFitScore_inactiveResume_doesNotUpdateJobFields() async throws {
+    func testSaveFitScore_inactiveResume_stillUpdatesBestMirror() async throws {
+        // Best-across-resumes (Electron parity): the mirror reflects the best score regardless of
+        // which resume is active, so scoring an inactive resume still updates the job mirror when
+        // it is the best (here, the only) score.
         let container = try ModelContainerFactory.inMemory()
         let store = makeStore(container)
 
@@ -1062,14 +1065,39 @@ final class FitScoringStateTests: XCTestCase {
 
         let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-fit-1" }))
         let updatedJob = try XCTUnwrap(jobs.first)
-        XCTAssertNil(updatedJob.fitScore, "Job.fitScore must not be set when scored resume is inactive")
-        XCTAssertEqual(updatedJob.fitStatus, .none, "Job.fitStatus must remain .none when scored resume is inactive")
-        XCTAssertNil(updatedJob.fitScoreJSON, "Job.fitScoreJSON must not be set when scored resume is inactive")
+        XCTAssertEqual(updatedJob.fitScore, 75, "Mirror reflects the best (only) score even from an inactive resume")
+        XCTAssertEqual(updatedJob.fitStatus, .succeeded)
+        XCTAssertEqual(updatedJob.fitScoreJSON, "{\"overall\":75}")
 
         let scores = try await store.fetch(FetchDescriptor<JobFitScore>())
         XCTAssertEqual(scores.count, 1, "JobFitScore record must be created even for inactive resume")
         XCTAssertEqual(scores.first?.fitScore, 75)
         XCTAssertEqual(scores.first?.fitStatus, .succeeded)
+    }
+
+    func testRecomputeAllFitScores_recomputesFromStoredJSONWithoutLLM() async throws {
+        // Electron parity (rescore.js): recompute the overall score from stored dimensions using
+        // current weights, no LLM. Dimensions 80/50/70/90/60 → 76 with the standard weights.
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let job = Job(id: "rescore-job", jobNumber: 1)
+        let resume = Resume(name: "R", text: "x", charCount: 1, active: true, sortOrder: 0)
+        try await store.insert(job)
+        try await store.insert(resume)
+        let json = """
+        {"dimensions":[{"name":"required_qualifications","score":80},\
+        {"name":"preferred_qualifications","score":50},{"name":"skills","score":70},\
+        {"name":"experience_level","score":90},{"name":"domain_fit","score":60}],\
+        "requirements_not_met":[]}
+        """
+        try await store.saveFitScore(jobID: "rescore-job", resumeID: resume.id, overall: 50, fitJSON: json, model: "m", scoredAt: Date())
+
+        let n = try await store.recomputeAllFitScores()
+        XCTAssertEqual(n, 1)
+        let scores = try await store.fetch(FetchDescriptor<JobFitScore>())
+        XCTAssertEqual(scores.first?.fitScore, 76, "rescore recomputes overall from dimensions with current weights")
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertEqual(jobs.first?.fitScore, 76, "job mirror updates to recomputed best score")
     }
 
     func testSaveFitScore_activeResume_updatesJobFields() async throws {

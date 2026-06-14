@@ -16,11 +16,32 @@ struct DebugTab: View {
         Form {
             jobStatsSection
             entityCountsSection
+            fitScoresSection
             settingsErrorSection
             recentErrorsSection
             diagnosticsSection
         }
         .formStyle(.grouped)
+    }
+
+    // MARK: - Fit scores (no-LLM recompute)
+
+    private var fitScoresSection: some View {
+        Section("Fit Scores") {
+            Button("Recompute from Saved Data (no LLM)") {
+                Task {
+                    do {
+                        let n = try await appServices.jobService.recomputeAllFitScores()
+                        appServices.toastStore.show("Recomputed \(n) fit score\(n == 1 ? "" : "s")")
+                    } catch {
+                        appServices.toastStore.show("Recompute failed: \(error.localizedDescription)", isError: true)
+                    }
+                }
+            }
+            Text("Re-applies the current scoring weights and penalties to already-scored jobs, without calling the LLM.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     // MARK: - Job stats by status

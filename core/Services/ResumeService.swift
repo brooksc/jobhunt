@@ -54,23 +54,20 @@ public actor ResumeService {
 
     // MARK: - Delete
 
-    /// Delete a resume by ID. If it was active, promotes the next resume and recomputes job fit mirrors.
+    /// Delete a resume by ID. Its fit scores cascade-delete; job mirrors recompute from what
+    /// remains. Keeps at least one resume active when any remain (so auto-scoring still fires).
     public func deleteResume(id: String) async throws {
         let all = try await store.fetch(FetchDescriptor<Resume>(sortBy: [SortDescriptor(\.sortOrder)]))
-        guard let target = all.first(where: { $0.id == id }) else { return }
-        let wasActive = target.active
+        guard all.contains(where: { $0.id == id }) else { return }
         try await store.deleteOne(Resume.self, predicate: #Predicate { $0.id == id }, id: id)
-        var promotedID: String? = nil
-        if wasActive {
-            let remaining = all.filter { $0.id != id }
-            if let nextID = (remaining.first(where: { !$0.active }) ?? remaining.first)?.id {
-                try await store.update(Resume.self, predicate: #Predicate { $0.id == nextID }) { $0.active = true }
-                promotedID = nextID
-            }
+
+        let remaining = all.filter { $0.id != id }
+        if !remaining.isEmpty, !remaining.contains(where: { $0.active }) {
+            let nextID = remaining[0].id
+            try await store.update(Resume.self, predicate: #Predicate { $0.id == nextID }) { $0.active = true }
         }
-        if wasActive {
-            try await store.recomputeJobFitMirrors(activeResumeID: promotedID)
-        }
+        // Best-across-resumes mirror recompute (argument retained for signature compatibility).
+        try await store.recomputeJobFitMirrors(activeResumeID: nil)
     }
 
     // MARK: - Activation
@@ -89,5 +86,18 @@ public actor ResumeService {
             r.updatedAt = Date()
         }
         try await store.recomputeJobFitMirrors(activeResumeID: id)
+    }
+
+    /// Toggle a single resume's active flag without affecting the others. Multiple resumes may
+    /// be active; every active resume is auto-scored against newly-extracted jobs.
+    public func setResumeActive(id: String, active: Bool) async throws {
+        let targets = try await store.fetch(FetchDescriptor<Resume>(predicate: #Predicate { $0.id == id }))
+        guard targets.first != nil else {
+            throw ResumeServiceError.resumeNotFound(id)
+        }
+        try await store.updateOne(Resume.self, predicate: #Predicate { $0.id == id }, id: id) { r in
+            r.active = active
+            r.updatedAt = Date()
+        }
     }
 }

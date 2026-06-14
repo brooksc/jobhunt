@@ -189,15 +189,63 @@ public actor BackgroundStore {
         record.model = model
         record.scoredAt = scoredAt
         record.updatedAt = Date()
+        _ = resume  // resume captured for the record relationship above
 
-        if resume?.active == true {
-            job.fitScore = overall
-            job.fitStatus = .succeeded
-            job.fitScoreJSON = fitJSON
-            job.updatedAt = Date()
-        }
+        // Job-level mirror reflects the BEST score across all resumes (Electron parity).
+        recomputeJobFitSummary(job)
 
         try modelContext.save()
+    }
+
+    /// Recompute a job's denormalized fit mirror from the best-scoring resume across ALL its
+    /// fit-score records (Electron parity: jobs.fit_score = MAX across resumes). Falls back to
+    /// running/pending/failed/none when no resume has a numeric score yet.
+    private func recomputeJobFitSummary(_ job: Job) {
+        let scored = job.fitScores.filter { $0.fitScore != nil }
+        if let best = scored.max(by: { ($0.fitScore ?? 0) < ($1.fitScore ?? 0) }) {
+            job.fitScore = best.fitScore
+            job.fitStatus = .succeeded
+            job.fitScoreJSON = best.fitScoreJSON
+        } else if job.fitScores.contains(where: { $0.fitStatus == .running }) {
+            job.fitScore = nil; job.fitStatus = .running; job.fitScoreJSON = nil
+        } else if job.fitScores.contains(where: { $0.fitStatus == .pending }) {
+            job.fitScore = nil; job.fitStatus = .pending; job.fitScoreJSON = nil
+        } else if job.fitScores.contains(where: { $0.fitStatus == .failed }) {
+            job.fitScore = nil; job.fitStatus = .failed; job.fitScoreJSON = nil
+        } else {
+            job.fitScore = nil; job.fitStatus = FitStatus.none; job.fitScoreJSON = nil
+        }
+        job.updatedAt = Date()
+    }
+
+    /// Recompute every stored fit score from its saved JSON using the current weights/penalty
+    /// model — no LLM calls (Electron parity: rescore.js). Returns the count updated.
+    public func recomputeAllFitScores() throws -> Int {
+        let allScores = try modelContext.fetch(FetchDescriptor<JobFitScore>())
+        var updated = 0
+        var affectedJobIDs = Set<String>()
+        for record in allScores {
+            guard record.fitStatus == .succeeded,
+                  let json = record.fitScoreJSON,
+                  let result = FitScorer.rescoreFromJSON(json) else { continue }
+            // Preserve explanation fields (dimensions/rationales); overlay recomputed scores.
+            if let data = json.data(using: .utf8),
+               let rawDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let merged = FitScorer.buildMergedJSON(result: result, rawLLMDict: rawDict) {
+                record.fitScoreJSON = merged
+            }
+            record.fitScore = result.overall
+            record.updatedAt = Date()
+            updated += 1
+            if let job = record.job { affectedJobIDs.insert(job.id) }
+        }
+        guard updated > 0 else { return 0 }
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>())
+        for job in jobs where affectedJobIDs.contains(job.id) {
+            recomputeJobFitSummary(job)
+        }
+        try modelContext.save()
+        return updated
     }
 
     /// Delete all JobFitScore records for a resume and reset denormalized fit fields on affected jobs.
@@ -212,12 +260,7 @@ public actor BackgroundStore {
         try modelContext.save()
 
         for job in affectedJobs {
-            // After deletion, set denormalized fields from the active-resume score if any remain.
-            let activeScore = job.fitScores.first { $0.resume?.active == true }
-            job.fitScore = activeScore?.fitScore
-            job.fitStatus = activeScore?.fitStatus ?? .none
-            job.fitScoreJSON = activeScore?.fitScoreJSON
-            job.updatedAt = Date()
+            recomputeJobFitSummary(job)
         }
         try modelContext.save()
     }
@@ -336,24 +379,12 @@ public actor BackgroundStore {
         try modelContext.save()
     }
 
-    /// Recompute Job.fitScore/fitStatus/fitScoreJSON mirrors for all jobs.
-    /// Sets each job's mirror from the active-resume's JobFitScore if one exists,
-    /// or resets to .none/nil if the new active resume has no score for that job.
-    /// Pass nil activeResumeID when no resume remains active.
-    public func recomputeJobFitMirrors(activeResumeID: String?) throws {
+    /// Recompute every job's fit mirror from the best-scoring resume across resumes.
+    /// `activeResumeID` is retained for source compatibility but no longer affects the mirror
+    /// (the mirror is best-across-resumes, not active-resume-specific).
+    public func recomputeJobFitMirrors(activeResumeID _: String?) throws {
         let jobs = try modelContext.fetch(FetchDescriptor<Job>())
-        for job in jobs {
-            let activeScore: JobFitScore?
-            if let rid = activeResumeID {
-                activeScore = job.fitScores.first { $0.resume?.id == rid }
-            } else {
-                activeScore = nil
-            }
-            job.fitScore = activeScore?.fitScore
-            job.fitStatus = activeScore?.fitStatus ?? .none
-            job.fitScoreJSON = activeScore?.fitScoreJSON
-            job.updatedAt = Date()
-        }
+        for job in jobs { recomputeJobFitSummary(job) }
         try modelContext.save()
     }
 

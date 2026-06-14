@@ -190,7 +190,9 @@ final class ResumeServiceTests: XCTestCase {
 
     // MARK: - TASK-306: Fit mirror recompute on active resume change
 
-    func testSetActiveResume_recomputesJobFitMirrors() async throws {
+    func testJobFitMirror_reflectsBestScoreAcrossResumes() async throws {
+        // Best-across-resumes (Electron parity): the job mirror is the MAX score across all
+        // resumes regardless of which resume is active.
         try await service.addResume(name: "Resume1", text: "First resume text")
         try await service.addResume(name: "Resume2", text: "Second resume text")
 
@@ -199,7 +201,6 @@ final class ResumeServiceTests: XCTestCase {
         let r1 = resumes[0]
         let r2 = resumes[1]
 
-        // Create a job and scores for both resumes
         let job = Job(jobNumber: 1, title: "SWE")
         ctx.insert(job)
         let score1 = JobFitScore(fitScore: 80, fitStatus: .succeeded)
@@ -212,24 +213,19 @@ final class ResumeServiceTests: XCTestCase {
         ctx.insert(score2)
         try ctx.save()
 
-        // r1 starts active; set it explicitly and verify mirror
+        // Mirror is the best (80) whether r1 or r2 is the active resume.
         try await service.setActiveResume(id: r1.id)
         let afterR1 = try ctx.fetch(FetchDescriptor<Job>()).first!
-        XCTAssertEqual(afterR1.fitScore, 80, "Mirror should reflect resume-1 score")
+        XCTAssertEqual(afterR1.fitScore, 80, "Mirror should reflect the best resume score")
+        XCTAssertEqual(afterR1.fitStatus, .succeeded)
 
-        // Switch to r2
         try await service.setActiveResume(id: r2.id)
         let afterR2 = try ctx.fetch(FetchDescriptor<Job>()).first!
-        XCTAssertEqual(afterR2.fitScore, 60, "Mirror should reflect resume-2 score")
-        XCTAssertEqual(afterR2.fitStatus, .succeeded)
-
-        // Switch back to r1
-        try await service.setActiveResume(id: r1.id)
-        let backToR1 = try ctx.fetch(FetchDescriptor<Job>()).first!
-        XCTAssertEqual(backToR1.fitScore, 80, "Mirror should reflect resume-1 score again")
+        XCTAssertEqual(afterR2.fitScore, 80, "Mirror stays at the best score even when a lower-scoring resume is active")
     }
 
-    func testSetActiveResume_clearsJobMirrorWhenNoScore() async throws {
+    func testJobFitMirror_usesBestAvailableScoreIgnoringActive() async throws {
+        // Only one resume is scored; the mirror shows that score regardless of which resume is active.
         try await service.addResume(name: "Resume1", text: "First resume text")
         try await service.addResume(name: "Resume2", text: "Second resume text")
 
@@ -238,7 +234,6 @@ final class ResumeServiceTests: XCTestCase {
         let r1 = resumes[0]
         let r2 = resumes[1]
 
-        // Score only for r1
         let job = Job(jobNumber: 2, title: "PM")
         ctx.insert(job)
         let score1 = JobFitScore(fitScore: 75, fitStatus: .succeeded)
@@ -247,16 +242,35 @@ final class ResumeServiceTests: XCTestCase {
         ctx.insert(score1)
         try ctx.save()
 
-        // Activate r1, verify mirror
         try await service.setActiveResume(id: r1.id)
         let afterR1 = try ctx.fetch(FetchDescriptor<Job>()).first!
         XCTAssertEqual(afterR1.fitScore, 75)
 
-        // Switch to r2 — no score, mirror should clear
+        // Activating the unscored r2 does NOT clear the mirror — best-across keeps r1's 75.
         try await service.setActiveResume(id: r2.id)
         let afterR2 = try ctx.fetch(FetchDescriptor<Job>()).first!
-        XCTAssertNil(afterR2.fitScore, "Mirror should be nil when active resume has no score")
-        XCTAssertEqual(afterR2.fitStatus, .none)
+        XCTAssertEqual(afterR2.fitScore, 75, "Best-across mirror retains the only available score")
+        XCTAssertEqual(afterR2.fitStatus, .succeeded)
+    }
+
+    func testSetResumeActive_togglesIndependently() async throws {
+        // Multiple resumes can be active simultaneously.
+        try await service.addResume(name: "Resume1", text: "First resume text")
+        try await service.addResume(name: "Resume2", text: "Second resume text")
+
+        let ctx = ModelContext(container)
+        let resumes = try ctx.fetch(FetchDescriptor<Resume>(sortBy: [SortDescriptor(\.sortOrder)]))
+        // r1 is active by default; activate r2 too without deactivating r1.
+        try await service.setResumeActive(id: resumes[1].id, active: true)
+
+        let after = try ctx.fetch(FetchDescriptor<Resume>(sortBy: [SortDescriptor(\.sortOrder)]))
+        XCTAssertTrue(after[0].active && after[1].active, "Both resumes should be active simultaneously")
+
+        // Deactivating r1 leaves r2 active.
+        try await service.setResumeActive(id: resumes[0].id, active: false)
+        let after2 = try ctx.fetch(FetchDescriptor<Resume>(sortBy: [SortDescriptor(\.sortOrder)]))
+        XCTAssertFalse(after2[0].active)
+        XCTAssertTrue(after2[1].active)
     }
 
     // MARK: - TASK-307: Fit mirror recompute on delete active resume

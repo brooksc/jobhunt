@@ -392,6 +392,12 @@ public actor JobService {
         }
     }
 
+    /// Recompute all stored fit scores from saved JSON with the current weights/penalties — no
+    /// LLM calls (Electron parity: rescore.js). Returns the number of scores updated.
+    public func recomputeAllFitScores() async throws -> Int {
+        try await store.recomputeAllFitScores()
+    }
+
     // MARK: - Field-level updates (used by detail inspector)
 
     /// Update individual string/enum fields on a job. Pass nil to leave a field unchanged.

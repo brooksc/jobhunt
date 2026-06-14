@@ -62,7 +62,14 @@ extension XCTestCase {
         }
 
         let app = XCUIApplication()
-        app.launchArguments += ["-UIAnimationDragCoefficient", "0", "--ui-test-store"]
+        // -ApplePersistenceIgnoreState YES disables AppKit window-state restoration. Without it,
+        // a reused VM (or a prior run that quit windowless) restores "no windows", so the
+        // WindowGroup opens zero windows and the main window / sidebar.dashboard never appear.
+        app.launchArguments += [
+            "-UIAnimationDragCoefficient", "0",
+            "-ApplePersistenceIgnoreState", "YES",
+            "--ui-test-store",
+        ]
         if seedData { app.launchArguments.append("--seed-demo-data") }
         app.launch()
         app.activate()

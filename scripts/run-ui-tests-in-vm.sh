@@ -240,6 +240,11 @@ sudo pmset -a sleep 0 displaysleep 0 disksleep 0 >/dev/null
 defaults write com.apple.screensaver idleTime 0
 defaults write com.apple.screensaver askForPassword 0
 
+# Clear any persisted window state from a prior run on this reused VM. A stale
+# "no windows" saved state otherwise makes the app launch windowless even with
+# -ApplePersistenceIgnoreState; removing it guarantees a clean first window.
+rm -rf "$HOME/Library/Saved Application State/com.jobhunt-app.jobhunt.savedState" 2>/dev/null || true
+
 # Mount the virtiofs share from the host.
 # Tart exposes it under /Volumes/My Shared Files/<name> automatically on
 # macOS 13+; we create a predictable symlink so xcodebuild can use a

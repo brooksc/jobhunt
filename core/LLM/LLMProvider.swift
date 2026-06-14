@@ -23,6 +23,17 @@ public enum ResponseFormat: Sendable, Equatable {
     case text
 }
 
+// MARK: - StructuredOutputKind
+
+/// Identifies the expected structured payload so on-device providers (Apple Foundation Models)
+/// can use *guided generation* — constraining the model to a typed schema that always decodes,
+/// instead of free-form text that must be JSON-parsed. HTTP providers ignore this and rely on
+/// `responseFormat`; it only changes behaviour for `FoundationModelsProvider`.
+public enum StructuredOutputKind: Sendable {
+    case jobExtraction
+    case fitScore
+}
+
 // MARK: - ChatRequest
 
 public struct ChatRequest: Sendable {
@@ -31,17 +42,21 @@ public struct ChatRequest: Sendable {
     /// Preferred response format. Providers may negotiate a lower level if unsupported.
     public let responseFormat: ResponseFormat?
     public let maxTokens: Int
+    /// Optional guided-generation hint for providers that support typed structured output.
+    public let structuredOutput: StructuredOutputKind?
 
     public init(
         messages: [ChatMessage],
         model: String,
         responseFormat: ResponseFormat? = nil,
-        maxTokens: Int = 16384
+        maxTokens: Int = 16384,
+        structuredOutput: StructuredOutputKind? = nil
     ) {
         self.messages = messages
         self.model = model
         self.responseFormat = responseFormat
         self.maxTokens = maxTokens
+        self.structuredOutput = structuredOutput
     }
 }
 

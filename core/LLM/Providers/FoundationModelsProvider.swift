@@ -32,20 +32,37 @@ public final class FoundationModelsProvider: LLMProvider, @unchecked Sendable {
         let userMsgs = request.messages.filter { $0.role == "user" }
         let prompt = userMsgs.map(\.content).joined(separator: "\n")
 
+        // Tests inject a bridge to exercise the free-form text path deterministically.
         if let bridge {
             let result = try await bridge.complete(systemPrompt: systemContent, userMessage: prompt)
             return makeResponse(rawResult: result)
         }
 
-        if #available(macOS 26.0, *) {
-            let realBridge = RealLanguageModelBridge()
-            let result = try await realBridge.complete(systemPrompt: systemContent, userMessage: prompt)
-            return makeResponse(rawResult: result)
-        } else {
+        guard #available(macOS 26.0, *) else {
             throw LLMProviderError.unavailable(
                 reason: "Apple Foundation Models requires macOS 26 (Tahoe) or later"
             )
         }
+        let realBridge = RealLanguageModelBridge()
+
+        // Preferred path: guided generation produces a constrained, typed structure that always
+        // decodes — no JSON parsing/repair, no "could not be parsed as valid JSON" failures.
+        if let kind = request.structuredOutput {
+            do {
+                let json = try await realBridge.completeStructured(
+                    systemPrompt: systemContent, userMessage: prompt, kind: kind
+                )
+                return ChatResponse(content: json, model: "apple-foundation-models", responseFormat: .jsonObject)
+            } catch {
+                // Resilience: if guided generation is unavailable or fails, degrade to free-form
+                // text + the engine's JSON repair rather than failing the request outright.
+                let result = try await realBridge.complete(systemPrompt: systemContent, userMessage: prompt)
+                return makeResponse(rawResult: result)
+            }
+        }
+
+        let result = try await realBridge.complete(systemPrompt: systemContent, userMessage: prompt)
+        return makeResponse(rawResult: result)
     }
 
     /// Returns true if Foundation Models is available on this system (macOS 26+).
@@ -89,5 +106,32 @@ public struct RealLanguageModelBridge: LanguageModelBridge {
         } catch {
             throw LLMProviderError.unavailable(reason: error.localizedDescription)
         }
+    }
+
+    /// Guided generation: constrains the model to a typed @Generable schema and serialises the
+    /// result to the JSON shape ExtractionEngine expects.
+    func completeStructured(
+        systemPrompt: String,
+        userMessage: String,
+        kind: StructuredOutputKind
+    ) async throws -> String {
+        let session = LanguageModelSession(instructions: systemPrompt)
+        let encoder = JSONEncoder()
+        switch kind {
+        case .jobExtraction:
+            let response = try await session.respond(to: userMessage, generating: GeneratedExtraction.self)
+            return try encode(response.content, with: encoder)
+        case .fitScore:
+            let response = try await session.respond(to: userMessage, generating: GeneratedFit.self)
+            return try encode(response.content, with: encoder)
+        }
+    }
+
+    private func encode(_ value: some Encodable, with encoder: JSONEncoder) throws -> String {
+        let data = try encoder.encode(value)
+        guard let json = String(data: data, encoding: .utf8) else {
+            throw LLMProviderError.noResponse
+        }
+        return json
     }
 }

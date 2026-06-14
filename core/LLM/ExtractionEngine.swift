@@ -118,7 +118,10 @@ public enum ExtractionEngine {
         let promptText = messages.map(\.content).joined()
         let promptChars = promptText.count
 
-        let request = ChatRequest(messages: messages, model: settings.llmModel, responseFormat: .jsonObject)
+        let request = ChatRequest(
+            messages: messages, model: settings.llmModel,
+            responseFormat: .jsonObject, structuredOutput: .jobExtraction
+        )
         let response = try await provider.complete(request)
         let responseChars = response.content.count
 
@@ -203,7 +206,10 @@ public enum ExtractionEngine {
 
         let promptChars = messages.map(\.content).joined().count
 
-        let request = ChatRequest(messages: messages, model: model, responseFormat: .jsonObject)
+        let request = ChatRequest(
+            messages: messages, model: model,
+            responseFormat: .jsonObject, structuredOutput: .fitScore
+        )
         let response = try await provider.complete(request)
 
         let responseChars = response.content.count

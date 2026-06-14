@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-06-13 23:36'
+updated_date: '2026-06-14 00:19'
 labels:
   - url-handling
   - reporting
@@ -33,3 +34,9 @@ Different surfaces choose different URL precedence for the same job. CSV export 
 - [ ] #3 Existing intended behavior is documented by tests for jobs with application URL, canonical capture URL, raw capture URL, and missing URLs.
 - [ ] #4 No user-facing surface regresses to opening or exporting an empty URL when a valid fallback exists.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Related to but distinct from TASK-443 (centralize URL *validation/normalization* at ingestion — input policy). This task is about URL *precedence selection* across output surfaces (export/display/availability). Both should live in one shared URL helper module; 460 can build on the normalization primitives from 443. Kept separate intentionally.
+<!-- SECTION:NOTES:END -->

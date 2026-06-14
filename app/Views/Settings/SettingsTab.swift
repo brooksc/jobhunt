@@ -392,7 +392,8 @@ struct SettingsTab: View {
 
 // MARK: - ExpiredConfirmationSheet
 
-private struct ExpiredConfirmationSheet: View {
+// Internal (not private) so the main-window availability check (ContentView) can present it too.
+struct ExpiredConfirmationSheet: View {
     let goneJobs: [GoneJobResult]
     let onConfirm: ([GoneJobResult]) -> Void
     let onDismiss: () -> Void

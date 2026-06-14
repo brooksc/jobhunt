@@ -11,6 +11,13 @@ struct ContentView: View {
 
     @Environment(AppServices.self) private var appServices
     @Query(filter: #Predicate<Job> { $0.unread == true }) private var unreadJobs: [Job]
+    @Query private var allJobs: [Job]
+
+    // Availability check (triggered from the toolbar menu) — finds Pursuing jobs whose postings
+    // appear gone, then offers to mark them Expired (same flow as Settings → Availability).
+    @State private var goneJobs: [GoneJobResult] = []
+    @State private var showingExpiredConfirmation = false
+    @State private var isCheckingAvailability = false
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -30,6 +37,13 @@ struct ContentView: View {
             ToastOverlay(store: appServices.toastStore)
         }
         .background(DockBadgeUpdater(unreadCount: unreadJobs.count))
+        .sheet(isPresented: $showingExpiredConfirmation) {
+            ExpiredConfirmationSheet(
+                goneJobs: goneJobs,
+                onConfirm: { markExpired($0) },
+                onDismiss: { showingExpiredConfirmation = false }
+            )
+        }
         .onAppear {
             applyAppearance(theme.colorSchemePreference)
         }
@@ -114,6 +128,17 @@ struct ContentView: View {
     private var serviceStatusMenu: some ToolbarContent {
         ToolbarItem(placement: .automatic) {
             Menu {
+                Section("Jobs") {
+                    Button {
+                        Task { await runAvailabilityCheck() }
+                    } label: {
+                        Label(
+                            isCheckingAvailability ? "Checking availability…" : "Check Pursuing Availability",
+                            systemImage: "checkmark.seal"
+                        )
+                    }
+                    .disabled(isCheckingAvailability)
+                }
                 Section("LLM") {
                     Label(
                         "\(appServices.settings.llmProvider) · \(shortModelName)",
@@ -153,6 +178,38 @@ struct ContentView: View {
             }
             .help("Service status")
         }
+    }
+
+    // MARK: - Availability check
+
+    private func runAvailabilityCheck() async {
+        let pursuing = allJobs.filter { $0.status == .pursuing }
+        guard !pursuing.isEmpty else {
+            appServices.toastStore.show("No pursuing jobs to check")
+            return
+        }
+        isCheckingAvailability = true
+        defer { isCheckingAvailability = false }
+
+        let found = await AvailabilityChecker.findGoneJobs(pursuing)
+        appServices.settings.set(
+            ISO8601DateFormatter().string(from: Date()),
+            forKey: SettingsKey.availabilityLastAutoCheckAt
+        )
+        if found.isEmpty {
+            appServices.toastStore.show("All \(pursuing.count) pursuing jobs are still available")
+        } else {
+            goneJobs = found
+            showingExpiredConfirmation = true
+        }
+    }
+
+    private func markExpired(_ jobs: [GoneJobResult]) {
+        showingExpiredConfirmation = false
+        let ids = jobs.map(\.jobID)
+        let count = ids.count
+        Task { try? await appServices.jobService.markExpired(jobIDs: ids) }
+        appServices.toastStore.show("\(count) job(s) marked expired")
     }
 
     // MARK: - Helpers

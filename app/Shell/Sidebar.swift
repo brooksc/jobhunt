@@ -15,11 +15,14 @@ struct Sidebar: View {
     @Environment(AppServices.self) private var appServices
 
     @Query(filter: #Predicate<JobAction> { $0.completedAt == nil }) private var pendingActions: [JobAction]
-    @Query(filter: #Predicate<Job> { $0.duplicateOfJobID != nil }) private var duplicateJobs: [Job]
     @Query private var allJobs: [Job]
+    @Query private var allDecisions: [DuplicateDecision]
     @Query(sort: \SavedSearch.sortOrder) private var savedSearches: [SavedSearch]
 
     @State private var listSelection: SidebarItem? = .jobsAll
+    /// Unresolved duplicate pairs awaiting review — same set the Duplicates screen shows,
+    /// so the badge only appears when there is something to act on (not for already-merged dupes).
+    @State private var duplicatePairCount = 0
     @State private var renamingSearch: SavedSearch?
     @State private var renameText = ""
     @State private var searchToDelete: SavedSearch?
@@ -91,8 +94,8 @@ struct Sidebar: View {
 
                 sidebarRow(.duplicates, id: "sidebar.duplicates",
                            label: Label("Duplicates", systemImage: "doc.on.doc"))
-                    .badge(duplicateJobs.isEmpty ? 0 : duplicateJobs.count)
-                    .help("Duplicate job postings")
+                    .badge(duplicatePairCount)
+                    .help("Duplicate job postings awaiting review")
             }
 
             Section("Tools") {
@@ -122,6 +125,9 @@ struct Sidebar: View {
         .onChange(of: router.sidebarJobFilter) { _, _ in syncSelectionFromRouter() }
         .onChange(of: router.activeSavedSearchID) { _, _ in syncSelectionFromRouter() }
         .onAppear { syncSelectionFromRouter() }
+        // Recompute the review-queue count off the main thread whenever jobs/decisions change.
+        // SwiftUI restarts this task on each duplicateRefreshID change, giving implicit debouncing.
+        .task(id: duplicateRefreshID) { await refreshDuplicateCount() }
         .sheet(item: $renamingSearch) { search in
             renameSheet(search)
         }
@@ -175,6 +181,34 @@ struct Sidebar: View {
         .buttonStyle(.plain)
         .tag(item)
         .accessibilityIdentifier(id ?? "")
+    }
+
+    // MARK: - Duplicate review-queue count
+
+    /// Changes whenever jobs (count/status/extraction) or decisions change in a way that
+    /// affects duplicate detection — mirrors DuplicatesView's refresh trigger.
+    private var duplicateRefreshID: Int {
+        var hasher = Hasher()
+        hasher.combine(allDecisions.count)
+        for job in allJobs {
+            hasher.combine(job.id)
+            hasher.combine(job.status.rawValue)
+            hasher.combine(job.extractionStatus.rawValue)
+        }
+        return hasher.finalize()
+    }
+
+    @MainActor
+    private func refreshDuplicateCount() async {
+        let snapshots = allJobs.compactMap { job -> JobSnapshot? in
+            guard let capture = job.capture else { return nil }
+            return JobSnapshot(job: job, capture: capture)
+        }
+        let resolvedHashes = Set(allDecisions.map(\.cleanedHash))
+        let count = await Task.detached(priority: .utility) {
+            DuplicateDetector().duplicateGroups(snapshots: snapshots, resolvedHashes: resolvedHashes).count
+        }.value
+        duplicatePairCount = count
     }
 
     // MARK: - Selection sync

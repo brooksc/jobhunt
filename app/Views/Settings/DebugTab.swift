@@ -9,6 +9,7 @@ struct DebugTab: View {
     @Query private var resumes: [Resume]
     @Query private var sites: [Site]
     @Query private var llmRequests: [LLMRequest]
+    @Query private var attempts: [LLMRequestAttempt]
 
     @Environment(AppServices.self) private var appServices
 
@@ -16,12 +17,41 @@ struct DebugTab: View {
         Form {
             jobStatsSection
             entityCountsSection
+            llmStatsSection
             fitScoresSection
             settingsErrorSection
             recentErrorsSection
             diagnosticsSection
         }
         .formStyle(.grouped)
+    }
+
+    // MARK: - LLM stats (prompt size + processing time)
+
+    private var llmStatsSection: some View {
+        let promptChars = attempts.compactMap(\.promptChars).filter { $0 > 0 }
+        let responseChars = attempts.compactMap(\.responseChars).filter { $0 > 0 }
+        let durations = attempts.compactMap(\.durationMs).filter { $0 > 0 }
+        return Section("LLM Stats") {
+            LabeledContent("Attempts recorded") {
+                Text("\(attempts.count)").foregroundStyle(.secondary).monospacedDigit()
+            }
+            statRow("Prompt chars (avg / max)", avg: average(promptChars), max: promptChars.max())
+            statRow("Response chars (avg / max)", avg: average(responseChars), max: responseChars.max())
+            statRow("Processing ms (avg / max)", avg: average(durations), max: durations.max())
+        }
+    }
+
+    private func statRow(_ label: String, avg: Int?, max: Int?) -> some View {
+        LabeledContent(label) {
+            Text(avg == nil ? "—" : "\(avg!) / \(max ?? 0)")
+                .foregroundStyle(.secondary).monospacedDigit()
+        }
+    }
+
+    private func average(_ values: [Int]) -> Int? {
+        guard !values.isEmpty else { return nil }
+        return values.reduce(0, +) / values.count
     }
 
     // MARK: - Fit scores (no-LLM recompute)

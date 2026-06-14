@@ -484,6 +484,31 @@ private struct JobCompareColumn: View {
             }
             .padding(.bottom, 8)
 
+            // Summary + skills from the job's extracted data (restored from Electron compare).
+            if let job {
+                let projection = JobDetailProjection(job: job)
+                if let summary = projection.summary, !summary.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Summary")
+                            .font(.caption2).foregroundStyle(.secondary).textCase(.uppercase)
+                        Text(summary)
+                            .font(.caption).foregroundStyle(.primary).lineLimit(6)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16).padding(.bottom, 8)
+                }
+                if !projection.skills.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Skills")
+                            .font(.caption2).foregroundStyle(.secondary).textCase(.uppercase)
+                        Text(projection.skills.prefix(14).joined(separator: " · "))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16).padding(.bottom, 8)
+                }
+            }
+
             // Discard button
             if let onDiscard {
                 Button {

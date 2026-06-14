@@ -232,7 +232,11 @@ let tools: [[String: Any]] = [
                 "id": ["type": "string"],
                 "name": ["type": "string"],
                 "state": ["type": "string"],
-                "interval_days": ["type": "integer"]
+                "interval_days": ["type": "integer"],
+                "note": ["type": "string"],
+                "company_website": ["type": "string"],
+                "jobs_url": ["type": "string"],
+                "company_description": ["type": "string"]
             ] as [String: Any]
         ] as [String: Any]
     ],

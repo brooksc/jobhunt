@@ -5,6 +5,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_NAME="Jobhunt"
+SCHEME="Jobhunt-DMG"
 CONFIG="Debug-DMG"
 SKIP_TESTS=false
 DERIVED_DATA="$HOME/Library/Developer/Xcode/DerivedData/Jobhunt-local"
@@ -30,6 +31,12 @@ if [ "$SKIP_TESTS" = false ]; then
     # Fast gate: CoreTests + ServerTests + MCPTests (~30s). Matches CI.
     # AppUITests and LLMEval are opt-in — run them separately before a release.
     echo "→ Running fast gate (CoreTests + ServerTests + MCPTests)..."
+    COV_RESULT="$DERIVED_DATA/FastTests.xcresult"
+    rm -rf "$COV_RESULT"
+    # Pretty-print through xcbeautify only if it's installed; fall back to a plain
+    # pass-through. set -o pipefail (set at top) makes a test failure abort the script,
+    # so the gate is honoured and we never re-run the whole suite.
+    if command -v xcbeautify >/dev/null 2>&1; then PRETTY=(xcbeautify); else PRETTY=(cat); fi
     nice xcodebuild test \
         -project Jobhunt.xcodeproj \
         -scheme "$SCHEME" \
@@ -39,24 +46,26 @@ if [ "$SKIP_TESTS" = false ]; then
         -only-testing:CoreTests \
         -only-testing:ServerTests \
         -only-testing:MCPTests \
+        -enableCodeCoverage YES \
+        -resultBundlePath "$COV_RESULT" \
         CODE_SIGNING_ALLOWED=NO \
-        | xcbeautify 2>/dev/null || xcodebuild test \
-            -project Jobhunt.xcodeproj \
-            -scheme "$SCHEME" \
-            -configuration "$CONFIG" \
-            -destination 'platform=macOS' \
-            -derivedDataPath "$DERIVED_DATA" \
-            -only-testing:CoreTests \
-            -only-testing:ServerTests \
-            -only-testing:MCPTests \
-            CODE_SIGNING_ALLOWED=NO
+        | "${PRETTY[@]}"
+
+    echo "→ Checking coverage floor..."
+    "$REPO_ROOT/scripts/check-coverage.sh" "$COV_RESULT"
+
+    # Extension Node tests (parity with CI). Skipped if extension/ or npm is absent.
+    if [ -d "$REPO_ROOT/extension" ] && command -v npm >/dev/null 2>&1; then
+        echo "→ Running extension Node tests..."
+        npm test --prefix "$REPO_ROOT/extension"
+    fi
 fi
 
 # 4. Find and launch
 APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/$APP_NAME.app"
 
-if [ -z "$APP_PATH" ]; then
-    echo "✗ Could not find built ${APP_NAME}.app" >&2
+if [ ! -d "$APP_PATH" ]; then
+    echo "✗ Could not find built ${APP_NAME}.app at $APP_PATH" >&2
     exit 1
 fi
 

@@ -10,31 +10,40 @@ permissions:
 
 jobs:
   ui-tests:
-    runs-on: macos-latest
+    # Pin the runner image (not `macos-latest`) so the OS/Xcode version is reproducible.
+    runs-on: macos-15
     steps:
       # actions/checkout@v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - name: Install Tuist
-        run: curl -Ls https://install.tuist.io | bash
+      - name: Install mise
+        run: curl -Ls https://mise.run | sh && echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Install dependencies
-        run: tuist install || true
+      - name: Install pinned tools (Tuist, SwiftLint, SwiftFormat)
+        run: mise install
 
       - name: Generate project
         run: tuist generate --no-open
 
+      # No `continue-on-error`: UI test failures must fail this job so the scheduled run
+      # surfaces regressions. The result bundle still uploads via `if: always()` below.
+      # `set -o pipefail` keeps xcodebuild's exit status; flaky assertions get up to 3 tries.
       - name: Run AppUITests
         run: |
+          set -o pipefail
           nice xcodebuild test \
             -project Jobhunt.xcodeproj \
             -scheme Jobhunt-DMG \
+            -configuration Debug-DMG \
             -destination 'platform=macOS' \
             -only-testing AppUITests \
             -resultBundlePath build/UITestResults.xcresult \
+            -retry-tests-on-failure -test-iterations 3 \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 600 \
+            -maximum-test-execution-time-allowance 600 \
             CODE_SIGNING_ALLOWED=NO \
-            2>&1 | tail -50
-        continue-on-error: true
+            2>&1 | tail -80
 
       - name: Upload test results
         if: always()

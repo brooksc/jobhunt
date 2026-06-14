@@ -47,14 +47,20 @@ jobs:
       # LLMEval: opt-in only; run with LLM_EVAL=1 locally after setting a provider.
       - name: Run fast tests (Core + Server + MCP)
         run: |
+          set -o pipefail
           xcodebuild -scheme Jobhunt-DMG \
             -configuration Debug-DMG \
             -destination 'platform=macOS' \
             -only-testing CoreTests \
             -only-testing ServerTests \
             -only-testing MCPTests \
+            -enableCodeCoverage YES \
+            -resultBundlePath build/FastTests.xcresult \
             test \
             CODE_SIGNING_ALLOWED=NO
+
+      - name: Coverage gate (line floor)
+        run: ./scripts/check-coverage.sh build/FastTests.xcresult
 
       - name: Run extension Node tests
         run: npm test --prefix extension
@@ -63,4 +69,4 @@ jobs:
         run: swiftlint lint --strict
 
       - name: SwiftFormat check
-        run: swiftformat --lint app core server/swift mcp/swift Tests
+        run: swiftformat --lint app core server/swift mcp/swift tests

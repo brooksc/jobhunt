@@ -276,7 +276,11 @@ let dmgScheme = Scheme.scheme(
             .testableTarget(target: .target("MCPTests")),
             .testableTarget(target: .target("AppUITests")),
         ],
-        configuration: "Debug-DMG"
+        configuration: "Debug-DMG",
+        options: .options(
+            coverage: true,
+            codeCoverageTargets: [.target("JobhuntCore"), .target("JobhuntServer")]
+        )
     ),
     runAction: .runAction(configuration: "Debug-DMG", executable: .target("Jobhunt")),
     archiveAction: .archiveAction(configuration: "Release-DMG")

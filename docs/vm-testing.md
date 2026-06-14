@@ -81,7 +81,7 @@ tart run jobhunt-uitest-env --no-graphics --dir=project:<repo>:ro
 `--no-graphics` suppresses the VM window entirely. `--dir` mounts the repo as a virtiofs share named `project`.
 
 ### 4. Waiting for VM Network
-Polls `tart ip jobhunt-uitest-env --wait 120` until the VM gets a DHCP address, then waits for SSH to respond (up to 60 × 2 s retries).
+Polls `tart ip jobhunt-uitest-env --wait 120` until the VM gets a DHCP address, then waits for SSH to respond (up to 120 × 2 s retries, requiring 3 consecutive successful password auths — fresh clones restart `sshd` several times during first boot).
 
 ### 5. Configuring Guest Environment
 Sends a setup script over SSH that:
@@ -91,23 +91,24 @@ Sends a setup script over SSH that:
 - Writes the resolved project root to `/tmp/jobhunt_proj_root` for the next phase.
 
 ### 6. Running XCUITest Suite
-Sends the xcodebuild command over SSH:
+By default the host pre-built the test bundle (`build-for-testing`), so the guest only **runs** the tests — no compile — from the copied artifacts:
 ```bash
-xcodebuild test \
-  -project Jobhunt.xcodeproj \
-  -scheme Jobhunt-DMG \
-  -configuration Debug-DMG \
+xcodebuild test-without-building \
+  -xctestrun /tmp/jobhunt-testing/<scheme>.xctestrun \
   -destination 'platform=macOS' \
   -only-testing AppUITests \
-  -derivedDataPath ~/Library/Developer/Xcode/DerivedData/Jobhunt-vm \
-  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_IDENTITY="" CODE_SIGN_ENTITLEMENTS="" \
+  -resultBundlePath /tmp/jobhunt-uitest.xcresult \
+  -test-timeouts-enabled YES \
+  -default-test-execution-time-allowance 600 \
+  -maximum-test-execution-time-allowance 600 \
   2>&1 | tee /tmp/xcodebuild-test.log
 ```
+(With `--build-in-vm` the guest instead runs a full `xcodebuild test`.) The per-test time allowance is the hang guard: if the app crashes at launch and a test wedges, it's killed after 10 minutes instead of blocking forever.
 
 Full output streams back to the host in real time via SSH. After xcodebuild finishes, the script replays a summary filtered to `Test Case`, `error:`, `FAILED`, `PASS`, and `Executed N tests` lines.
 
 ### Teardown
-On exit (success, failure, or Ctrl-C), the `EXIT` trap stops the VM unless `--no-shutdown` was passed.
+On exit (success, failure, or Ctrl-C), the script first **copies the result bundle and screenshots back to the host** at `build/vm-results/` (best-effort), then the `EXIT` trap stops the VM unless `--no-shutdown` was passed.
 
 ## App Launch Arguments
 
@@ -230,11 +231,27 @@ rm -rf build/Jobhunt-testing
 
 CI is defined in `.github/workflows/ui-tests.yml`. It uses `continue-on-error: true` on the test step so a flaky test doesn't block artifact upload.
 
+## Results Retrieval
+
+On every exit the script copies the result bundle and screenshots back to the host **before** stopping the VM:
+
+```
+build/vm-results/jobhunt-uitest.xcresult   ← open in Xcode: open build/vm-results/jobhunt-uitest.xcresult
+build/vm-results/jobhunt-screenshots/      ← PNGs from ScreenshotTests
+```
+
+This happens whether the run passed or failed, so a failure is debuggable without re-running with `--no-shutdown`.
+
+## Pinning the VM image
+
+The default image tag is `:latest`, which can silently change Xcode/OS between runs. For reproducible runs (releases, CI), pin via the `VM_IMAGE` env var to a version tag or an immutable digest:
+
+```bash
+# capture the digest of the image you currently have, then pin to it
+VM_IMAGE=ghcr.io/cirruslabs/macos-sequoia-xcode@sha256:<digest> ./scripts/run-ui-tests-in-vm.sh
+```
+
 ## Known Limitations
 
-- **Screenshots are not retrieved automatically.** They live in `/tmp/jobhunt-screenshots/` in the guest and are lost on VM shutdown. Manual `scp` is needed (see Debugging, Step 3).
-- **xcresult is not retrieved.** The Xcode result bundle stays in the VM's `DerivedData`. You can't open it in Xcode on the host without `scp`-ing it back.
-- **VM image is not pinned.** The script clones `:latest`, which can silently change Xcode or OS versions between runs. Pin to a digest for reproducibility.
-- **No per-test retry.** A single flaky assertion fails the whole run. XCTest has no built-in retry; `xcodebuild` does not expose one either.
-- **No xcodebuild timeout guard.** If xcodebuild hangs (rare but possible if the app crashes at launch), the script waits indefinitely.
-- **CI and local VM use different base images.** `macos-latest` on GitHub Actions may have a different Xcode patch version than the Tart image, so a test that passes locally could behave differently in CI.
+- **CI and local VM use different base images.** `macos-15` on GitHub Actions may have a different Xcode patch version than the Tart image, so a test that passes locally could behave differently in CI. Pin both for parity.
+- **Retry masks flakiness.** Both lanes pass `-retry-tests-on-failure -test-iterations 3`, so a test that fails then passes is reported green. Genuinely flaky tests still need fixing — check the result bundle for retried tests.

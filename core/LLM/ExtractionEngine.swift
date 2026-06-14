@@ -97,6 +97,9 @@ public enum ExtractionEngine {
         guard !description.isEmpty else {
             throw ExtractionEngineError.noCaptureText
         }
+        guard isOnDevice(settings.llmProvider) || !isBlank(settings.llmModel) else {
+            throw ExtractionEngineError.noModelSelected
+        }
 
         let url = snapshot.captureCanonicalURL ?? snapshot.captureURL
         let pageTitle = snapshot.capturePageTitle
@@ -197,6 +200,9 @@ public enum ExtractionEngine {
         guard !resume.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw ExtractionEngineError.emptyResumeText
         }
+        guard provider.id == "foundation_models" || !isBlank(model) else {
+            throw ExtractionEngineError.noModelSelected
+        }
 
         let extractedContext = buildJobContext(from: job)
         let messages = PromptBuilder.buildFitPrompt(
@@ -236,6 +242,15 @@ public enum ExtractionEngine {
 
     private static func captureText(_ snapshot: JobExtractionSnapshot) -> String {
         snapshot.captureCleanedDescription ?? snapshot.captureVisibleText ?? snapshot.captureSelectedText ?? ""
+    }
+
+    /// On-device providers (Apple Foundation Models) have a single model and need no selection.
+    private static func isOnDevice(_ provider: String) -> Bool {
+        provider == "foundation_models" || provider == "apple"
+    }
+
+    private static func isBlank(_ value: String) -> Bool {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private static func computeConfidence(_ raw: Any??) -> Double? {
@@ -308,6 +323,7 @@ public enum ExtractionEngineError: Error, LocalizedError {
     case noCaptureText
     case emptyResumeText
     case invalidJSON(String)
+    case noModelSelected
 
     public var errorDescription: String? {
         switch self {
@@ -317,6 +333,8 @@ public enum ExtractionEngineError: Error, LocalizedError {
             "Resume has no text to score against"
         case .invalidJSON:
             "LLM response could not be parsed as JSON"
+        case .noModelSelected:
+            "No model selected — choose a model in Settings → LLM"
         }
     }
 }

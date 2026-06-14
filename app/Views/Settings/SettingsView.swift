@@ -91,6 +91,7 @@ struct LLMTab: View {
     @State private var connectionStatus: ConnectionStatus = .idle
     @State private var isFetchingModels = false
     @State private var fetchedModels: [String] = []
+    @State private var fetchError: String?
     @State private var modelText: String = ""
     @State private var baseURLText: String = ""
     @State private var priceInput: String = ""
@@ -209,9 +210,17 @@ struct LLMTab: View {
                             .onChange(of: modelText) { _, new in settings.setModelForProvider(new, provider: selectedProviderID) }
                     } else {
                         Picker("Model", selection: $modelText) {
+                            // No silent default — the user must pick. The placeholder represents
+                            // "not yet selected" (empty model id).
+                            if !fetchedModels.contains(modelText) {
+                                Text("Select a model…").tag("")
+                            }
                             ForEach(fetchedModels, id: \.self) { Text($0).tag($0) }
                         }
-                        .onChange(of: modelText) { _, new in settings.setModelForProvider(new, provider: selectedProviderID) }
+                        .onChange(of: modelText) { _, new in
+                            guard !new.isEmpty else { return }
+                            settings.setModelForProvider(new, provider: selectedProviderID)
+                        }
                         Button("Clear") { fetchedModels = [] }
                             .buttonStyle(.borderless)
                             .foregroundStyle(.secondary)
@@ -229,6 +238,16 @@ struct LLMTab: View {
                         }
                         .disabled(isFetchingModels)
                     }
+                }
+
+                if let fetchError {
+                    Label(fetchError, systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                } else if modelText.isEmpty {
+                    Text("Fetch models and choose one — no model is selected.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 HStack {
@@ -339,7 +358,8 @@ struct LLMTab: View {
 
     private var canFetchModels: Bool {
         switch selectedProviderID {
-        case "openrouter": !apiKeyText.isEmpty
+        case "openai", "anthropic", "google": !apiKeyText.isEmpty
+        case "openrouter": true // public model list — no key required
         case "lmstudio", "custom": !baseURLText.isEmpty
         default: false
         }
@@ -350,6 +370,9 @@ struct LLMTab: View {
         modelText = settings.modelForProvider(settings.llmProvider)
         baseURLText = settings.llmBaseURL
         syncAPIKey()
+        fetchedModels = []
+        fetchError = nil
+        if canFetchModels { Task { await fetchModels() } }
     }
 
     private func syncAPIKey() {
@@ -373,7 +396,13 @@ struct LLMTab: View {
         selectedProviderID = newID
         settings.llmProvider = newID
         modelText = settings.modelForProvider(newID)
+        // Keep the active model in sync with the provider's remembered choice (may be empty,
+        // which forces an explicit selection before extraction can run).
+        settings.llmModel = modelText
         syncAPIKey()
+        fetchedModels = []
+        fetchError = nil
+        if canFetchModels { Task { await fetchModels() } }
     }
 
     private func savePrices() {
@@ -400,28 +429,25 @@ struct LLMTab: View {
 
     private func fetchModels() async {
         isFetchingModels = true
+        fetchError = nil
         defer { isFetchingModels = false }
-        let urlBase = baseURLText.isEmpty ? settings.llmBaseURL : baseURLText
-        guard !urlBase.isEmpty, let url = URL(string: "\(urlBase)/v1/models") else { return }
         do {
-            var req = URLRequest(url: url)
-            req.timeoutInterval = 6
-            if !apiKeyText.isEmpty {
-                req.setValue("Bearer \(apiKeyText)", forHTTPHeaderField: "Authorization")
-            }
-            let (data, _) = try await URLSession.shared.data(for: req)
-            // swiftlint:disable:next nesting type_name
-            struct ModelsResp: Decodable { struct M: Decodable { let id: String }; let data: [M]? }
-            let resp = try JSONDecoder().decode(ModelsResp.self, from: data)
-            if let models = resp.data, !models.isEmpty {
-                fetchedModels = models.map(\.id)
-                if !fetchedModels.contains(modelText) {
-                    modelText = fetchedModels[0]
-                    settings.setModelForProvider(fetchedModels[0], provider: selectedProviderID)
-                }
+            let models = try await ModelCatalog.listModels(
+                provider: selectedProviderID,
+                baseURL: baseURLText.isEmpty ? settings.llmBaseURL : baseURLText,
+                apiKey: apiKeyText
+            )
+            fetchedModels = models
+            // Do not auto-select — selection is explicit. If the remembered model is no longer in
+            // the list, clear it so the picker shows the "Select a model…" placeholder.
+            if models.isEmpty {
+                fetchError = "No models returned by the provider"
+            } else if !models.contains(modelText) {
+                modelText = ""
             }
         } catch {
-            // User can type model name manually
+            fetchedModels = []
+            fetchError = error.localizedDescription
         }
     }
 }

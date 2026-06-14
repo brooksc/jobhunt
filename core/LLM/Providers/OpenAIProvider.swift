@@ -13,7 +13,7 @@ public final class OpenAIProvider: LLMProvider, @unchecked Sendable {
 
     public init(
         apiKey: String,
-        model: String = "gpt-4o",
+        model: String = "",
         timeoutSeconds: Int = 300,
         session: URLSession = .shared
     ) {

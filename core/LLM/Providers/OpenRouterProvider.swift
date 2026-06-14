@@ -14,7 +14,7 @@ public final class OpenRouterProvider: LLMProvider, @unchecked Sendable {
 
     public init(
         apiKey: String,
-        model: String = "openai/gpt-4o",
+        model: String = "",
         timeoutSeconds: Int = 300,
         session: URLSession = .shared
     ) {

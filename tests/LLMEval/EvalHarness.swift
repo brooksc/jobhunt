@@ -149,7 +149,9 @@ final class LLMEvalHarness: XCTestCase {
             throw XCTSkip("No LLM provider configured — set JOBHUNT_LLM_URL env var to run eval")
         }
 
-        let model = resolveModel()
+        guard let model = resolveModel() else {
+            throw XCTSkip("No model configured — set JOBHUNT_LLM_MODEL env var to run eval")
+        }
         let provider = LMStudioProvider(baseURL: providerURL, model: model)
         let minAccuracy = resolveMinAccuracy()
 
@@ -209,8 +211,11 @@ final class LLMEvalHarness: XCTestCase {
         return nil
     }
 
-    private func resolveModel() -> String {
-        ProcessInfo.processInfo.environment["JOBHUNT_LLM_MODEL"] ?? "gemma-4-e4b-it-mlx"
+    private func resolveModel() -> String? {
+        guard let env = ProcessInfo.processInfo.environment["JOBHUNT_LLM_MODEL"], !env.isEmpty else {
+            return nil
+        }
+        return env
     }
 
     /// Returns the minimum accuracy percentage from JOBHUNT_LLM_MIN_ACCURACY, or nil for reporting mode.

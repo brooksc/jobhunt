@@ -21,7 +21,7 @@ private func makeStore(_ container: ModelContainer) -> BackgroundStore {
 private func makeQueue(_ container: ModelContainer) -> QueueActor {
     QueueActor(
         store: makeStore(container),
-        isPaused: { false },
+        isPaused: { true },
         onSetPaused: { _ in },
         readExtractionSettings: { ExtractionSettings(llmModel: "", preferredLocations: "", locationFilterEnabled: false, locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true) },
         providerFactory: { NoOpProvider() }

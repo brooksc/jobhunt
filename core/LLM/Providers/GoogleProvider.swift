@@ -19,7 +19,7 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
 
     public init(
         apiKey: String,
-        model: String = "gemini-2.5-flash",
+        model: String = "",
         timeoutSeconds: Int = 300,
         session: URLSession = .shared
     ) {

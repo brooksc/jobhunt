@@ -16,7 +16,7 @@ public final class LMStudioProvider: LLMProvider, @unchecked Sendable {
     public init(
         baseURL: String = "http://127.0.0.1:1234",
         apiKey: String = "",
-        model: String = "gemma-4-e4b-it-mlx",
+        model: String = "",
         timeoutSeconds: Int = 300,
         session: URLSession = .shared
     ) {

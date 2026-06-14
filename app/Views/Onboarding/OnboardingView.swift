@@ -237,6 +237,9 @@ private struct AIProviderStep: View {
     @State private var apiKeyText: String = ""
     @State private var baseURLText: String = ""
     @State private var modelText: String = ""
+    @State private var fetchedModels: [String] = []
+    @State private var isFetchingModels = false
+    @State private var fetchError: String?
     @State private var connectionStatus: ConnectionStatus = .idle
     @State private var showConsentSheet = false
     @State private var pendingProviderID: String?
@@ -317,8 +320,37 @@ private struct AIProviderStep: View {
                 }
 
                 if selectedProviderID != "foundation_models" {
-                    TextField("Model", text: $modelText)
-                        .onChange(of: modelText) { _, new in settings.llmModel = new }
+                    HStack {
+                        if fetchedModels.isEmpty {
+                            TextField("Model", text: $modelText)
+                                .onChange(of: modelText) { _, new in settings.llmModel = new }
+                        } else {
+                            Picker("Model", selection: $modelText) {
+                                if !fetchedModels.contains(modelText) {
+                                    Text("Select a model…").tag("")
+                                }
+                                ForEach(fetchedModels, id: \.self) { Text($0).tag($0) }
+                            }
+                            .onChange(of: modelText) { _, new in settings.llmModel = new }
+                        }
+                        if canFetchModels {
+                            Button {
+                                Task { await fetchModels() }
+                            } label: {
+                                if isFetchingModels {
+                                    ProgressView().controlSize(.small)
+                                } else {
+                                    Text("Fetch Models")
+                                }
+                            }
+                            .disabled(isFetchingModels)
+                        }
+                    }
+                    if let fetchError {
+                        Label(fetchError, systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                 }
 
                 HStack {
@@ -350,9 +382,7 @@ private struct AIProviderStep: View {
                     privacyURL: provider.privacyURL,
                     settings: settings,
                     onAgree: {
-                        selectedProviderID = pid
-                        settings.llmProvider = pid
-                        syncAPIKey()
+                        applyProvider(pid)
                         pendingProviderID = nil
                     },
                     onCancel: { pendingProviderID = nil }
@@ -363,6 +393,51 @@ private struct AIProviderStep: View {
 
     private var needsAPIKey: Bool {
         ["openai", "anthropic", "google", "openrouter", "custom"].contains(selectedProviderID)
+    }
+
+    private var canFetchModels: Bool {
+        switch selectedProviderID {
+        case "openai", "anthropic", "google": !apiKeyText.isEmpty
+        case "openrouter": true // public model list — no key required
+        case "lmstudio", "custom": !baseURLText.isEmpty
+        default: false
+        }
+    }
+
+    private func fetchModels() async {
+        isFetchingModels = true
+        fetchError = nil
+        defer { isFetchingModels = false }
+        do {
+            let models = try await ModelCatalog.listModels(
+                provider: selectedProviderID,
+                baseURL: baseURLText.isEmpty ? settings.llmBaseURL : baseURLText,
+                apiKey: apiKeyText
+            )
+            fetchedModels = models
+            if models.isEmpty {
+                fetchError = "No models returned by the provider"
+            } else if !models.contains(modelText) {
+                modelText = ""
+                settings.llmModel = ""
+            }
+        } catch {
+            fetchedModels = []
+            fetchError = error.localizedDescription
+        }
+    }
+
+    /// Switches the active provider, clearing the selected model so the user must explicitly
+    /// pick one for the new provider, then auto-fetches the model list when possible.
+    private func applyProvider(_ newID: String) {
+        selectedProviderID = newID
+        settings.llmProvider = newID
+        modelText = ""
+        settings.llmModel = ""
+        fetchedModels = []
+        fetchError = nil
+        syncAPIKey()
+        if canFetchModels { Task { await fetchModels() } }
     }
 
     @ViewBuilder
@@ -383,6 +458,9 @@ private struct AIProviderStep: View {
         modelText = settings.llmModel
         baseURLText = settings.llmBaseURL
         syncAPIKey()
+        fetchedModels = []
+        fetchError = nil
+        if canFetchModels { Task { await fetchModels() } }
     }
 
     private func syncAPIKey() {
@@ -395,9 +473,7 @@ private struct AIProviderStep: View {
             pendingProviderID = newID
             showConsentSheet = true
         } else {
-            selectedProviderID = newID
-            settings.llmProvider = newID
-            syncAPIKey()
+            applyProvider(newID)
         }
     }
 

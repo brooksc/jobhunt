@@ -6,7 +6,9 @@ import SwiftData
 private let settingsDefaults: [String: String] = [
     SettingsKey.llmProvider: "lmstudio",
     SettingsKey.llmBaseURL: "http://127.0.0.1:1234",
-    SettingsKey.llmModel: "gemma-4-e4b-it-mlx",
+    // No default model — models are loaded dynamically from each provider's API and the user
+    // must explicitly choose one (see ModelCatalog). An empty value means "not yet selected".
+    SettingsKey.llmModel: "",
     SettingsKey.llmTimeout: "300",
     SettingsKey.siteReviewIntervalDays: "14",
     SettingsKey.followupDefaultDays: "7",
@@ -164,18 +166,11 @@ public final class SettingsStore {
 
     // MARK: - Per-provider model memory
 
-    private static let providerDefaultModels: [String: String] = [
-        "lmstudio": "gemma-4-e4b-it-mlx",
-        "openai": "gpt-4o-mini",
-        "anthropic": "claude-haiku-4-5-20251001",
-        "google": "gemini-2.0-flash",
-        "openrouter": "mistralai/mistral-7b-instruct:free"
-    ]
-
+    /// The model most recently chosen for `provider`, or "" if none has been selected yet.
+    /// There is no hardcoded fallback — models come from the provider's API (see ModelCatalog)
+    /// and selection is explicit.
     public func modelForProvider(_ provider: String) -> String {
-        let stored = string(forKey: "llm_model_\(provider)")
-        if !stored.isEmpty { return stored }
-        return Self.providerDefaultModels[provider] ?? llmModel
+        string(forKey: "llm_model_\(provider)")
     }
 
     public func setModelForProvider(_ model: String, provider: String) {

@@ -4,7 +4,12 @@ import Foundation
 /// Anthropic Messages API provider.
 /// Uses x-api-key header; maps to /v1/messages; concurrency limit 2.
 /// Mirrors postAnthropicCompletion() from server/extract.js.
-/// Note: Anthropic does not support structured response_format — always returns text.
+///
+/// Structured output: when the request carries a `structuredOutput` kind (or an explicit
+/// `.jsonSchema` response format), the provider sends Anthropic's `output_config.format`
+/// json_schema so the first content block is guaranteed valid JSON. Models that don't support
+/// it (older Claude) return HTTP 400 for the format field; we retry once without it and let the
+/// engine's JSON repair handle the free-form text.
 public final class AnthropicProvider: LLMProvider, @unchecked Sendable {
     public let id = "anthropic"
     public let concurrencyLimit = 2
@@ -14,9 +19,11 @@ public final class AnthropicProvider: LLMProvider, @unchecked Sendable {
     private let timeoutSeconds: Int
     private let session: URLSession
 
+    // `model` is informational only — the model actually sent is `ChatRequest.model`. It carries
+    // no hardcoded default; the empty default keeps test/init sites that don't care concise.
     public init(
         apiKey: String,
-        model: String = "claude-sonnet-4-6",
+        model: String = "",
         timeoutSeconds: Int = 300,
         session: URLSession = .shared
     ) {
@@ -37,6 +44,27 @@ public final class AnthropicProvider: LLMProvider, @unchecked Sendable {
         ]
         if let sys = systemMsg { payload["system"] = sys.content }
 
+        let schema = structuredOutputSchema(for: request)
+        if let schema {
+            // Parse the schema string into an object for embedding; the first content block is
+            // then guaranteed valid JSON matching the schema. No beta header is required.
+            let schemaObj = (try? JSONSerialization.jsonObject(with: Data(schema.utf8))) ?? [String: Any]()
+            payload["output_config"] = ["format": ["type": "json_schema", "schema": schemaObj]]
+        }
+
+        do {
+            return try await send(payload: payload, usedSchema: schema != nil)
+        } catch let LLMProviderError.httpError(statusCode, body) where statusCode == 400
+            && schema != nil && isStructuredOutputError(body) {
+            // Model doesn't support output_config.format — retry as free-form text + JSON repair.
+            payload.removeValue(forKey: "output_config")
+            return try await send(payload: payload, usedSchema: false)
+        }
+    }
+
+    // MARK: - Private
+
+    private func send(payload: [String: Any], usedSchema: Bool) async throws -> ChatResponse {
         let body = try JSONSerialization.data(withJSONObject: payload)
         var urlRequest = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
         urlRequest.httpMethod = "POST"
@@ -60,15 +88,33 @@ public final class AnthropicProvider: LLMProvider, @unchecked Sendable {
 
         let decoded = try JSONDecoder().decode(AnthropicResponse.self, from: data)
         let content = decoded.content?.first?.text ?? ""
-        let modelName = decoded.model ?? request.model
+        let modelName = decoded.model ?? (payload["model"] as? String ?? "")
 
         return ChatResponse(
             content: content,
             model: modelName,
-            responseFormat: .text,
+            responseFormat: usedSchema ? .jsonObject : .text,
             promptTokens: decoded.usage?.inputTokens,
             completionTokens: decoded.usage?.outputTokens
         )
+    }
+
+    /// Resolves the JSON Schema to enforce: the structured-output kind takes precedence, falling
+    /// back to an explicit `.jsonSchema` response format if one was supplied.
+    private func structuredOutputSchema(for request: ChatRequest) -> String? {
+        if let kind = request.structuredOutput {
+            return StructuredOutputSchemas.schema(for: kind).schema
+        }
+        if case let .jsonSchema(_, schema) = request.responseFormat {
+            return schema
+        }
+        return nil
+    }
+
+    private func isStructuredOutputError(_ body: String) -> Bool {
+        body.localizedCaseInsensitiveContains("output_config")
+            || body.localizedCaseInsensitiveContains("json_schema")
+            || body.localizedCaseInsensitiveContains("format")
     }
 }
 

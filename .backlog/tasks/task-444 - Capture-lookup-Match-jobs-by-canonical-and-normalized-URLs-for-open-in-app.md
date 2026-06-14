@@ -4,6 +4,7 @@ title: 'Capture lookup: Match jobs by canonical and normalized URLs for open-in-
 status: To Do
 assignee: []
 created_date: '2026-06-13 18:54'
+updated_date: '2026-06-14 00:19'
 labels:
   - audit
   - ingestion
@@ -30,3 +31,9 @@ priority: medium
 - [ ] #3 The extension Open this job in Jobhunt action succeeds for a captured page reached through a canonical or normalized equivalent URL.
 - [ ] #4 Add tests for exact URL, canonical URL, and normalized/tracking-parameter URL lookup behavior.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Supersedes TASK-367 (2026-06-12), a perf-framed duplicate of the same JobService.findJobNumber(byURL:) all-capture in-memory scan. This task is the superset: AC#2 retains 367's indexed/bounded-lookup performance requirement, and it adds the canonical/normalized URL matching correctness work. 367 archived.
+<!-- SECTION:NOTES:END -->

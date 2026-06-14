@@ -74,9 +74,16 @@
         let name: String?
         let state: String?
         let intervalDays: Int?
+        let note: String?
+        let companyWebsite: String?
+        let jobsURL: String?
+        let companyDescription: String?
         enum CodingKeys: String, CodingKey {
-            case id, name, state
+            case id, name, state, note
             case intervalDays = "interval_days"
+            case companyWebsite = "company_website"
+            case jobsURL = "jobs_url"
+            case companyDescription = "company_description"
         }
     }
 
@@ -558,7 +565,11 @@
                 id: req.id,
                 name: req.name,
                 excludeState: state,
-                intervalDays: boundedIntervalDays
+                intervalDays: boundedIntervalDays,
+                note: req.note,
+                companyWebsite: req.companyWebsite,
+                jobsURL: req.jobsURL,
+                companyDescription: req.companyDescription
             )
             return HTTPResponse.ok(MCPOKResponse(ok: true))
         } catch {

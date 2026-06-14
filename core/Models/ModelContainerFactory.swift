@@ -24,6 +24,21 @@ public enum ModelContainerFactory {
         return try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
     }
 
+    /// Copies the fixture SQLite at `source` to a temp path and opens it.
+    /// Tests get an isolated mutable copy — the committed fixture is never touched.
+    public static func fixture(copying source: URL) throws -> ModelContainer {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("JobhuntFixture/jobhunt-fixture.store")
+        try? FileManager.default.createDirectory(
+            at: tmp.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // Always start fresh — remove any leftover from a prior run
+        for ext in ["", ".shm", ".wal"] {
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: tmp.path + ext))
+        }
+        try FileManager.default.copyItem(at: source, to: tmp)
+        return try test(at: tmp)
+    }
+
     public static func productionStoreURL() -> URL {
         // urls(for:in:) returns an empty array only on simulator/tests; guard is a safety net.
         guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first

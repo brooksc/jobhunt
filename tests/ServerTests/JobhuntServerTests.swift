@@ -134,6 +134,65 @@ final class JobhuntServerTests: XCTestCase {
         XCTAssertFalse(body.duplicate)
     }
 
+    /// The extension sends JSON-LD under `structured_data` (an array), not the pre-stringified
+    /// `structured_data_json`. The server must accept and ingest it.
+    func testCaptureEndpoint_acceptsStructuredDataArray() async throws {
+        // swiftlint:disable:next force_unwrapping
+        let url = await URL(string: baseURL() + "/captures")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("chrome-extension://testextension", forHTTPHeaderField: "Origin")
+        let payloadObj: [String: Any] = [
+            "url": "https://example.com/jobs/structured-1",
+            "page_title": "Structured Engineer",
+            "visible_text": "We are hiring an engineer.",
+            "structured_data": [
+                ["@type": "JobPosting", "title": "Structured Engineer", "baseSalary": 200000]
+            ]
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payloadObj)
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+        XCTAssertEqual(http.statusCode, 200)
+        let body = try JSONDecoder().decode(CaptureBody.self, from: data)
+        XCTAssertTrue(body.isOK)
+        XCTAssertGreaterThan(body.jobNumber, 0)
+    }
+
+    /// The extension's "Mark site reviewed" sends `site_url` + reviewed_at/next_review_at/note,
+    /// not `url` + interval_days. Before the contract fix this returned 400.
+    func testSiteReview_acceptsExtensionPayload() async throws {
+        // swiftlint:disable:next force_unwrapping
+        let url = await URL(string: baseURL() + "/site-reviews")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("chrome-extension://testextension", forHTTPHeaderField: "Origin")
+        let payloadObj: [String: Any] = [
+            "schema_version": 1,
+            "reviewed_at": "2026-06-13T12:00:00.000Z",
+            "site_url": "https://boards.example.com/careers",
+            "site_origin": "https://boards.example.com",
+            "page_title": "Careers",
+            "note": ""
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payloadObj)
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+        XCTAssertEqual(http.statusCode, 200)
+        struct SiteReviewBody: Decodable {
+            let isOK: Bool
+            let siteReviewID: String
+            enum CodingKeys: String, CodingKey { case isOK = "ok"; case siteReviewID = "site_review_id" }
+        }
+        let body = try JSONDecoder().decode(SiteReviewBody.self, from: data)
+        XCTAssertTrue(body.isOK)
+        XCTAssertFalse(body.siteReviewID.isEmpty)
+    }
+
     func testCaptureValidation_missingURL() async throws {
         // swiftlint:disable:next force_unwrapping
         let url = await URL(string: baseURL() + "/captures")!

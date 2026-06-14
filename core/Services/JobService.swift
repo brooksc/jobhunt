@@ -392,6 +392,12 @@ public actor JobService {
         }
     }
 
+    /// Recompute all stored fit scores from saved JSON with the current weights/penalties — no
+    /// LLM calls (Electron parity: rescore.js). Returns the number of scores updated.
+    public func recomputeAllFitScores() async throws -> Int {
+        try await store.recomputeAllFitScores()
+    }
+
     // MARK: - Field-level updates (used by detail inspector)
 
     /// Update individual string/enum fields on a job. Pass nil to leave a field unchanged.
@@ -410,16 +416,28 @@ public actor JobService {
     ) async throws {
         let id = jobID
         try await store.update(Job.self, predicate: #Predicate { $0.id == id }) { job in
-            if let v = company { job.company = v }
-            if let v = title { job.title = v }
-            if let v = location { job.location = v }
-            if let v = remoteType { job.remoteType = v }
-            if let v = applicationURL { job.applicationURL = v }
-            if let v = duplicateOfJobID { job.duplicateOfJobID = v }
-            if let v = salaryMin { job.salaryMin = v }
-            if let v = salaryMax { job.salaryMax = v }
-            if let v = salaryCurrency { job.salaryCurrency = v }
-            if let v = salaryNote { job.salaryNote = v }
+            // Record which extraction-owned fields the user edited so re-extraction won't clobber them.
+            var overrides = manualFieldOverrideSet(job.manualFieldOverridesJSON)
+            if let v = company { job.company = v; overrides.insert("company") }
+            if let v = title { job.title = v; overrides.insert("title") }
+            if let v = location { job.location = v; overrides.insert("location") }
+            if let v = remoteType { job.remoteType = v; overrides.insert("remoteType") }
+            if let v = applicationURL { job.applicationURL = v; overrides.insert("applicationURL") }
+            if let v = duplicateOfJobID { job.duplicateOfJobID = v }  // not an extraction field
+            if let v = salaryMin { job.salaryMin = v; overrides.insert("salaryMin") }
+            if let v = salaryMax { job.salaryMax = v; overrides.insert("salaryMax") }
+            if let v = salaryCurrency { job.salaryCurrency = v; overrides.insert("salaryCurrency") }
+            if let v = salaryNote { job.salaryNote = v; overrides.insert("salaryNote") }
+            job.manualFieldOverridesJSON = manualFieldOverrideJSON(overrides)
+            job.updatedAt = Date()
+        }
+    }
+
+    /// Clear all manual field overrides for a job so the next extraction repopulates every field.
+    public func clearFieldOverrides(jobID: String) async throws {
+        let id = jobID
+        try await store.update(Job.self, predicate: #Predicate { $0.id == id }) { job in
+            job.manualFieldOverridesJSON = nil
             job.updatedAt = Date()
         }
     }
@@ -470,8 +488,20 @@ public actor JobService {
         let jobs = try await store.fetch(FetchDescriptor<Job>())
         let sites = try await store.fetch(FetchDescriptor<Site>())
         var counts: [String: Int] = [:]
-        for job in jobs { counts[job.status.rawValue, default: 0] += 1 }
-        return WorkflowSnapshot(jobsTotal: jobs.count, sitesTotal: sites.count, statusCounts: counts)
+        var extractionCounts: [String: Int] = [:]
+        for job in jobs {
+            counts[job.status.rawValue, default: 0] += 1
+            extractionCounts[job.extractionStatus.rawValue, default: 0] += 1
+        }
+        let now = Date()
+        let sitesDue = sites.filter { $0.state != .exclude && ($0.nextReviewAt.map { $0 <= now } ?? true) }.count
+        return WorkflowSnapshot(
+            jobsTotal: jobs.count,
+            sitesTotal: sites.count,
+            statusCounts: counts,
+            sitesDue: sitesDue,
+            extractionStatusCounts: extractionCounts
+        )
     }
 
     // MARK: - Duplicate management
@@ -488,6 +518,12 @@ public actor JobService {
             }
             job.updatedAt = Date()
         }
+    }
+
+    /// Record a duplicate decision (e.g. "not_duplicate") so a dismissed pair does not resurface
+    /// in automatic domain-duplicate detection.
+    public func decideDuplicate(cleanedHash: String, decision: String, keepJobID: String?) async throws {
+        try await store.upsertDuplicateDecision(cleanedHash: cleanedHash, decision: decision, keepJobID: keepJobID)
     }
 
     // MARK: - Availability

@@ -223,4 +223,20 @@ public struct WorkflowSnapshot: Sendable {
     public let jobsTotal: Int
     public let sitesTotal: Int
     public let statusCounts: [String: Int]
+    public let sitesDue: Int
+    public let extractionStatusCounts: [String: Int]
+
+    public init(
+        jobsTotal: Int,
+        sitesTotal: Int,
+        statusCounts: [String: Int],
+        sitesDue: Int = 0,
+        extractionStatusCounts: [String: Int] = [:]
+    ) {
+        self.jobsTotal = jobsTotal
+        self.sitesTotal = sitesTotal
+        self.statusCounts = statusCounts
+        self.sitesDue = sitesDue
+        self.extractionStatusCounts = extractionStatusCounts
+    }
 }

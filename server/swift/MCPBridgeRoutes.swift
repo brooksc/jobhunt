@@ -189,12 +189,16 @@
     private struct MCPSnapshotResponse: Encodable {
         let jobsTotal: Int
         let sitesTotal: Int
+        let sitesDue: Int
         let statusCounts: [String: Int]
+        let extractionStatusCounts: [String: Int]
 
         enum CodingKeys: String, CodingKey {
             case jobsTotal = "jobs_total"
             case sitesTotal = "sites_total"
+            case sitesDue = "sites_due"
             case statusCounts = "status_counts"
+            case extractionStatusCounts = "extraction_status_counts"
         }
     }
 
@@ -581,7 +585,9 @@
             let response = MCPSnapshotResponse(
                 jobsTotal: snap.jobsTotal,
                 sitesTotal: snap.sitesTotal,
-                statusCounts: snap.statusCounts
+                sitesDue: snap.sitesDue,
+                statusCounts: snap.statusCounts,
+                extractionStatusCounts: snap.extractionStatusCounts
             )
             return HTTPResponse.ok(response)
         } catch {

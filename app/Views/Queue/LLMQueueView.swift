@@ -159,7 +159,9 @@ struct LLMQueueView: View {
             .contextMenu(forSelectionType: String.self) { ids in
                 selectionContextMenu(for: ids)
             }
+            .accessibilityIdentifier("content.llmQueue")
         }
+        .navigationTitle("LLM Queue")
         .toolbar { toolbarContent }
         .task {
             // Sync isPaused from settings
@@ -200,11 +202,19 @@ struct LLMQueueView: View {
                 Label("Resume Queue", systemImage: "sparkles")
             }
 
-            // Cancel All
-            Button(role: .destructive) {
-                Task { await cancelAll() }
-            } label: {
-                Label("Cancel All", systemImage: "trash")
+            // Delete selected rows, or cancel all if nothing selected
+            if selection.isEmpty {
+                Button(role: .destructive) {
+                    Task { await cancelAll() }
+                } label: {
+                    Label("Cancel All", systemImage: "trash")
+                }
+            } else {
+                Button(role: .destructive) {
+                    Task { await deleteSelected(Array(selection)) }
+                } label: {
+                    Label("Delete Selected", systemImage: "trash")
+                }
             }
         }
 
@@ -352,6 +362,17 @@ struct LLMQueueView: View {
                 errorMessage = msg
                 toastStore.show(msg, isError: true)
             }
+        }
+    }
+
+    private func deleteSelected(_ ids: [String]) async {
+        do {
+            try await queueActor.deleteRequests(ids: ids)
+            selection.removeAll()
+        } catch {
+            let msg = "Delete failed: \(error.localizedDescription)"
+            errorMessage = msg
+            toastStore.show(msg, isError: true)
         }
     }
 

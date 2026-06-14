@@ -43,7 +43,7 @@ struct DuplicatesView: View {
                     pair: pair,
                     originalJob: jobIndex[pair.original.id],
                     candidateJob: jobIndex[pair.candidate.id],
-                    onUnmark: { handleUnmark(candidateID: pair.candidate.id) },
+                    onUnmark: { handleUnmark(candidateID: pair.candidate.id, cleanedHash: pair.candidate.cleanedHash, keepJobID: pair.original.id) },
                     onDelete: { handleDelete(candidateID: pair.candidate.id) }
                 )
                 .frame(minWidth: 480)
@@ -201,10 +201,15 @@ struct DuplicatesView: View {
 
     // MARK: - Actions
 
-    private func handleUnmark(candidateID: String) {
+    private func handleUnmark(candidateID: String, cleanedHash: String?, keepJobID: String) {
         Task {
             do {
                 try await appServices.jobService.unmarkDuplicate(jobID: candidateID)
+                // Record a "not a duplicate" decision so automatic detection won't re-flag it.
+                if let hash = cleanedHash, !hash.isEmpty {
+                    try await appServices.jobService.decideDuplicate(
+                        cleanedHash: hash, decision: "not_duplicate", keepJobID: keepJobID)
+                }
                 selectedPairID = nil
                 actionError = nil
                 await refreshPairsInBackground()

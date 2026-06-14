@@ -25,6 +25,17 @@ struct JobhuntApp: App {
         let args = CommandLine.arguments
         let isUITest = args.contains("--ui-test-store")
         let shouldSeed = args.contains("--seed-demo-data")
+        let fixtureDBPath: String? = {
+            guard let idx = args.firstIndex(of: "--fixture-db"), args.index(after: idx) < args.endIndex
+            else { return nil }
+            return args[args.index(after: idx)]
+        }()
+        let fixtureOutputPath: String? = {
+            guard let idx = args.firstIndex(of: "--seed-fixture-output"),
+                  args.index(after: idx) < args.endIndex
+            else { return nil }
+            return args[args.index(after: idx)]
+        }()
 
         do {
             let container: ModelContainer
@@ -39,6 +50,15 @@ struct JobhuntApp: App {
                 let walURL = storeURL.appendingPathExtension("wal")
                 for url in [storeURL, shmURL, walURL] { try? FileManager.default.removeItem(at: url) }
                 container = try ModelContainerFactory.test(at: storeURL)
+            } else if let fixturePath = fixtureDBPath {
+                // Open an isolated copy of a committed fixture database.
+                container = try ModelContainerFactory.fixture(copying: URL(fileURLWithPath: fixturePath))
+            } else if let outputPath = fixtureOutputPath {
+                // Seed a fresh fixture and write it to the given path (used by build-fixture-db.sh).
+                let outputURL = URL(fileURLWithPath: outputPath)
+                try? FileManager.default.createDirectory(
+                    at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                container = try ModelContainerFactory.test(at: outputURL)
             } else {
                 container = try ModelContainerFactory.production()
             }
@@ -46,7 +66,9 @@ struct JobhuntApp: App {
             modelContainer = container
             let services = AppServices(modelContainer: container)
             appServices = services
-            onboardingManager = OnboardingManager(settings: services.settings)
+            let mgr = OnboardingManager(settings: services.settings)
+            if isUITest { mgr.isPresented = false }  // Never block tests with the onboarding sheet
+            onboardingManager = mgr
             let sharedRouter = Router()
             router = sharedRouter
             let integration = PlatformIntegration(router: sharedRouter, modelContainer: container)
@@ -56,6 +78,15 @@ struct JobhuntApp: App {
                 integration.start(queue: services.queueActor)
                 if shouldSeed {
                     try? await DemoSeeder.seedDemo(into: services.backgroundStore)
+                }
+                if fixtureOutputPath != nil {
+                    do {
+                        try await FixtureSeeder.seed(into: services.backgroundStore)
+                        exit(0)
+                    } catch {
+                        fputs("FixtureSeeder failed: \(error)\n", stderr)
+                        exit(1)
+                    }
                 }
             }
         } catch {
@@ -102,7 +133,6 @@ struct JobhuntApp: App {
         .defaultSize(width: 1200, height: 750)
         .commands {
             if let r = router, let services = appServices, let container = modelContainer {
-                JobMenuCommands()
                 QueueMenuCommands()
                 QualityMenuCommands()
 

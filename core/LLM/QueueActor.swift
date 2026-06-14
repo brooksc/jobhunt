@@ -96,13 +96,27 @@ public actor QueueActor {
         let ids = jobIDs
         let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { ids.contains($0.id) }))
         let jobMap = Dictionary(jobs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        // Skip jobs that already have a queued or running request for this mode.
+        // SwiftData predicates cannot compare enum cases; fetch non-terminal rows and filter in-memory.
+        let existing = try await store.fetch(FetchDescriptor<LLMRequest>(
+            predicate: #Predicate { $0.finishedAt == nil }
+        ))
+        let alreadyActive = Set(
+            existing
+                .filter { ($0.status == .queued || $0.status == .running) && $0.requestType == mode }
+                .compactMap { $0.job?.id }
+                .filter { ids.contains($0) }
+        )
         let requests = jobIDs.compactMap { jobID -> LLMRequest? in
-            guard let job = jobMap[jobID] else { return nil }
+            guard let job = jobMap[jobID], !alreadyActive.contains(jobID) else { return nil }
             let req = LLMRequest(requestType: mode, status: .queued)
             req.job = job
             return req
         }
+        guard !requests.isEmpty else { return }
         try await store.insertBatch(requests)
+        // Kick the drain loop in case it's not yet running.
+        Task { await startProcessing() }
     }
 
     /// Enqueue fit-scoring requests for a set of job IDs against a specific resume.
@@ -118,6 +132,18 @@ public actor QueueActor {
         let validJobs = jobIDs.compactMap { jobMap[$0] }
         guard !validJobs.isEmpty else { return }
         try await store.insertFitBatch(jobs: validJobs, resume: resume)
+    }
+
+    /// Queue fit scoring against all active resumes for the given jobs. No-op for a job
+    /// with no active resume. Skips (job, resume) pairs already in flight.
+    public func enqueueFitForActiveResumes(jobIDs: [String]) async throws {
+        guard !jobIDs.isEmpty else { return }
+        var anyQueued = false
+        for jobID in jobIDs {
+            let n = try await store.enqueueFitForActiveResumes(jobID: jobID)
+            if n > 0 { anyQueued = true }
+        }
+        if anyQueued { Task { await startProcessing() } }
     }
 
     /// On app launch, reset any requests stuck in "running" back to "queued",
@@ -252,6 +278,13 @@ public actor QueueActor {
             }
 
             if await isPaused() { break }
+        }
+
+        // Electron parity: detect & persist domain duplicates. Run once after draining rather
+        // than per-extraction — it's a global O(N^2) scan, so batching avoids quadratic blowup
+        // when many jobs are extracted in one session.
+        if totalProcessed > 0 {
+            _ = try? await store.detectAndPersistDomainDuplicates()
         }
 
         emit(.processingComplete(processed: totalProcessed, failed: totalFailed))
@@ -390,20 +423,22 @@ public actor QueueActor {
                 Job.self,
                 predicate: #Predicate { $0.id == jobID }
             ) { job in
+                // Preserve fields the user manually edited (Electron parity: manual_overrides).
+                let overrides = manualFieldOverrideSet(job.manualFieldOverridesJSON)
                 job.extractedJSON = result.extractedJSON
-                job.title = result.title
-                job.company = result.company
-                job.location = result.location
-                job.remoteType = result.remoteType
-                job.salaryMin = result.salaryMin
-                job.salaryMax = result.salaryMax
-                job.salaryHourlyMin = result.salaryHourlyMin
-                job.salaryHourlyMax = result.salaryHourlyMax
-                job.salaryCurrency = result.salaryCurrency
-                job.salaryNote = result.salaryNote
-                job.employmentType = result.employmentType
-                job.seniority = result.seniority
-                job.applicationURL = result.applicationURL
+                if !overrides.contains("title") { job.title = result.title }
+                if !overrides.contains("company") { job.company = result.company }
+                if !overrides.contains("location") { job.location = result.location }
+                if !overrides.contains("remoteType") { job.remoteType = result.remoteType }
+                if !overrides.contains("salaryMin") { job.salaryMin = result.salaryMin }
+                if !overrides.contains("salaryMax") { job.salaryMax = result.salaryMax }
+                if !overrides.contains("salaryHourlyMin") { job.salaryHourlyMin = result.salaryHourlyMin }
+                if !overrides.contains("salaryHourlyMax") { job.salaryHourlyMax = result.salaryHourlyMax }
+                if !overrides.contains("salaryCurrency") { job.salaryCurrency = result.salaryCurrency }
+                if !overrides.contains("salaryNote") { job.salaryNote = result.salaryNote }
+                if !overrides.contains("employmentType") { job.employmentType = result.employmentType }
+                if !overrides.contains("seniority") { job.seniority = result.seniority }
+                if !overrides.contains("applicationURL") { job.applicationURL = result.applicationURL }
                 job.extractionConfidence = result.extractionConfidence
                 job.extractionModel = result.extractionModel
                 job.extractionStatus = .succeeded
@@ -438,6 +473,14 @@ public actor QueueActor {
                 req.finishedAt = Date()
                 req.model = result.extractionModel
             }
+
+            // Timeline: record extraction as a system event.
+            try? await store.insertJobEvent(jobID: jobID, eventType: "extraction", note: result.extractionModel)
+
+            // Electron parity: auto-score fit against all active resumes (no-op when none
+            // is active). The drain loop re-fetches queued requests, so the new fit requests
+            // run on the next iteration without an explicit restart.
+            _ = try? await store.enqueueFitForActiveResumes(jobID: jobID)
 
             emit(.jobReady(jobNumber: item.jobNumber, title: item.jobTitle, fitScore: nil))
             return true

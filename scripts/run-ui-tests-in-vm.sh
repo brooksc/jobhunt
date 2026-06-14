@@ -4,23 +4,26 @@
 # Runs the AppUITests XCUITest suite inside an isolated Tart macOS VM so the
 # test runner never hijacks focus or the mouse on the host machine.
 #
+# Strategy: build on the host (native Apple Silicon speed), then copy the
+# pre-built test artifacts into the VM and run `xcodebuild test-without-building`.
+# This is significantly faster than building inside the VM.
+#
 # ASSUMPTIONS:
 #   - Host: Apple Silicon (M1/M2/M3/M4)
 #   - Tart CLI:      brew install cirruslabs/cli/tart
 #   - sshpass:       brew install hudochenkov/sshpass/sshpass
 #   - VM image:      ghcr.io/cirruslabs/macos-sequoia-xcode:latest
-#                    (a Cirrus Labs image that includes Xcode — the base image
-#                     does NOT include Xcode and cannot run xcodebuild)
 #   - VM credentials: admin / admin  (default for all cirruslabs images)
 #   - Code signing is disabled for the test build (no provisioning needed)
-#   - The VM needs ~20 GB free for DerivedData; the base image provides ~50 GB
 #
 # USAGE:
-#   ./scripts/run-ui-tests-in-vm.sh [--scheme <scheme>] [--no-shutdown]
+#   ./scripts/run-ui-tests-in-vm.sh [--scheme <scheme>] [--only-testing <target>] [--no-shutdown] [--regen]
 #
 # FLAGS:
-#   --scheme <name>   XCUITest scheme to run (default: AppUITests)
-#   --no-shutdown     Leave the VM running after tests (useful for debugging)
+#   --scheme <name>         Xcode scheme (default: Jobhunt-DMG)
+#   --only-testing <target> Test target filter (default: AppUITests)
+#   --no-shutdown           Leave the VM running after tests (useful for debugging)
+#   --regen                 Run tuist generate --no-open before building
 #
 set -euo pipefail
 
@@ -29,29 +32,38 @@ set -euo pipefail
 VM_NAME="jobhunt-uitest-env"
 VM_IMAGE="ghcr.io/cirruslabs/macos-sequoia-xcode:latest"
 
-SCHEME="AppUITests"
+SCHEME="Jobhunt-DMG"
+ONLY_TESTING="AppUITests"
 CONFIG="Debug-DMG"
 PROJECT="Jobhunt.xcodeproj"
 
 SSH_USER="admin"
 SSH_PASS="admin"
 # sshpass options: no host-key checking (new VM every clone), short connect timeout
-SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o PreferredAuthentications=password"
 
 MOUNT_NAME="project"
 GUEST_SRC="/Users/admin/src"
-GUEST_DERIVED="/Users/admin/Library/Developer/Xcode/DerivedData/Jobhunt-vm"
+# Host-built test products land here (inside project dir so virtiofs shares them).
+HOST_PRODUCTS="build/Jobhunt-testing"
+# VM copies artifacts here before running test-without-building.
+GUEST_PRODUCTS="/tmp/jobhunt-testing"
 
 SHUTDOWN=true
+REGEN=false
+BUILD_ON_HOST=true   # Build on host (fast); VM only runs tests
 MAX_IP_WAIT=120   # seconds to wait for VM to get an IP
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --scheme)   SCHEME="$2"; shift 2 ;;
-        --no-shutdown) SHUTDOWN=false; shift ;;
-        *) echo "Usage: $0 [--scheme <scheme>] [--no-shutdown]" >&2; exit 1 ;;
+        --scheme)           SCHEME="$2"; shift 2 ;;
+        --only-testing)     ONLY_TESTING="$2"; shift 2 ;;
+        --no-shutdown)      SHUTDOWN=false; shift ;;
+        --regen)            REGEN=true; shift ;;
+        --build-in-vm)      BUILD_ON_HOST=false; shift ;;  # fall back to building inside VM
+        *) echo "Usage: $0 [--scheme <scheme>] [--only-testing <target>] [--no-shutdown] [--regen] [--build-in-vm]" >&2; exit 1 ;;
     esac
 done
 
@@ -69,6 +81,15 @@ vm_ssh() {
     sshpass -p "$SSH_PASS" ssh $SSH_OPTS "${SSH_USER}@${VM_IP}" "$@"
 }
 
+# ── Optional: regenerate Xcode project ───────────────────────────────────────
+
+if [ "$REGEN" = true ]; then
+    step "Regenerating Xcode project (tuist generate)"
+    command -v tuist >/dev/null 2>&1 || fail "tuist not found — cannot use --regen"
+    tuist generate --no-open
+    log "Project regenerated"
+fi
+
 # ── Preflight checks ─────────────────────────────────────────────────────────
 
 step "Preflight"
@@ -80,11 +101,33 @@ log "tart:    $(tart --version 2>/dev/null | head -1)"
 log "project: $REPO_ROOT/$PROJECT"
 log "scheme:  $SCHEME"
 
+# ── Build on host (fast native compilation) ───────────────────────────────────
+
+if [ "$BUILD_ON_HOST" = true ]; then
+    step "Building for testing on host"
+    log "Output: ${HOST_PRODUCTS}/"
+    nice xcodebuild build-for-testing \
+        -project "$PROJECT" \
+        -scheme "$SCHEME" \
+        -configuration "$CONFIG" \
+        -destination 'platform=macOS' \
+        -derivedDataPath "$HOST_PRODUCTS" \
+        CODE_SIGNING_ALLOWED=NO \
+        CODE_SIGNING_IDENTITY="" \
+        CODE_SIGN_ENTITLEMENTS="" \
+        2>&1 | grep -E "(error:|warning:.*error|BUILD SUCCEEDED|BUILD FAILED|Test Build Succeeded|Test Build Failed)" || true
+
+    # Verify the xctestrun file was produced
+    XCTESTRUN_HOST="$(ls "${HOST_PRODUCTS}/Build/Products/"*.xctestrun 2>/dev/null | head -1)"
+    [ -n "$XCTESTRUN_HOST" ] || fail "Build succeeded but no .xctestrun found in ${HOST_PRODUCTS}/Build/Products/"
+    log "xctestrun: $(basename "$XCTESTRUN_HOST")"
+fi
+
 # ── VM provisioning ──────────────────────────────────────────────────────────
 
 step "VM provisioning"
 
-if tart list 2>/dev/null | grep -q "^${VM_NAME}\b"; then
+if tart list 2>/dev/null | awk '{print $2}' | grep -q "^${VM_NAME}$"; then
     log "VM '$VM_NAME' already exists — reusing"
 else
     log "Cloning $VM_IMAGE → $VM_NAME (this can take several minutes the first time)..."
@@ -97,7 +140,7 @@ fi
 step "Starting VM"
 
 # Kill any stale instance of this VM before starting fresh
-if tart list 2>/dev/null | grep -q "^${VM_NAME}.*running"; then
+if tart list 2>/dev/null | awk '{print $2, $NF}' | grep -q "^${VM_NAME} running"; then
     log "VM is already running — stopping stale instance..."
     tart stop "$VM_NAME" 2>/dev/null || true
     sleep 2
@@ -137,15 +180,24 @@ VM_IP=$(tart ip "$VM_NAME" --wait "$MAX_IP_WAIT") \
     || fail "VM did not get an IP within ${MAX_IP_WAIT}s"
 log "VM IP: $VM_IP"
 
-log "Waiting for SSH to become available..."
-for i in $(seq 1 60); do
-    if sshpass -p "$SSH_PASS" ssh $SSH_OPTS -o ConnectTimeout=3 \
-            "${SSH_USER}@${VM_IP}" 'true' 2>/dev/null; then
-        log "SSH ready (attempt $i)"
-        break
+log "Waiting for SSH to become stable (3 consecutive successes)..."
+# On fresh VM clones, the macOS first-boot setup restarts sshd multiple times,
+# causing intermittent auth failures even after SSH first accepts connections.
+# Wait until we get 3 consecutive successful password-auth connections.
+SSH_CONSEC=0
+for i in $(seq 1 120); do
+    if sshpass -p "$SSH_PASS" ssh $SSH_OPTS -o ConnectTimeout=5 \
+            "${SSH_USER}@${VM_IP}" 'echo ready' 2>/dev/null | grep -q ready; then
+        SSH_CONSEC=$((SSH_CONSEC + 1))
+        if [ "$SSH_CONSEC" -ge 3 ]; then
+            log "SSH stable (attempt $i, $SSH_CONSEC consecutive successes)"
+            break
+        fi
+    else
+        SSH_CONSEC=0
     fi
-    if [ "$i" -eq 60 ]; then
-        fail "SSH did not become available within 60 attempts"
+    if [ "$i" -eq 120 ]; then
+        fail "SSH did not stabilize within 120 attempts (240s)"
     fi
     sleep 2
 done
@@ -199,6 +251,48 @@ echo "  project root: $PROJ_DIR"
 echo "  Guest setup complete"
 GUEST_SETUP
 
+# ── Copy test artifacts to VM (build-on-host mode) ────────────────────────────
+
+if [ "$BUILD_ON_HOST" = true ]; then
+    step "Copying pre-built test artifacts to VM"
+    log "Source (virtiofs): ${HOST_PRODUCTS}/Build/Products/"
+    log "Destination (VM):  ${GUEST_PRODUCTS}/"
+
+    # NOTE: single-quoted delimiter prevents host-side variable expansion in heredoc;
+    # HOST_PRODUCTS and GUEST_PRODUCTS are hardcoded in the VM script below.
+    vm_ssh bash -s <<'GUEST_COPY'
+set -euo pipefail
+
+SHARE_ROOT="/Volumes/My Shared Files/project"
+HOST_PRODUCTS="build/Jobhunt-testing"
+SRC="$SHARE_ROOT/$HOST_PRODUCTS/Build/Products"
+
+if [ ! -d "$SRC" ]; then
+    echo "ERROR: pre-built products not found at $SRC" >&2
+    exit 1
+fi
+
+GUEST_PRODUCTS="/tmp/jobhunt-testing"
+echo "  Removing old guest copy..."
+rm -rf "$GUEST_PRODUCTS"
+echo "  Copying $(du -sh "$SRC" | cut -f1) of build artifacts (using ditto for framework symlink compatibility)..."
+# ditto is macOS-native and handles framework bundle symlinks correctly;
+# plain cp -R fails on virtiofs with "Too many levels of symbolic links" for xattrs.
+ditto "$SRC" "$GUEST_PRODUCTS"
+echo "  Copy complete: $(du -sh "$GUEST_PRODUCTS" | cut -f1)"
+
+# Re-sign all .xctest bundles with a fresh ad-hoc signature.
+# Virtiofs + ditto can produce a binary whose host-built signature the VM's
+# dyld rejects with "code signature invalid (errno=85)".  Force-signing with
+# the local ad-hoc identity (-s -) gives dyld a signature it trusts.
+echo "  Re-signing .xctest bundles with ad-hoc identity..."
+find "$GUEST_PRODUCTS" -name "*.xctest" -type d | while read -r bundle; do
+    codesign -f -s - "$bundle" 2>&1 | sed 's/^/    /'
+done
+echo "  Re-signing complete."
+GUEST_COPY
+fi  # BUILD_ON_HOST
+
 # ── Run tests ─────────────────────────────────────────────────────────────────
 
 step "Running XCUITest suite: $SCHEME"
@@ -206,30 +300,42 @@ step "Running XCUITest suite: $SCHEME"
 log "Streaming test output from guest..."
 echo "────────────────────────────────────────────────────────────────────────"
 
-# Run xcodebuild test inside the VM; exit code propagates back via SSH.
-# We build to a guest-local DerivedData path to avoid writing back to the
-# (read-only) host share and to get full NVMe throughput inside the VM.
 vm_ssh bash -s <<GUEST_TEST
 set -uo pipefail
 
-# Read the project root written by GUEST_SETUP
+# Read the project root written by GUEST_SETUP (used in build-in-vm mode)
 PROJ_DIR="\$(cat /tmp/jobhunt_proj_root)"
-echo "  cd \$PROJ_DIR"
-cd "\$PROJ_DIR"
 
-# Run xcodebuild, capturing full output to log file.
-# We intentionally do NOT pipe through grep here so that PIPESTATUS[0]
-# is unambiguously xcodebuild's exit code — no trailing || true to reset it.
-xcodebuild test \\
-    -project "${PROJECT}" \\
-    -scheme "${SCHEME}" \\
-    -configuration "${CONFIG}" \\
-    -destination 'platform=macOS' \\
-    -derivedDataPath "${GUEST_DERIVED}" \\
-    CODE_SIGNING_ALLOWED=NO \\
-    CODE_SIGNING_IDENTITY="" \\
-    CODE_SIGN_ENTITLEMENTS="" \\
-    2>&1 | tee /tmp/xcodebuild-test.log
+if [ "${BUILD_ON_HOST}" = true ]; then
+    # test-without-building from host-built artifacts
+    XCTESTRUN="\$(ls "${GUEST_PRODUCTS}"/*.xctestrun 2>/dev/null | head -1)"
+    if [ -z "\$XCTESTRUN" ]; then
+        echo "ERROR: no .xctestrun file found in ${GUEST_PRODUCTS}" >&2
+        ls "${GUEST_PRODUCTS}" >&2 || true
+        exit 1
+    fi
+    echo "  xctestrun: \$XCTESTRUN"
+    xcodebuild test-without-building \\
+        -xctestrun "\$XCTESTRUN" \\
+        -destination 'platform=macOS' \\
+        -only-testing "${ONLY_TESTING}" \\
+        2>&1 | tee /tmp/xcodebuild-test.log
+else
+    # Legacy: build and test inside the VM
+    echo "  cd \$PROJ_DIR"
+    cd "\$PROJ_DIR"
+    xcodebuild test \\
+        -project "${PROJECT}" \\
+        -scheme "${SCHEME}" \\
+        -configuration "${CONFIG}" \\
+        -destination 'platform=macOS' \\
+        -only-testing "${ONLY_TESTING}" \\
+        -derivedDataPath "/Users/admin/Library/Developer/Xcode/DerivedData/Jobhunt-vm" \\
+        CODE_SIGNING_ALLOWED=NO \\
+        CODE_SIGNING_IDENTITY="" \\
+        CODE_SIGN_ENTITLEMENTS="" \\
+        2>&1 | tee /tmp/xcodebuild-test.log
+fi
 XC_EXIT=\${PIPESTATUS[0]}
 
 # Replay summary lines from the captured log

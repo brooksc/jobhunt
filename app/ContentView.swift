@@ -190,7 +190,8 @@ struct JobInspectorView: View {
             JobDetailView(
                 job: job,
                 onNavigatePrev: { navigateAdjacentJob(offset: -1) },
-                onNavigateNext: { navigateAdjacentJob(offset: +1) }
+                onNavigateNext: { navigateAdjacentJob(offset: +1) },
+                onClose: { selectedJobIDs.removeAll() }
             )
         } else if selectedJobIDs.count > 1 {
             multiSelectionSummary

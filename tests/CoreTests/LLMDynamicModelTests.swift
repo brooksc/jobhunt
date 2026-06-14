@@ -238,4 +238,30 @@ final class ModelSelectionGuardTests: XCTestCase {
     }
 }
 
+// MARK: - Foundation Models context-window trim
+
+final class FoundationModelsTrimTests: XCTestCase {
+    func testShortText_isUnchanged() {
+        let text = "short job description"
+        let out = FoundationModelsProvider.trimToContextWindow(userText: text, systemText: "sys")
+        XCTAssertEqual(out, text)
+    }
+
+    func testLongText_isTruncatedWithMarker() {
+        let text = String(repeating: "x", count: 20000)
+        let out = FoundationModelsProvider.trimToContextWindow(userText: text, systemText: "sys")
+        XCTAssertLessThan(out.count, text.count)
+        XCTAssertTrue(out.contains("truncated"))
+    }
+
+    func testLargeSystemPrompt_shrinksUserBudget() {
+        let text = String(repeating: "x", count: 20000)
+        let bigSystem = String(repeating: "s", count: 8000)
+        let out = FoundationModelsProvider.trimToContextWindow(userText: text, systemText: bigSystem)
+        // available = max(500, 9000 - 8000) = 1000 user chars (+ marker)
+        XCTAssertTrue(out.hasPrefix(String(repeating: "x", count: 1000)))
+        XCTAssertLessThan(out.count, 1100)
+    }
+}
+
 // swiftlint:enable force_unwrapping optional_data_string_conversion

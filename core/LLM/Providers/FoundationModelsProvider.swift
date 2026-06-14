@@ -30,7 +30,10 @@ public final class FoundationModelsProvider: LLMProvider, @unchecked Sendable {
         let systemContent = request.messages.first(where: { $0.role == "system" })?.content
             ?? "You are a helpful assistant. Follow the user's instructions precisely."
         let userMsgs = request.messages.filter { $0.role == "user" }
-        let prompt = userMsgs.map(\.content).joined(separator: "\n")
+        let prompt = Self.trimToContextWindow(
+            userText: userMsgs.map(\.content).joined(separator: "\n"),
+            systemText: systemContent
+        )
 
         // Tests inject a bridge to exercise the free-form text path deterministically.
         if let bridge {
@@ -74,6 +77,20 @@ public final class FoundationModelsProvider: LLMProvider, @unchecked Sendable {
     }
 
     // MARK: - Private helpers
+
+    /// Apple's on-device model has a small (~4096-token) context window shared across the system
+    /// prompt, the user prompt, and the generated output. Long job descriptions overflow it and
+    /// `LanguageModelSession` throws "Exceeded model context window size". Trim the user text to a
+    /// conservative character budget — the fields we extract (title, company, salary, top
+    /// requirements) are almost always near the top of a posting — so most jobs fit. Cloud / local
+    /// providers with larger windows receive the full text unchanged.
+    static let maxInputChars = 9000
+
+    static func trimToContextWindow(userText: String, systemText: String) -> String {
+        let available = max(500, maxInputChars - systemText.count)
+        guard userText.count > available else { return userText }
+        return String(userText.prefix(available)) + "\n…[truncated to fit the on-device context window]"
+    }
 
     private func makeResponse(rawResult: String) -> ChatResponse {
         // Strip markdown code fences the model may wrap around JSON output

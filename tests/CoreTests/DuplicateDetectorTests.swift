@@ -277,7 +277,9 @@ final class DuplicateDetectorTests: XCTestCase {
                 from: "Senior engineer posting at Acme building distributed systems infrastructure reliability"
             )
 
+        let sharedDesc = "Senior engineer posting at Acme building distributed systems infrastructure reliability"
         let cap1 = Capture(url: "https://acme.com/jobs/1", pageTitle: "SWE", rawHash: "raw1", cleanedHash: hash)
+        cap1.cleanedDescription = sharedDesc
         let job1 = Job(company: "Acme", title: "SWE", extractionStatus: .succeeded)
         job1.capture = cap1
         ctx.insert(cap1)
@@ -289,6 +291,7 @@ final class DuplicateDetectorTests: XCTestCase {
             rawHash: "raw2",
             cleanedHash: hash
         )
+        cap2.cleanedDescription = sharedDesc
         let job2 = Job(company: "Acme", title: "SWE", extractionStatus: .succeeded)
         job2.capture = cap2
         ctx.insert(cap2)
@@ -399,10 +402,11 @@ final class DuplicateDetectorTests: XCTestCase {
         let container = try makeTestContainer()
         let ctx = container.mainContext
 
-        let hash = DuplicateDetector.cleanedHash(from: "snapshot overload test posting with sufficient distinct tokens here")
+        let snapDesc = "snapshot overload regression posting with sufficient distinct meaningful tokens here today"
+        let hash = DuplicateDetector.cleanedHash(from: snapDesc)
         for idx in 1...2 {
             let cap = Capture(url: "https://site\(idx).com/job", pageTitle: "Eng", rawHash: "rh_snap\(idx)", cleanedHash: hash)
-            cap.cleanedDescription = "snapshot overload test posting with sufficient distinct tokens here"
+            cap.cleanedDescription = snapDesc
             let job = Job(jobNumber: idx, company: "SnapCo", title: "Eng", extractionStatus: .succeeded)
             job.capture = cap
             ctx.insert(cap)
@@ -461,7 +465,7 @@ final class DuplicateDetectorTests: XCTestCase {
         // 150 exact-hash pairs (300 jobs) — same cleanedHash, different URLs
         for i in 0..<150 {
             let sharedHash = "shared_hash_\(i)"
-            let sharedDesc = "Shared description for duplicate pair \(i) with sufficient distinct tokens for detection"
+            let sharedDesc = "Shared boilerplate duplicate listing pair \(i) carrying sufficient distinct meaningful unique tokens"
             for urlIdx in 0..<2 {
                 let url = urlIdx == 0
                     ? "https://acme\(i).com/job"
@@ -523,6 +527,69 @@ final class DuplicateDetectorTests: XCTestCase {
         XCTAssertEqual(exactPairs.count, 150, "Expected 150 exact-hash pairs")
     }
 
+    // MARK: - Exact-hash collisions across unrelated companies must NOT be flagged
+
+    /// Regression: a generic/boilerplate description that hash-collides across different
+    /// employers (e.g. Elastic vs Stripe) must not be reported as a duplicate.
+    func testExactHashAcrossDifferentCompaniesNotFlagged() {
+        let sharedDesc = "Generic boilerplate posting text shared across unrelated companies with enough tokens"
+        let hash = DuplicateDetector.cleanedHash(from: sharedDesc)
+
+        var snapshots: [JobSnapshot] = []
+        for (idx, company) in ["Elastic", "Stripe", "Cayuse LLC", "Luma AI"].enumerated() {
+            let cap = Capture(url: "https://site\(idx).com/job", pageTitle: "PM", rawHash: "rh\(idx)", cleanedHash: hash)
+            cap.cleanedDescription = sharedDesc
+            let job = Job(jobNumber: idx, company: company, title: "Program Manager", extractionStatus: .succeeded)
+            job.capture = cap
+            snapshots.append(JobSnapshot(job: job, capture: cap))
+        }
+
+        let pairs = DuplicateDetector().duplicateGroups(snapshots: snapshots, resolvedHashes: [])
+        XCTAssertTrue(pairs.isEmpty, "Different companies sharing a cleaned-description hash must not be flagged as duplicates")
+    }
+
+    /// A hash group with two same-company jobs and one different-company job yields exactly
+    /// one pair (the same-company captures); the unrelated company is left out.
+    func testExactHashMixedCompaniesPairsOnlySameCompany() {
+        let sharedDesc = "Shared posting text that collides on hash across multiple captures with enough tokens here"
+        let hash = DuplicateDetector.cleanedHash(from: sharedDesc)
+
+        var snapshots: [JobSnapshot] = []
+        for (idx, company) in ["Acme", "Acme", "Globex"].enumerated() {
+            let cap = Capture(url: "https://site\(idx).com/job", pageTitle: "Eng", rawHash: "rh\(idx)", cleanedHash: hash)
+            cap.cleanedDescription = sharedDesc
+            let job = Job(jobNumber: idx, company: company, title: "Engineer", extractionStatus: .succeeded)
+            job.capture = cap
+            snapshots.append(JobSnapshot(job: job, capture: cap))
+        }
+
+        let pairs = DuplicateDetector().duplicateGroups(snapshots: snapshots, resolvedHashes: [])
+        let exactPairs = pairs.filter { $0.kind == .exactHash }
+        XCTAssertEqual(exactPairs.count, 1, "Only the two same-company captures should pair")
+        XCTAssertEqual(exactPairs.first?.original.company, "Acme")
+        XCTAssertEqual(exactPairs.first?.candidate.company, "Acme")
+    }
+
+    /// Regression: two same-company jobs whose cleaned description is trivial boilerplate
+    /// (e.g. a lone "$" — the real-world capture-failure case) must not pair on exact hash.
+    /// The company guard alone would let these through; the min-content guard blocks them.
+    func testExactHashShortDescriptionSameCompanyNotFlagged() {
+        let sharedDesc = "$"
+        let hash = DuplicateDetector.cleanedHash(from: sharedDesc)
+
+        var snapshots: [JobSnapshot] = []
+        for idx in 0..<2 {
+            let cap = Capture(url: "https://acme.com/job\(idx)", pageTitle: "Eng", rawHash: "rh\(idx)", cleanedHash: hash)
+            cap.cleanedDescription = sharedDesc
+            let job = Job(jobNumber: idx, company: "Acme", title: "Engineer \(idx)", extractionStatus: .succeeded)
+            job.capture = cap
+            snapshots.append(JobSnapshot(job: job, capture: cap))
+        }
+
+        let pairs = DuplicateDetector().duplicateGroups(snapshots: snapshots, resolvedHashes: [])
+        XCTAssertTrue(pairs.isEmpty, "Trivial boilerplate descriptions must not anchor an exact-hash duplicate, even within one company")
+    }
+
     // MARK: - TASK-252: already-resolved duplicates excluded from detection candidates
 
     func testDetectDomainDuplicates_alreadyMarkedDuplicate_notSurfacedAsCandidate() {
@@ -552,11 +619,12 @@ final class DuplicateDetectorTests: XCTestCase {
 
     // TASK-143 regression: resolved hashes passed via Set must suppress matching pairs.
     func testSnapshotOverloadRespectsResolvedHashes() {
-        let hash = DuplicateDetector.cleanedHash(from: "already resolved hash text with enough tokens for detection")
+        let resolvedDesc = "already resolved unique hash text with enough meaningful tokens here detection"
+        let hash = DuplicateDetector.cleanedHash(from: resolvedDesc)
         var snapshots: [JobSnapshot] = []
         for idx in 1...2 {
             let cap = Capture(url: "https://s\(idx).com/j", pageTitle: "Job", rawHash: "rh\(idx)", cleanedHash: hash)
-            cap.cleanedDescription = "already resolved hash text with enough tokens for detection"
+            cap.cleanedDescription = resolvedDesc
             let job = Job(jobNumber: idx, company: "Co", title: "Job", extractionStatus: .succeeded)
             job.capture = cap
             snapshots.append(JobSnapshot(job: job, capture: cap))

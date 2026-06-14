@@ -95,22 +95,35 @@ public struct DuplicateDetector {
     public func duplicateGroups(snapshots: [JobSnapshot], resolvedHashes: Set<String>) -> [DuplicatePair] {
         var pairs: [DuplicatePair] = []
 
-        // 1. Exact hash groups (same cleaned_hash, multiple jobs, different URLs)
+        // 1. Exact hash groups (same cleaned_hash, multiple jobs, different URLs).
+        //    Identical cleaned-description text is only a duplicate when the jobs plausibly
+        //    belong to the same employer. Without this guard, generic/boilerplate descriptions
+        //    that hash-collide across unrelated companies (e.g. Elastic vs Stripe) get flagged
+        //    as 100% duplicates. Sub-cluster each hash group by company name and only pair jobs
+        //    within the same company cluster.
         let snapshotsWithHash = snapshots.filter { $0.cleanedHash != nil }
         let hashGroups = Dictionary(grouping: snapshotsWithHash) { $0.cleanedHash ?? "" }
         for (hash, group) in hashGroups where group.count >= 2 {
             guard !resolvedHashes.contains(hash) else { continue }
-            // Sort by creation order proxy (jobNumber ascending = earlier capture = preferred)
-            let sorted = group.sorted { ($0.jobNumber ?? Int.max) < ($1.jobNumber ?? Int.max) }
-            let original = sorted[0]
-            for candidate in sorted.dropFirst() {
-                pairs.append(DuplicatePair(
-                    original: original,
-                    candidate: candidate,
-                    confidence: 1.0,
-                    reason: "exact cleaned-description hash match",
-                    kind: .exactHash
-                ))
+            // Skip groups whose shared description carries too little signal. Short/boilerplate
+            // text (e.g. a lone "$", a cookie banner, "Apply now") hash-collides across unrelated
+            // postings and is not evidence of a genuine duplicate. Mirrors the >=8 meaningful-token
+            // bar used by descriptionSimilarity in the heuristic path.
+            let sharedText = group.first?.cleanedDescription ?? ""
+            guard DuplicateDetector.descriptionTokens(sharedText).count >= 8 else { continue }
+            for companyCluster in DuplicateDetector.clusterByCompany(group) where companyCluster.count >= 2 {
+                // Sort by creation order proxy (jobNumber ascending = earlier capture = preferred)
+                let sorted = companyCluster.sorted { ($0.jobNumber ?? Int.max) < ($1.jobNumber ?? Int.max) }
+                let original = sorted[0]
+                for candidate in sorted.dropFirst() {
+                    pairs.append(DuplicatePair(
+                        original: original,
+                        candidate: candidate,
+                        confidence: 1.0,
+                        reason: "exact cleaned-description hash match",
+                        kind: .exactHash
+                    ))
+                }
             }
         }
 

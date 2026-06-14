@@ -266,6 +266,33 @@ final class JobServiceTests: XCTestCase {
         XCTAssertTrue(requests.allSatisfy { $0.requestType == .extract && $0.status == .queued })
     }
 
+    // MARK: - Re-capture: same URL + changed content updates in place (Electron parity)
+
+    func testReCapture_sameURLChangedContent_updatesInPlace() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        let first = try await svc.ingestCapture(CapturePayload(
+            url: "https://re.example.com/job", pageTitle: "Title A",
+            visibleText: "Original description text for this role."))
+        XCTAssertFalse(first.isDuplicate)
+
+        // Re-capture the same URL with different content.
+        let second = try await svc.ingestCapture(CapturePayload(
+            url: "https://re.example.com/job", pageTitle: "Title B",
+            visibleText: "Updated and substantially changed description text."))
+
+        XCTAssertFalse(second.isDuplicate)
+        XCTAssertEqual(second.jobNumber, first.jobNumber, "re-capture must update the same job, not create a new one")
+
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertEqual(jobs.count, 1, "re-capture of the same URL must not create a second job")
+
+        let events = try await store.fetch(FetchDescriptor<JobEvent>())
+        XCTAssertTrue(events.contains { $0.eventType == "recapture" }, "re-capture must log a recapture timeline event")
+    }
+
     // MARK: - TASK-160: archive sets .archived, not .passed
 
     func testArchive_setsArchivedStatus() async throws {

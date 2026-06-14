@@ -54,14 +54,38 @@ private struct CaptureResponse: Encodable {
 }
 
 private struct SiteReviewRequest: Decodable {
-    let url: String
+    // The Chrome extension sends `site_url` + reviewed_at/next_review_at/note/site_origin.
+    // The in-app / legacy path sends `url` + interval_days. Accept both.
+    let url: String?
+    let siteURL: String?
+    let siteOrigin: String?
     let pageTitle: String?
+    let note: String?
+    let reviewedAt: String?
+    let nextReviewAt: String?
     let intervalDays: Int?
 
     enum CodingKeys: String, CodingKey {
         case url
+        case siteURL = "site_url"
+        case siteOrigin = "site_origin"
         case pageTitle = "page_title"
+        case note
+        case reviewedAt = "reviewed_at"
+        case nextReviewAt = "next_review_at"
         case intervalDays = "interval_days"
+    }
+
+    /// Prefer the extension's `site_url`, fall back to the legacy `url`.
+    var resolvedURL: String? {
+        if let s = siteURL, !s.isEmpty { return s }
+        if let u = url, !u.isEmpty { return u }
+        return nil
+    }
+
+    /// True when the body carries the richer extension fields (reviewed_at / next_review_at / note / origin).
+    var hasExtensionFields: Bool {
+        reviewedAt != nil || nextReviewAt != nil || note != nil || siteOrigin != nil || siteURL != nil
     }
 }
 
@@ -402,6 +426,18 @@ public actor JobhuntServer {
             return HTTPResponse.error("visible_text or selected_text required")
         }
 
+        // The extension sends JSON-LD/Greenhouse data as a `structured_data` array; the
+        // typed CaptureRequest only sees the pre-stringified `structured_data_json`. When the
+        // latter is absent, serialize the array from the raw body so it reaches extraction.
+        var structuredJSON = captureReq.structuredDataJSON
+        if structuredJSON == nil,
+           let body = request.body,
+           let obj = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+           let arr = obj["structured_data"], !(arr is NSNull),
+           let data = try? JSONSerialization.data(withJSONObject: arr) {
+            structuredJSON = String(data: data, encoding: .utf8)
+        }
+
         let payload = CapturePayload(
             url: url,
             pageTitle: pageTitle,
@@ -409,7 +445,7 @@ public actor JobhuntServer {
             visibleText: captureReq.visibleText,
             userNote: captureReq.userNote,
             canonicalURL: captureReq.canonicalURL,
-            structuredDataJSON: captureReq.structuredDataJSON
+            structuredDataJSON: structuredJSON
         )
 
         do {
@@ -426,27 +462,47 @@ public actor JobhuntServer {
     }
 
     private func handleSiteReview(_ request: HTTPRequest) async -> HTTPResponse {
-        guard let reviewReq = try? request.decodeBody(as: SiteReviewRequest.self) else {
-            return HTTPResponse.error("Invalid JSON body")
-        }
-
-        let url = reviewReq.url.trimmingCharacters(in: .whitespaces)
-        if url.isEmpty {
+        guard let reviewReq = try? request.decodeBody(as: SiteReviewRequest.self),
+              let resolved = reviewReq.resolvedURL?.trimmingCharacters(in: .whitespaces),
+              !resolved.isEmpty else {
             return HTTPResponse.error("url required")
         }
 
-        let intervalDays = reviewReq.intervalDays ?? 14
-
         do {
-            let siteReviewID = try await siteService.upsertSiteReview(
-                url: url,
-                title: reviewReq.pageTitle,
-                intervalDays: intervalDays
-            )
+            let siteReviewID: String
+            if reviewReq.hasExtensionFields {
+                // Rich extension payload: honor explicit reviewed_at / next_review_at / note / origin.
+                siteReviewID = try await siteService.upsertSiteReview(
+                    url: resolved,
+                    origin: reviewReq.siteOrigin,
+                    title: reviewReq.pageTitle,
+                    note: reviewReq.note,
+                    reviewedAt: Self.parseISODate(reviewReq.reviewedAt) ?? Date(),
+                    nextReviewAt: Self.parseISODate(reviewReq.nextReviewAt)
+                )
+            } else {
+                // Legacy / in-app payload: interval-based.
+                siteReviewID = try await siteService.upsertSiteReview(
+                    url: resolved,
+                    title: reviewReq.pageTitle,
+                    intervalDays: reviewReq.intervalDays ?? 14
+                )
+            }
             return HTTPResponse.ok(SiteReviewResponse(isOK: true, siteReviewID: siteReviewID))
         } catch {
             return HTTPResponse.error(safeServerError(error, context: "handleSiteReview"), code: 500)
         }
+    }
+
+    /// Parse an ISO-8601 timestamp (with or without fractional seconds) from the extension.
+    private static func parseISODate(_ raw: String?) -> Date? {
+        guard let raw, !raw.isEmpty else { return nil }
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = withFraction.date(from: raw) { return d }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        return plain.date(from: raw)
     }
 
     private func handleJobByURL(_ request: HTTPRequest) async -> HTTPResponse {

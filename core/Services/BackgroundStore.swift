@@ -385,6 +385,61 @@ public actor BackgroundStore {
             )
         }
 
+        // Re-capture: same URL (or canonical URL) but changed content — identical content already
+        // returned above. Update the existing capture/job in place, reset extraction, clear any
+        // duplicate flag, re-queue extraction, and log a `recapture` event, instead of spawning a
+        // brand-new duplicate job. (Electron parity: insertCapture's same-URL update path.)
+        let inURL = input.url
+        let inCanon = input.canonicalURL
+        var urlDescriptor = FetchDescriptor<Capture>(predicate: #Predicate { $0.url == inURL })
+        urlDescriptor.fetchLimit = 1
+        var existingByURL = try modelContext.fetch(urlDescriptor).first
+        if existingByURL == nil, let canon = inCanon, !canon.isEmpty {
+            var canonDescriptor = FetchDescriptor<Capture>(predicate: #Predicate { $0.canonicalURL == canon })
+            canonDescriptor.fetchLimit = 1
+            existingByURL = try modelContext.fetch(canonDescriptor).first
+        }
+        if let existing = existingByURL, let job = existing.job {
+            existing.url = input.url
+            existing.canonicalURL = input.canonicalURL
+            existing.pageTitle = input.pageTitle
+            existing.selectedText = input.selectedText
+            existing.visibleText = input.visibleText
+            existing.cleanedDescription = input.cleanedDescription
+            existing.structuredDataJSON = input.structuredDataJSON
+            if let note = input.userNote, !note.isEmpty { existing.userNote = note }
+            existing.rawHash = input.rawHash
+            existing.cleanedHash = input.cleanedHash
+
+            job.extractionStatus = .pending
+            job.extractionError = nil
+            job.duplicateOfJobID = nil
+            if job.status == .duplicate { job.status = .new }
+            job.rawTextBytes = max(input.selectedText?.utf8.count ?? 0, input.visibleText?.utf8.count ?? 0)
+            job.cleanedTextBytes = input.cleanedDescription?.utf8.count ?? 0
+            job.capturedAtDenormalized = existing.capturedAt
+            job.updatedAt = Date()
+
+            // Re-queue extraction unless one is already in flight for this job.
+            let jid = job.id
+            let inflight = try modelContext.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.finishedAt == nil }))
+            let hasActiveExtract = inflight.contains {
+                $0.requestType == .extract && $0.job?.id == jid && ($0.status == .queued || $0.status == .running)
+            }
+            if !hasActiveExtract {
+                let req = LLMRequest(requestType: .extract, status: .queued)
+                req.job = job
+                modelContext.insert(req)
+            }
+
+            let event = JobEvent(eventType: "recapture", occurredAt: Date())
+            event.job = job
+            modelContext.insert(event)
+
+            try modelContext.save()
+            return AtomicIngestResult(captureID: existing.id, jobNumber: job.jobNumber ?? 0, isDuplicate: false)
+        }
+
         // Cleaned hash: semantic duplicate — fetch only rows matching the hash, filter URL in memory
         // (typically 0-1 rows match, so full scan never materialises)
         var duplicateOfJobID: String?

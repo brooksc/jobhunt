@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-06-12 22:57'
+updated_date: '2026-06-14 00:19'
 labels:
   - audit
   - error-handling
@@ -29,4 +30,11 @@ QueueActor catches store fetch failures and returns an empty queue, and several 
 - [ ] #2 Failure/cancel persistence errors are logged and exposed in queue diagnostics.
 - [ ] #3 Selected processing does not start silently after reset failures for selected requests.
 - [ ] #4 Tests cover queue storage failure paths and stuck-running prevention.
+- [ ] #5 Genuinely empty queue (no fetch error) still emits the normal empty-completion event; tests cover both the fetch-failure path and the normal empty-queue path (folded in from closed duplicate TASK-451).
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+TASK-451 (2026-06-13) closed as a subset of this task — its scope (surface fetch failures instead of reporting an empty queue) is fully covered by AC#1 here. Its narrower test nuance was folded into the AC list above.
+<!-- SECTION:NOTES:END -->

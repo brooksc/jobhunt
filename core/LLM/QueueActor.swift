@@ -473,6 +473,9 @@ public actor QueueActor {
             // run on the next iteration without an explicit restart.
             _ = try? await store.enqueueFitForActiveResumes(jobID: jobID)
 
+            // Electron parity: detect & persist domain duplicates after extraction.
+            _ = try? await store.detectAndPersistDomainDuplicates()
+
             emit(.jobReady(jobNumber: item.jobNumber, title: item.jobTitle, fitScore: nil))
             return true
         } catch {

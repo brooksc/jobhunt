@@ -496,6 +496,12 @@ public actor JobService {
         }
     }
 
+    /// Record a duplicate decision (e.g. "not_duplicate") so a dismissed pair does not resurface
+    /// in automatic domain-duplicate detection.
+    public func decideDuplicate(cleanedHash: String, decision: String, keepJobID: String?) async throws {
+        try await store.upsertDuplicateDecision(cleanedHash: cleanedHash, decision: decision, keepJobID: keepJobID)
+    }
+
     // MARK: - Availability
 
     /// Bulk-mark a set of jobs as expired (e.g. after availability check confirms they're gone).

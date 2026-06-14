@@ -388,6 +388,57 @@ public actor BackgroundStore {
         try modelContext.save()
     }
 
+    /// Run domain-duplicate detection across all jobs and persist results: flag each detected
+    /// candidate with duplicateOfJobID + confidence + `.duplicate` status, and log a
+    /// `duplicate_detected` event. Skips pairs already resolved via DuplicateDecision.
+    /// (Electron parity: detectDomainDuplicateJobs after markExtractionSucceeded.) Returns count flagged.
+    public func detectAndPersistDomainDuplicates() throws -> Int {
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>())
+        let snapshots = jobs.compactMap { job -> JobSnapshot? in
+            guard let capture = job.capture else { return nil }
+            return JobSnapshot(job: job, capture: capture)
+        }
+        let decisions = try modelContext.fetch(FetchDescriptor<DuplicateDecision>())
+        let resolvedHashes = Set(decisions.map(\.cleanedHash))
+        let pairs = DuplicateDetector().duplicateGroups(snapshots: snapshots, resolvedHashes: resolvedHashes)
+        guard !pairs.isEmpty else { return 0 }
+
+        let jobIndex = Dictionary(jobs.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        var flagged = 0
+        for pair in pairs {
+            guard let candidate = jobIndex[pair.candidate.id] else { continue }
+            if candidate.duplicateOfJobID == pair.original.id { continue }  // already flagged
+            candidate.duplicateOfJobID = pair.original.id
+            candidate.duplicateConfidence = pair.confidence
+            if candidate.status != .duplicate { candidate.status = .duplicate }
+            candidate.updatedAt = Date()
+            let originalNum = pair.original.jobNumber.map { "#\($0)" } ?? "another job"
+            let event = JobEvent(
+                eventType: "duplicate_detected",
+                note: "Flagged as a possible duplicate of \(originalNum) — \(pair.reason)"
+            )
+            event.job = candidate
+            modelContext.insert(event)
+            flagged += 1
+        }
+        if flagged > 0 { try modelContext.save() }
+        return flagged
+    }
+
+    /// Record (or update) a duplicate decision so a resolved pair does not resurface in detection.
+    public func upsertDuplicateDecision(cleanedHash: String, decision: String, keepJobID: String?) throws {
+        let ch = cleanedHash
+        let existing = try modelContext.fetch(FetchDescriptor<DuplicateDecision>(predicate: #Predicate { $0.cleanedHash == ch }))
+        if let row = existing.first {
+            row.decision = decision
+            row.keepJobID = keepJobID
+            row.decidedAt = Date()
+        } else {
+            modelContext.insert(DuplicateDecision(cleanedHash: cleanedHash, decision: decision, keepJobID: keepJobID))
+        }
+        try modelContext.save()
+    }
+
     private func fitScoreRecord(job: Job, resumeID: String) throws -> JobFitScore {
         if let existing = job.fitScores.first(where: { $0.resume?.id == resumeID }) {
             return existing

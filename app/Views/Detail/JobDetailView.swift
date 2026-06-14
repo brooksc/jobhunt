@@ -1095,7 +1095,7 @@ struct TimelineTabView: View {
     }
 
     private var isSystemEvent: (JobEvent) -> Bool {
-        { ["capture", "extraction", "recapture"].contains($0.eventType) }
+        { ["capture", "extraction", "recapture", "duplicate_detected"].contains($0.eventType) }
     }
 
     private var sortedEvents: [JobEvent] {
@@ -1409,6 +1409,7 @@ private struct TimelineEventRow: View {
         case "offer": return "star"
         case "rejected": return "xmark.circle"
         case "recapture": return "arrow.clockwise"
+        case "duplicate_detected": return "doc.on.doc"
         case "extraction": return "cpu"
         default: return "clock"
         }

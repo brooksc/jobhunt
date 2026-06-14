@@ -42,6 +42,7 @@ struct DashboardView: View {
                 }
                 dailyActivitySection
                 siteScheduleSection
+                housekeepingSection
                 qualitySummarySection
             }
             .padding(16)
@@ -53,6 +54,44 @@ struct DashboardView: View {
     }
 
     // MARK: - Stat Cards
+
+    private var housekeepingSection: some View {
+        let now = Date()
+        let dupCount = jobs.filter { $0.duplicateOfJobID != nil }.count
+        let sitesDue = sites.filter { $0.state != .exclude && ($0.nextReviewAt.map { $0 <= now } ?? true) }.count
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("Housekeeping").font(.headline)
+            HStack(spacing: 12) {
+                housekeepingCard("Duplicates", count: dupCount, systemImage: "doc.on.doc") {
+                    router.navigateToSection(.duplicates)
+                }
+                housekeepingCard("Sites due", count: sitesDue, systemImage: "globe") {
+                    router.navigateToSection(.sites)
+                }
+            }
+        }
+    }
+
+    private func housekeepingCard(_ label: String, count: Int, systemImage: String,
+                                  action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .foregroundStyle(count > 0 ? .orange : .secondary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(count)").font(.title3.weight(.semibold)).monospacedDigit()
+                    Text(label).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity)
+            .background(Color.secondary.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
 
     private var statCardsSection: some View {
         HStack(spacing: 12) {

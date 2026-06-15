@@ -600,6 +600,41 @@ final class ExtractionEngineTests: XCTestCase {
         XCTAssertEqual(output.responseFormat.wireValue, "text")
     }
 
+    func testExtract_malformedFieldShape_throws() async throws {
+        // TASK-456: a salary field with an incompatible shape fails the extraction (retryable)
+        // instead of silently dropping the value.
+        let badJSON = """
+        {"title":"Engineer","company":"Acme","salary_min":{"nested":1},"skills":[]}
+        """
+        let provider = CapturingProvider(response: badJSON, usedFormat: .jsonObject)
+        do {
+            _ = try await ExtractionEngine.extract(
+                snapshot: makeExtractSnapshot(), provider: provider, settings: makeExtractionSettings())
+            XCTFail("Expected malformedField error")
+        } catch ExtractionEngineError.malformedField(let field, _) {
+            XCTAssertEqual(field, "salary_min")
+        }
+    }
+
+    func testExtract_normalizationStillRunsAfterTypedDecode() async throws {
+        // TASK-456 AC#4: remote-type inference (a normalization pass) still runs on the rebuilt dict.
+        let json = """
+        {"title":"Engineer","company":"Acme","location":null,"remote_type":null,
+         "salary_min":null,"salary_max":null,"salary_currency":null,"salary_note":null,
+         "salary_hourly_min":null,"salary_hourly_max":null,"employment_type":null,"seniority":null,
+         "skills":[],"summary":"x","requirements":[],"nice_to_haves":[],"benefits":[],
+         "application_url":null,"application_instructions":null,"confidence":null}
+        """
+        let provider = CapturingProvider(response: json, usedFormat: .jsonObject)
+        let snapshot = JobExtractionSnapshot(
+            captureURL: "https://example.com/job", captureCanonicalURL: nil,
+            capturePageTitle: "Engineer", captureCleanedDescription: "Fully Remote position.",
+            captureVisibleText: nil, captureSelectedText: nil)
+        let result = try await ExtractionEngine.extract(
+            snapshot: snapshot, provider: provider, settings: makeExtractionSettings())
+        XCTAssertEqual(result.remoteType, .remote, "RemoteTypeInferer must still infer remote from source text")
+    }
+
     func testScoreFit_snapshot_emptyResumeThrows() async throws {
         let jobSnap = JobFitSnapshot(title: "Eng", company: "Acme", seniority: nil, extractedJSON: nil, extractionModel: nil)
         let resumeSnap = ResumeSnapshot(text: "   ")

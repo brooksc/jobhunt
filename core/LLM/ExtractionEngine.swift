@@ -137,7 +137,13 @@ public enum ExtractionEngine {
             throw ExtractionEngineError.invalidJSON(repairedJSON)
         }
 
-        var extracted: [String: Any?] = raw.mapValues { $0 as Any? }
+        // TASK-456: validate provider JSON into the typed extraction schema before normalization.
+        // Incompatible field shapes throw (retryable) instead of being silently dropped; the rebuilt
+        // dict carries the same snake_case keys the normalization pipeline reads. `confidence` is not
+        // part of the strict schema, so it's preserved verbatim from the raw payload.
+        let dto = try ExtractionDTO(raw: raw)
+        var extracted: [String: Any?] = dto.asDict()
+        if let confidence = raw["confidence"] { extracted["confidence"] = confidence }
 
         let normalizer = JobFieldNormalizer()
         extracted = normalizer.normalize(
@@ -317,6 +323,8 @@ public enum ExtractionEngineError: Error, LocalizedError {
     case emptyResumeText
     case invalidJSON(String)
     case noModelSelected
+    /// A field in the provider response had an incompatible shape for the extraction schema (TASK-456).
+    case malformedField(field: String, reason: String)
 
     public var errorDescription: String? {
         switch self {
@@ -328,6 +336,8 @@ public enum ExtractionEngineError: Error, LocalizedError {
             "LLM response could not be parsed as JSON"
         case .noModelSelected:
             "No model selected — choose a model in Settings → LLM"
+        case let .malformedField(field, reason):
+            "LLM response field '\(field)' was invalid: \(reason)"
         }
     }
 }

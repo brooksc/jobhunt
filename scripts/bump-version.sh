@@ -11,6 +11,12 @@
 #   ./scripts/bump-version.sh 1.2.3
 #
 # Prints the new version to stdout. Does not auto-commit.
+#
+# This updates ONLY: Project.swift (.marketingVersion + .currentProjectVersion) and
+# extension/manifest.json (.version). version-parity.yml checks these two agree.
+# MUST be refreshed MANUALLY at release time (this script does NOT touch them):
+#   - chromestore/store-listing.md   — the "Version" row and the "Extension zip" filename
+#   - the built chromestore/jobhunt-capture-<version>.zip artifact
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

@@ -8,7 +8,7 @@
 | Category | Productivity |
 | Language | English |
 | Visibility | Unlisted |
-| Version | 0.2.2 |
+| Version | 1.0.1 |
 
 ---
 
@@ -83,4 +83,4 @@ Suggested copy:
 | Screenshot 1 (1280×800) | `screenshot-capture-queue-1280x800.png` | ✓ ready |
 | Small promo tile (440×280) | — | Optional; not needed for unlisted |
 | Marquee promo tile (1400×560) | — | Optional; not needed for unlisted |
-| Extension zip | `jobhunt-capture-0.2.2.zip` | ✓ ready |
+| Extension zip | `jobhunt-capture-1.0.1.zip` | Built at release from extension/ (matches manifest version) |

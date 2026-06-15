@@ -407,12 +407,16 @@ struct LLMQueueView: View {
     }
 
     private func processAll() async {
-        // Starts the drain loop for already-queued requests.
-        let hasQueued = allRequests.contains { $0.status == .queued }
-        guard hasQueued else {
-            errorMessage = "No jobs pending in queue."
+        // "Resume Queue" starts the drain loop for already-queued requests. Both outcomes are
+        // surfaced (TASK-361): a clear banner when there's nothing to resume, and a transient
+        // confirmation when a drain actually starts — so the success path isn't silent.
+        let queuedCount = allRequests.count(where: { $0.status == .queued })
+        guard queuedCount > 0 else {
+            errorMessage = "No queued requests to resume."
             return
         }
+        errorMessage = nil
+        toastStore.show("Resuming \(queuedCount) queued request\(queuedCount == 1 ? "" : "s")…")
         await queueActor.startProcessing()
     }
 

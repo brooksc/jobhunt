@@ -12,4 +12,12 @@ public enum LaunchPolicy {
     public static func allowsDemoSeed(isUITest: Bool, seedRequested: Bool) -> Bool {
         seedRequested && isUITest
     }
+
+    /// Whether a `--seed-fixture-output` path is safe to seed into. Generating a fixture must never
+    /// overwrite the user's production store, so the output path may not resolve to it (TASK-423).
+    public static func isSafeFixtureOutputPath(_ outputPath: String, productionStorePath: String) -> Bool {
+        let out = URL(fileURLWithPath: outputPath).standardizedFileURL.path
+        let prod = URL(fileURLWithPath: productionStorePath).standardizedFileURL.path
+        return out != prod
+    }
 }

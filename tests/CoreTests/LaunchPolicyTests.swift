@@ -19,4 +19,23 @@ final class LaunchPolicyTests: XCTestCase {
         XCTAssertFalse(LaunchPolicy.allowsDemoSeed(isUITest: true, seedRequested: false))
         XCTAssertFalse(LaunchPolicy.allowsDemoSeed(isUITest: false, seedRequested: false))
     }
+
+    // TASK-423: fixture generation must never overwrite the production store.
+
+    func testFixtureOutputRejectsProductionPath() {
+        let prod = "/Users/x/Library/Application Support/Jobhunt/jobhunt.store"
+        XCTAssertFalse(LaunchPolicy.isSafeFixtureOutputPath(prod, productionStorePath: prod))
+        // Path equivalence is normalized (./ and // collapse).
+        XCTAssertFalse(LaunchPolicy.isSafeFixtureOutputPath(
+            "/Users/x/Library/Application Support/Jobhunt/./jobhunt.store",
+            productionStorePath: prod))
+    }
+
+    func testFixtureOutputAllowsOtherPaths() {
+        let prod = "/Users/x/Library/Application Support/Jobhunt/jobhunt.store"
+        XCTAssertTrue(LaunchPolicy.isSafeFixtureOutputPath(
+            "/tmp/jobhunt-test.sqlite", productionStorePath: prod))
+        XCTAssertTrue(LaunchPolicy.isSafeFixtureOutputPath(
+            "/repo/tests/fixtures/jobhunt-test.sqlite", productionStorePath: prod))
+    }
 }

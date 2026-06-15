@@ -118,6 +118,17 @@ log "output: tests/fixtures/jobhunt-test.sqlite"
 
 [ -f "$FIXTURE_PATH" ] || fail "Fixture file not created at $FIXTURE_PATH"
 
+# TASK-422: the committed fixture must be self-contained — readable without -wal/-shm sidecars.
+# A non-empty WAL/SHM means recent writes live there and a copy of only the main file would be
+# stale/incomplete. Fail loudly; otherwise drop empty sidecars so only the main file is committed.
+for sidecar in "-wal" "-shm"; do
+    sc="$FIXTURE_PATH$sidecar"
+    if [ -s "$sc" ]; then
+        fail "Non-empty sidecar $sc remains — fixture is not self-contained (data may be in the WAL)."
+    fi
+    rm -f "$sc"
+done
+
 SIZE_BYTES=$(wc -c < "$FIXTURE_PATH" | tr -d ' ')
 if command -v python3 >/dev/null 2>&1; then
     SIZE_HUMAN=$(python3 -c "
@@ -131,5 +142,19 @@ else
 fi
 
 log "size: $SIZE_HUMAN"
+
+# TASK-422: validate the generated fixture by reopening a fresh copy through the app's SwiftData
+# config and checking expected counts (CoreTests/FixtureTests is the drift detector). Fails the
+# build if the fixture is unreadable or its contents drifted from FixtureSeeder expectations.
+step "Validating fixture (CoreTests/FixtureTests)"
+nice xcodebuild test \
+    -project "$PROJECT" \
+    -scheme "$SCHEME" \
+    -configuration "$CONFIG" \
+    -destination 'platform=macOS' \
+    -only-testing:CoreTests/FixtureTests \
+    CODE_SIGNING_ALLOWED=NO \
+    || fail "Fixture validation failed — counts drifted or the fixture is unreadable. If FixtureSeeder changed intentionally, update CoreTests/FixtureTests expectations."
+log "fixture validated"
 
 step "Done — commit tests/fixtures/jobhunt-test.sqlite to git"

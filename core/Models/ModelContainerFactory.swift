@@ -24,17 +24,17 @@ public enum ModelContainerFactory {
         return try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
     }
 
-    /// Copies the fixture SQLite at `source` to a temp path and opens it.
-    /// Tests get an isolated mutable copy — the committed fixture is never touched.
+    /// Copies the fixture SQLite at `source` to a fresh, unique temp directory and opens it.
+    /// Each caller gets its own isolated copy in a per-call UUID directory, so parallel test runs
+    /// and simultaneous launches never race on a shared destination (TASK-420). The caller owns the
+    /// returned container; the temp copy is left for the OS to reclaim (it's under NSTemporaryDirectory).
+    /// The committed fixture at `source` is never touched.
     public static func fixture(copying source: URL) throws -> ModelContainer {
-        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("JobhuntFixture/jobhunt-fixture.store")
-        try? FileManager.default.createDirectory(
-            at: tmp.deletingLastPathComponent(), withIntermediateDirectories: true)
-        // Always start fresh — remove any leftover from a prior run
-        for ext in ["", ".shm", ".wal"] {
-            try? FileManager.default.removeItem(at: URL(fileURLWithPath: tmp.path + ext))
-        }
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("JobhuntFixture", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let tmp = dir.appendingPathComponent("jobhunt-fixture.store")
         try FileManager.default.copyItem(at: source, to: tmp)
         return try test(at: tmp)
     }

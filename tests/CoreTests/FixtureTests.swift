@@ -98,4 +98,19 @@ final class FixtureTests: XCTestCase {
         let pursuing = try await store.fetch(FetchDescriptor<Job>()).filter { $0.status == .pursuing }
         XCTAssertEqual(pursuing.count, Expected.jobsByStatus["pursuing"])
     }
+
+    // TASK-420: two fixture copies must be independent — each gets its own temp destination so
+    // parallel consumers can't delete or overwrite each other's store.
+    func testFixtureCopiesAreIsolatedPerCall() throws {
+        let url = Self.fixtureURL()
+        try XCTSkipUnless(FileManager.default.fileExists(atPath: url.path),
+                          "Fixture missing — run ./scripts/build-fixture-db.sh")
+        let a = try ModelContainerFactory.fixture(copying: url)
+        let b = try ModelContainerFactory.fixture(copying: url)
+        let pathA = a.configurations.first?.url.path
+        let pathB = b.configurations.first?.url.path
+        XCTAssertNotNil(pathA)
+        XCTAssertNotNil(pathB)
+        XCTAssertNotEqual(pathA, pathB, "Each fixture copy must use a distinct temp destination")
+    }
 }

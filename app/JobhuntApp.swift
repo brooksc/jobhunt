@@ -4,6 +4,19 @@ import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Errors raised while resolving a launch mode's store.
+enum FixtureOutputError: LocalizedError {
+    case refusedProductionPath(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .refusedProductionPath(let path):
+            return "Refusing to seed a fixture to \(path): it resolves to the production store. "
+                + "Choose a different --seed-fixture-output path."
+        }
+    }
+}
+
 @main
 struct JobhuntApp: App {
     // Non-nil when ModelContainer failed to open — shows recovery UI instead of main window.
@@ -59,9 +72,11 @@ struct JobhuntApp: App {
             storeFailure = nil
 
             Task { @MainActor in
-                integration.start(queue: services.queueActor)
-                // Interactive modes start runtime services; fixture generation never does (TASK-425).
+                // Interactive modes start runtime services AND platform integration (which requests
+                // notification auth, registers focus/deep-link observers, applies window policy).
+                // Fixture generation does none of this — it only seeds and exits (TASK-419/425).
                 if plan.runsRuntimeServices {
+                    integration.start(queue: services.queueActor)
                     services.startRuntime()
                 }
                 if plan.allowsDemoSeed {
@@ -73,7 +88,15 @@ struct JobhuntApp: App {
                 }
                 if case .fixtureGenerate = plan.mode {
                     do {
-                        try await FixtureSeeder.seed(into: services.backgroundStore)
+                        // TASK-423: fail (don't silently no-op) if the target already has data — a
+                        // fixture seeded on top of existing rows would be stale/incomplete.
+                        let existing = try await services.backgroundStore.fetch(FetchDescriptor<Job>())
+                        guard existing.isEmpty else {
+                            fputs("Fixture output target already contains \(existing.count) job(s) — "
+                                + "refusing to seed onto a non-empty store. Remove it first.\n", stderr)
+                            exit(1)
+                        }
+                        try await FixtureSeeder.seed(into: services.backgroundStore, skipIfPopulated: false)
                         exit(0)
                     } catch {
                         fputs("FixtureSeeder failed: \(error)\n", stderr)
@@ -116,6 +139,13 @@ struct JobhuntApp: App {
             return try ModelContainerFactory.fixture(copying: URL(fileURLWithPath: path))
         case .fixtureGenerate(let outputPath):
             // Seed a fresh fixture and write it to the given path (used by build-fixture-db.sh).
+            // TASK-423: never let fixture generation overwrite the user's production store.
+            guard LaunchPolicy.isSafeFixtureOutputPath(
+                outputPath,
+                productionStorePath: ModelContainerFactory.productionStoreURL().path
+            ) else {
+                throw FixtureOutputError.refusedProductionPath(outputPath)
+            }
             let outputURL = URL(fileURLWithPath: outputPath)
             try? FileManager.default.createDirectory(
                 at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)

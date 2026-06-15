@@ -279,17 +279,19 @@ public actor QueueActor {
             }
             guard !requests.isEmpty else { break }
 
-            await withTaskGroup(of: ProcessResult.self) { group in
+            await withTaskGroup(of: ProcessOutcome.self) { group in
                 for req in requests {
                     group.addTask {
                         await self.processRequest(req, provider: provider)
                     }
                 }
-                for await result in group {
-                    totalProcessed += 1
-                    if result.succeeded {
+                for await outcome in group {
+                    switch outcome {
+                    case .succeeded:
+                        totalProcessed += 1
                         failureStreak = 0
-                    } else {
+                    case .providerFailure:
+                        totalProcessed += 1
                         totalFailed += 1
                         failureStreak += 1
                         if failureStreak >= Self.autoPauseThreshold {
@@ -297,6 +299,10 @@ public actor QueueActor {
                             emit(.autoPaused)
                             break
                         }
+                    case .cancelled, .skipped:
+                        // TASK-450: not a provider failure — don't count it or touch the streak,
+                        // so a user cancellation can't push the queue toward auto-pause.
+                        break
                     }
                 }
             }
@@ -316,8 +322,14 @@ public actor QueueActor {
 
     // MARK: - Private processing
 
-    private struct ProcessResult {
-        let succeeded: Bool
+    /// The classified result of processing one request. Only `.providerFailure` counts toward the
+    /// auto-pause failure streak — a user cancellation or a skipped/stale row is not a provider
+    /// failure and must not trigger auto-pause (TASK-450).
+    private enum ProcessOutcome {
+        case succeeded
+        case providerFailure
+        case cancelled   // user-cancelled in flight, or the row was already cancelled/taken
+        case skipped     // couldn't claim the row (store error / not queued) — neutral
     }
 
     /// Throws on a store-read failure so the drain loop can distinguish "queue couldn't be read"
@@ -348,7 +360,7 @@ public actor QueueActor {
         }
     }
 
-    private func processRequest(_ item: QueuedItem, provider: any LLMProvider) async -> ProcessResult {
+    private func processRequest(_ item: QueuedItem, provider: any LLMProvider) async -> ProcessOutcome {
         // TASK-316: Conditionally mark as running — don't overwrite if cancelled between snapshot and here
         let itemID = item.id
         do {
@@ -361,7 +373,7 @@ public actor QueueActor {
                 req.startedAt = Date()
             }
         } catch {
-            return ProcessResult(succeeded: false)
+            return .skipped
         }
 
         // Verify the transition actually happened
@@ -369,23 +381,31 @@ public actor QueueActor {
             FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == itemID })
         ).first
         guard current?.status == .running else {
-            return ProcessResult(succeeded: false)
+            // The row was cancelled or claimed between snapshot and transition — not a failure.
+            return .cancelled
         }
 
         let startedAt = Date()
 
         do {
+            let succeeded: Bool
             switch item.requestType {
             case .extract:
-                let succeeded = try await processExtractRequest(item: item, provider: provider, startedAt: startedAt)
-                return ProcessResult(succeeded: succeeded)
+                succeeded = try await processExtractRequest(item: item, provider: provider, startedAt: startedAt)
             case .fit:
-                let succeeded = try await processFitRequest(item: item, provider: provider, startedAt: startedAt)
-                return ProcessResult(succeeded: succeeded)
+                succeeded = try await processFitRequest(item: item, provider: provider, startedAt: startedAt)
             }
+            if succeeded { return .succeeded }
+            // The processor returned false without throwing. Classify by the row's final status:
+            // a user cancellation (or missing job → markRequestCancelled) leaves it .cancelled;
+            // anything else (consent revoked, missing resume → .failed) is a real failure.
+            let finalStatus = try? await store.fetch(
+                FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == itemID })
+            ).first?.status
+            return finalStatus == .cancelled ? .cancelled : .providerFailure
         } catch {
             await markRequestFailed(item: item, error: error, startedAt: startedAt)
-            return ProcessResult(succeeded: false)
+            return .providerFailure
         }
     }
 

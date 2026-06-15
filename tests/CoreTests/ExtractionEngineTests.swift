@@ -255,6 +255,47 @@ final class ExtractionEngineTests: XCTestCase {
         XCTAssertEqual(failed, 0)
     }
 
+    // TASK-450: cancelling an in-flight request must not count as a provider failure or auto-pause.
+    func testCancellingInFlightRequestIsNotCountedAsFailure() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+
+        // Provider blocks long enough that we can cancel while the request is .running.
+        let provider = DelayedSuccessProvider(delay: 1.5, response: "{\"title\":\"X\"}")
+        var paused = false
+        let queue = QueueActor(
+            store: store,
+            isPaused: { paused },
+            onSetPaused: { paused = $0 },
+            readExtractionSettings: { makeExtractionSettings() },
+            providerFactory: { provider }
+        )
+
+        let capture = Capture(url: "https://example.com/job", pageTitle: "Job",
+                              selectedText: "Description.", rawHash: "cancel-inflight")
+        let job = Job(jobNumber: 1, title: "Job 1")
+        job.capture = capture
+        try await store.insert(job)
+
+        let events = await queue.subscribe()
+        try await queue.enqueue(jobIDs: [job.id], mode: .extract)
+
+        let reqs = try await store.fetch(FetchDescriptor<LLMRequest>())
+        let reqID = try XCTUnwrap(reqs.first).id
+        // Cancel mid-provider-call.
+        try await Task.sleep(nanoseconds: 500_000_000)
+        try await queue.cancelRequest(id: reqID)
+
+        for await event in events {
+            if case .processingComplete = event { break }
+            if case .autoPaused = event { XCTFail("A single cancellation must not auto-pause") }
+        }
+
+        let after = try await store.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == reqID }))
+        XCTAssertEqual(after.first?.status, .cancelled)
+        XCTAssertFalse(paused, "Cancellation must not trigger auto-pause")
+    }
+
     // MARK: - QueueActor auto-pause
 
     func testQueueActorAutoPause() async throws {

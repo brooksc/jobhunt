@@ -1210,18 +1210,25 @@ final class JobServiceTests: XCTestCase {
         XCTAssertEqual(fitReqs.first?.status, .queued)
     }
 
-    func testEnqueueFit_unknownResumeID_createsNoRequests() async throws {
+    func testEnqueueFit_unknownResumeID_throwsAndCreatesNoRequests() async throws {
+        // TASK-452: a missing resume now surfaces a typed error instead of silently no-oping,
+        // while still creating no fit requests.
         let container = try ModelContainerFactory.inMemory()
         let store = makeStore(container)
         let queue = makeQueue(container)
         let svc = JobService(store: store, queue: queue)
 
-        let result = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/2", pageTitle: "PM", visibleText: "Product manager role"))
+        _ = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/2", pageTitle: "PM", visibleText: "Product manager role"))
         try await queue.deleteAll()
         let jobs = try await store.fetch(FetchDescriptor<Job>())
         let jobID = jobs.first!.id
 
-        try await queue.enqueueFit(jobIDs: [jobID], resumeID: "nonexistent-resume")
+        do {
+            try await queue.enqueueFit(jobIDs: [jobID], resumeID: "nonexistent-resume")
+            XCTFail("Expected FitEnqueueError.resumeNotFound")
+        } catch let error as FitEnqueueError {
+            XCTAssertEqual(error, .resumeNotFound("nonexistent-resume"))
+        }
 
         let requests = try await store.fetch(FetchDescriptor<LLMRequest>())
         XCTAssertTrue(requests.isEmpty, "No request should be created when resume ID doesn't exist")

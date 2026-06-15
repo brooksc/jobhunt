@@ -132,7 +132,10 @@ public actor QueueActor {
         let ids = jobIDs
         let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { ids.contains($0.id) }))
         let resumes = try await store.fetch(FetchDescriptor<Resume>(predicate: #Predicate { $0.id == resumeID }))
-        guard let resume = resumes.first else { return }
+        // TASK-452: a missing resume is a real failure (e.g. the resume was deleted between the UI
+        // reading it and this call). Throw a typed error so the caller can surface it instead of the
+        // fit silently doing nothing. Nothing is inserted before this point, so no rows are created.
+        guard let resume = resumes.first else { throw FitEnqueueError.resumeNotFound(resumeID) }
         let jobMap = Dictionary(jobs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let validJobs = jobIDs.compactMap { jobMap[$0] }
         guard !validJobs.isEmpty else { return }
@@ -866,6 +869,20 @@ public enum ConsentError: Error, LocalizedError {
 
     public var errorDescription: String? {
         "Cloud LLM consent not granted. Enable the provider in Settings to process jobs."
+    }
+}
+
+// MARK: - FitEnqueueError
+
+public enum FitEnqueueError: Error, LocalizedError, Equatable {
+    /// The resume to score against no longer exists (TASK-452).
+    case resumeNotFound(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .resumeNotFound:
+            "The selected resume no longer exists. Choose another resume and try again."
+        }
     }
 }
 

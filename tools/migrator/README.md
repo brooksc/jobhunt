@@ -32,6 +32,7 @@ app runs risks `SQLITE_BUSY` or corruption.
 | `--prune-orphan-fit-scores [--store <path>]` | Delete fit scores with no resume linked (legacy/unmigrated rows that render as a model name and hijack "Best match"), then recompute each affected job's denormalized fit mirror. | same |
 | `--prune-orphan-attempts [--store <path>]` | Delete `LLMRequestAttempt` rows whose parent request is gone (historical orphans from prunes that predate the cascade delete rule). | same |
 | `--recompute-fit-mirrors [--store <path>]` | Recompute every job's denormalized fit mirror (`fitScore`/`fitStatus`/`fitScoreJSON`) from its best resume-linked score; touches only drifted rows. | same |
+| `--detect-duplicates [--store <path>]` | Run the app's duplicate detector and persist results (flag candidates with `duplicateOfJobID` + `.duplicate` status). Useful after a bulk `--reclean` changes cleaned hashes. Skips pairs resolved via DuplicateDecision. | same |
 
 ```bash
 # Quit Jobhunt, then:

@@ -13,6 +13,7 @@ enum Mode {
     case pruneOrphanFitScores(storePath: String)
     case pruneOrphanAttempts(storePath: String)
     case recomputeFitMirrors(storePath: String)
+    case detectDuplicates(storePath: String)
 }
 
 func parseArgs() -> Mode? {
@@ -32,6 +33,7 @@ func parseArgs() -> Mode? {
     var pruneOrphanFitScores = false
     var pruneOrphanAttempts = false
     var recomputeFitMirrors = false
+    var detectDuplicates = false
     var storePath = defaultStorePath
     var inputPath = defaultInputPath
     var outputPath: String? = nil
@@ -58,6 +60,8 @@ func parseArgs() -> Mode? {
             pruneOrphanAttempts = true
         case "--recompute-fit-mirrors":
             recomputeFitMirrors = true
+        case "--detect-duplicates":
+            detectDuplicates = true
         case "--store":
             i += 1
             if i < args.count { storePath = args[i] }
@@ -82,6 +86,7 @@ func parseArgs() -> Mode? {
     if pruneOrphanFitScores { return .pruneOrphanFitScores(storePath: storePath) }
     if pruneOrphanAttempts { return .pruneOrphanAttempts(storePath: storePath) }
     if recomputeFitMirrors { return .recomputeFitMirrors(storePath: storePath) }
+    if detectDuplicates { return .detectDuplicates(storePath: storePath) }
 
     guard let out = outputPath else {
         fputs("Error: --output <path> is required.\n", stderr)
@@ -96,6 +101,7 @@ func parseArgs() -> Mode? {
         fputs("  JobhuntMigrator --prune-orphan-fit-scores [--store <path>]\n", stderr)
         fputs("  JobhuntMigrator --prune-orphan-attempts [--store <path>]\n", stderr)
         fputs("  JobhuntMigrator --recompute-fit-mirrors [--store <path>]\n", stderr)
+        fputs("  JobhuntMigrator --detect-duplicates [--store <path>]\n", stderr)
         return nil
     }
     return .migrate(inputPath: inputPath, outputPath: out)

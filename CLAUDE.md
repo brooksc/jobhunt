@@ -197,6 +197,12 @@ When adding a new fixup: add a `BackgroundStore` (or other JobhuntCore) method +
 
 ## Conventions
 
+- **Don't over-optimize for scale this app won't reach.** Expected data is on the order of a *few
+  hundred* jobs — a single user's tracked applications. An O(N) or O(N×S) filter/sort/scan over a few
+  hundred rows on the main thread is imperceptible, and SwiftUI `List`/`LazyVStack` already window row
+  rendering. Don't add caching layers, off-main pipelines, denormalized indexes, or pagination unless
+  there's a *measured* problem at the real scale. Prefer the simplest correct code; reserve the
+  optimization patterns for genuinely large/unbounded data (e.g. bulk migrator passes).
 - **One-time data ops live in the CLI, not app launch** — see the section above. The launch path is
   recurring operational work only.
 - **Actor isolation**: `QueueActor` uses closure-based init (`isPaused:`, `onSetPaused:`, `readExtractionSettings:`, `providerFactory:`). Don't use direct property access on settings from outside the actor.

@@ -3,10 +3,10 @@ id: TASK-368
 title: >-
   Schema evolution: Freeze historical schema snapshots before the next stored
   model change
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 22:25'
-updated_date: '2026-06-15 04:10'
+updated_date: '2026-06-15 06:39'
 labels:
   - audit
   - schema
@@ -41,3 +41,9 @@ Took the "equivalent historical schema strategy" option (AC#1's alternative) rat
 
 REMAINING (AC#2, future-conditional): when SchemaV2 is added, snapshot the V1 models into a frozen namespace and make JobhuntMigrationPlan use ordered historical snapshots. Cannot be done until there is a V2. Left unchecked.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Now-actionable work complete: V1's stored shape is frozen via the compile-time name guard (testSchemaV1StoredPropertyNamesAreStable) + the new type guard (testSchemaV1StoredPropertyTypesAreStable), the "equivalent historical schema strategy" AC#1 allows, documented in Schema.swift's "How V1 is frozen without snapshot types" section (AC#1, AC#3). Deliberately did NOT pre-snapshot all 16 live @Model classes — speculative with no V2 (a snapshot would be byte-identical) and high maintenance. AC#2 (ordered historical snapshots) is future-conditional ("when a new schema version is added") and is carried forward in TASK-480, to be done at the first breaking model change. Closing here as the pre-V2 work is complete.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,15 +1,18 @@
 ---
 id: TASK-473
 title: 'backup-store.sh: Add content sanity gate before rotating snapshots'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-15 03:39'
+updated_date: '2026-06-15 06:51'
 labels:
   - bug
   - data-safety
   - scripts
 dependencies: []
 references:
+  - scripts/backup-store.sh
+modified_files:
   - scripts/backup-store.sh
 priority: medium
 ---
@@ -26,3 +29,9 @@ priority: medium
 - [ ] #2 Rotation never evicts a good backup in favor of a suspect/empty one
 - [ ] #3 A normal populated store backs up and rotates as before
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+backup-store.sh now applies a content sanity gate after the integrity check: if the snapshot has fewer than JOBHUNT_BACKUP_MIN_JOBS jobs (default 1; an empty store passes integrity_check but isn't a meaningful backup), it errors, removes the suspect snapshot, and exits BEFORE rotation (AC#1) — so a single empty/suspect run can't count toward $KEEP and rotate a real backup out (AC#2). JOBHUNT_BACKUP_MIN_JOBS=0 allows empty snapshots (e.g. fresh install). A normal populated store backs up and rotates exactly as before (AC#3). bash -n clean.
+<!-- SECTION:FINAL_SUMMARY:END -->

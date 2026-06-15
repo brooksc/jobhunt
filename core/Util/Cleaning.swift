@@ -20,7 +20,9 @@ public func cleanDescription(
     structuredData: [[String: Any]] = []
 ) -> String {
     let selected = selectedText.trimmingCharacters(in: .whitespaces)
-    let visible = stripBoilerplate(visibleText.trimmingCharacters(in: .whitespaces))
+    let visible = stripBoilerplate(
+        stripSerializedAppData(visibleText.trimmingCharacters(in: .whitespaces))
+    )
     let jsonLdDesc = extractJsonLdDescription(structuredData)
 
     // Promote a substantial JSON-LD body to the primary description; otherwise use the de-chromed
@@ -100,6 +102,42 @@ private func isBoilerplateLine(_ rawLine: String) -> Bool {
         return true
     }
     if line.hasPrefix("©") || lower.hasPrefix("copyright ") { return true }
+    return false
+}
+
+// MARK: - Serialized app-data stripping
+
+/// Pages built with React/Next.js (and similar SSR frameworks) often expose their RSC/Flight
+/// hydration payload or other serialized app state as page text. It captures as a huge minified blob
+/// — `0:{…}` / `12:[…]` Flight chunks, `$undefined`, `_next/static`, `dangerouslySetInnerHTML` — that
+/// is not part of the job description. Drop the lines that are clearly such serialized data, then
+/// trim any separator/blank lines left dangling once a trailing blob is removed.
+func stripSerializedAppData(_ text: String) -> String {
+    guard !text.isEmpty else { return text }
+    var kept = text.split(separator: "\n", omittingEmptySubsequences: false)
+        .filter { !isSerializedDataLine(String($0)) }
+    while let last = kept.last {
+        let trimmed = last.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty || trimmed.allSatisfy({ $0 == "-" }) { kept.removeLast() } else { break }
+    }
+    return kept.joined(separator: "\n")
+}
+
+private func isSerializedDataLine(_ rawLine: String) -> Bool {
+    let line = rawLine.trimmingCharacters(in: .whitespaces)
+    guard line.count >= 80 else { return false } // never touch short prose lines
+    // Next.js RSC/Flight chunk: a line beginning "<digits>:{" or "<digits>:[".
+    if line.range(of: #"^\d+:[\[{]"#, options: .regularExpression) != nil { return true }
+    // Strong framework markers anywhere on a long line.
+    if line.contains("self.__next_f") || line.contains("_next/static/")
+        || line.contains("dangerouslySetInnerHTML") { return true }
+    // Long, brace/quote-dense line = minified serialized data, not prose.
+    if line.count >= 300 {
+        let structural = line.unicodeScalars.reduce(0) { acc, scalar in
+            "{}[]\":,$".unicodeScalars.contains(scalar) ? acc + 1 : acc
+        }
+        if Double(structural) / Double(line.count) > 0.18 { return true }
+    }
     return false
 }
 

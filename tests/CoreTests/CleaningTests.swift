@@ -239,6 +239,37 @@ final class CleaningTests: XCTestCase {
         XCTAssertTrue(result.contains("—"), "em dash preserved")
     }
 
+    func testStripsNextJsFlightPayload() {
+        // Real JD prose, then the page's Next.js RSC/Flight hydration blob captured as visible text.
+        let flight = "0:{\"P\":null,\"b\":\"Mo6NZMyAfJC\",\"p\":\"\",\"c\":[\"\",\"open-positions\"],\"i\":false,"
+            + "\"f\":[[[\"\",{\"children\":[\"(live)\",{\"children\":[[\"slug\",\"x\",\"c\"],{\"children\":"
+            + "[\"__PAGE__\",{}]}]}]},\"$undefined\",\"$undefined\",true],[\"\",[\"$\",\"$1\",\"c\",{\"children\":"
+            + "[[[\"$\",\"link\",\"0\",{\"rel\":\"stylesheet\",\"href\":\"/_next/static/css/0a9b.css\"}]]]}]]]]}"
+        let visible = """
+        About the Role
+        We are hiring a Staff Technical Program Manager to drive cross-functional delivery.
+        You will partner with engineering and product leaders across the company.
+
+        ---
+
+        \(flight)
+        """
+        let result = cleanDescription(visibleText: visible)
+        XCTAssertTrue(result.contains("Staff Technical Program Manager to drive"), "real JD kept")
+        XCTAssertTrue(result.contains("partner with engineering"), "real JD kept")
+        XCTAssertFalse(result.contains("$undefined"), "flight payload dropped")
+        XCTAssertFalse(result.contains("_next/static"), "flight payload dropped")
+        XCTAssertFalse(result.contains("__PAGE__"), "flight payload dropped")
+        XCTAssertFalse(result.hasSuffix("---"), "dangling separator trimmed")
+    }
+
+    func testKeepsLongProseParagraph() {
+        // A long, legitimate prose paragraph must NOT be mistaken for serialized data.
+        let prose = String(repeating: "We build tools that help working adults go back to school. ", count: 8)
+        let result = cleanDescription(visibleText: "The Role\n\(prose)")
+        XCTAssertTrue(result.contains("working adults go back to school"), "long prose preserved")
+    }
+
     func testStripsCommonBoilerplateLines() {
         let visible = """
         Apply now

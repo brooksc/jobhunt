@@ -88,6 +88,50 @@ final class JobServiceTests: XCTestCase {
         XCTAssertEqual(extractReqs.count, 1, "Re-submitting the same URL must not add extraction requests")
     }
 
+    // TASK-444: open-in-app job lookup matches by original, canonical, and normalized URL.
+    func testFindJobNumber_byExactCanonicalAndNormalizedURL() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        let result = try await svc.ingestCapture(CapturePayload(
+            url: "https://jobs.example.com/eng",
+            pageTitle: "Eng",
+            visibleText: "A long job description for a senior engineer role on the platform team.",
+            canonicalURL: "https://jobs.example.com/engineering"))
+        let jobNumber = result.jobNumber
+
+        // exact original url
+        await assertFindsJob(svc, "https://jobs.example.com/eng", jobNumber)
+        // exact canonical url
+        await assertFindsJob(svc, "https://jobs.example.com/engineering", jobNumber)
+        // tracking-param variant of the original — normalized match
+        await assertFindsJob(svc, "https://jobs.example.com/eng?utm_source=newsletter&gclid=abc", jobNumber)
+        // trailing slash variant
+        await assertFindsJob(svc, "https://jobs.example.com/eng/", jobNumber)
+
+        let none = try await svc.findJobNumber(byURL: "https://other.example.com/nope")
+        XCTAssertNil(none, "unrelated URL must not match")
+    }
+
+    private func assertFindsJob(_ svc: JobService, _ url: String, _ expected: Int,
+                                file: StaticString = #filePath, line: UInt = #line) async {
+        do {
+            let found = try await svc.findJobNumber(byURL: url)
+            XCTAssertEqual(found, expected, "lookup for \(url)", file: file, line: line)
+        } catch {
+            XCTFail("findJobNumber threw for \(url): \(error)", file: file, line: line)
+        }
+    }
+
+    func testURLNormalizer_canonicalForm() {
+        XCTAssertEqual(
+            URLNormalizer.normalized("https://Example.com/Jobs/Eng/?utm_source=x&b=2&a=1#frag"),
+            URLNormalizer.normalized("https://example.com/Jobs/Eng?a=1&b=2"))
+        XCTAssertNil(URLNormalizer.normalized("not a url"))
+        XCTAssertNil(URLNormalizer.normalized("ftp://example.com/x"))
+    }
+
     // TASK-441: a semantic-duplicate capture (same cleaned content, different URL+canonical) is
     // flagged .duplicate and must NOT auto-queue an extraction request.
     func testIngestCapture_semanticDuplicateDoesNotQueueExtraction() async throws {

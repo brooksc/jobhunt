@@ -453,10 +453,21 @@ public actor JobService {
     /// Find the job_number for the first job whose capture URL matches the given URL.
     /// Returns nil if no match found.
     public func findJobNumber(byURL url: String) async throws -> Int? {
-        let captures = try await store.fetch(FetchDescriptor<Capture>())
-        guard let capture = captures.first(where: { $0.url == url }),
-              let job = capture.job else { return nil }
-        return job.jobNumber
+        // TASK-444: bounded exact match first — original url OR stored canonical url.
+        let exact = try await store.fetch(FetchDescriptor<Capture>(
+            predicate: #Predicate { $0.url == url || $0.canonicalURL == url }
+        ))
+        if let job = exact.first?.job { return job.jobNumber }
+
+        // Fallback (only when the indexed lookup misses): compare normalized forms, so a tab reached
+        // via a canonical/tracking-param/trailing-slash variant still resolves to the captured job.
+        guard let target = URLNormalizer.normalized(url) else { return nil }
+        let all = try await store.fetch(FetchDescriptor<Capture>())
+        let match = all.first { cap in
+            if let canon = cap.canonicalURL, URLNormalizer.normalized(canon) == target { return true }
+            return URLNormalizer.normalized(cap.url) == target
+        }
+        return match?.job?.jobNumber
     }
 
     // MARK: - MCP read queries

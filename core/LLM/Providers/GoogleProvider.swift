@@ -74,6 +74,11 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
 
         let decoded = try JSONDecoder().decode(GoogleResponse.self, from: data)
         let content = decoded.candidates?.first?.content?.parts?.first?.text ?? ""
+        // TASK-455: a 2xx with no usable candidate text (missing/blocked/empty candidate, e.g. a
+        // SAFETY finishReason) is a no-response, not empty success.
+        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw LLMProviderError.noResponse
+        }
         let modelName = decoded.modelVersion ?? request.model
 
         return ChatResponse(

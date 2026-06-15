@@ -87,6 +87,11 @@ enum OpenAICompatibleTransport {
 
             let decoded = try JSONDecoder().decode(OpenAIChatResponse.self, from: data)
             let content = decoded.choices.first?.message.content ?? ""
+            // TASK-455: a 2xx with no usable choice/message content is a no-response, not empty
+            // success — classify it at the boundary instead of failing later as a JSON parse error.
+            guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw LLMProviderError.noResponse
+            }
             let modelName = decoded.model ?? request.model
             let usedFormat = fmt ?? .text
             return ChatResponse(

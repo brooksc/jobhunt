@@ -88,6 +88,11 @@ public final class AnthropicProvider: LLMProvider, @unchecked Sendable {
 
         let decoded = try JSONDecoder().decode(AnthropicResponse.self, from: data)
         let content = decoded.content?.first?.text ?? ""
+        // TASK-455: a 2xx with no usable text content block (e.g. a stop/refusal with no text) is a
+        // no-response, not empty success.
+        guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw LLMProviderError.noResponse
+        }
         let modelName = decoded.model ?? (payload["model"] as? String ?? "")
 
         return ChatResponse(

@@ -134,6 +134,23 @@ final class OpenAIProviderTests: LLMMockProviderTestCase {
         XCTAssertEqual(provider.concurrencyLimit, 3)
     }
 
+    // TASK-455: a 2xx with empty message content is a no-response, not empty success.
+    func testEmptyContentThrowsNoResponse() async {
+        LLMMockURLProtocol.requestHandler = { req in
+            (mockHTTPResponse(url: req.url!), openAIResponse(content: ""))
+        }
+        let provider = OpenAIProvider(apiKey: "sk-test", session: session)
+        let req = ChatRequest(messages: [ChatMessage(role: "user", content: "hi")], model: "gpt-4o")
+        do {
+            _ = try await provider.complete(req)
+            XCTFail("expected LLMProviderError.noResponse")
+        } catch LLMProviderError.noResponse {
+            // expected
+        } catch {
+            XCTFail("expected noResponse, got \(error)")
+        }
+    }
+
     func testProviderID() {
         XCTAssertEqual(OpenAIProvider(apiKey: "").id, "openai")
     }
@@ -210,6 +227,23 @@ final class AnthropicProviderTests: LLMMockProviderTestCase {
         return Data(json.utf8)
     }
 
+    // TASK-455: a 2xx with no usable text content block is a no-response.
+    func testEmptyContentThrowsNoResponse() async {
+        LLMMockURLProtocol.requestHandler = { req in
+            (mockHTTPResponse(url: req.url!), Data("{\"model\":\"claude-sonnet-4-6\",\"content\":[]}".utf8))
+        }
+        let provider = AnthropicProvider(apiKey: "ant-key", model: "claude-sonnet-4-6", session: session)
+        let req = ChatRequest(messages: [ChatMessage(role: "user", content: "hi")], model: "claude-sonnet-4-6")
+        do {
+            _ = try await provider.complete(req)
+            XCTFail("expected LLMProviderError.noResponse")
+        } catch LLMProviderError.noResponse {
+            // expected
+        } catch {
+            XCTFail("expected noResponse, got \(error)")
+        }
+    }
+
     func testRequestURLAndHeaders() async throws {
         LLMMockURLProtocol.requestHandler = { req in
             (mockHTTPResponse(url: req.url!), self.anthropicResponse(text: "result"))
@@ -270,6 +304,24 @@ final class GoogleProviderTests: LLMMockProviderTestCase {
         }
         """
         return Data(json.utf8)
+    }
+
+    // TASK-455: a 2xx with no usable candidate text (e.g. a blocked/empty candidate) is a no-response.
+    func testEmptyCandidateThrowsNoResponse() async {
+        LLMMockURLProtocol.requestHandler = { req in
+            // No candidates at all (e.g. blocked by safety) — must classify as no-response.
+            (mockHTTPResponse(url: req.url!), Data("{\"candidates\":[],\"modelVersion\":\"x\"}".utf8))
+        }
+        let provider = GoogleProvider(apiKey: "gkey", model: "gemini-2.5-flash", session: session)
+        let req = ChatRequest(messages: [ChatMessage(role: "user", content: "hi")], model: "gemini-2.5-flash")
+        do {
+            _ = try await provider.complete(req)
+            XCTFail("expected LLMProviderError.noResponse")
+        } catch LLMProviderError.noResponse {
+            // expected
+        } catch {
+            XCTFail("expected noResponse, got \(error)")
+        }
     }
 
     func testRequestURLContainsModel_andKeyIsInHeader() async throws {

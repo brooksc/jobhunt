@@ -409,7 +409,15 @@ public actor BackgroundStore {
         let record = try fitScoreRecord(job: job, resumeID: resumeID)
         record.fitStatus = .failed
         if let msg = errorMessage {
-            record.fitScoreJSON = "{\"error\":\"\(msg.replacingOccurrences(of: "\"", with: "\\\""))\"}"
+            // Build via JSONSerialization so control chars/backslashes/quotes in the error message
+            // produce valid JSON (hand-escaping only `"` left newlines/tabs unescaped → invalid
+            // JSON that FitScoreProjection.parseJSON silently dropped). TASK-472.
+            if let data = try? JSONSerialization.data(withJSONObject: ["error": msg]),
+               let json = String(data: data, encoding: .utf8) {
+                record.fitScoreJSON = json
+            } else {
+                record.fitScoreJSON = "{\"error\":\"fit scoring failed\"}"
+            }
         }
         record.updatedAt = Date()
         // Update job-level mirror only if this is the active resume's failure

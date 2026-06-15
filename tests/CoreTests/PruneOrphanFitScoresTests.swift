@@ -70,4 +70,23 @@ final class PruneOrphanFitScoresTests: XCTestCase {
         XCTAssertNil(jobs.first?.fitScore, "mirror cleared when no resume-linked score remains")
         XCTAssertEqual(jobs.first?.fitStatus, FitStatus.none)
     }
+
+    // TASK-472: a fit-failure message with control chars/quotes/backslashes must produce VALID
+    // JSON. Hand-escaping only `"` left newlines/tabs raw → invalid JSON the UI silently dropped.
+    func testMarkFitScoreFailed_errorWithControlCharsIsValidJSON() async throws {
+        let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+        let resume = Resume(name: "R", text: "body")
+        let job = Job(jobNumber: 1, title: "SWE")
+        try await store.insert(resume)
+        try await store.insert(job)
+        try await store.insertFitBatch(jobs: [job], resume: resume)
+
+        let nasty = "HTTP 500: server said \"no\"\n\ttab + \\backslash"
+        try await store.markFitScoreFailed(jobID: job.id, resumeID: resume.id, errorMessage: nasty)
+
+        let scores = try await store.fetch(FetchDescriptor<JobFitScore>())
+        let json = try XCTUnwrap(scores.first(where: { $0.fitStatus == .failed })?.fitScoreJSON)
+        let parsed = try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any]
+        XCTAssertEqual(parsed?["error"] as? String, nasty, "error must round-trip as valid JSON")
+    }
 }

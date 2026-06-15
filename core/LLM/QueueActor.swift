@@ -160,24 +160,6 @@ public actor QueueActor {
         try await pruneFinishedRequests()
     }
 
-    /// One-time backfill: older finished requests (fit requests in particular) never persisted
-    /// `model`, so they render "—" in the queue. Recover it from each request's recorded attempt
-    /// history (newest attempt's returned model, falling back to the requested model). Idempotent —
-    /// only touches finished rows that still have no model.
-    public func backfillRequestModels() async throws {
-        try await store.update(
-            LLMRequest.self,
-            predicate: #Predicate { $0.model == nil && $0.finishedAt != nil }
-        ) { req in
-            let model = req.attempts
-                .sorted { $0.attempt > $1.attempt }
-                .lazy
-                .compactMap { $0.modelReturned ?? $0.modelRequested }
-                .first { !$0.isEmpty }
-            if let model { req.model = model }
-        }
-    }
-
     /// Delete terminal (succeeded/failed/cancelled/retryExhausted) LLMRequest history
     /// older than `days` days. Keeps the table bounded so fetchQueuedRequests is fast.
     public func pruneFinishedRequests(olderThan days: Int = 30) async throws {

@@ -66,18 +66,11 @@ final class AppServices: @unchecked Sendable {
                 self?.serverError = error.localizedDescription
             }
         }
+        // Crash recovery: reset requests stuck in "running" back to "queued" and prune old history.
+        // One-time data repairs (re-clean captures, backfill request models) are NOT run here — they
+        // live in JobhuntMigrator (--reclean / --backfill-models), run out-of-band with the app quit.
         Task {
             try? await queue.requeueRunningOnLaunch()
-            try? await queue.backfillRequestModels()
-        }
-        // One-time re-clean of existing captures with the improved cleaner (JSON-LD preference,
-        // selection dedupe, boilerplate stripping, invisible/control-char scrubbing). Bump the
-        // version suffix whenever the cleaner changes so existing captures are re-cleaned once.
-        if !settingsStore.bool(forKey: "reclean_captures_v2_done") {
-            Task {
-                _ = try? await store.recleanAllCaptures()
-                await MainActor.run { settingsStore.setBool(true, forKey: "reclean_captures_v2_done") }
-            }
         }
 
         // Update last-check timestamp when a scheduled availability check completes.

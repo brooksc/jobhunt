@@ -2,7 +2,7 @@ import SwiftData
 import XCTest
 @testable import JobhuntCore
 
-/// Tests for QueueActor.backfillRequestModels — recovering LLMRequest.model from attempt history
+/// Tests for BackgroundStore.backfillRequestModels — recovering LLMRequest.model from attempt history
 /// for older finished rows that never persisted it (fit requests in particular).
 final class QueueBackfillTests: XCTestCase {
     private func makeQueue(_ store: BackgroundStore) -> QueueActor {
@@ -38,7 +38,7 @@ final class QueueBackfillTests: XCTestCase {
         let id = req.id
         try await store.insert(req)
 
-        try await makeQueue(store).backfillRequestModels()
+        try await store.backfillRequestModels()
 
         let model = try await fetchModel(store, id: id)
         XCTAssertEqual(model, "gpt-4o")
@@ -55,7 +55,7 @@ final class QueueBackfillTests: XCTestCase {
         let id = req.id
         try await store.insert(req)
 
-        try await makeQueue(store).backfillRequestModels()
+        try await store.backfillRequestModels()
 
         let model = try await fetchModel(store, id: id)
         XCTAssertEqual(model, "google")
@@ -75,7 +75,7 @@ final class QueueBackfillTests: XCTestCase {
         let id = req.id
         try await store.insert(req)
 
-        try await makeQueue(store).backfillRequestModels()
+        try await store.backfillRequestModels()
 
         let model = try await fetchModel(store, id: id)
         XCTAssertEqual(model, "already-set")

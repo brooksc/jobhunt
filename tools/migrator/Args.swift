@@ -8,6 +8,8 @@ enum Mode {
     case verify(inputPath: String, storePath: String)
     case patch(inputPath: String, storePath: String)
     case patchFitScores(inputPath: String, storePath: String)
+    case reclean(storePath: String)
+    case backfillModels(storePath: String)
 }
 
 func parseArgs() -> Mode? {
@@ -22,6 +24,8 @@ func parseArgs() -> Mode? {
     var verify = false
     var patch  = false
     var patchFit = false
+    var reclean = false
+    var backfillModels = false
     var storePath = defaultStorePath
     var inputPath = defaultInputPath
     var outputPath: String? = nil
@@ -38,6 +42,10 @@ func parseArgs() -> Mode? {
             patch = true
         case "--patch-fit-scores":
             patchFit = true
+        case "--reclean":
+            reclean = true
+        case "--backfill-models":
+            backfillModels = true
         case "--store":
             i += 1
             if i < args.count { storePath = args[i] }
@@ -57,6 +65,8 @@ func parseArgs() -> Mode? {
     if verify   { return .verify(inputPath: inputPath, storePath: storePath) }
     if patch    { return .patch(inputPath: inputPath, storePath: storePath) }
     if patchFit { return .patchFitScores(inputPath: inputPath, storePath: storePath) }
+    if reclean  { return .reclean(storePath: storePath) }
+    if backfillModels { return .backfillModels(storePath: storePath) }
 
     guard let out = outputPath else {
         fputs("Error: --output <path> is required.\n", stderr)
@@ -66,6 +76,8 @@ func parseArgs() -> Mode? {
         fputs("  JobhuntMigrator --verify [--input <path>] [--store <path>]\n", stderr)
         fputs("  JobhuntMigrator --patch  [--input <path>] [--store <path>]\n", stderr)
         fputs("  JobhuntMigrator --patch-fit-scores [--input <path>] [--store <path>]\n", stderr)
+        fputs("  JobhuntMigrator --reclean [--store <path>]\n", stderr)
+        fputs("  JobhuntMigrator --backfill-models [--store <path>]\n", stderr)
         return nil
     }
     return .migrate(inputPath: inputPath, outputPath: out)

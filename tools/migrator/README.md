@@ -18,6 +18,24 @@ JobhuntMigrator [--input <path>] --output <path>
 | `--input <path>` | Path to the legacy `jobhunt.db` SQLite file | `~/Library/Application Support/Jobhunt/jobhunt.db` |
 | `--output <path>` | Path to write the new SwiftData store (required) | — |
 
+## Store maintenance (operate on the live store)
+
+These modes repair an existing SwiftData store in place. They are one-time data fixups that used to
+run automatically on app launch; they now live here so the launch path stays clean. **Quit the
+Jobhunt app first** — the store is single-writer (SQLite), and a second process touching it while the
+app runs risks `SQLITE_BUSY` or corruption.
+
+| Option | Description | Default store |
+|---|---|---|
+| `--reclean [--store <path>]` | Recompute every capture's `cleanedDescription` with the current cleaner (JSON-LD preference, boilerplate stripping, invisible-char scrubbing). Idempotent. | `~/Library/Application Support/Jobhunt/jobhunt.store` |
+| `--backfill-models [--store <path>]` | Fill `LLMRequest.model` on older finished rows from their attempt history (so they don't render "—"). Idempotent; only touches rows with no model. | same |
+
+```bash
+# Quit Jobhunt, then:
+JobhuntMigrator --reclean
+JobhuntMigrator --backfill-models
+```
+
 ### Example
 
 ```bash

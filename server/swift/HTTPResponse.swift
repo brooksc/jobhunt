@@ -7,12 +7,18 @@ struct HTTPResponse {
 
     static func ok(_ value: some Encodable) -> HTTPResponse {
         let encoder = JSONEncoder()
-        let data = (try? encoder.encode(value)) ?? Data("{}".utf8)
-        return HTTPResponse(
-            statusCode: 200,
-            headers: ["Content-Type": "application/json"],
-            body: data
-        )
+        do {
+            let data = try encoder.encode(value)
+            return HTTPResponse(
+                statusCode: 200,
+                headers: ["Content-Type": "application/json"],
+                body: data
+            )
+        } catch {
+            // TASK-390: a serialization failure is a server error, not a successful empty response.
+            // Returning 200 with "{}" made the client treat a server bug as valid empty data.
+            return .error("Response serialization failed", code: 500)
+        }
     }
 
     static func error(_ message: String, code: Int = 400) -> HTTPResponse {

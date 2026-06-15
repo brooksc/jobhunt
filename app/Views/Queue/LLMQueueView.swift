@@ -507,7 +507,11 @@ struct LLMQueueView: View {
         case .jobReady, .jobUnavailable:
             break
         case let .queueError(message):
+            // Keep the in-view banner (AC#2) AND record it in the shared error stream so Copy
+            // Diagnostics captures queue operational failures, not just user-triggered action
+            // errors (TASK-360). The message is a sanitized store-operation error — no secrets.
             errorMessage = message
+            toastStore.show(message, isError: true)
         }
     }
 }

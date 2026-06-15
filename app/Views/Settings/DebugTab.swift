@@ -162,8 +162,9 @@ struct DebugTab: View {
                 copyDiagnostics()
             }
             .help(
-                "Copies system info, queue counts, and sanitized recent error types. " +
-                    "Does not include job descriptions or resume content."
+                "Copies system info, queue counts, and recent error messages. Sensitive values " +
+                    "(file paths, URL query strings, API keys/tokens) are redacted on a best-effort " +
+                    "basis. Does not include job descriptions or resume content. Review before sharing."
             )
         }
     }
@@ -187,7 +188,7 @@ struct DebugTab: View {
         let queuePaused = settings.llmQueuePaused
 
         let serverStatus = appServices.serverRunning ? "running" : "stopped"
-        let serverError = appServices.serverError.map { " (error: \($0))" } ?? ""
+        let serverError = appServices.serverError.map { " (error: \(DiagnosticsRedactor.redact($0)))" } ?? ""
 
         let queued = llmRequests.count(where: { $0.status == .queued })
         let processing = llmRequests.count(where: { $0.status == .running })
@@ -197,7 +198,7 @@ struct DebugTab: View {
         let errorLines = errors.isEmpty
             ? "  (none)"
             : errors.map {
-                "  [\($0.timestamp.formatted(date: .omitted, time: .standard))] \(redactDiagnosticString($0.message))"
+                "  [\($0.timestamp.formatted(date: .omitted, time: .standard))] \(DiagnosticsRedactor.redact($0.message))"
             }
             .joined(separator: "\n")
 
@@ -225,34 +226,4 @@ struct DebugTab: View {
         """
     }
 
-    // MARK: - Diagnostic redaction
-
-    /// Strips known sensitive patterns from a string before including it in the support bundle.
-    /// Replaces file paths, URL query strings, and common secret prefixes with [redacted].
-    private func redactDiagnosticString(_ s: String) -> String {
-        var result = s
-
-        // File paths: /Users/..., /private/..., /var/..., /tmp/...
-        let pathPattern = #"(/Users/|/private/|/var/|/tmp/)[^\s\"\']+"#
-        if let regex = try? NSRegularExpression(pattern: pathPattern) {
-            let range = NSRange(result.startIndex..., in: result)
-            result = regex.stringByReplacingMatches(in: result, range: range, withTemplate: "[redacted]")
-        }
-
-        // URL query strings: strip everything after '?' in http/https URLs
-        let queryPattern = #"(https?://[^\s\?]+)\?[^\s]*"#
-        if let regex = try? NSRegularExpression(pattern: queryPattern) {
-            let range = NSRange(result.startIndex..., in: result)
-            result = regex.stringByReplacingMatches(in: result, range: range, withTemplate: "$1?[redacted]")
-        }
-
-        // Common secret prefixes: Bearer tokens, OpenAI-style keys, Google API keys
-        let secretPattern = #"(Bearer\s+|sk-|AIza)[A-Za-z0-9\-_\.]{8,}"#
-        if let regex = try? NSRegularExpression(pattern: secretPattern) {
-            let range = NSRange(result.startIndex..., in: result)
-            result = regex.stringByReplacingMatches(in: result, range: range, withTemplate: "[redacted]")
-        }
-
-        return result
-    }
 }

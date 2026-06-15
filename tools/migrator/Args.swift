@@ -14,6 +14,19 @@ enum Mode {
     case pruneOrphanAttempts(storePath: String)
     case recomputeFitMirrors(storePath: String)
     case detectDuplicates(storePath: String)
+
+    /// True for modes that open the live store read-WRITE. The store is single-writer, so these
+    /// must not run while the Jobhunt app is running (TASK-470). `migrate` writes a NEW output
+    /// store and `verify` is read-only, so neither needs the guard.
+    var mutatesLiveStore: Bool {
+        switch self {
+        case .migrate, .verify:
+            return false
+        case .repairFitScores, .patch, .patchFitScores, .reclean, .backfillModels,
+             .pruneOrphanFitScores, .pruneOrphanAttempts, .recomputeFitMirrors, .detectDuplicates:
+            return true
+        }
+    }
 }
 
 func parseArgs() -> Mode? {
@@ -64,15 +77,25 @@ func parseArgs() -> Mode? {
             detectDuplicates = true
         case "--store":
             i += 1
-            if i < args.count { storePath = args[i] }
+            guard i < args.count, !args[i].hasPrefix("--") else {
+                fputs("Error: --store requires a path argument.\n", stderr); return nil
+            }
+            storePath = args[i]
         case "--input":
             i += 1
-            if i < args.count { inputPath = args[i] }
+            guard i < args.count, !args[i].hasPrefix("--") else {
+                fputs("Error: --input requires a path argument.\n", stderr); return nil
+            }
+            inputPath = args[i]
         case "--output":
             i += 1
-            if i < args.count { outputPath = args[i] }
+            guard i < args.count, !args[i].hasPrefix("--") else {
+                fputs("Error: --output requires a path argument.\n", stderr); return nil
+            }
+            outputPath = args[i]
         default:
-            break
+            // TASK-477: reject unrecognized arguments instead of silently ignoring typos.
+            fputs("Error: unknown argument '\(args[i])'.\n", stderr); return nil
         }
         i += 1
     }

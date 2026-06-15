@@ -16,6 +16,32 @@ import SwiftData
 
 guard let mode = parseArgs() else { exit(1) }
 
+/// The SwiftData store is single-writer and not multi-process-safe. Refuse to open it read-write
+/// while the Jobhunt app is running (TASK-470) — two writers on the same SQLite file corrupt it.
+/// Matches the pgrep precondition in scripts/migrate-db.py.
+func requireAppNotRunning() {
+    let task = Process()
+    task.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+    task.arguments = ["-x", "Jobhunt"]
+    task.standardOutput = Pipe()
+    task.standardError = Pipe()
+    do {
+        try task.run()
+        task.waitUntilExit()
+        if task.terminationStatus == 0 {
+            fputs("Error: Jobhunt is running — the store is single-writer. Quit it first:\n"
+                + "  osascript -e 'quit app \"Jobhunt\"'\n", stderr)
+            exit(1)
+        }
+    } catch {
+        fputs("Warning: could not check whether Jobhunt is running (\(error)). Ensure it is quit.\n", stderr)
+    }
+}
+
+if mode.mutatesLiveStore {
+    requireAppNotRunning()
+}
+
 switch mode {
 
 case let .verify(inputPath, storePath):

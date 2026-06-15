@@ -263,6 +263,26 @@ final class CleaningTests: XCTestCase {
         XCTAssertFalse(result.hasSuffix("---"), "dangling separator trimmed")
     }
 
+    func testStripsStrayHtmlTagsFromVisibleText() {
+        let visible = """
+        About the role
+        We lead software delivery: <ul data-pattern="discCircleSquare" data-depth="1" style="x">
+        <li>Own the roadmap</li><li>Partner with engineering</li></ul>
+        """
+        let result = cleanDescription(visibleText: visible)
+        XCTAssertTrue(result.contains("Own the roadmap"), "list content kept")
+        XCTAssertTrue(result.contains("Partner with engineering"), "list content kept")
+        XCTAssertFalse(result.contains("<"), "no HTML tags remain")
+        XCTAssertFalse(result.contains("data-pattern"), "tag attributes stripped")
+    }
+
+    func testDecodesHtmlEntitiesInVisibleText() {
+        let result = cleanDescription(visibleText: "Research &amp; Development\u{000A}On-site &nbsp;role")
+        XCTAssertTrue(result.contains("Research & Development"), "&amp; decoded")
+        XCTAssertFalse(result.contains("&amp;"), "no raw entity")
+        XCTAssertFalse(result.contains("&nbsp;"), "&nbsp; decoded")
+    }
+
     func testKeepsLongProseParagraph() {
         // A long, legitimate prose paragraph must NOT be mistaken for serialized data.
         let prose = String(repeating: "We build tools that help working adults go back to school. ", count: 8)

@@ -11,6 +11,8 @@ enum Mode {
     case reclean(storePath: String)
     case backfillModels(storePath: String)
     case pruneOrphanFitScores(storePath: String)
+    case pruneOrphanAttempts(storePath: String)
+    case recomputeFitMirrors(storePath: String)
 }
 
 func parseArgs() -> Mode? {
@@ -28,6 +30,8 @@ func parseArgs() -> Mode? {
     var reclean = false
     var backfillModels = false
     var pruneOrphanFitScores = false
+    var pruneOrphanAttempts = false
+    var recomputeFitMirrors = false
     var storePath = defaultStorePath
     var inputPath = defaultInputPath
     var outputPath: String? = nil
@@ -50,6 +54,10 @@ func parseArgs() -> Mode? {
             backfillModels = true
         case "--prune-orphan-fit-scores":
             pruneOrphanFitScores = true
+        case "--prune-orphan-attempts":
+            pruneOrphanAttempts = true
+        case "--recompute-fit-mirrors":
+            recomputeFitMirrors = true
         case "--store":
             i += 1
             if i < args.count { storePath = args[i] }
@@ -72,6 +80,8 @@ func parseArgs() -> Mode? {
     if reclean  { return .reclean(storePath: storePath) }
     if backfillModels { return .backfillModels(storePath: storePath) }
     if pruneOrphanFitScores { return .pruneOrphanFitScores(storePath: storePath) }
+    if pruneOrphanAttempts { return .pruneOrphanAttempts(storePath: storePath) }
+    if recomputeFitMirrors { return .recomputeFitMirrors(storePath: storePath) }
 
     guard let out = outputPath else {
         fputs("Error: --output <path> is required.\n", stderr)
@@ -84,6 +94,8 @@ func parseArgs() -> Mode? {
         fputs("  JobhuntMigrator --reclean [--store <path>]\n", stderr)
         fputs("  JobhuntMigrator --backfill-models [--store <path>]\n", stderr)
         fputs("  JobhuntMigrator --prune-orphan-fit-scores [--store <path>]\n", stderr)
+        fputs("  JobhuntMigrator --prune-orphan-attempts [--store <path>]\n", stderr)
+        fputs("  JobhuntMigrator --recompute-fit-mirrors [--store <path>]\n", stderr)
         return nil
     }
     return .migrate(inputPath: inputPath, outputPath: out)

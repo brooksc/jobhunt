@@ -20,8 +20,11 @@ public func cleanDescription(
     structuredData: [[String: Any]] = []
 ) -> String {
     let selected = selectedText.trimmingCharacters(in: .whitespaces)
+    // Visible text is usually plain innerText, but some captures leak raw HTML markup and entities
+    // (e.g. "<ul …>", "&amp;", "&nbsp;"). Strip serialized app-data blobs, then run the same HTML
+    // strip/entity-decode used on the JSON-LD body, then drop site-chrome lines.
     let visible = stripBoilerplate(
-        stripSerializedAppData(visibleText.trimmingCharacters(in: .whitespaces))
+        stripHtml(stripSerializedAppData(visibleText.trimmingCharacters(in: .whitespaces)))
     )
     let jsonLdDesc = extractJsonLdDescription(structuredData)
 

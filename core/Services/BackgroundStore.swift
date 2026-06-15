@@ -273,23 +273,65 @@ public actor BackgroundStore {
     /// fit-score records (Electron parity: jobs.fit_score = MAX across resumes). Falls back to
     /// running/pending/failed/none when no resume has a numeric score yet.
     private func recomputeJobFitSummary(_ job: Job) {
+        let computed = computedFitMirror(for: job)
+        job.fitScore = computed.score
+        job.fitStatus = computed.status
+        job.fitScoreJSON = computed.json
+        job.updatedAt = Date()
+    }
+
+    /// Pure computation of a job's denormalized fit mirror from the best-scoring resume across ALL
+    /// its fit-score records (Electron parity: jobs.fit_score = MAX across resumes). Falls back to
+    /// running/pending/failed/none when no resume has a numeric score yet. No mutation/side effects.
+    private func computedFitMirror(for job: Job) -> (score: Int?, status: FitStatus, json: String?) {
         // Only resume-linked scores count toward the mirror — an orphaned score (no resume) is a
         // legacy/unmigrated artifact and must not drive the headline number.
         let scored = job.fitScores.filter { $0.fitScore != nil && $0.resume != nil }
         if let best = scored.max(by: { ($0.fitScore ?? 0) < ($1.fitScore ?? 0) }) {
-            job.fitScore = best.fitScore
-            job.fitStatus = .succeeded
-            job.fitScoreJSON = best.fitScoreJSON
+            return (best.fitScore, .succeeded, best.fitScoreJSON)
         } else if job.fitScores.contains(where: { $0.fitStatus == .running }) {
-            job.fitScore = nil; job.fitStatus = .running; job.fitScoreJSON = nil
+            return (nil, .running, nil)
         } else if job.fitScores.contains(where: { $0.fitStatus == .pending }) {
-            job.fitScore = nil; job.fitStatus = .pending; job.fitScoreJSON = nil
+            return (nil, .pending, nil)
         } else if job.fitScores.contains(where: { $0.fitStatus == .failed }) {
-            job.fitScore = nil; job.fitStatus = .failed; job.fitScoreJSON = nil
+            return (nil, .failed, nil)
         } else {
-            job.fitScore = nil; job.fitStatus = FitStatus.none; job.fitScoreJSON = nil
+            return (nil, FitStatus.none, nil)
         }
-        job.updatedAt = Date()
+    }
+
+    /// One-time cleanup: recompute every job's denormalized fit mirror, touching only jobs whose
+    /// mirror actually drifted from the best resume-linked score (so it doesn't bump updatedAt on
+    /// every row). Drift accumulates from migration or scores deleted without a recompute. Returns
+    /// the number of jobs corrected. Run out-of-band via JobhuntMigrator.
+    @discardableResult
+    public func recomputeAllJobFitMirrors() throws -> Int {
+        var changed = 0
+        for job in try modelContext.fetch(FetchDescriptor<Job>()) {
+            let computed = computedFitMirror(for: job)
+            guard job.fitScore != computed.score
+                || job.fitStatus != computed.status
+                || job.fitScoreJSON != computed.json else { continue }
+            job.fitScore = computed.score
+            job.fitStatus = computed.status
+            job.fitScoreJSON = computed.json
+            job.updatedAt = Date()
+            changed += 1
+        }
+        if changed > 0 { try modelContext.save() }
+        return changed
+    }
+
+    /// One-time cleanup: delete LLM request attempts whose parent request is gone. Historical orphans
+    /// from prunes that predate the cascade delete rule. Returns the number deleted. Run via
+    /// JobhuntMigrator.
+    @discardableResult
+    public func pruneOrphanRequestAttempts() throws -> Int {
+        let orphans = try modelContext.fetch(FetchDescriptor<LLMRequestAttempt>())
+            .filter { $0.request == nil }
+        for orphan in orphans { modelContext.delete(orphan) }
+        if !orphans.isEmpty { try modelContext.save() }
+        return orphans.count
     }
 
     /// Recompute every stored fit score from its saved JSON using the current weights/penalty

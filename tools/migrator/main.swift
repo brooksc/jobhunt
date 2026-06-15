@@ -187,6 +187,54 @@ case let .pruneOrphanFitScores(storePath):
         fputs("Error: prune failed: \(error)\n", stderr); exit(1)
     }
 
+case let .pruneOrphanAttempts(storePath):
+    guard FileManager.default.fileExists(atPath: storePath) else {
+        fputs("Error: store not found at '\(storePath)'\n", stderr); exit(1)
+    }
+    print("=== Prune Orphan LLM Request Attempts ===")
+    print("Store: \(storePath)")
+    print("(Run with the Jobhunt app quit — the store is single-writer.)")
+    let storeURL = URL(fileURLWithPath: storePath)
+    let schema = Schema(SchemaV1.models)
+    let config = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
+    let container: ModelContainer
+    do {
+        container = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
+    } catch {
+        fputs("Error: could not open store: \(error)\n", stderr); exit(1)
+    }
+    let store = BackgroundStore(modelContainer: container)
+    do {
+        let deleted = try await store.pruneOrphanRequestAttempts()
+        print("Prune complete: \(deleted) orphan attempt(s) deleted.")
+    } catch {
+        fputs("Error: prune failed: \(error)\n", stderr); exit(1)
+    }
+
+case let .recomputeFitMirrors(storePath):
+    guard FileManager.default.fileExists(atPath: storePath) else {
+        fputs("Error: store not found at '\(storePath)'\n", stderr); exit(1)
+    }
+    print("=== Recompute Job Fit Mirrors ===")
+    print("Store: \(storePath)")
+    print("(Run with the Jobhunt app quit — the store is single-writer.)")
+    let storeURL = URL(fileURLWithPath: storePath)
+    let schema = Schema(SchemaV1.models)
+    let config = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
+    let container: ModelContainer
+    do {
+        container = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
+    } catch {
+        fputs("Error: could not open store: \(error)\n", stderr); exit(1)
+    }
+    let store = BackgroundStore(modelContainer: container)
+    do {
+        let changed = try await store.recomputeAllJobFitMirrors()
+        print("Recompute complete: \(changed) job mirror(s) corrected.")
+    } catch {
+        fputs("Error: recompute failed: \(error)\n", stderr); exit(1)
+    }
+
 case let .repairFitScores(storePath):
     guard FileManager.default.fileExists(atPath: storePath) else {
         fputs("Error: store not found at '\(storePath)'\n", stderr)

@@ -427,6 +427,9 @@ struct ExpiredConfirmationSheet: View {
 
                         VStack(alignment: .leading, spacing: 3) {
                             Text(jobLabel(job)).font(.body)
+                            if let company = job.company, !company.isEmpty {
+                                Text(company).font(.callout).fontWeight(.medium)
+                            }
                             Text(friendlyReason(job.reason))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)

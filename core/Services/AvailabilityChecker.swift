@@ -1,4 +1,4 @@
-// swiftlint:disable line_length cyclomatic_complexity function_body_length large_tuple
+// swiftlint:disable line_length cyclomatic_complexity function_body_length large_tuple type_body_length
 import Foundation
 import SwiftData
 
@@ -31,6 +31,7 @@ public enum JobUnavailableKey {
 public struct GoneJobResult: Sendable {
     public let jobID: String
     public let jobNumber: Int?
+    public let company: String?
     public let title: String
     public let url: URL
     public let reason: String
@@ -135,6 +136,29 @@ public enum AvailabilityChecker {
         return false
     }
 
+    /// True when a URL is a login / auth wall or an aggregator's "can't show this posting without
+    /// login" fallback. Some sites (notably LinkedIn) redirect an un-authenticated availability
+    /// check to such a page instead of the posting — that is NOT evidence the job is gone, so the
+    /// redirect heuristics must be skipped to avoid false-positive expirations.
+    static func isAuthWallURL(_ urlString: String) -> Bool {
+        guard let comps = URLComponents(string: urlString) else { return false }
+        let host = (comps.host ?? "").lowercased()
+        let path = comps.path.lowercased()
+        // Generic login / auth-wall paths (applies to any site).
+        let authFragments = [
+            "/login", "/signin", "/sign-in", "/authwall", "/uas/login",
+            "/checkpoint", "/account/login", "/sso/", "/auth/realms"
+        ]
+        if authFragments.contains(where: { path.contains($0) }) { return true }
+        // LinkedIn serves a generic "collections / similar jobs" page when a specific posting
+        // can't be viewed without login — ambiguous, so treat it as indeterminate, not gone.
+        if host.contains("linkedin.com"),
+           path.contains("/jobs/collections") || path.contains("/jobs/search") {
+            return true
+        }
+        return false
+    }
+
     // MARK: - checkURL
 
     /// Checks whether a single job URL is still live. Mirrors checkUrl() in availability.js.
@@ -168,6 +192,13 @@ public enum AvailabilityChecker {
             let body = String(data: data, encoding: .utf8)?.lowercased() ?? ""
             for pattern in goneBodyPatterns where body.contains(pattern) {
                 return .gone(reason: "body: \(pattern)")
+            }
+
+            // 2.5 Login / auth wall (e.g. LinkedIn redirecting an un-authenticated check to a
+            // collections or login page). We can't determine availability behind a login, so don't
+            // flag as gone — the redirect heuristics below would otherwise false-positive.
+            if isAuthWallURL(finalURLString) {
+                return .available
             }
 
             // 3. Redirect to non-job page.
@@ -205,12 +236,12 @@ public enum AvailabilityChecker {
         guard !eligible.isEmpty else { return [] }
 
         struct JobSpec: Sendable {
-            let id: String; let jobNumber: Int?; let title: String; let url: URL
+            let id: String; let jobNumber: Int?; let company: String?; let title: String; let url: URL
         }
         let specs: [JobSpec] = eligible.compactMap { job in
             let urlString = job.applicationURL ?? job.capture?.canonicalURL ?? job.capture?.url ?? ""
             guard !urlString.isEmpty, let url = URL(string: urlString) else { return nil }
-            return JobSpec(id: job.id, jobNumber: job.jobNumber, title: job.title ?? "", url: url)
+            return JobSpec(id: job.id, jobNumber: job.jobNumber, company: job.company, title: job.title ?? "", url: url)
         }
         guard !specs.isEmpty else { return [] }
 
@@ -224,12 +255,15 @@ public enum AvailabilityChecker {
                         inFlight -= 1
                     }
                 }
-                let (id, jobNumber, title, url) = (spec.id, spec.jobNumber, spec.title, spec.url)
+                let (id, jobNumber, company, title, url) = (spec.id, spec.jobNumber, spec.company, spec.title, spec.url)
                 inFlight += 1
                 group.addTask {
                     let result = await checkURL(url, title: title, session: session)
                     if case let .gone(reason) = result {
-                        return GoneJobResult(jobID: id, jobNumber: jobNumber, title: title, url: url, reason: reason)
+                        return GoneJobResult(
+                            jobID: id, jobNumber: jobNumber, company: company,
+                            title: title, url: url, reason: reason
+                        )
                     }
                     return nil
                 }
@@ -445,4 +479,4 @@ public extension Notification.Name {
     static let availabilityCheckCompleted = Notification.Name("jobhunt.availabilityCheckCompleted")
 }
 
-// swiftlint:enable line_length cyclomatic_complexity function_body_length large_tuple
+// swiftlint:enable line_length cyclomatic_complexity function_body_length large_tuple type_body_length

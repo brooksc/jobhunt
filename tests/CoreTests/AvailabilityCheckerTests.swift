@@ -187,6 +187,50 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
         XCTAssertTrue(reason.contains("missing title"), "reason: \(reason)")
     }
 
+    func testLinkedInLoginRedirectIsNotGone() async throws {
+        // LinkedIn redirects an un-authenticated check to a generic collections page that lacks the
+        // job title — a login wall, not a removed listing. Must be treated as available.
+        let originalURL = "https://www.linkedin.com/jobs/view/4415725485"
+        let finalURL = "https://www.linkedin.com/jobs/collections/similar-jobs/?currentJobId=4415725485"
+        MockURLProtocol.handlers = [(originalURL, { _ in
+            makeResponse(url: finalURL, status: 200, body: "See similar jobs on LinkedIn. Sign in.")
+        })]
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: originalURL)),
+            title: "AI Product Manager Remote",
+            session: session
+        )
+        if case let .gone(reason) = result { XCTFail("Expected .available, got .gone(\(reason))") }
+    }
+
+    func testGenericLoginRedirectIsNotGone() async throws {
+        let originalURL = "https://careers.example.com/postings/789"
+        let finalURL = "https://careers.example.com/account/login?next=/postings/789"
+        MockURLProtocol.handlers = [(originalURL, { _ in
+            makeResponse(url: finalURL, status: 200, body: "Please sign in to continue.")
+        })]
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: originalURL)),
+            title: "Staff Program Manager Operations",
+            session: session
+        )
+        if case let .gone(reason) = result { XCTFail("Expected .available, got .gone(\(reason))") }
+    }
+
+    func testLinkedIn404StillGone() async throws {
+        // A real 404 must still be flagged even on LinkedIn (status check precedes the auth-wall guard).
+        let originalURL = "https://www.linkedin.com/jobs/view/999"
+        MockURLProtocol.handlers = [(originalURL, { _ in
+            makeResponse(url: originalURL, status: 404, body: "")
+        })]
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: originalURL)),
+            title: "Whatever Role Here",
+            session: session
+        )
+        guard case .gone = result else { XCTFail("Expected .gone for 404"); return }
+    }
+
     func testAvailableWhenCanonicalRedirectHasTitle() async throws {
         let originalURL = "https://jobs.example.com/postings/123?src=board"
         let finalURL = "https://jobs.example.com/postings/123"
@@ -310,6 +354,25 @@ final class AvailabilityCheckerRedirectTests: XCTestCase {
 }
 
 // MARK: - isMeaningfulTitle
+
+final class AvailabilityCheckerAuthWallTests: XCTestCase {
+    func testLinkedInCollectionsIsAuthWall() {
+        XCTAssertTrue(AvailabilityChecker.isAuthWallURL(
+            "https://www.linkedin.com/jobs/collections/similar-jobs/?currentJobId=123"
+        ))
+    }
+
+    func testGenericLoginPathsAreAuthWall() {
+        XCTAssertTrue(AvailabilityChecker.isAuthWallURL("https://careers.example.com/account/login?next=/x"))
+        XCTAssertTrue(AvailabilityChecker.isAuthWallURL("https://example.com/authwall"))
+        XCTAssertTrue(AvailabilityChecker.isAuthWallURL("https://example.com/sign-in"))
+    }
+
+    func testNormalJobURLIsNotAuthWall() {
+        XCTAssertFalse(AvailabilityChecker.isAuthWallURL("https://boards.example.com/postings/123"))
+        XCTAssertFalse(AvailabilityChecker.isAuthWallURL("https://www.linkedin.com/jobs/view/4415725485"))
+    }
+}
 
 final class AvailabilityCheckerTitleTests: XCTestCase {
     func testShortTitleNotMeaningful() {

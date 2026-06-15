@@ -3,9 +3,11 @@ id: TASK-431
 title: >-
   Server security: Fail closed for Chrome extension origin allowlist in release
   builds
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - claude
 created_date: '2026-06-13 05:43'
+updated_date: '2026-06-15 00:27'
 labels:
   - audit
   - server
@@ -32,3 +34,18 @@ The local server's extension route authorization currently treats an empty `allo
 - [ ] #4 Documentation identifies where the approved Chrome Web Store extension ID is configured and how development IDs are handled.
 - [ ] #5 Existing approved-extension capture, site review, job lookup, and focus flows continue to work when the configured origin matches.
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Make the Chrome-extension origin allowlist fail closed in release.
+
+- Replace the static `allowedExtensionOrigins` + empty-set permit-all with configurable instance settings injected via `init`:
+  - `allowedExtensionOrigins: Set<String>` (default = published CWS origin `chrome-extension://jekcbebhfeidkpapienoflbcaeeknlch`, from the onboarding store URL).
+  - `allowArbitraryExtensionOrigins: Bool` (default `true` only under `#if DEBUG`, `false` in release) — permits locally-loaded unpacked dev extensions (different ID) in debug only.
+- Extract a pure, testable `static func isApprovedExtensionOrigin(_:allowlist:allowArbitrary:)`; the instance method delegates to it. CORS reflection + route 403 already key off `isAllowedExtensionOrigin`, so fail-closed automatically yields 403 + no CORS for unapproved origins.
+- Tests: `makeTestServer` passes `allowArbitraryExtensionOrigins: true` so existing tests stay green regardless of DEBUG. Add: unit tests of `isApprovedExtensionOrigin` (both modes); an integration test with a production-mode server (allowArbitrary=false) asserting arbitrary origin → 403 + no CORS (AC #3) and the approved origin → reflected CORS (AC #5).
+- Update the doc comment to state where the CWS ID is configured and how dev IDs are handled (AC #4).
+
+Note/assumption: `jekcbebhfeidkpapienoflbcaeeknlch` is taken from the onboarding Chrome Web Store URL as the published extension ID — flag for confirmation.
+<!-- SECTION:PLAN:END -->

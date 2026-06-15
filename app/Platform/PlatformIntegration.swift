@@ -121,6 +121,11 @@ public final class PlatformIntegration: NSObject, ObservableObject {
             )
             NSApp.requestUserAttention(.criticalRequest)
             router.navigateToSection(.llmQueue)
+
+        case let .queueError(message):
+            // Degraded queue state (e.g. a store read/write failure). The LLM Queue view surfaces
+            // this to the user via its error banner; log it here for diagnostics.
+            NSLog("PlatformIntegration: queue error: \(message)")
         }
     }
 

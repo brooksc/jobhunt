@@ -10,6 +10,9 @@ public enum QueueEvent: Sendable {
     case jobUnavailable(jobNumber: Int?)
     case processingComplete(processed: Int, failed: Int)
     case autoPaused
+    /// The queue could not read its work from the store (a degraded state — NOT an empty queue).
+    /// Carries a user-facing message for diagnostics/surfacing.
+    case queueError(String)
 }
 
 // MARK: - QueueActor
@@ -261,7 +264,17 @@ public actor QueueActor {
             let provider = providerFactory()
             let limit = provider.concurrencyLimit
 
-            let requests = await fetchQueuedRequests(limit: limit)
+            let requests: [QueuedItem]
+            do {
+                requests = try await fetchQueuedRequests(limit: limit)
+            } catch {
+                // A store-read failure is NOT an empty queue. Don't fall through to the normal
+                // processingComplete path (which would report "all done") — surface it as a
+                // degraded state and stop this drain pass.
+                NSLog("QueueActor: queued-request fetch failed: \(error)")
+                emit(.queueError("Couldn't read the LLM queue: \(error.localizedDescription)"))
+                return
+            }
             guard !requests.isEmpty else { break }
 
             await withTaskGroup(of: ProcessResult.self) { group in
@@ -305,32 +318,31 @@ public actor QueueActor {
         let succeeded: Bool
     }
 
-    private func fetchQueuedRequests(limit: Int) async -> [QueuedItem] {
-        do {
-            // SwiftData predicates cannot compare enum cases, but can filter by finishedAt == nil.
-            // This excludes all terminal rows (succeeded/failed/cancelled/retryExhausted) at the
-            // DB level, then in-memory enum filter picks out .queued from {queued, running}.
-            // No fetchLimit here — the predicate keeps the result set small without risking
-            // starvation (old terminal rows can no longer block newer queued ones).
-            let descriptor = FetchDescriptor<LLMRequest>(
-                predicate: #Predicate { $0.finishedAt == nil },
-                sortBy: [SortDescriptor(\.createdAt)]
+    /// Throws on a store-read failure so the drain loop can distinguish "queue couldn't be read"
+    /// (a degraded state) from "queue is genuinely empty" (normal completion). Swallowing the error
+    /// as an empty result made storage failures look like all work was done.
+    private func fetchQueuedRequests(limit: Int) async throws -> [QueuedItem] {
+        // SwiftData predicates cannot compare enum cases, but can filter by finishedAt == nil.
+        // This excludes all terminal rows (succeeded/failed/cancelled/retryExhausted) at the
+        // DB level, then in-memory enum filter picks out .queued from {queued, running}.
+        // No fetchLimit here — the predicate keeps the result set small without risking
+        // starvation (old terminal rows can no longer block newer queued ones).
+        let descriptor = FetchDescriptor<LLMRequest>(
+            predicate: #Predicate { $0.finishedAt == nil },
+            sortBy: [SortDescriptor(\.createdAt)]
+        )
+        let all = try await store.fetch(descriptor)
+        let requests = all.filter { $0.status == .queued }.prefix(limit)
+        return requests.map { req in
+            QueuedItem(
+                id: req.id,
+                requestType: req.requestType,
+                attempt: req.attempt,
+                jobID: req.job?.id,
+                jobNumber: req.job?.jobNumber,
+                jobTitle: req.job?.title,
+                resumeID: req.resume?.id
             )
-            let all = try await store.fetch(descriptor)
-            let requests = all.filter { $0.status == .queued }.prefix(limit)
-            return requests.map { req in
-                QueuedItem(
-                    id: req.id,
-                    requestType: req.requestType,
-                    attempt: req.attempt,
-                    jobID: req.job?.id,
-                    jobNumber: req.job?.jobNumber,
-                    jobTitle: req.job?.title,
-                    resumeID: req.resume?.id
-                )
-            }
-        } catch {
-            return []
         }
     }
 
@@ -748,15 +760,22 @@ public actor QueueActor {
     private func markRequestFailed(item: QueuedItem, error: Error, startedAt _: Date) async {
         let itemID = item.id
         let errorStr = error.localizedDescription
-        try? await store.update(
-            LLMRequest.self,
-            predicate: #Predicate { $0.id == itemID }
-        ) { req in
-            // TASK-313: Only overwrite if still running — don't clobber retry/retryExhausted states
-            guard req.status == .running else { return }
-            req.status = .failed
-            req.finishedAt = Date()
-            req.error = errorStr
+        do {
+            try await store.update(
+                LLMRequest.self,
+                predicate: #Predicate { $0.id == itemID }
+            ) { req in
+                // TASK-313: Only overwrite if still running — don't clobber retry/retryExhausted states
+                guard req.status == .running else { return }
+                req.status = .failed
+                req.finishedAt = Date()
+                req.error = errorStr
+            }
+        } catch {
+            // Don't silently drop a failure-persistence error — a request could otherwise be left
+            // stuck .running. Log it (and surface a degraded state for diagnostics).
+            NSLog("QueueActor: failed to persist request failure for \(itemID): \(error)")
+            emit(.queueError("Couldn't record an LLM request failure: \(error.localizedDescription)"))
         }
     }
 
@@ -774,12 +793,17 @@ public actor QueueActor {
     }
 
     private func markRequestCancelled(id: String) async {
-        try? await store.update(
-            LLMRequest.self,
-            predicate: #Predicate { $0.id == id }
-        ) { req in
-            req.status = .cancelled
-            req.finishedAt = Date()
+        do {
+            try await store.update(
+                LLMRequest.self,
+                predicate: #Predicate { $0.id == id }
+            ) { req in
+                req.status = .cancelled
+                req.finishedAt = Date()
+            }
+        } catch {
+            NSLog("QueueActor: failed to persist request cancellation for \(id): \(error)")
+            emit(.queueError("Couldn't record an LLM request cancellation: \(error.localizedDescription)"))
         }
     }
 }

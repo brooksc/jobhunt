@@ -417,10 +417,24 @@ struct LLMQueueView: View {
     }
 
     private func processSelected(_ ids: [String]) async {
-        // Reset selected items to queued then start processing
+        // Reset selected items to queued, then start processing. A reset that fails must not be
+        // swallowed (TASK-387): surface it, and don't pretend everything was requeued.
+        var resetFailures = 0
         for id in ids {
-            try? await queueActor.resetRequest(id: id)
+            do {
+                try await queueActor.resetRequest(id: id)
+            } catch {
+                resetFailures += 1
+                NSLog("LLMQueueView: failed to reset request \(id): \(error)")
+            }
         }
+        if resetFailures > 0 {
+            let msg = "Couldn't requeue \(resetFailures) of \(ids.count) selected request(s)."
+            errorMessage = msg
+            toastStore.show(msg, isError: true)
+        }
+        // Don't silently start a drain when none of the selected requests could be requeued.
+        guard resetFailures < ids.count else { return }
         await queueActor.startProcessing()
     }
 
@@ -492,6 +506,8 @@ struct LLMQueueView: View {
             break
         case .jobReady, .jobUnavailable:
             break
+        case let .queueError(message):
+            errorMessage = message
         }
     }
 }

@@ -226,6 +226,35 @@ final class ExtractionEngineTests: XCTestCase {
                        "Cancellation during backoff must survive the post-sleep requeue")
     }
 
+    // TASK-387 AC#5: a genuinely empty queue (no fetch error) still emits the normal
+    // processingComplete event — only a store-read *failure* takes the degraded path.
+    func testEmptyQueueEmitsProcessingComplete() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        var paused = false
+        let queue = QueueActor(
+            store: store,
+            isPaused: { paused },
+            onSetPaused: { paused = $0 },
+            readExtractionSettings: { makeExtractionSettings() },
+            providerFactory: { AlwaysFailProvider(error: LLMProviderError.unavailable(reason: "unused")) }
+        )
+
+        let events = await queue.subscribe()
+        await queue.startProcessing()
+
+        var received: QueueEvent?
+        for await event in events {
+            received = event
+            break
+        }
+        guard case let .processingComplete(processed, failed) = received else {
+            return XCTFail("Expected processingComplete, got \(String(describing: received))")
+        }
+        XCTAssertEqual(processed, 0)
+        XCTAssertEqual(failed, 0)
+    }
+
     // MARK: - QueueActor auto-pause
 
     func testQueueActorAutoPause() async throws {

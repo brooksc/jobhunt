@@ -239,6 +239,13 @@ public actor QueueActor {
         try await store.deleteAll(LLMRequest.self)
     }
 
+    /// Permanently delete all finished (terminal) requests — succeeded/failed/exhausted/cancelled —
+    /// leaving queued and running requests intact. Terminal rows are exactly those with a
+    /// `finishedAt` timestamp.
+    public func clearCompleted() async throws {
+        try await store.delete(LLMRequest.self, predicate: #Predicate { $0.finishedAt != nil })
+    }
+
     /// Reset a failed request back to queued so it can be retried.
     public func resetRequest(id: String) async throws {
         try await store.update(

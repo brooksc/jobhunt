@@ -87,6 +87,11 @@ struct LLMQueueView: View {
         filteredRequests.filter { $0.status != .queued && $0.status != .running }
     }
 
+    /// True when any finished request exists (regardless of filters) — gates "Clear Completed".
+    private var hasCompletedRequests: Bool {
+        allRequests.contains { $0.finishedAt != nil }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             QueueSummaryBar(
@@ -273,6 +278,14 @@ struct LLMQueueView: View {
                 Label("Resume Queue", systemImage: "sparkles")
             }
 
+            // Clear all finished rows (Done / Failed / Exhausted / Cancelled) in one click.
+            Button {
+                Task { await clearCompleted() }
+            } label: {
+                Label("Clear Completed", systemImage: "trash.slash")
+            }
+            .disabled(!hasCompletedRequests)
+
             // Delete selected rows, or cancel all if nothing selected
             if selection.isEmpty {
                 Button(role: .destructive) {
@@ -453,6 +466,17 @@ struct LLMQueueView: View {
             selection.removeAll()
         } catch {
             let msg = "Cancel all failed: \(error.localizedDescription)"
+            errorMessage = msg
+            toastStore.show(msg, isError: true)
+        }
+    }
+
+    private func clearCompleted() async {
+        do {
+            try await queueActor.clearCompleted()
+            selection.removeAll()
+        } catch {
+            let msg = "Clear completed failed: \(error.localizedDescription)"
             errorMessage = msg
             toastStore.show(msg, isError: true)
         }

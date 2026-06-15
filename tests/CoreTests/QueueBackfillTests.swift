@@ -80,4 +80,27 @@ final class QueueBackfillTests: XCTestCase {
         let model = try await fetchModel(store, id: id)
         XCTAssertEqual(model, "already-set")
     }
+
+    func testClearCompleted_removesTerminalKeepsActive() async throws {
+        let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+        let queued = LLMRequest(requestType: .extract, status: .queued)
+        let running = LLMRequest(requestType: .fit, status: .running)
+        running.startedAt = Date()
+        let done = LLMRequest(requestType: .extract, status: .succeeded)
+        done.finishedAt = Date()
+        let cancelled = LLMRequest(requestType: .fit, status: .cancelled)
+        cancelled.finishedAt = Date()
+        let exhausted = LLMRequest(requestType: .extract, status: .retryExhausted)
+        exhausted.finishedAt = Date()
+        for req in [queued, running, done, cancelled, exhausted] { try await store.insert(req) }
+
+        try await makeQueue(store).clearCompleted()
+
+        let remaining = try await store.fetch(FetchDescriptor<LLMRequest>())
+        XCTAssertEqual(remaining.count, 2, "only queued + running should remain")
+        XCTAssertTrue(
+            remaining.allSatisfy { $0.status == .queued || $0.status == .running },
+            "finished requests should be cleared"
+        )
+    }
 }

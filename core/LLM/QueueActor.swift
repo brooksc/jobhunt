@@ -540,10 +540,14 @@ public actor QueueActor {
                 // Backoff then re-queue
                 let backoffMs = min(Int(pow(2.0, Double(item.attempt))) * 1000, 30000)
                 try await Task.sleep(nanoseconds: UInt64(backoffMs) * 1_000_000)
+                // TASK-447: a user cancellation during the backoff sleep sets the row to .cancelled.
+                // Only requeue if it's still .running, so the cancellation stays authoritative and a
+                // cancelled (possibly billable) cloud request is not silently retried.
                 try await store.update(
                     LLMRequest.self,
                     predicate: #Predicate { $0.id == itemID }
                 ) { req in
+                    guard req.status == .running else { return }
                     req.status = .queued
                     req.attempt = item.attempt + 1
                     req.startedAt = nil
@@ -723,10 +727,14 @@ public actor QueueActor {
             } else {
                 let backoffMs = min(Int(pow(2.0, Double(item.attempt))) * 1000, 30000)
                 try await Task.sleep(nanoseconds: UInt64(backoffMs) * 1_000_000)
+                // TASK-447: a user cancellation during the backoff sleep sets the row to .cancelled.
+                // Only requeue if it's still .running, so the cancellation stays authoritative and a
+                // cancelled (possibly billable) cloud request is not silently retried.
                 try await store.update(
                     LLMRequest.self,
                     predicate: #Predicate { $0.id == itemID }
                 ) { req in
+                    guard req.status == .running else { return }
                     req.status = .queued
                     req.attempt = item.attempt + 1
                     req.startedAt = nil

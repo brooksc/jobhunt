@@ -179,6 +179,53 @@ final class ExtractionEngineTests: XCTestCase {
         XCTAssertGreaterThan(estimate.totalTokens, 0)
     }
 
+    // MARK: - QueueActor cancellation during retry backoff (TASK-447)
+
+    /// A user cancellation that lands while a failed request is sleeping in its retry backoff must
+    /// stay authoritative — the post-sleep requeue must not resurrect it (and re-bill a cloud call).
+    func testCancellationDuringRetryBackoffIsPreserved() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+
+        let failProvider = AlwaysFailProvider(error: LLMProviderError.unavailable(reason: "stub failure"))
+        var paused = false
+        let queue = QueueActor(
+            store: store,
+            isPaused: { paused },
+            onSetPaused: { paused = $0 },
+            readExtractionSettings: { makeExtractionSettings() },
+            providerFactory: { failProvider }
+        )
+
+        let capture = Capture(
+            url: "https://example.com/job", pageTitle: "Job",
+            selectedText: "Description for the role.", rawHash: "cancel-backoff"
+        )
+        let job = Job(jobNumber: 1, title: "Job 1")
+        job.capture = capture
+        try await store.insert(job)
+
+        let events = await queue.subscribe()
+        // enqueue kicks the drain: attempt 1 fails fast, then the request sleeps ~2s in backoff.
+        try await queue.enqueue(jobIDs: [job.id], mode: .extract)
+
+        let reqs = try await store.fetch(FetchDescriptor<LLMRequest>())
+        let reqID = try XCTUnwrap(reqs.first).id
+
+        // Cancel mid-backoff (well before the ~2s sleep elapses and the requeue runs).
+        try await Task.sleep(nanoseconds: 600_000_000)
+        try await queue.cancelRequest(id: reqID)
+
+        // Wait for the drain — including the post-backoff requeue attempt — to finish.
+        for await event in events {
+            if case .processingComplete = event { break }
+        }
+
+        let after = try await store.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == reqID }))
+        XCTAssertEqual(after.first?.status, .cancelled,
+                       "Cancellation during backoff must survive the post-sleep requeue")
+    }
+
     // MARK: - QueueActor auto-pause
 
     func testQueueActorAutoPause() async throws {

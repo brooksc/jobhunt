@@ -1,5 +1,6 @@
 import Foundation
 import SQLite3
+import SwiftData
 
 /// Full-fidelity backup and restore for the SwiftData store.
 ///
@@ -16,6 +17,7 @@ public enum BackupService {
         case sqliteOpenFailed(Int32)
         case vacuumFailed(String)
         case notValidSQLite(URL)
+        case incompatibleStore(String)
 
         public var errorDescription: String? {
             switch self {
@@ -27,6 +29,9 @@ public enum BackupService {
                 return "Backup failed: \(msg)"
             case .notValidSQLite(let url):
                 return "Not a valid SQLite database: \(url.lastPathComponent)"
+            case .incompatibleStore:
+                return "This backup isn't compatible with this version of Jobhunt and can't be restored. "
+                    + "It may have been created by a newer version or be corrupted."
             }
         }
     }
@@ -100,6 +105,38 @@ public enum BackupService {
         return sqlite3_column_int(stmt, 0) > 0
     }
 
+    /// Companion file alongside `storeURL`, e.g. `companion(of: store, suffix: "-wal")`.
+    private static func companion(of storeURL: URL, suffix: String) -> URL {
+        storeURL.deletingLastPathComponent()
+            .appendingPathComponent(storeURL.lastPathComponent + suffix)
+    }
+
+    /// Opens `url` with the current `Schema` + `JobhuntMigrationPlan` to prove the app can
+    /// actually load it after a restore. `isValidSQLite` only checks the SQLite magic header and
+    /// table names; a backup from an incompatible or future schema passes that check but would
+    /// then fail at the next app launch — *after* it had already replaced the live store.
+    ///
+    /// The probe runs on a throwaway copy so that opening it (which may run a migration and write
+    /// a `-wal`) never dirties the staged file we're about to move into place.
+    private static func validateOpensWithMigrationPlan(at url: URL) throws {
+        let fm = FileManager.default
+        let probeDir = fm.temporaryDirectory
+            .appendingPathComponent("jobhunt-restore-probe-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: probeDir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: probeDir) }
+
+        let probeURL = probeDir.appendingPathComponent("probe.store")
+        try fm.copyItem(at: url, to: probeURL)
+
+        do {
+            let schema = Schema(SchemaV1.models)
+            let config = ModelConfiguration(schema: schema, url: probeURL, cloudKitDatabase: .none)
+            _ = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
+        } catch {
+            throw BackupError.incompatibleStore(error.localizedDescription)
+        }
+    }
+
     /// Replaces the store files at `storeURL` with `backupURL`.
     ///
     /// Companion `-shm` and `-wal` files are removed so SwiftData starts from a clean checkpoint.
@@ -107,9 +144,14 @@ public enum BackupService {
     /// terminating the app after the restore since the in-memory container still points at the
     /// old store.
     ///
-    /// Safety: the backup is copied to a temp file first. The original store and its companions
-    /// are only removed after the copy succeeds. This prevents data loss if the copy fails
-    /// mid-operation.
+    /// Safety: the restore never destroys the live store before the replacement is in place.
+    ///  1. The backup is copied to a staged `.incoming` file.
+    ///  2. The staged copy is opened with the current schema + migration plan; an incompatible or
+    ///     future-version backup is rejected here, before anything live is touched (TASK-373).
+    ///  3. The live store and its `-wal`/`-shm` companions are moved *aside* (not deleted), the
+    ///     staged copy is moved into place, and only on full success are the set-aside originals
+    ///     discarded. Any failure rolls the originals back, so a mid-restore error can never leave
+    ///     the user without a store (TASK-374).
     ///
     /// - Parameters:
     ///   - backupURL: Path to a valid backup produced by `backup(storeURL:to:)`.
@@ -121,30 +163,56 @@ public enum BackupService {
 
         let fm = FileManager.default
 
-        // Stage 1: Copy backup to a temp file in the same directory as the store.
-        // This ensures we have a valid replacement before touching the live store.
-        let incomingURL = URL(fileURLWithPath: storeURL.path + ".incoming")
-        if fm.fileExists(atPath: incomingURL.path) {
-            try fm.removeItem(at: incomingURL)
-        }
+        // Stage 1: stage the backup next to the live store. Nothing live is touched yet.
+        let incomingURL = companion(of: storeURL, suffix: ".incoming")
+        try? fm.removeItem(at: incomingURL)
         try fm.copyItem(at: backupURL, to: incomingURL)
 
-        // Stage 2: Remove WAL/SHM companions (hyphen-separated, as SQLite actually creates them:
-        // e.g. "jobhunt.store-wal" and "jobhunt.store-shm", not "jobhunt.store.wal")
-        let walFile = storeURL.deletingLastPathComponent()
-            .appendingPathComponent(storeURL.lastPathComponent + "-wal")
-        let shmFile = storeURL.deletingLastPathComponent()
-            .appendingPathComponent(storeURL.lastPathComponent + "-shm")
-        for companion in [walFile, shmFile] {
-            if fm.fileExists(atPath: companion.path) {
-                try fm.removeItem(at: companion)
-            }
+        // Stage 2: prove the staged copy opens under the current schema + migration plan, so a
+        // schema-incompatible/future/corrupt backup is rejected before the live store is replaced.
+        do {
+            try validateOpensWithMigrationPlan(at: incomingURL)
+        } catch {
+            try? fm.removeItem(at: incomingURL)
+            throw error
         }
 
-        // Stage 3: Remove the old store and move the staged replacement into place
-        if fm.fileExists(atPath: storeURL.path) {
-            try fm.removeItem(at: storeURL)
+        // Stage 3: move the live store + WAL/SHM companions ASIDE (don't delete yet) so any
+        // failure below can roll them back. Companions are hyphen-suffixed, as SQLite creates them
+        // ("jobhunt.store-wal", not "jobhunt.store.wal").
+        let walURL = companion(of: storeURL, suffix: "-wal")
+        let shmURL = companion(of: storeURL, suffix: "-shm")
+        let storeAside = companion(of: storeURL, suffix: ".old")
+        let walAside = companion(of: storeURL, suffix: ".old-wal")
+        let shmAside = companion(of: storeURL, suffix: ".old-shm")
+        // Clear any leftovers from a previously interrupted restore.
+        for url in [storeAside, walAside, shmAside] { try? fm.removeItem(at: url) }
+
+        var undo: [(restoreTo: URL, from: URL)] = []
+        func moveAside(_ from: URL, to aside: URL) throws {
+            guard fm.fileExists(atPath: from.path) else { return }
+            try fm.moveItem(at: from, to: aside)
+            undo.append((restoreTo: from, from: aside))
         }
-        try fm.moveItem(at: incomingURL, to: storeURL)
+
+        do {
+            try moveAside(storeURL, to: storeAside)
+            try moveAside(walURL, to: walAside)
+            try moveAside(shmURL, to: shmAside)
+            // Stage 4: move the staged replacement into place.
+            try fm.moveItem(at: incomingURL, to: storeURL)
+        } catch {
+            // Roll back: put the originals back where they were, drop the staged copy.
+            for step in undo.reversed() {
+                try? fm.removeItem(at: step.restoreTo) // remove any partial new file
+                try? fm.moveItem(at: step.from, to: step.restoreTo)
+            }
+            try? fm.removeItem(at: incomingURL)
+            throw error
+        }
+
+        // Stage 5: success — discard the set-aside originals. The restored store is a self-contained
+        // VACUUM INTO file, so it has no companions (clean checkpoint).
+        for url in [storeAside, walAside, shmAside] { try? fm.removeItem(at: url) }
     }
 }

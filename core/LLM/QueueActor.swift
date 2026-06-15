@@ -132,6 +132,8 @@ public actor QueueActor {
         let validJobs = jobIDs.compactMap { jobMap[$0] }
         guard !validJobs.isEmpty else { return }
         try await store.insertFitBatch(jobs: validJobs, resume: resume)
+        // Kick the drain loop in case it's not yet running.
+        Task { await startProcessing() }
     }
 
     /// Queue fit scoring against all active resumes for the given jobs. No-op for a job

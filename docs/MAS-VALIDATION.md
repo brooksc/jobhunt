@@ -32,6 +32,27 @@ and balance it with `stopAccessingSecurityScopedResource()` in a `defer` block.
 - If `startAccessingSecurityScopedResource()` returns false, the import is silently skipped.
   Add a user-visible error if this proves common in the field.
 
+## User-selected file writes: store backup and CSV export (TASK-398)
+
+The app writes to user-chosen paths via `NSSavePanel` in two flows:
+- **Store backup** — Settings → Data → Back Up Now (`SettingsTab.swift` → `BackupService.backup`)
+- **CSV export** — Jobs → Export CSV (`JobsView.swift` → `ExportService`)
+
+These require `com.apple.security.files.user-selected.read-write`. The entitlement file
+(`config/entitlements/Jobhunt-MAS.entitlements`) previously granted only `read-only`, which lets the
+save panel pick a path but blocks the actual write — the flow fails silently under sandboxing.
+
+### Automated check
+The `release-mas.yml` "Smoke check MAS artifact" step asserts the signed app exposes
+`files.user-selected.read-write` and does **not** expose `read-only`.
+
+### Manual test procedure (requires a sandboxed build)
+1. Build/run the MAS-signed build (or enable App Sandbox locally).
+2. Settings → Data → Back Up Now → choose `~/Desktop/jobhunt-backup.store` → confirm the file is
+   written and is a valid backup (non-zero size; reopens).
+3. Jobs → Export CSV → choose `~/Desktop/jobs.csv` → confirm the file is written with rows.
+4. Both must succeed with no silent failure.
+
 ## PrivacyInfo.xcprivacy and App Store Privacy Assessment
 
 ### Determination: NSPrivacyCollectedDataTypes is correctly empty

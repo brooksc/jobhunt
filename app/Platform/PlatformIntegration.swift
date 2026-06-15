@@ -51,7 +51,7 @@ public final class PlatformIntegration: NSObject, ObservableObject {
               url.host == "jobs",
               let numberString = url.pathComponents.dropFirst().first,
               let jobNumber = Int(numberString) else { return }
-        router.navigateToJob(number: jobNumber)
+        navigateToJob(number: jobNumber)
     }
 
     /// Handle /api/app/focus notification from HTTP server (task-047).
@@ -59,11 +59,24 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
         if let userInfo = notification.userInfo,
            let jobNumber = userInfo["job_number"] as? Int {
-            router.navigateToJob(number: jobNumber)
+            navigateToJob(number: jobNumber)
         }
     }
 
     // MARK: - Private
+
+    /// Resolve a public job number to its `Job.id` and select it. Falls back to the
+    /// Jobs section with no selection if the number doesn't resolve, so callers never
+    /// land on a stale/empty selection silently.
+    private func navigateToJob(number: Int) {
+        var descriptor = FetchDescriptor<Job>(predicate: #Predicate { $0.jobNumber == number })
+        descriptor.fetchLimit = 1
+        if let job = try? modelContainer.mainContext.fetch(descriptor).first {
+            router.selectJob(id: job.id)
+        } else {
+            router.navigateToSection(.jobs)
+        }
+    }
 
     private func handleEvent(_ event: QueueEvent) async {
         switch event {
@@ -200,7 +213,7 @@ extension PlatformIntegration: UNUserNotificationCenterDelegate {
             if let navigate = userInfo["navigate"] as? String, navigate == "llmQueue" {
                 router.navigateToSection(.llmQueue)
             } else if let jobNumber = userInfo["jobNumber"] as? Int {
-                router.navigateToJob(number: jobNumber)
+                navigateToJob(number: jobNumber)
             }
         }
     }

@@ -40,6 +40,16 @@ The store listing should state:
 - Captures can be queued in Chrome extension storage when the companion app is not running.
 - Queued captures can be exported as CSV for use in Google Sheets or another tracker.
 - Optional LLM extraction depends on the provider configured inside the Mac app.
+- For Greenhouse-hosted job boards only, the extension makes a direct request to Greenhouse's
+  public job API (`boards-api.greenhouse.io`) to enrich the posting, sending only a board
+  identifier and job ID from the page URL — no credentials or personal data. This is the only
+  external (non-localhost) server the extension contacts.
+
+## Before each submission
+
+- [ ] Verify `chromestore/store-listing.md` privacy copy and `chromestore/PRIVACY.md` agree and do
+      not make an unscoped "no data leaves your device" claim (the Greenhouse public-API enrichment
+      is an exception that must be disclosed in both).
 
 ## Local Server Details
 

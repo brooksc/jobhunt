@@ -8,7 +8,10 @@
     <true/>
     <key>com.apple.security.network.client</key>
     <true/>
-    <key>com.apple.security.files.user-selected.read-only</key>
+    <!-- read-write (not read-only): the app writes user-chosen files via NSSavePanel for
+         store backups (SettingsTab) and CSV export (JobsView). read-only blocks those writes
+         under sandboxing. -->
+    <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
 </dict>
 </plist>

@@ -90,9 +90,12 @@ public final class Router {
 
     public init() {}
 
-    public func navigateToJob(number _: Int) {
+    /// Select a job by its `Job.id` and switch to the Jobs section.
+    /// Callers that only have a public job number must resolve it to an id first
+    /// (the Router has no model access).
+    public func selectJob(id: String) {
         selectedSection = .jobs
-        selectedJobID = nil
+        selectedJobID = id
     }
 
     public func navigateToSection(_ section: SidebarSection) {

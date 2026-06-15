@@ -470,6 +470,64 @@ final class ExtractionEngineTests: XCTestCase {
         XCTAssertEqual(req.status, .succeeded, "Fit request with consent granted must succeed")
     }
 
+    func testEnqueueFit_drainsWithoutExplicitStartProcessing() async throws {
+        // Regression for TASK-465: enqueueFit must kick the drain loop itself (like enqueue).
+        // The only production caller — the "Score against resume" button — does not call
+        // startProcessing, so without the self-kick the request sits .queued indefinitely.
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+
+        let fitJSON = """
+        {"overall":80,"dimensions":[{"name":"technical_skills","score":80,"weight":1.0,"evidence":"Good match"}],
+         "requirements_not_met":[],"summary":"Strong match"}
+        """
+        let capturingProvider = CapturingProvider(response: fitJSON)
+
+        let consentedSettings = ExtractionSettings(
+            llmModel: "gpt-4o",
+            llmProvider: "openai",
+            llmBaseURL: "https://api.openai.com",
+            consentGranted: true,
+            preferredLocations: "",
+            locationFilterEnabled: false,
+            locationAllowRemote: true,
+            locationAllowHybrid: true,
+            locationAllowOnsite: true
+        )
+        var paused = false
+        let queue = QueueActor(
+            store: store,
+            isPaused: { paused },
+            onSetPaused: { paused = $0 },
+            readExtractionSettings: { consentedSettings },
+            providerFactory: { capturingProvider }
+        )
+
+        let capture = Capture(url: "https://example.com/job", pageTitle: "Engineer", rawHash: "h-fit-drain")
+        let job = Job(jobNumber: 3, title: "Engineer")
+        job.capture = capture
+        job.extractedJSON = "{\"title\":\"Engineer\"}"
+        let resume = Resume(name: "My Resume", text: "Swift developer with 5 years experience.", charCount: 40, active: true, sortOrder: 0)
+        try await store.insert(job)
+        try await store.insert(resume)
+
+        // No explicit startProcessing — enqueueFit alone must drain the queue.
+        try await queue.enqueueFit(jobIDs: [job.id], resumeID: resume.id)
+
+        // The drain runs on a detached Task; poll until the request reaches a terminal state.
+        var settled = false
+        for _ in 0 ..< 100 {
+            let requests = try await store.fetch(FetchDescriptor<LLMRequest>())
+            if let status = requests.first?.status, status == .succeeded || status == .failed {
+                XCTAssertEqual(status, .succeeded, "Fit request should succeed once drained")
+                settled = true
+                break
+            }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTAssertTrue(settled, "enqueueFit must drain the queue without an explicit startProcessing call")
+    }
+
     func testFitRequest_loopbackProvider_noConsentNeeded() async throws {
         let container = try ModelContainerFactory.inMemory()
         let store = BackgroundStore(modelContainer: container)

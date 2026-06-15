@@ -46,6 +46,22 @@ import SwiftData
 // the supported tables and usage. It is independent of this migration plan and runs only
 // once per developer machine.
 
+// MARK: - How V1 is frozen without snapshot types (TASK-368 / TASK-369)
+//
+// SchemaV1.models points at the live model classes. We deliberately do NOT duplicate all models
+// into an immutable `SchemaV1Snapshot` namespace today: there is no V2 yet, so a snapshot would be
+// byte-identical to the live models and add ongoing maintenance for zero current benefit. Instead
+// the V1 stored shape is frozen by compile-time tripwires in SchemaEvolutionTests:
+//   - testSchemaV1StoredPropertyNamesAreStable — fails to compile if a stored property is
+//     renamed/removed.
+//   - testSchemaV1StoredPropertyTypesAreStable — fails to compile if a stored property's TYPE
+//     changes (e.g. Int→String, optional→non-optional).
+// Together these make a breaking V1 change impossible to ship unnoticed.
+//
+// When an actual breaking change lands, that is the moment to (a) snapshot the V1 models into a
+// frozen namespace per the "How to add a SchemaV2" steps below, and (b) add a golden file-backed
+// old-store migration test (TASK-369) that opens a real pre-change store with the new plan.
+//
 // MARK: - Schema policy checklist
 //
 // Changes that DO need a new VersionedSchema + MigrationStage:

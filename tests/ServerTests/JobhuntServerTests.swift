@@ -333,6 +333,7 @@ final class JobhuntServerTests: XCTestCase {
         var req = URLRequest(url: url)
         req.httpMethod = "OPTIONS"
         req.setValue("chrome-extension://abc123", forHTTPHeaderField: "Origin")
+        req.setValue("POST", forHTTPHeaderField: "Access-Control-Request-Method")
         req.setValue("true", forHTTPHeaderField: "Access-Control-Request-Private-Network")
 
         let (_, response) = try await URLSession.shared.data(for: req)
@@ -342,6 +343,23 @@ final class JobhuntServerTests: XCTestCase {
         // Verify PNA header is present
         let pna = http.value(forHTTPHeaderField: "Access-Control-Allow-Private-Network")
         XCTAssertEqual(pna, "true")
+    }
+
+    func testCORSPreflight_unknownRoute_rejectedWithoutCORS() async throws {
+        // A preflight for a path/method that maps to no real route must not be answered with a
+        // blanket 204 + private-network grant — it returns 404 with no CORS headers.
+        // swiftlint:disable:next force_unwrapping
+        let url = await URL(string: baseURL() + "/api/nonexistent")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "OPTIONS"
+        req.setValue("chrome-extension://abc123", forHTTPHeaderField: "Origin")
+        req.setValue("POST", forHTTPHeaderField: "Access-Control-Request-Method")
+
+        let (_, response) = try await URLSession.shared.data(for: req)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+        XCTAssertEqual(http.statusCode, 404)
+        XCTAssertNil(http.value(forHTTPHeaderField: "Access-Control-Allow-Origin"))
+        XCTAssertNil(http.value(forHTTPHeaderField: "Access-Control-Allow-Private-Network"))
     }
 
     func testNotFoundReturns404() async throws {

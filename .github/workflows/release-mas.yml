@@ -100,6 +100,15 @@ jobs:
           ENTITLEMENTS=$(codesign --display --entitlements :- "$APP_PATH" 2>/dev/null || true)
           echo "$ENTITLEMENTS" | grep -q "app-sandbox" || { echo "ERROR: MAS build missing app-sandbox entitlement"; exit 1; }
 
+          # TASK-398: backup + CSV export write to user-chosen paths via NSSavePanel, which needs
+          # user-selected read-WRITE. read-only would let those flows fail silently under sandbox.
+          echo "$ENTITLEMENTS" | grep -q "files.user-selected.read-write" \
+            || { echo "ERROR: MAS build missing files.user-selected.read-write (backup/CSV export would fail)"; exit 1; }
+          if echo "$ENTITLEMENTS" | grep -q "files.user-selected.read-only"; then
+            echo "ERROR: MAS build has read-only user-selected entitlement; expected read-write"
+            exit 1
+          fi
+
           echo "MAS smoke check passed"
 
       # TASK-356: Clean up signing certificate material

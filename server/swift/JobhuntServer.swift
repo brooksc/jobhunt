@@ -322,8 +322,11 @@ public actor JobhuntServer {
     private func processRequest(_ request: HTTPRequest, on connection: NWConnection) async {
         var response = await routeRequest(request)
         let origin = request.headers["origin"] ?? ""
-        if isAllowedExtensionOrigin(origin) {
-            let isPreflight = request.method == "OPTIONS"
+        let isPreflight = request.method == "OPTIONS"
+        // Don't reflect CORS for a rejected preflight (unknown route → 404): a preflight only
+        // earns CORS + private-network when it resolved to a real route (204).
+        let preflightRejected = isPreflight && response.statusCode != 204
+        if isAllowedExtensionOrigin(origin), !preflightRejected {
             response = response.withCORS(origin: origin, isPreflight: isPreflight)
         }
         sendResponse(response, on: connection)
@@ -385,10 +388,32 @@ public actor JobhuntServer {
         })
     }
 
+    /// True when a non-OPTIONS (method, path) pair maps to a real route. Used to gate the
+    /// CORS preflight so OPTIONS for an unknown route/method isn't answered with a blanket 204
+    /// (which would advertise "any method, any path, private-network OK" to the browser).
+    private func isKnownRoute(method: String, path: String) -> Bool {
+        switch (method, path) {
+        case ("GET", "/health"),
+             ("GET", "/api/ping"),
+             ("POST", "/captures"),
+             ("POST", "/site-reviews"),
+             ("GET", "/api/jobs/by-url"),
+             ("POST", "/api/app/focus"):
+            return true
+        default:
+            return false
+        }
+    }
+
     private func routeRequest(_ request: HTTPRequest) async -> HTTPResponse {
-        // Handle OPTIONS preflight for CORS
+        // Answer a CORS preflight only when it targets a real route+method; otherwise 404 with
+        // no CORS, so the preflight reflects the actual route table rather than a blanket allow.
         if request.method == "OPTIONS" {
-            return HTTPResponse.noContent()
+            let requestedMethod = request.headers["access-control-request-method"] ?? ""
+            if isKnownRoute(method: requestedMethod, path: request.path) {
+                return HTTPResponse.noContent()
+            }
+            return HTTPResponse.error("Not found", code: 404)
         }
 
         // MCP bridge routes (DMG builds only)

@@ -69,7 +69,9 @@ Privacy policy URL: **https://jobhunt-app.com/privacy**
 
 Suggested copy:
 
-> Jobhunt Capture does not collect, transmit, or store any personal data on remote servers. All captured page content is sent only to a locally-running companion app on your own machine (localhost) and stored in a local database under your control. No data leaves your device.
+> Jobhunt Capture does not collect or store any personal data on remote servers, and it has no analytics or tracking. Captured page content is sent only to a locally-running companion app on your own machine (localhost) and stored in a local database under your control.
+>
+> One exception: when you capture a job from a Greenhouse-hosted job board (e.g. `boards.greenhouse.io`), the extension makes a direct request to Greenhouse's public job API to enrich the posting. That request includes only a board identifier and job ID taken from the page URL — never credentials, account information, or personal data. No other external servers are contacted. See the full privacy policy for details.
 
 ---
 

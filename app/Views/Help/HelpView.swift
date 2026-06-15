@@ -51,9 +51,12 @@ struct HelpView: View {
             **Fit Scoring** → The model rates each job 0–100 against your resume and breaks \
             the score down by dimension (skills, seniority, location, work arrangement).
 
-            **Local-first** → All data is stored in a local SQLite database. Nothing is sent \
-            to any remote server unless you configure a cloud AI provider, in which case only \
-            job text goes to that API.
+            **Local-first** → All data is stored in a local SQLite database. When you use a \
+            local model (LM Studio, Ollama, or a custom endpoint on localhost), all AI \
+            processing stays on-device and nothing leaves your machine. When you use a cloud \
+            provider — or a custom endpoint that isn't local — job description text is sent for \
+            extraction and, for fit scoring, your resume text is sent along with the job text. \
+            These remote providers require your consent before any data is sent.
             """)
         }
     }
@@ -190,10 +193,13 @@ struct HelpView: View {
                 Divider()
 
                 HelpMarkdown("""
-                **Privacy** — All data is stored in a local SQLite database. Nothing is sent \
-                to any remote server. When using a cloud AI provider, only job posting text is \
-                sent to that provider's API for extraction. When using LM Studio or Ollama, all \
-                AI processing stays on-device.
+                **Privacy** — All data is stored in a local SQLite database. When you use a \
+                local model (LM Studio, Ollama, or a custom endpoint on localhost), all AI \
+                processing stays on-device and nothing leaves your machine. When you use a \
+                cloud provider — or a custom endpoint that isn't local — job description text \
+                is sent for extraction and, for fit scoring, your resume text is sent along \
+                with the job text. These remote providers require your consent before any \
+                data is sent.
 
                 The Chrome extension only communicates with the local Jobhunt service running \
                 on your machine (localhost).

@@ -216,6 +216,87 @@ final class BackupServiceTests: XCTestCase {
         XCTAssertFalse(BackupService.isValidSQLite(at: url), "File with random bytes must be rejected")
     }
 
+    // MARK: - TASK-373 / TASK-374: validate-before-swap + atomic move-aside restore
+
+    /// TASK-373/374: A Jobhunt-looking SQLite that passes the cheap magic+table check but is NOT a
+    /// loadable CoreData store must be rejected during restore (after staging, before the swap),
+    /// and the original live store must survive intact and readable.
+    func testRestore_rejectsSchemaIncompatibleBackup_originalSurvives() throws {
+        let (container, storeURL) = try makeFileBacked()
+        defer { try? FileManager.default.removeItem(at: storeURL) }
+
+        let ctx = ModelContext(container)
+        ctx.insert(Job(jobNumber: 777, title: "Original Job"))
+        ctx.insert(Setting(key: "original", value: "data"))
+        try ctx.save()
+
+        // Craft a file that has a ZJOB table (so isValidSQLite passes) but is not a valid CoreData
+        // store (no Z_METADATA/Z_PRIMARYKEY) — opening it with the migration plan must fail.
+        let fakeBackup = makeTempStoreURL()
+        defer { try? FileManager.default.removeItem(at: fakeBackup) }
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(fakeBackup.path, &db), SQLITE_OK)
+        sqlite3_exec(db, "CREATE TABLE ZJOB (Z_PK INTEGER PRIMARY KEY, ZTITLE TEXT)", nil, nil, nil)
+        sqlite3_close(db)
+        XCTAssertTrue(BackupService.isValidSQLite(at: fakeBackup), "Precondition: cheap check passes")
+
+        XCTAssertThrowsError(try BackupService.restore(from: fakeBackup, to: storeURL)) { error in
+            guard case BackupService.BackupError.incompatibleStore = error else {
+                XCTFail("Expected incompatibleStore, got \(error)")
+                return
+            }
+        }
+
+        // The original store must still be present, openable, and hold its original rows.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: storeURL.path),
+                      "Original store must survive a rejected restore")
+        let schema = Schema(SchemaV1.models)
+        let reopenConfig = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
+        let reopened = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: reopenConfig)
+        let rCtx = ModelContext(reopened)
+        let jobs = try rCtx.fetch(FetchDescriptor<Job>())
+        XCTAssertEqual(jobs.count, 1, "Original data must be intact after a rejected restore")
+        XCTAssertEqual(jobs.first?.jobNumber, 777)
+    }
+
+    /// TASK-373/374: A valid backup restores successfully and the store reopens with the backup's
+    /// data (and none of the pre-restore data).
+    func testRestore_replacesDataAndStoreIsReadable() throws {
+        let (container, storeURL) = try makeFileBacked()
+        defer { try? FileManager.default.removeItem(at: storeURL) }
+
+        // State A: snapshot a backup containing only job #1.
+        let ctxA = ModelContext(container)
+        ctxA.insert(Job(jobNumber: 1, title: "Backed-up Job"))
+        try ctxA.save()
+        let backupURL = makeTempStoreURL()
+        defer { try? FileManager.default.removeItem(at: backupURL) }
+        try BackupService.backup(storeURL: storeURL, to: backupURL)
+
+        // State B: mutate the live store to a different shape (add job #2).
+        ctxA.insert(Job(jobNumber: 2, title: "Post-backup Job"))
+        try ctxA.save()
+
+        // Restore back to state A.
+        try BackupService.restore(from: backupURL, to: storeURL)
+
+        // Reopen and verify only the backed-up state is present.
+        let schema = Schema(SchemaV1.models)
+        let reopenConfig = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
+        let reopened = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: reopenConfig)
+        let rCtx = ModelContext(reopened)
+        let jobs = try rCtx.fetch(FetchDescriptor<Job>()).sorted { ($0.jobNumber ?? 0) < ($1.jobNumber ?? 0) }
+        XCTAssertEqual(jobs.map(\.jobNumber), [1], "Restore must yield exactly the backed-up state")
+
+        // No staging/aside leftovers remain next to the store.
+        for suffix in [".incoming", ".old", ".old-wal", ".old-shm"] {
+            let leftover = storeURL.deletingLastPathComponent()
+                .appendingPathComponent(storeURL.lastPathComponent + suffix)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: leftover.path),
+                           "Restore must not leave \(suffix) behind")
+        }
+    }
+
     /// TASK-331: isValidSQLite must accept a backup created by BackupService.backup
     func testIsValidSQLite_acceptsValidBackup() throws {
         let (container, storeURL) = try makeFileBacked()

@@ -349,4 +349,174 @@ final class SchemaEvolutionTests: XCTestCase {
 
         try ctx.save()
     }
+
+    // MARK: - Compile-time property TYPE stability guard (TASK-368 / TASK-369)
+
+    /// Companion to `testSchemaV1StoredPropertyNamesAreStable`. That guard only *reads* each
+    /// property, so a stored property whose *type* changes (e.g. `Int` → `String`, optional →
+    /// non-optional) still compiles there but is a breaking SwiftData schema change that would
+    /// corrupt or fail to open a shipped store. Here every storage-critical property is bound to
+    /// an explicitly-typed `let`, so a type change FAILS TO COMPILE — surfacing the break before
+    /// it ships. This is the "equivalent historical schema strategy" (TASK-368): it freezes the
+    /// V1 stored shape without duplicating every model into a snapshot namespace.
+    ///
+    /// When you intentionally change a stored type, follow the SchemaV2 process in Schema.swift
+    /// (copy model, bump version, add a migration stage) and then update the binding below.
+    // swiftlint:disable:next function_body_length
+    func testSchemaV1StoredPropertyTypesAreStable() throws {
+        let container = try ModelContainerFactory.inMemory()
+        let ctx = ModelContext(container)
+
+        // Job
+        let job = Job(jobNumber: 1, title: "T")
+        ctx.insert(job)
+        let _: String = job.id
+        let _: Int? = job.jobNumber
+        let _: String? = job.company
+        let _: String? = job.title
+        let _: String? = job.location
+        let _: RemoteType? = job.remoteType
+        let _: Int? = job.salaryMin
+        let _: Int? = job.salaryMax
+        let _: Double? = job.salaryHourlyMin
+        let _: Double? = job.salaryHourlyMax
+        let _: String? = job.salaryCurrency
+        let _: String? = job.salaryNote
+        let _: String? = job.employmentType
+        let _: String? = job.seniority
+        let _: JobStatus = job.status
+        let _: String = job.manualOverridesJSON
+        let _: String? = job.manualFieldOverridesJSON
+        let _: String? = job.extractedJSON
+        let _: ExtractionStatus = job.extractionStatus
+        let _: String? = job.extractionError
+        let _: Int? = job.fitScore
+        let _: FitStatus = job.fitStatus
+        let _: String? = job.fitScoreJSON
+        let _: String? = job.duplicateOfJobID
+        let _: Double? = job.duplicateConfidence
+        let _: Date? = job.extractedAt
+        let _: Int? = job.rating
+        let _: String? = job.extractionModel
+        let _: String? = job.applicationURL
+        let _: Double? = job.extractionConfidence
+        let _: Date? = job.lastOpenedAt
+        let _: Bool = job.unread
+        let _: Date = job.createdAt
+        let _: Date = job.updatedAt
+        let _: Int? = job.rawTextBytes
+        let _: Int? = job.cleanedTextBytes
+        let _: Date? = job.capturedAtDenormalized
+
+        // Capture
+        let cap = Capture(url: "https://example.com", pageTitle: "T", rawHash: "h")
+        ctx.insert(cap)
+        let _: String = cap.id
+        let _: String = cap.url
+        let _: String? = cap.canonicalURL
+        let _: String = cap.pageTitle
+        let _: String? = cap.selectedText
+        let _: String? = cap.visibleText
+        let _: String? = cap.cleanedDescription
+        let _: String? = cap.structuredDataJSON
+        let _: String? = cap.userNote
+        let _: String = cap.rawHash
+        let _: String? = cap.cleanedHash
+        let _: Date = cap.capturedAt
+        let _: Date = cap.createdAt
+
+        // Resume
+        let resume = Resume(name: "R", text: "t", charCount: 1, active: true, sortOrder: 0)
+        ctx.insert(resume)
+        let _: String = resume.id
+        let _: String = resume.name
+        let _: String? = resume.filename
+        let _: String = resume.text
+        let _: Int = resume.charCount
+        let _: Bool = resume.active
+        let _: Int = resume.sortOrder
+        let _: Date = resume.createdAt
+        let _: Date = resume.updatedAt
+
+        // Site
+        let site = Site(origin: "https://x.com", url: "https://x.com/jobs")
+        ctx.insert(site)
+        let _: String = site.id
+        let _: String = site.url
+        let _: String? = site.companyName
+        let _: String? = site.companyWebsite
+        let _: String? = site.jobsURL
+        let _: String = site.companyDescription
+        let _: String = site.pageTitle
+        let _: Int = site.intervalDays
+        let _: Date? = site.lastReviewedAt
+        let _: Date? = site.nextReviewAt
+        let _: String = site.note
+        let _: SiteState = site.state
+        let _: Date = site.addedAt
+        let _: Date = site.createdAt
+        let _: Date = site.updatedAt
+
+        // LLMRequest
+        let llmReq = LLMRequest()
+        ctx.insert(llmReq)
+        let _: String = llmReq.id
+        let _: LLMRequestType = llmReq.requestType
+        let _: LLMRequestStatus = llmReq.status
+        let _: Int = llmReq.attempt
+        let _: String? = llmReq.model
+        let _: String? = llmReq.error
+        let _: Date = llmReq.createdAt
+        let _: Date? = llmReq.startedAt
+        let _: Date? = llmReq.finishedAt
+
+        // LLMRequestAttempt
+        let att = LLMRequestAttempt(requestType: .extract, attempt: 1, status: .queued)
+        ctx.insert(att)
+        let _: String = att.id
+        let _: LLMRequestType = att.requestType
+        let _: Int = att.attempt
+        let _: LLMRequestStatus = att.status
+        let _: String? = att.modelRequested
+        let _: String? = att.modelReturned
+        let _: String? = att.responseFormat
+        let _: String? = att.baseURL
+        let _: Date = att.startedAt
+        let _: Date? = att.finishedAt
+        let _: Int? = att.durationMs
+        let _: String? = att.error
+        let _: String? = att.responsePreview
+        let _: Int? = att.promptChars
+        let _: Int? = att.responseChars
+
+        // JobFitScore
+        let jfs = JobFitScore()
+        ctx.insert(jfs)
+        let _: Int? = jfs.fitScore
+        let _: FitStatus = jfs.fitStatus
+        let _: String? = jfs.fitScoreJSON
+        let _: String? = jfs.model
+        let _: Date? = jfs.scoredAt
+        let _: Date = jfs.createdAt
+        let _: Date = jfs.updatedAt
+
+        // SavedSearch
+        let ss = SavedSearch(name: "test")
+        ctx.insert(ss)
+        let _: String = ss.id
+        let _: String = ss.name
+        let _: Int = ss.sortOrder
+        let _: Date = ss.createdAt
+        let _: [String] = ss.statusFilterRaw
+        let _: [String] = ss.remoteFilterRaw
+        let _: String = ss.searchText
+        let _: Int? = ss.minFitScore
+        let _: Int? = ss.minRating
+        let _: Int? = ss.minSalary
+        let _: Int? = ss.recentDays
+        let _: String = ss.sortKeyRaw
+        let _: Bool = ss.sortAscending
+
+        try ctx.save()
+    }
 }

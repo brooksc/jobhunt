@@ -174,7 +174,7 @@ private struct DetailHeader: View {
 
                 Divider().frame(height: 16).padding(.horizontal, 2)
 
-                if let urlStr = job.capture?.url ?? job.applicationURL, let url = URL(string: urlStr) {
+                if let urlStr = JobURLPolicy.displayURL(job: job), let url = URL(string: urlStr) {
                     Link(destination: url) {
                         Label("Source", systemImage: "arrow.up.right.square")
                             .font(.caption)
@@ -232,7 +232,7 @@ private struct DetailHeader: View {
     @Environment(Router.self) private var router
 
     private var captureDomain: String? {
-        guard let urlStr = job.capture?.url ?? job.applicationURL,
+        guard let urlStr = JobURLPolicy.displayURL(job: job),
               let url = URL(string: urlStr),
               let host = url.host else { return nil }
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
@@ -350,7 +350,7 @@ private struct DetailFooter: View {
                 }
             }
             if job.status == .pursuing || job.status == .new,
-               let urlStr = job.applicationURL ?? job.capture?.url,
+               let urlStr = JobURLPolicy.applicationURL(job: job),
                let url = URL(string: urlStr) {
                 Button("Apply") { showApplyConfirmation = true }
                     .buttonStyle(.borderedProminent)
@@ -774,7 +774,7 @@ struct OverviewTabView: View {
     }
 
     private var captureDomain: String? {
-        guard let urlStr = job.capture?.url ?? job.applicationURL,
+        guard let urlStr = JobURLPolicy.displayURL(job: job),
               let url = URL(string: urlStr), let host = url.host else { return nil }
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
@@ -1708,7 +1708,7 @@ struct RawTabView: View {
                 sectionHeader("Diagnostics")
 
                 HStack(spacing: 8) {
-                    if let urlStr = job.capture?.url ?? job.applicationURL, let url = URL(string: urlStr) {
+                    if let urlStr = JobURLPolicy.displayURL(job: job), let url = URL(string: urlStr) {
                         Link(destination: url) {
                             Label("Open source", systemImage: "arrow.up.right.square")
                                 .font(.caption)

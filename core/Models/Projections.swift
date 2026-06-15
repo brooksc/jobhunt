@@ -135,7 +135,7 @@ public struct JobListRecord: Sendable {
         salaryNote = job.salaryNote
         rating = job.rating
         pageTitle = job.capture?.pageTitle
-        sourceURL = job.capture?.url
+        sourceURL = JobURLPolicy.sourceURL(job: job)
         capturedAt = job.capture?.capturedAt ?? job.capture?.createdAt
         createdAt = job.createdAt
     }
@@ -187,7 +187,7 @@ public struct JobDetailRecord: Sendable {
         salaryNote = job.salaryNote
         rating = job.rating
         pageTitle = job.capture?.pageTitle
-        sourceURL = job.capture?.url
+        sourceURL = JobURLPolicy.sourceURL(job: job)
         capturedAt = job.capture?.capturedAt ?? job.capture?.createdAt
         createdAt = job.createdAt
         selectedText = job.capture?.selectedText

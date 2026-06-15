@@ -239,7 +239,7 @@ public enum AvailabilityChecker {
             let id: String; let jobNumber: Int?; let company: String?; let title: String; let url: URL
         }
         let specs: [JobSpec] = eligible.compactMap { job in
-            let urlString = job.applicationURL ?? job.capture?.canonicalURL ?? job.capture?.url ?? ""
+            let urlString = JobURLPolicy.availabilityCheckURL(job: job) ?? ""
             guard !urlString.isEmpty, let url = URL(string: urlString) else { return nil }
             return JobSpec(id: job.id, jobNumber: job.jobNumber, company: job.company, title: job.title ?? "", url: url)
         }
@@ -304,7 +304,7 @@ public enum AvailabilityChecker {
             let url: URL
         }
         let specs: [JobSpec] = eligible.compactMap { job in
-            let urlString = job.applicationURL ?? job.capture?.canonicalURL ?? job.capture?.url ?? ""
+            let urlString = JobURLPolicy.availabilityCheckURL(job: job) ?? ""
             guard !urlString.isEmpty, let url = URL(string: urlString) else { return nil }
             return JobSpec(id: job.id, jobNumber: job.jobNumber, title: job.title ?? "", url: url)
         }

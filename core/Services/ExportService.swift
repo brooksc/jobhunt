@@ -18,7 +18,7 @@ public enum ExportService {
 
         for job in jobs {
             let capture = job.capture
-            let sourceURL = capture?.canonicalURL ?? capture?.url ?? ""
+            let sourceURL = JobURLPolicy.sourceURL(job: job) ?? ""
             let capturedAt = capture.flatMap { iso.string(from: $0.capturedAt) } ?? ""
             let extractedAt = job.extractedAt.flatMap { iso.string(from: $0) } ?? ""
 

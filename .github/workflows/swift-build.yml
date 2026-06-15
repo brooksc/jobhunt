@@ -29,6 +29,23 @@ jobs:
           fi
           echo "OK: Project.swift test paths use canonical lowercase tests/"
 
+      # TASK-417: the committed SQLite fixture must match its manifest, so a fixture change can't
+      # land without regenerating the manifest (build-fixture-db.sh writes both).
+      - name: Verify fixture matches manifest
+        run: |
+          FIXTURE=tests/fixtures/jobhunt-test.sqlite
+          MANIFEST=tests/fixtures/jobhunt-test.manifest.json
+          if [ -f "$FIXTURE" ] && [ -f "$MANIFEST" ]; then
+            ACTUAL=$(shasum -a 256 "$FIXTURE" | awk '{print $1}')
+            EXPECTED=$(python3 -c "import json; print(json.load(open('$MANIFEST'))['sha256'])")
+            if [ "$ACTUAL" != "$EXPECTED" ]; then
+              echo "ERROR: $FIXTURE sha256 ($ACTUAL) != manifest ($EXPECTED)."
+              echo "Re-run ./scripts/build-fixture-db.sh to regenerate both, then commit them together."
+              exit 1
+            fi
+            echo "OK: fixture matches manifest ($ACTUAL)"
+          fi
+
       - name: Install mise
         run: curl -Ls https://mise.run | sh && echo "$HOME/.local/bin" >> $GITHUB_PATH
 

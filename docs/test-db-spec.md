@@ -32,18 +32,27 @@ A **golden SQLite fixture database** checked into git at `tests/fixtures/jobhunt
 
 The fixture is built manually and committed:
 ```bash
-# One-time: generate the fixture
-./scripts/seed-test-db.sh
+# Generate (or regenerate) the fixture + manifest
+./scripts/build-fixture-db.sh
 
-# After changes to the fixture schema or content:
-./scripts/seed-test-db.sh --rebuild
+# After a Project.swift change or on a clean checkout, regenerate the project first:
+./scripts/build-fixture-db.sh --rebuild
 
-# Commit the result
-git add tests/fixtures/jobhunt-test.sqlite
+# Commit BOTH the fixture and its manifest together
+git add tests/fixtures/jobhunt-test.sqlite tests/fixtures/jobhunt-test.manifest.json
 git commit -m "Update test fixture database"
 ```
 
-`seed-test-db.sh` runs a special app build with `--seed-fixture` that calls a `FixtureSeeder` (separate from `DemoSeeder`) and writes to `tests/fixtures/jobhunt-test.sqlite`. The fixture seeder is deterministic (fixed UUIDs and timestamps) so git diffs are minimal when the schema evolves.
+`build-fixture-db.sh` builds the app and runs it with `--seed-fixture-output <path>`, which calls
+`FixtureSeeder` (separate from `DemoSeeder`) and writes `tests/fixtures/jobhunt-test.sqlite`, then
+validates it (CoreTests/FixtureTests) and writes `jobhunt-test.manifest.json` (sha256 + size).
+FixtureSeeder uses deterministic IDs so structural diffs stay minimal.
+
+### Storage policy (TASK-417)
+
+- The `.sqlite` fixture is committed **directly to git** (it's small, < 5 MB — no Git LFS). `.gitattributes` marks `tests/fixtures/*.sqlite` as `binary` so git doesn't attempt line diffs/merges.
+- Reviewers inspect a fixture change by: (1) diffing `jobhunt-test.manifest.json` (sha256/size change signals the binary changed), and (2) reading the `FixtureSeeder` diff + the updated `CoreTests/FixtureTests` count expectations — the human-readable source of truth for the fixture's contents.
+- CI (`swift-build.yml` → "Verify fixture matches manifest") fails if the committed `.sqlite` sha256 doesn't match the manifest, so the two can't drift.
 
 ---
 
@@ -163,10 +172,10 @@ Raw SQLite can be large. Strategies:
 
 ### Diff strategy
 
-To keep git diffs readable when the fixture changes, the `seed-test-db.sh` script:
-1. Exports the fixture to a deterministic JSON manifest (`tests/fixtures/jobhunt-test-manifest.json`) alongside the SQLite file
-2. The manifest lists all records with human-readable field values (no binary blobs)
-3. PR reviewers can diff the JSON to understand what changed in the fixture, even if the SQLite binary diff is opaque
+To keep fixture changes reviewable even though the SQLite binary diff is opaque, `build-fixture-db.sh`:
+1. Writes a manifest (`tests/fixtures/jobhunt-test.manifest.json`) with the fixture's sha256 + size alongside the SQLite file
+2. CI fails if the committed `.sqlite` no longer matches the manifest sha256 (the two can't silently drift)
+3. The human-readable source of truth for the fixture's *contents* is `FixtureSeeder` + the `CoreTests/FixtureTests` count expectations — reviewers diff those alongside the manifest
 
 ---
 
@@ -177,13 +186,13 @@ To keep git diffs readable when the fixture changes, the `seed-test-db.sh` scrip
 1. Add `--fixture-db <path>` launch arg to `app/JobhuntApp.swift`: copy the file to a temp path and open that container.
 2. Add `ModelContainerFactory.fixture(copying:)` to `JobhuntCore` for use in unit tests.
 3. Add `FixtureSeeder` class to `core/Demo/` (separate from `DemoSeeder`): deterministic UUIDs, fixed timestamps relative to seeding date, real JD content.
-4. Write `scripts/seed-test-db.sh`.
+4. Write `scripts/build-fixture-db.sh`.
 5. Add `tests/fixtures/` to `.gitignore` exclusion (currently ignored by a glob — add explicit allow).
 
 ### Phase 2 — Initial fixture
 
 6. Curate the JD content: find 10 live postings, 4 confirmed-dead URLs. Store raw text.
-7. Run `seed-test-db.sh` to generate `tests/fixtures/jobhunt-test.sqlite` and the JSON manifest.
+7. Run `build-fixture-db.sh` to generate `tests/fixtures/jobhunt-test.sqlite` and the manifest.
 8. Commit both files.
 
 ### Phase 3 — Test migration

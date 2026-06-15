@@ -1,0 +1,7 @@
+{
+  "file": "jobhunt-test.sqlite",
+  "sha256": "cc83d8c54e493f7c1e750c2b57c421e71e37c1754f159d543ebe90595036bde5",
+  "size_bytes": 356352,
+  "generated_by": "scripts/build-fixture-db.sh",
+  "source": "FixtureSeeder (deterministic)"
+}

@@ -24,13 +24,15 @@ APP_NAME="Jobhunt"
 DERIVED_DATA="$HOME/Library/Developer/Xcode/DerivedData/Jobhunt-local"
 
 REBUILD=false
+DRY_RUN=false
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --rebuild) REBUILD=true; shift ;;
-        *) echo "Usage: $0 [--rebuild]" >&2; exit 1 ;;
+        --dry-run) DRY_RUN=true; shift ;;  # TASK-416: validate the command path, don't build/seed
+        *) echo "Usage: $0 [--rebuild] [--dry-run]" >&2; exit 1 ;;
     esac
 done
 
@@ -62,6 +64,13 @@ step "Preflight"
 log "project: $REPO_ROOT/$PROJECT"
 log "scheme:  $SCHEME"
 log "output:  $FIXTURE_PATH"
+
+# TASK-416: --dry-run validates the command path (project present, paths resolve) and exits WITHOUT
+# building, seeding, or touching the committed fixture/manifest.
+if [ "$DRY_RUN" = true ]; then
+    step "Dry run — would build $SCHEME and seed $FIXTURE_PATH (no changes made)"
+    exit 0
+fi
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 
@@ -157,4 +166,14 @@ nice xcodebuild test \
     || fail "Fixture validation failed — counts drifted or the fixture is unreadable. If FixtureSeeder changed intentionally, update CoreTests/FixtureTests expectations."
 log "fixture validated"
 
-step "Done — commit tests/fixtures/jobhunt-test.sqlite to git"
+# TASK-417: emit a deterministic manifest (sha256 + size) next to the fixture. CI verifies the
+# committed .sqlite still matches this manifest, so a fixture change can't land without the manifest
+# being regenerated (and reviewers can diff the manifest even though the .sqlite is binary).
+step "Writing fixture manifest"
+MANIFEST_PATH="$REPO_ROOT/tests/fixtures/jobhunt-test.manifest.json"
+SHA="$(shasum -a 256 "$FIXTURE_PATH" | awk '{print $1}')"
+printf '{\n  "file": "jobhunt-test.sqlite",\n  "sha256": "%s",\n  "size_bytes": %s,\n  "generated_by": "scripts/build-fixture-db.sh",\n  "source": "FixtureSeeder (deterministic)"\n}\n' \
+    "$SHA" "$SIZE_BYTES" > "$MANIFEST_PATH"
+log "manifest: tests/fixtures/jobhunt-test.manifest.json (sha256 $SHA)"
+
+step "Done — commit tests/fixtures/jobhunt-test.sqlite AND jobhunt-test.manifest.json to git"

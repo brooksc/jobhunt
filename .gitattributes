@@ -1,0 +1,3 @@
+# TASK-417: SQLite test fixtures are committed directly (small, <5 MB). Mark binary so git
+# does not attempt line diffs/merges; reviewers inspect changes via the manifest + FixtureTests.
+tests/fixtures/*.sqlite binary

@@ -122,6 +122,20 @@ final class JobhuntServerTests: XCTestCase {
         XCTAssertTrue(body.isOK)
     }
 
+    // TASK-435: an over-limit body is rejected with 413 (site-reviews limit is 256 KB).
+    func testOversizedBodyReturns413() async throws {
+        let url = await URL(string: baseURL() + "/site-reviews")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("chrome-extension://testextension", forHTTPHeaderField: "Origin")
+        let bigNote = String(repeating: "x", count: 300 * 1024) // > 256 KB limit
+        req.httpBody = try JSONEncoder().encode(["site_url": "https://x.com", "note": bigNote])
+        let (_, response) = try await URLSession.shared.data(for: req)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+        XCTAssertEqual(http.statusCode, 413, "Over-limit body must be rejected with 413")
+    }
+
     // TASK-434: MCP routes only accept POST; other methods get 405.
     func testMCPRoute_getMethodRejectedWith405() async throws {
         for path in ["/mcp/jobs/list", "/mcp/jobs/update"] {  // a read route and a write route

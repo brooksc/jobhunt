@@ -292,6 +292,18 @@ public actor JobhuntServer {
         receiveRequest(on: connection)
     }
 
+    /// Maximum request body size per route (TASK-435). Captures carry full visible page text so
+    /// they get the largest budget; site-reviews are tiny metadata; MCP payloads are moderate;
+    /// everything else is small. Oversized requests are rejected with 413 before the body is read.
+    static func maxBodySize(forPath path: String) -> Int {
+        switch path {
+        case "/captures":            return 4 * 1_048_576   // 4 MB — full page text
+        case "/site-reviews":        return 256 * 1024      // 256 KB
+        case _ where path.hasPrefix("/mcp/"): return 1_048_576  // 1 MB
+        default:                     return 64 * 1024       // 64 KB (health/ping/by-url/focus)
+        }
+    }
+
     // nonisolated: only touches NWConnection and spawns Tasks back onto the actor.
     // Accumulates TCP chunks until a complete HTTP request is available before processing.
     private nonisolated func receiveRequest(on connection: NWConnection, accumulated: Data = Data()) {
@@ -299,6 +311,18 @@ public actor JobhuntServer {
             var buffer = accumulated
             if let data, !data.isEmpty {
                 buffer.append(data)
+            }
+
+            // TASK-435: once the headers are in, reject an over-limit body early (by Content-Length)
+            // with 413 instead of accumulating it up to the hard cap and returning a generic 400.
+            if let peek = peekRequestHeaders(buffer) {
+                let limit = Self.maxBodySize(forPath: peek.path)
+                if peek.contentLength > limit {
+                    let response = HTTPResponse.error(
+                        "Request body too large (\(peek.contentLength) bytes; limit \(limit))", code: 413)
+                    Task { await self.sendResponse(response, on: connection) }
+                    return
+                }
             }
 
             if let request = parseHTTPRequest(buffer) {

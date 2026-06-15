@@ -21,6 +21,33 @@ struct HTTPRequest {
     }
 }
 
+/// Peek the request target path and declared Content-Length once the header block is complete,
+/// WITHOUT waiting for the body. Used to reject oversized requests early (TASK-435) before
+/// accumulating the whole body. Returns nil if the header terminator hasn't arrived yet.
+func peekRequestHeaders(_ data: Data) -> (path: String, contentLength: Int)? {
+    let sepBytes = Data([13, 10, 13, 10]) // \r\n\r\n
+    guard let sepRange = data.range(of: sepBytes),
+          let headerString = String(data: data[data.startIndex ..< sepRange.lowerBound], encoding: .ascii)
+    else { return nil }
+    var lines = headerString.components(separatedBy: "\r\n")
+    guard !lines.isEmpty else { return nil }
+    let requestLine = lines.removeFirst()
+    let parts = requestLine.split(separator: " ", maxSplits: 2).map(String.init)
+    guard parts.count >= 2 else { return nil }
+    let rawTarget = parts[1]
+    let path = rawTarget.firstIndex(of: "?").map { String(rawTarget[rawTarget.startIndex ..< $0]) } ?? rawTarget
+    var contentLength = 0
+    for line in lines {
+        if let colonIdx = line.firstIndex(of: ":") {
+            let key = String(line[line.startIndex ..< colonIdx]).trimmingCharacters(in: .whitespaces).lowercased()
+            if key == "content-length" {
+                contentLength = Int(String(line[line.index(after: colonIdx)...]).trimmingCharacters(in: .whitespaces)) ?? 0
+            }
+        }
+    }
+    return (path, contentLength)
+}
+
 /// Parse raw HTTP request bytes into an HTTPRequest.
 /// Returns nil if the request is malformed or incomplete.
 /// Body is sliced from the original Data using Content-Length as a byte count,

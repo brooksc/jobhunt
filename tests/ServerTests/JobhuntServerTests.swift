@@ -15,7 +15,10 @@ private struct NoOpProvider: LLMProvider {
 
 // MARK: - Helpers
 
-private func makeTestServer() throws -> JobhuntServer {
+private func makeTestServer(
+    allowArbitraryExtensionOrigins: Bool = true,
+    allowedExtensionOrigins: Set<String> = JobhuntServer.defaultAllowedExtensionOrigins
+) throws -> JobhuntServer {
     let container = try ModelContainerFactory.inMemory()
     let store = BackgroundStore(modelContainer: container)
     let context = ModelContext(container)
@@ -29,7 +32,17 @@ private func makeTestServer() throws -> JobhuntServer {
     )
     let jobService = JobService(store: store, queue: queue)
     let siteService = SiteService(store: store)
-    return JobhuntServer(jobService: jobService, siteService: siteService, appVersion: "1.0.0-test", store: store, mcpToken: "test-token-abc123")
+    // Default to permit-all so the broad endpoint tests work regardless of build config; the
+    // fail-closed (production) behavior is covered explicitly by JobhuntServerOriginTests.
+    return JobhuntServer(
+        jobService: jobService,
+        siteService: siteService,
+        appVersion: "1.0.0-test",
+        store: store,
+        mcpToken: "test-token-abc123",
+        allowedExtensionOrigins: allowedExtensionOrigins,
+        allowArbitraryExtensionOrigins: allowArbitraryExtensionOrigins
+    )
 }
 
 // MARK: - Response decodables (file-scope to avoid nesting violations)
@@ -385,5 +398,93 @@ final class JobhuntServerTests: XCTestCase {
         struct ErrorBody: Decodable { let error: String }
         let body = try JSONDecoder().decode(ErrorBody.self, from: data)
         XCTAssertFalse(body.error.isEmpty)
+    }
+}
+
+// MARK: - Origin allowlist (TASK-431) + loopback (TASK-432)
+
+final class JobhuntServerOriginTests: XCTestCase {
+    private func captureRequest(port: UInt16, origin: String) throws -> URLRequest {
+        let url = try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)/captures"))
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(origin, forHTTPHeaderField: "Origin")
+        req.httpBody = try JSONSerialization.data(withJSONObject: [
+            "url": "https://jobs.example.com/role",
+            "page_title": "Role",
+            "visible_text": "Some job description body text."
+        ])
+        return req
+    }
+
+    func testProductionMode_arbitraryExtensionOrigin_rejectedWithoutCORS() async throws {
+        let server = try makeTestServer(allowArbitraryExtensionOrigins: false)
+        try await server.startOnAnyPort()
+        let port = await server.listeningPort
+
+        let req = try captureRequest(port: port, origin: "chrome-extension://arbitrarydevextension")
+        let (_, response) = try await URLSession.shared.data(for: req)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+
+        XCTAssertEqual(http.statusCode, 403, "unapproved extension origin must be forbidden in production mode")
+        XCTAssertNil(
+            http.value(forHTTPHeaderField: "Access-Control-Allow-Origin"),
+            "no CORS reflected for an unapproved origin"
+        )
+        await server.stop()
+    }
+
+    func testProductionMode_approvedExtensionOrigin_reflectsCORS() async throws {
+        let approved = "chrome-extension://approvedcwsid"
+        let server = try makeTestServer(
+            allowArbitraryExtensionOrigins: false,
+            allowedExtensionOrigins: [approved]
+        )
+        try await server.startOnAnyPort()
+        let port = await server.listeningPort
+
+        let req = try captureRequest(port: port, origin: approved)
+        let (_, response) = try await URLSession.shared.data(for: req)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+
+        XCTAssertNotEqual(http.statusCode, 403, "approved origin must not be forbidden")
+        XCTAssertEqual(
+            http.value(forHTTPHeaderField: "Access-Control-Allow-Origin"),
+            approved,
+            "CORS reflected for the approved origin"
+        )
+        await server.stop()
+    }
+
+    func testIsApprovedExtensionOrigin_decisionLogic() {
+        let allow: Set<String> = ["chrome-extension://approved"]
+        // Non-extension origins are never approved, even with allowArbitrary.
+        XCTAssertFalse(JobhuntServer.isApprovedExtensionOrigin("https://evil.com", allowlist: allow, allowArbitrary: true))
+        // Allowlisted origin is approved regardless of allowArbitrary.
+        XCTAssertTrue(JobhuntServer.isApprovedExtensionOrigin("chrome-extension://approved", allowlist: allow, allowArbitrary: false))
+        // Unlisted extension origin: approved only when allowArbitrary (debug).
+        XCTAssertFalse(JobhuntServer.isApprovedExtensionOrigin("chrome-extension://other", allowlist: allow, allowArbitrary: false))
+        XCTAssertTrue(JobhuntServer.isApprovedExtensionOrigin("chrome-extension://other", allowlist: allow, allowArbitrary: true))
+    }
+
+    func testReleaseDefault_failsClosed() {
+        // The shipped default must reject arbitrary extension origins (only the CWS origin works).
+        XCTAssertFalse(
+            JobhuntServer.isApprovedExtensionOrigin(
+                "chrome-extension://arbitrary",
+                allowlist: JobhuntServer.defaultAllowedExtensionOrigins,
+                allowArbitrary: false
+            ),
+            "release default must fail closed for unapproved origins"
+        )
+        XCTAssertTrue(
+            JobhuntServer.isApprovedExtensionOrigin(
+                JobhuntServer.productionExtensionOrigin,
+                allowlist: JobhuntServer.defaultAllowedExtensionOrigins,
+                allowArbitrary: false
+            ),
+            "the published CWS extension origin must be approved"
+        )
     }
 }

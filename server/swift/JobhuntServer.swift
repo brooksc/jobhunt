@@ -132,6 +132,12 @@ public actor JobhuntServer {
     private let siteService: SiteService
     private let appVersion: String
     private let isDemo: Bool
+    /// Chrome-extension origins that may use the extension routes and receive reflected CORS.
+    private let allowedExtensionOrigins: Set<String>
+    /// When true, any `chrome-extension://` origin is permitted (for locally-loaded unpacked dev
+    /// extensions, which get a different ID than the published one). Defaults to true only in DEBUG
+    /// builds; release builds fail closed.
+    private let allowArbitraryExtensionOrigins: Bool
     #if !MAS_BUILD
         private let store: BackgroundStore
         private let mcpToken: String
@@ -143,12 +149,16 @@ public actor JobhuntServer {
         appVersion: String = "1.0.0",
         isDemo: Bool = false,
         store: BackgroundStore,
-        mcpToken: String = ""
+        mcpToken: String = "",
+        allowedExtensionOrigins: Set<String> = JobhuntServer.defaultAllowedExtensionOrigins,
+        allowArbitraryExtensionOrigins: Bool = JobhuntServer.defaultAllowArbitraryExtensionOrigins
     ) {
         self.jobService = jobService
         self.siteService = siteService
         self.appVersion = appVersion
         self.isDemo = isDemo
+        self.allowedExtensionOrigins = allowedExtensionOrigins
+        self.allowArbitraryExtensionOrigins = allowArbitraryExtensionOrigins
         #if !MAS_BUILD
             self.store = store
             self.mcpToken = mcpToken
@@ -205,6 +215,12 @@ public actor JobhuntServer {
 
     private func startListener(on candidatePort: UInt16) async throws {
         let params = NWParameters.tcp
+        // Bind to the loopback interface only. This is a localhost-only companion server; binding
+        // loopback means non-loopback peers cannot connect at the OS networking boundary (no LAN
+        // exposure), rather than relying on client behavior or route-level checks. Loopback clients
+        // (the Chrome extension and MCP helper, both via 127.0.0.1) are unaffected.
+        // Verify externally with e.g. `nc <this-machine-LAN-IP> <port>` — the connection is refused.
+        params.requiredInterfaceType = .loopback
         // candidatePort == 0 lets the OS assign an ephemeral port (used in tests).
         let nwPort: NWEndpoint.Port = candidatePort == 0 ? .any : {
             guard let p = NWEndpoint.Port(rawValue: candidatePort) else { return .any }
@@ -313,33 +329,53 @@ public actor JobhuntServer {
         sendResponse(response, on: connection)
     }
 
-    // TASK-334: Only the Jobhunt extension may receive reflected CORS headers.
-    // Chrome extension IDs are assigned dynamically by the browser (no static ID in manifest.json),
-    // so we maintain an explicit allowlist. To add a new approved extension ID (e.g. after
-    // publishing to the Chrome Web Store), append it to this set.
+    // TASK-334 / TASK-431: Only approved Jobhunt extension origins may use the extension routes and
+    // receive reflected CORS headers. Any installed Chrome extension can forge
+    // `Origin: chrome-extension://<its-id>`, so reflecting CORS / authorizing routes for all
+    // chrome-extension:// origins would let any extension drive capture/site-review/job-lookup/focus.
     //
-    // Rationale: any installed Chrome extension can forge Origin: chrome-extension://<its-id>.
-    // Reflecting CORS for all chrome-extension:// origins would let any extension call capture
-    // routes. The allowlist ensures only the known Jobhunt extension(s) can.
+    // The default allowlist is the published Chrome Web Store extension ("jobhunt-capture"). To
+    // approve another build (e.g. a new CWS listing), add its `chrome-extension://<id>` origin via
+    // the `allowedExtensionOrigins` init parameter or here.
     //
-    // While the allowlist is empty (pre-CWS-publish), all chrome-extension:// origins are
-    // permitted so development/test flows work. Once a CWS ID is assigned, add it here and
-    // remove the fallback by making the empty-set branch return false.
+    // Locally-loaded *unpacked* dev extensions get a different, machine-specific ID, so debug builds
+    // permit any chrome-extension:// origin via `allowArbitraryExtensionOrigins`. Release builds set
+    // this to false and therefore fail closed — only the configured CWS origin is accepted.
     //
-    // Production CWS ID: add "chrome-extension://<CWS_ID>" here after publishing.
-    private static let allowedExtensionOrigins: Set<String> = [
-        // "chrome-extension://REPLACE_WITH_CWS_ID"
-    ]
+    // Published CWS extension ID (from chromewebstore.google.com/detail/jobhunt-capture/<id>).
+    public static let productionExtensionOrigin = "chrome-extension://jekcbebhfeidkpapienoflbcaeeknlch"
 
-    /// True when `origin` is an allowed Jobhunt extension origin.
-    private func isAllowedExtensionOrigin(_ origin: String) -> Bool {
+    public static let defaultAllowedExtensionOrigins: Set<String> = [productionExtensionOrigin]
+
+    /// Permit arbitrary chrome-extension origins only in debug builds — never in release.
+    public static var defaultAllowArbitraryExtensionOrigins: Bool {
+        #if DEBUG
+            return true
+        #else
+            return false
+        #endif
+    }
+
+    /// Pure decision used by both the route guard and CORS reflection. Approves `origin` if it is a
+    /// chrome-extension origin that is explicitly allowlisted, or — only when `allowArbitrary` —
+    /// any chrome-extension origin. Non-extension origins are never approved here.
+    static func isApprovedExtensionOrigin(
+        _ origin: String,
+        allowlist: Set<String>,
+        allowArbitrary: Bool
+    ) -> Bool {
         guard origin.hasPrefix("chrome-extension://") else { return false }
-        // If the allowlist is populated, require an exact match.
-        if !Self.allowedExtensionOrigins.isEmpty {
-            return Self.allowedExtensionOrigins.contains(origin)
-        }
-        // Allowlist is empty (no CWS ID assigned yet): permit any chrome-extension:// origin.
-        return true
+        if allowlist.contains(origin) { return true }
+        return allowArbitrary
+    }
+
+    /// True when `origin` is an allowed Jobhunt extension origin for this server instance.
+    private func isAllowedExtensionOrigin(_ origin: String) -> Bool {
+        Self.isApprovedExtensionOrigin(
+            origin,
+            allowlist: allowedExtensionOrigins,
+            allowArbitrary: allowArbitraryExtensionOrigins
+        )
     }
 
     private func sendResponse(_ response: HTTPResponse, on connection: NWConnection) {

@@ -26,7 +26,7 @@ You can delete the database at any time to remove all stored data.
 
 ## What the Chrome extension collects
 
-When you click the toolbar button, the extension reads the current tab's URL, page title, visible text, and any structured data (JSON-LD) on the page. This content is sent only to the Jobhunt app running locally on your machine via `http://127.0.0.1`.
+When you click the toolbar button, the extension reads the current tab's URL, page title, visible text, and any structured data (JSON-LD) on the page. This content is sent only to the Jobhunt app running locally on your machine via `http://127.0.0.1`. The app's local HTTP server binds to the loopback interface only, so it is not reachable from other devices on your network. It also only accepts requests from the approved Jobhunt browser extension.
 
 **Greenhouse job board API:** When capturing a job from a Greenhouse-hosted job board (e.g. `boards.greenhouse.io`), the extension makes a direct request to the Greenhouse public API (`https://boards-api.greenhouse.io/v1/boards/…/jobs/…`) to retrieve structured job data. This request goes from your browser to Greenhouse's servers and is subject to Greenhouse's privacy policy. No credentials or personal data are included in this request; it is equivalent to loading a public webpage. No other external server is contacted by the extension.
 

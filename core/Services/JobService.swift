@@ -48,6 +48,7 @@ public struct IngestResult: Sendable {
 
 public enum JobServiceError: Error, LocalizedError, Sendable {
     case missingURL
+    case invalidURL
     case missingPageTitle
     case missingText
     case jobNotFound(String)
@@ -58,6 +59,7 @@ public enum JobServiceError: Error, LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .missingURL: "Job URL is required"
+        case .invalidURL: "Job URL must be a valid http or https web address"
         case .missingPageTitle: "Job page title is required"
         case .missingText: "Job description text is required"
         case .jobNotFound: "Job not found"
@@ -84,10 +86,21 @@ public actor JobService {
     // swiftlint:disable function_body_length
     /// Validate → clean → hash → dedup → create Job → enqueue extraction.
     public func ingestCapture(_ payload: CapturePayload) async throws -> IngestResult {
-        // 1. Validate
+        // 1. Validate — one shared URL policy (TASK-443). Reject before any persistence/enqueue.
         guard !payload.url.trimmingCharacters(in: .whitespaces).isEmpty else {
             throw JobServiceError.missingURL
         }
+        let validatedURL: String
+        do {
+            validatedURL = try URLNormalizer.validatedForIngestion(payload.url)
+        } catch {
+            throw JobServiceError.invalidURL
+        }
+        // A canonical URL is optional metadata; normalize it if valid, otherwise drop it (don't fail
+        // the whole capture over a malformed <link rel="canonical"> the site emitted).
+        let validatedCanonical: String? = payload.canonicalURL
+            .flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
+            .flatMap { try? URLNormalizer.validatedForIngestion($0) }
         guard !payload.pageTitle.trimmingCharacters(in: .whitespaces).isEmpty else {
             throw JobServiceError.missingPageTitle
         }
@@ -114,8 +127,8 @@ public actor JobService {
 
         // 3. Hash
         let rawHashValue = DuplicateDetector.rawHash(
-            url: payload.url,
-            canonicalURL: payload.canonicalURL,
+            url: validatedURL,
+            canonicalURL: validatedCanonical,
             selectedText: payload.selectedText,
             visibleText: payload.visibleText,
             structuredData: structuredData
@@ -131,8 +144,8 @@ public actor JobService {
         let input = AtomicIngestInput(
             captureID: captureID,
             jobID: jobID,
-            url: payload.url,
-            canonicalURL: payload.canonicalURL,
+            url: validatedURL,
+            canonicalURL: validatedCanonical,
             pageTitle: payload.pageTitle,
             selectedText: payload.selectedText,
             visibleText: payload.visibleText,
@@ -159,27 +172,34 @@ public actor JobService {
     /// Add a job by URL alone (no browser-captured content). Uses the URL as synthetic content
     /// so extraction has something to work with (URL paths often contain company and job keywords).
     public func addJobByURL(_ urlString: String) async throws -> IngestResult {
-        let trimmed = urlString.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty, URL(string: trimmed) != nil else {
+        guard !urlString.trimmingCharacters(in: .whitespaces).isEmpty else {
             throw JobServiceError.missingURL
+        }
+        // Same shared URL policy as capture ingestion (TASK-443) — reject non-http(s)/malformed
+        // before any persistence or enqueue.
+        let validated: String
+        do {
+            validated = try URLNormalizer.validatedForIngestion(urlString)
+        } catch {
+            throw JobServiceError.invalidURL
         }
 
         let rawHash = DuplicateDetector.rawHash(
-            url: trimmed,
+            url: validated,
             canonicalURL: nil,
             selectedText: nil,
-            visibleText: trimmed,
+            visibleText: validated,
             structuredData: []
         )
         let input = AtomicIngestInput(
             captureID: "cap-\(UUID().uuidString)",
             jobID: "job-\(UUID().uuidString)",
-            url: trimmed,
+            url: validated,
             canonicalURL: nil,
-            pageTitle: trimmed,
+            pageTitle: validated,
             selectedText: nil,
-            visibleText: trimmed,
-            cleanedDescription: trimmed,
+            visibleText: validated,
+            cleanedDescription: validated,
             structuredDataJSON: nil,
             userNote: nil,
             rawHash: rawHash,

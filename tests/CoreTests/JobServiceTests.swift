@@ -963,6 +963,58 @@ final class JobServiceTests: XCTestCase {
         }
     }
 
+    // TASK-443: shared URL policy — non-http(s)/malformed rejected before any persistence/enqueue.
+
+    func testAddJobByURL_unsupportedScheme_throwsAndPersistsNothing() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        do {
+            _ = try await svc.addJobByURL("ftp://example.com/x")
+            XCTFail("Expected invalidURL error")
+        } catch JobServiceError.invalidURL {
+            // expected
+        }
+        let ctx = ModelContext(container)
+        XCTAssertEqual(try ctx.fetch(FetchDescriptor<Job>()).count, 0, "no job persisted on invalid URL")
+        XCTAssertEqual(try ctx.fetch(FetchDescriptor<LLMRequest>()).count, 0, "no extraction enqueued")
+    }
+
+    func testIngestCapture_invalidURL_throwsAndPersistsNothing() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        let payload = CapturePayload(
+            url: "javascript:alert(1)", pageTitle: "Engineer", selectedText: nil, visibleText: "text")
+        do {
+            _ = try await svc.ingestCapture(payload)
+            XCTFail("Expected invalidURL error")
+        } catch JobServiceError.invalidURL {
+            // expected
+        }
+        let ctx = ModelContext(container)
+        XCTAssertEqual(try ctx.fetch(FetchDescriptor<Capture>()).count, 0, "no capture persisted on invalid URL")
+        XCTAssertEqual(try ctx.fetch(FetchDescriptor<LLMRequest>()).count, 0, "no extraction enqueued")
+    }
+
+    func testIngestCapture_invalidCanonical_droppedButCaptureSucceeds() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        let payload = CapturePayload(
+            url: "https://example.com/job", pageTitle: "Engineer",
+            visibleText: "text", canonicalURL: "not-a-valid-url")
+        _ = try await svc.ingestCapture(payload)
+
+        let ctx = ModelContext(container)
+        let captures = try ctx.fetch(FetchDescriptor<Capture>())
+        XCTAssertEqual(captures.count, 1, "valid capture persists despite a malformed canonical")
+        XCTAssertNil(captures.first?.canonicalURL, "malformed canonical is dropped, not stored")
+    }
+
     // MARK: - TASK-250: semantic duplicate ingest sets both signals
 
     func testIngestSemanticDuplicate_setsBothDuplicateSignals() async throws {

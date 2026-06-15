@@ -17,6 +17,18 @@ jobs:
       # actions/checkout@v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
+      # TASK-414: the test tree is canonically lowercase `tests/` (what git tracks). A capital-T
+      # `Tests/` glob in Project.swift only resolves on case-insensitive macOS and breaks on a
+      # case-sensitive checkout. Fail fast if one is reintroduced.
+      - name: Guard against mixed-case test paths
+        run: |
+          if grep -q '"Tests/' Project.swift; then
+            echo "ERROR: Project.swift references capital-T \"Tests/\". The canonical test tree is lowercase \"tests/\"."
+            grep -n '"Tests/' Project.swift
+            exit 1
+          fi
+          echo "OK: Project.swift test paths use canonical lowercase tests/"
+
       - name: Install mise
         run: curl -Ls https://mise.run | sh && echo "$HOME/.local/bin" >> $GITHUB_PATH
 

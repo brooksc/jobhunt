@@ -217,7 +217,7 @@ let coreTestsTarget = testTarget(
 let serverTestsTarget = testTarget(
     name: "ServerTests",
     bundleSuffix: "ServerTests",
-    sources: ["Tests/ServerTests/**/*.swift"],
+    sources: ["tests/ServerTests/**/*.swift"],
     deps: [.target(name: "JobhuntServer")]
 )
 
@@ -227,7 +227,7 @@ let mcpTestsTarget = testTarget(
     name: "MCPTests",
     bundleSuffix: "MCPTests",
     sources: [
-        "Tests/MCPTests/**/*.swift",
+        "tests/MCPTests/**/*.swift",
         "mcp/swift/MCPHelpers.swift",
     ],
     deps: [.target(name: "JobhuntCore")]
@@ -242,7 +242,7 @@ let appUITestsTarget = Target.target(
     product: .uiTests,
     bundleId: "\(bundleId).AppUITests",
     deploymentTargets: deploymentTarget,
-    sources: ["Tests/AppUITests/**/*.swift"],
+    sources: ["tests/AppUITests/**/*.swift"],
     dependencies: [.target(name: "Jobhunt")],
     settings: .settings(
         base: sharedBase,
@@ -254,7 +254,7 @@ let appUITestsTarget = Target.target(
 let llmEvalTarget = testTarget(
     name: "LLMEval",
     bundleSuffix: "LLMEval",
-    sources: ["Tests/LLMEval/**/*.swift"],
+    sources: ["tests/LLMEval/**/*.swift"],
     deps: [.target(name: "JobhuntCore")]
 )
 

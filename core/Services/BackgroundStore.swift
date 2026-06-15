@@ -120,6 +120,30 @@ public actor BackgroundStore {
         }
     }
 
+    /// One-time cleanup: delete orphaned fit scores (no resume linked) and recompute the denormalized
+    /// job fit mirror for each affected job. These arise from legacy/unmigrated rows whose resume
+    /// reference didn't survive migration; they otherwise render as a model name and hijack "Best
+    /// match". Returns the number of orphan records deleted. Run out-of-band via JobhuntMigrator.
+    @discardableResult
+    public func pruneOrphanFitScores() throws -> Int {
+        let orphans = try modelContext.fetch(
+            FetchDescriptor<JobFitScore>(predicate: #Predicate { $0.resume == nil })
+        )
+        guard !orphans.isEmpty else { return 0 }
+        // Collect affected jobs before deleting (the relationship is nilled on delete).
+        var affected: [Job] = []
+        for orphan in orphans where orphan.job != nil {
+            if let job = orphan.job, !affected.contains(where: { $0.persistentModelID == job.persistentModelID }) {
+                affected.append(job)
+            }
+        }
+        let count = orphans.count
+        for orphan in orphans { modelContext.delete(orphan) }
+        for job in affected { recomputeJobFitSummary(job) }
+        try modelContext.save()
+        return count
+    }
+
     /// Apply a mutation to exactly one model matching `predicate`.
     /// Throws `notFound` if no row matches, or `multipleMatches` if more than one row matches.
     public func updateOne<T: PersistentModel>(
@@ -249,7 +273,9 @@ public actor BackgroundStore {
     /// fit-score records (Electron parity: jobs.fit_score = MAX across resumes). Falls back to
     /// running/pending/failed/none when no resume has a numeric score yet.
     private func recomputeJobFitSummary(_ job: Job) {
-        let scored = job.fitScores.filter { $0.fitScore != nil }
+        // Only resume-linked scores count toward the mirror — an orphaned score (no resume) is a
+        // legacy/unmigrated artifact and must not drive the headline number.
+        let scored = job.fitScores.filter { $0.fitScore != nil && $0.resume != nil }
         if let best = scored.max(by: { ($0.fitScore ?? 0) < ($1.fitScore ?? 0) }) {
             job.fitScore = best.fitScore
             job.fitStatus = .succeeded

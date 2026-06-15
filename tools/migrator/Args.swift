@@ -10,6 +10,7 @@ enum Mode {
     case patchFitScores(inputPath: String, storePath: String)
     case reclean(storePath: String)
     case backfillModels(storePath: String)
+    case pruneOrphanFitScores(storePath: String)
 }
 
 func parseArgs() -> Mode? {
@@ -26,6 +27,7 @@ func parseArgs() -> Mode? {
     var patchFit = false
     var reclean = false
     var backfillModels = false
+    var pruneOrphanFitScores = false
     var storePath = defaultStorePath
     var inputPath = defaultInputPath
     var outputPath: String? = nil
@@ -46,6 +48,8 @@ func parseArgs() -> Mode? {
             reclean = true
         case "--backfill-models":
             backfillModels = true
+        case "--prune-orphan-fit-scores":
+            pruneOrphanFitScores = true
         case "--store":
             i += 1
             if i < args.count { storePath = args[i] }
@@ -67,6 +71,7 @@ func parseArgs() -> Mode? {
     if patchFit { return .patchFitScores(inputPath: inputPath, storePath: storePath) }
     if reclean  { return .reclean(storePath: storePath) }
     if backfillModels { return .backfillModels(storePath: storePath) }
+    if pruneOrphanFitScores { return .pruneOrphanFitScores(storePath: storePath) }
 
     guard let out = outputPath else {
         fputs("Error: --output <path> is required.\n", stderr)
@@ -78,6 +83,7 @@ func parseArgs() -> Mode? {
         fputs("  JobhuntMigrator --patch-fit-scores [--input <path>] [--store <path>]\n", stderr)
         fputs("  JobhuntMigrator --reclean [--store <path>]\n", stderr)
         fputs("  JobhuntMigrator --backfill-models [--store <path>]\n", stderr)
+        fputs("  JobhuntMigrator --prune-orphan-fit-scores [--store <path>]\n", stderr)
         return nil
     }
     return .migrate(inputPath: inputPath, outputPath: out)

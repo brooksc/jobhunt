@@ -1,0 +1,73 @@
+import SwiftData
+import XCTest
+@testable import JobhuntCore
+
+/// Tests for BackgroundStore.pruneOrphanFitScores — removing legacy fit scores with no resume
+/// linked (which otherwise render as a model name and hijack the job's "Best match").
+final class PruneOrphanFitScoresTests: XCTestCase {
+    func testPrune_deletesOrphansAndRecomputesJobMirror() async throws {
+        let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+
+        let resume = Resume(name: "Real Resume", text: "resume body")
+        let job = Job(jobNumber: 136, title: "Staff TPM")
+        // Orphan (no resume) with the highest score — this is what inflates the mirror.
+        let orphan = JobFitScore(fitScore: 93, fitStatus: .succeeded, model: "gemma-4-e4b-it-mlx")
+        orphan.job = job
+        // Real resume-linked score, lower than the orphan.
+        let real = JobFitScore(fitScore: 87, fitStatus: .succeeded, model: "lmstudio")
+        real.job = job
+        real.resume = resume
+        job.fitScore = 93 // denormalized mirror currently reflects the orphan
+
+        try await store.insert(resume)
+        try await store.insert(job)
+        try await store.insert(orphan)
+        try await store.insert(real)
+
+        let deleted = try await store.pruneOrphanFitScores()
+        XCTAssertEqual(deleted, 1, "exactly the resume-less score is removed")
+
+        let remaining = try await store.fetch(FetchDescriptor<JobFitScore>())
+        XCTAssertEqual(remaining.count, 1)
+        XCTAssertNotNil(remaining.first?.resume, "surviving score keeps its resume")
+
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertEqual(jobs.first?.fitScore, 87, "mirror recomputed to the best resume-linked score")
+        XCTAssertEqual(jobs.first?.fitStatus, .succeeded)
+    }
+
+    func testPrune_noOrphansIsNoOp() async throws {
+        let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+        let resume = Resume(name: "R", text: "body")
+        let job = Job(jobNumber: 1, title: "SWE")
+        let score = JobFitScore(fitScore: 80, fitStatus: .succeeded)
+        score.job = job
+        score.resume = resume
+        try await store.insert(resume)
+        try await store.insert(job)
+        try await store.insert(score)
+
+        let deleted = try await store.pruneOrphanFitScores()
+        XCTAssertEqual(deleted, 0)
+        let remaining = try await store.fetch(FetchDescriptor<JobFitScore>())
+        XCTAssertEqual(remaining.count, 1)
+    }
+
+    func testPrune_clearsMirrorWhenAllScoresWereOrphans() async throws {
+        let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+        let job = Job(jobNumber: 7, title: "EM")
+        let orphan = JobFitScore(fitScore: 90, fitStatus: .succeeded, model: "gemini-3.1-flash-lite")
+        orphan.job = job
+        job.fitScore = 90
+        job.fitStatus = .succeeded
+        try await store.insert(job)
+        try await store.insert(orphan)
+
+        let deleted = try await store.pruneOrphanFitScores()
+        XCTAssertEqual(deleted, 1)
+
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertNil(jobs.first?.fitScore, "mirror cleared when no resume-linked score remains")
+        XCTAssertEqual(jobs.first?.fitStatus, FitStatus.none)
+    }
+}

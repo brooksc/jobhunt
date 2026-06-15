@@ -163,6 +163,30 @@ case let .backfillModels(storePath):
         fputs("Error: backfill failed: \(error)\n", stderr); exit(1)
     }
 
+case let .pruneOrphanFitScores(storePath):
+    guard FileManager.default.fileExists(atPath: storePath) else {
+        fputs("Error: store not found at '\(storePath)'\n", stderr); exit(1)
+    }
+    print("=== Prune Orphan Fit Scores ===")
+    print("Store: \(storePath)")
+    print("(Run with the Jobhunt app quit — the store is single-writer.)")
+    let storeURL = URL(fileURLWithPath: storePath)
+    let schema = Schema(SchemaV1.models)
+    let config = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
+    let container: ModelContainer
+    do {
+        container = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
+    } catch {
+        fputs("Error: could not open store: \(error)\n", stderr); exit(1)
+    }
+    let store = BackgroundStore(modelContainer: container)
+    do {
+        let deleted = try await store.pruneOrphanFitScores()
+        print("Prune complete: \(deleted) orphan fit score(s) deleted; affected jobs recomputed.")
+    } catch {
+        fputs("Error: prune failed: \(error)\n", stderr); exit(1)
+    }
+
 case let .repairFitScores(storePath):
     guard FileManager.default.fileExists(atPath: storePath) else {
         fputs("Error: store not found at '\(storePath)'\n", stderr)

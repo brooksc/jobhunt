@@ -29,6 +29,7 @@ app runs risks `SQLITE_BUSY` or corruption.
 |---|---|---|
 | `--reclean [--store <path>]` | Recompute every capture's `cleanedDescription` with the current cleaner (JSON-LD preference, boilerplate stripping, invisible-char scrubbing). Idempotent. | `~/Library/Application Support/Jobhunt/jobhunt.store` |
 | `--backfill-models [--store <path>]` | Fill `LLMRequest.model` on older finished rows from their attempt history (so they don't render "—"). Idempotent; only touches rows with no model. | same |
+| `--prune-orphan-fit-scores [--store <path>]` | Delete fit scores with no resume linked (legacy/unmigrated rows that render as a model name and hijack "Best match"), then recompute each affected job's denormalized fit mirror. | same |
 
 ```bash
 # Quit Jobhunt, then:

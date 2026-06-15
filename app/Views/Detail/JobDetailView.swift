@@ -825,14 +825,18 @@ struct FitTabView: View {
 
     private var activeResumes: [Resume] { allResumes.filter(\.active) }
 
-    // Sort by score desc, highest is "best"
+    // Sort by score desc, highest is "best". Skip resume-less scores: an orphaned fit score
+    // (resume deleted after scoring, or a legacy score whose resume didn't survive migration)
+    // has no resume name, so it would otherwise render as the model name and hijack "Best match".
     private var sortedScores: [JobFitScore] {
-        job.fitScores.sorted { ($0.fitScore ?? 0) > ($1.fitScore ?? 0) }
+        job.fitScores
+            .filter { $0.resume != nil }
+            .sorted { ($0.fitScore ?? 0) > ($1.fitScore ?? 0) }
     }
 
     /// Highest *scored* resume (nil until a real score exists) — drives the hero.
     private var bestScore: JobFitScore? { sortedScores.first { $0.fitScore != nil } }
-    private var scoredCount: Int { job.fitScores.lazy.filter { $0.fitScore != nil }.count }
+    private var scoredCount: Int { sortedScores.lazy.filter { $0.fitScore != nil }.count }
 
     var body: some View {
         ScrollView {

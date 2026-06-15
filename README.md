@@ -159,12 +159,12 @@ xcodebuild test \
 **LLM eval** (opt-in; requires a running LLM provider):
 
 ```bash
+# LLMEval lives in the opt-in Jobhunt-Eval scheme (NOT Jobhunt-DMG, which never runs it).
 JOBHUNT_LLM_URL=http://127.0.0.1:1234 xcodebuild test \
   -project Jobhunt.xcodeproj \
-  -scheme Jobhunt-DMG \
-  -configuration Debug-DMG \
+  -scheme Jobhunt-Eval \
   -destination 'platform=macOS' \
-  -only-testing LLMEval \
+  -only-testing:LLMEval \
   CODE_SIGNING_ALLOWED=NO
 ```
 

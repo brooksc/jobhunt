@@ -27,8 +27,13 @@ jobs:
       # actions/checkout@v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
-      - name: Install Tuist (pinned via .mise.toml)
-        run: mise install tuist
+      # TASK-410: install mise first (a fresh runner has no mise), then install the pinned
+      # toolchain from .mise.toml — same setup as swift-build.yml.
+      - name: Install mise
+        run: curl -Ls https://mise.run | sh && echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install pinned tools (Tuist via .mise.toml)
+        run: mise install
 
       - name: Generate Xcode project
         run: tuist generate --no-open
@@ -41,7 +46,7 @@ jobs:
           JOBHUNT_LLM_MODEL: ${{ github.event.inputs.llm_model || '' }}
         run: |
           xcodebuild test \
-            -scheme LLMEval \
+            -scheme Jobhunt-Eval \
             -destination 'platform=macOS' \
             -only-testing LLMEval \
             CODE_SIGNING_ALLOWED=NO

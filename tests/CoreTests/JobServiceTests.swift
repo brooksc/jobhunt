@@ -864,8 +864,51 @@ final class JobServiceTests: XCTestCase {
 
         let jobs = try await store.fetch(FetchDescriptor<Job>())
         let job = try XCTUnwrap(jobs.first)
-        XCTAssertEqual(job.rawTextBytes, 500, "rawTextBytes should be max(selected,visible)")
+        // TASK-445: total transmitted raw bytes = selected + visible (was max).
+        XCTAssertEqual(job.rawTextBytes, 700, "rawTextBytes should be selected + visible (200 + 500)")
         XCTAssertNotNil(job.cleanedTextBytes, "cleanedTextBytes should be set even if zero")
+    }
+
+    // TASK-445: raw byte count must not undercount combined selected + visible capture input.
+
+    func testIngestCapture_rawBytes_selectedOnly() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+        _ = try await svc.ingestCapture(CapturePayload(
+            url: "https://example.com/sel", pageTitle: "T",
+            selectedText: String(repeating: "a", count: 300)))
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        let job = try XCTUnwrap(jobs.first)
+        XCTAssertEqual(job.rawTextBytes, 300)
+    }
+
+    func testIngestCapture_rawBytes_visibleOnly() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+        _ = try await svc.ingestCapture(CapturePayload(
+            url: "https://example.com/vis", pageTitle: "T",
+            visibleText: String(repeating: "b", count: 400)))
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        let job = try XCTUnwrap(jobs.first)
+        XCTAssertEqual(job.rawTextBytes, 400)
+    }
+
+    func testIngestCapture_rawBytes_selectedPlusVisible_notUndercounted() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+        // 600 + 600 = 1200 total; old `max` would have stored 600 and falsely flagged shortRawText.
+        _ = try await svc.ingestCapture(CapturePayload(
+            url: "https://example.com/both", pageTitle: "T",
+            selectedText: String(repeating: "a", count: 600),
+            visibleText: String(repeating: "b", count: 600)))
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        let job = try XCTUnwrap(jobs.first)
+        XCTAssertEqual(job.rawTextBytes, 1200, "combined input must not be undercounted")
+        XCTAssertFalse(QualityChecker.issues(for: job).contains(.shortRawText),
+                       "1200 combined bytes must not be flagged short")
     }
 
     func testIngestCapture_rawBytesUsedByQualityChecker_withoutFaultingCapture() async throws {

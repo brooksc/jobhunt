@@ -132,11 +132,15 @@ public enum QualityChecker: Sendable {
         return !trimmed.isEmpty && trimmed != "—" && trimmed.lowercased() != "unknown"
     }
 
+    /// Total raw bytes captured = selected + visible (TASK-445). Matches the value stored at ingest;
+    /// the `.shortRawText` check asks "did the capture transmit enough raw text", so it counts the
+    /// full transmitted input rather than `max`, which undercounted captures where both contribute.
+    /// (Deduped unique content is the separate `cleanedTextBytes` / `.shortCleanedText` check.)
     private static func rawByteSize(_ job: Job) -> Int {
         if let cached = job.rawTextBytes { return cached }
         let selected = job.capture?.selectedText?.utf8.count ?? 0
         let visible = job.capture?.visibleText?.utf8.count ?? 0
-        return max(selected, visible)
+        return selected + visible
     }
 
     private static func cleanedByteSize(_ job: Job) -> Int {

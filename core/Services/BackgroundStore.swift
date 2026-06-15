@@ -621,7 +621,10 @@ public actor BackgroundStore {
             job.extractionError = nil
             job.duplicateOfJobID = nil
             if job.status == .duplicate { job.status = .new }
-            job.rawTextBytes = max(input.selectedText?.utf8.count ?? 0, input.visibleText?.utf8.count ?? 0)
+            // TASK-445: total raw bytes the extension transmitted (selected + visible). The cleaner
+            // uses both inputs, so `max` undercounted captures where both contribute. This is the raw
+            // capture-pipeline size; deduped unique content is tracked separately as cleanedTextBytes.
+            job.rawTextBytes = (input.selectedText?.utf8.count ?? 0) + (input.visibleText?.utf8.count ?? 0)
             job.cleanedTextBytes = input.cleanedDescription?.utf8.count ?? 0
             job.capturedAtDenormalized = existing.capturedAt
             job.updatedAt = Date()
@@ -688,10 +691,9 @@ public actor BackgroundStore {
             status: duplicateOfJobID != nil ? .duplicate : .new,
             duplicateOfJobID: duplicateOfJobID
         )
-        job.rawTextBytes = max(
-            input.selectedText?.utf8.count ?? 0,
-            input.visibleText?.utf8.count ?? 0
-        )
+        // TASK-445: total raw bytes transmitted (selected + visible), not max — the cleaner uses
+        // both inputs, so max undercounted captures where both contribute.
+        job.rawTextBytes = (input.selectedText?.utf8.count ?? 0) + (input.visibleText?.utf8.count ?? 0)
         job.cleanedTextBytes = input.cleanedDescription?.utf8.count ?? 0
         job.capturedAtDenormalized = capture.capturedAt
         job.capture = capture

@@ -1044,6 +1044,90 @@ final class JobServiceTests: XCTestCase {
         XCTAssertEqual(updated.first?.status, .new, "status must be reset to .new when both signals were set")
     }
 
+    // MARK: - TASK-370: duplicate status invariant enforcement
+
+    func testMarkDuplicate_setsLinkAndStatusAtomically() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        let job = Job(id: "dup-mark-1", jobNumber: 1, status: .new)
+        try await store.insert(job)
+
+        try await svc.markDuplicate(jobID: "dup-mark-1", ofJobID: "orig-1", confidence: 0.9)
+
+        let updated = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "dup-mark-1" })).first
+        XCTAssertEqual(updated?.duplicateOfJobID, "orig-1")
+        XCTAssertEqual(updated?.duplicateConfidence, 0.9)
+        XCTAssertEqual(updated?.status, .duplicate, "markDuplicate must set status to .duplicate")
+    }
+
+    func testSetStatus_onDuplicateJob_clearsDuplicateLink() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        let job = Job(id: "dup-status-1", jobNumber: 1, status: .duplicate)
+        job.duplicateOfJobID = "orig-1"
+        job.duplicateConfidence = 0.8
+        try await store.insert(job)
+
+        // Moving a flagged duplicate to a normal status must repair the invariant.
+        try await svc.setStatus(.pursuing, for: "dup-status-1")
+
+        let updated = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "dup-status-1" })).first
+        XCTAssertEqual(updated?.status, .pursuing)
+        XCTAssertNil(updated?.duplicateOfJobID, "leaving .duplicate must clear the link")
+        XCTAssertNil(updated?.duplicateConfidence)
+    }
+
+    func testSetStatus_toDuplicate_keepsLink() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        let job = Job(id: "dup-status-2", jobNumber: 2, status: .duplicate)
+        job.duplicateOfJobID = "orig-2"
+        try await store.insert(job)
+
+        // Re-setting .duplicate must not clear an existing link.
+        try await svc.setStatus(.duplicate, for: "dup-status-2")
+
+        let updated = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "dup-status-2" })).first
+        XCTAssertEqual(updated?.duplicateOfJobID, "orig-2")
+    }
+
+    func testUpdateJobFields_setDuplicateOfJobID_setsDuplicateStatus() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        let job = Job(id: "dup-field-1", jobNumber: 1, status: .new)
+        try await store.insert(job)
+
+        try await svc.updateJobFields(jobID: "dup-field-1", duplicateOfJobID: "orig-3")
+
+        let updated = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "dup-field-1" })).first
+        XCTAssertEqual(updated?.duplicateOfJobID, "orig-3")
+        XCTAssertEqual(updated?.status, .duplicate, "setting the link via field update must set .duplicate")
+    }
+
+    func testUpdateJobFields_clearDuplicateOfJobID_resetsStatusFromDuplicate() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        let job = Job(id: "dup-field-2", jobNumber: 2, status: .duplicate)
+        job.duplicateOfJobID = "orig-4"
+        try await store.insert(job)
+
+        try await svc.updateJobFields(jobID: "dup-field-2", duplicateOfJobID: .some(nil))
+
+        let updated = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "dup-field-2" })).first
+        XCTAssertNil(updated?.duplicateOfJobID)
+        XCTAssertEqual(updated?.status, .new, "clearing the link from a .duplicate job resets status to .new")
+    }
+
     // MARK: - TASK-152: enqueueFit links resume
 
     func testEnqueueFit_linksResumeToRequest() async throws {

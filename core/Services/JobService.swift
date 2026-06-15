@@ -207,6 +207,13 @@ public actor JobService {
         let oldStatus = job.status
         try await store.update(Job.self, predicate: #Predicate { $0.id == id }) { job in
             job.status = status
+            // Invariant repair (TASK-370): `duplicateOfJobID != nil` requires `status == .duplicate`.
+            // Moving a flagged duplicate to any other status means it's no longer a duplicate, so
+            // clear the link rather than leave an inconsistent row.
+            if status != .duplicate, job.duplicateOfJobID != nil {
+                job.duplicateOfJobID = nil
+                job.duplicateConfidence = nil
+            }
             job.updatedAt = Date()
         }
         let event = JobEvent(
@@ -429,7 +436,16 @@ public actor JobService {
             if let v = location { job.location = v; overrides.insert("location") }
             if let v = remoteType { job.remoteType = v; overrides.insert("remoteType") }
             if let v = applicationURL { job.applicationURL = v; overrides.insert("applicationURL") }
-            if let v = duplicateOfJobID { job.duplicateOfJobID = v }  // not an extraction field
+            if let v = duplicateOfJobID {
+                job.duplicateOfJobID = v  // not an extraction field
+                // Invariant repair (TASK-370): keep status consistent with the duplicate link.
+                if v != nil {
+                    job.status = .duplicate
+                } else if job.status == .duplicate {
+                    job.status = .new
+                }
+                job.duplicateConfidence = v == nil ? nil : job.duplicateConfidence
+            }
             if let v = salaryMin { job.salaryMin = v; overrides.insert("salaryMin") }
             if let v = salaryMax { job.salaryMax = v; overrides.insert("salaryMax") }
             if let v = salaryCurrency { job.salaryCurrency = v; overrides.insert("salaryCurrency") }
@@ -543,6 +559,19 @@ public actor JobService {
     }
 
     // MARK: - Duplicate management
+
+    /// Mark `jobID` as a duplicate of `ofJobID`, maintaining the invariant
+    /// (`duplicateOfJobID != nil` ⇒ `status == .duplicate`) atomically. Prefer this over setting
+    /// `duplicateOfJobID` through the generic field-update path (TASK-370).
+    public func markDuplicate(jobID: String, ofJobID: String, confidence: Double? = nil) async throws {
+        let id = jobID
+        try await store.update(Job.self, predicate: #Predicate { $0.id == id }) { job in
+            job.duplicateOfJobID = ofJobID
+            job.duplicateConfidence = confidence
+            job.status = .duplicate
+            job.updatedAt = Date()
+        }
+    }
 
     /// Clear the duplicate relationship for a job, keeping it in the job list.
     /// Clears `duplicateOfJobID` and, if `status` was `.duplicate`, resets it to `.new`

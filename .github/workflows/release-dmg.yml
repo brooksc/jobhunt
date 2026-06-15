@@ -25,7 +25,9 @@ jobs:
           TAG="${{ github.ref_name }}"
           TAG_VERSION="${TAG#v}"
 
-          APP_VERSION=$(grep 'MARKETING_VERSION' Project.swift | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          # Extract the Tuist .marketingVersion("x.y.z") value — NOT the Info.plist
+          # "$(MARKETING_VERSION)" placeholder. Must match version-parity.yml's parser.
+          APP_VERSION=$(grep -o '\.marketingVersion("[0-9.]*")' Project.swift | grep -o '"[0-9.]*"' | tr -d '"')
           EXT_VERSION=$(python3 -c "import json,sys; d=json.load(open('extension/manifest.json')); print(d['version'])")
 
           echo "Tag: $TAG_VERSION, App: $APP_VERSION, Extension: $EXT_VERSION"

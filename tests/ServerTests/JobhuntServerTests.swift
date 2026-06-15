@@ -122,6 +122,19 @@ final class JobhuntServerTests: XCTestCase {
         XCTAssertTrue(body.isOK)
     }
 
+    // TASK-434: MCP routes only accept POST; other methods get 405.
+    func testMCPRoute_getMethodRejectedWith405() async throws {
+        for path in ["/mcp/jobs/list", "/mcp/jobs/update"] {  // a read route and a write route
+            let url = await URL(string: baseURL() + path)!
+            var req = URLRequest(url: url)
+            req.httpMethod = "GET"
+            req.setValue("test-token-abc123", forHTTPHeaderField: "X-MCP-Token")
+            let (_, response) = try await URLSession.shared.data(for: req)
+            let http = try XCTUnwrap(response as? HTTPURLResponse)
+            XCTAssertEqual(http.statusCode, 405, "GET \(path) must be rejected with 405")
+        }
+    }
+
     func testCaptureEndpoint() async throws {
         // swiftlint:disable:next force_unwrapping
         let url = await URL(string: baseURL() + "/captures")!

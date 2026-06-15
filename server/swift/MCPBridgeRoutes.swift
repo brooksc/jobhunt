@@ -235,6 +235,13 @@
             return HTTPResponse.error("Unauthorized", code: 401)
         }
 
+        // TASK-434: every /mcp/* tool call is a POST (the MCP helper sets httpMethod = "POST" for
+        // all routes). Reject any other method with a 405 + safe JSON error, so the route surface
+        // matches the helper contract.
+        guard request.method == "POST" else {
+            return HTTPResponse.error("Method not allowed; MCP routes require POST", code: 405)
+        }
+
         switch request.path {
         case "/mcp/jobs/list":
             return await handleMCPJobsList(request, jobService: jobService)

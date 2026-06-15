@@ -696,12 +696,17 @@ public actor BackgroundStore {
         job.capturedAtDenormalized = capture.capturedAt
         job.capture = capture
 
-        let llmRequest = LLMRequest(requestType: .extract, status: .queued)
-        llmRequest.job = job
-
         modelContext.insert(capture)
         modelContext.insert(job)
-        modelContext.insert(llmRequest)
+
+        // TASK-441: don't auto-queue extraction for a semantic duplicate — it would consume LLM
+        // queue slots and provider cost before the user reviews/unmarks it. The user can still
+        // re-run extraction explicitly (which clears duplicate status). Unique jobs queue as before.
+        if duplicateOfJobID == nil {
+            let llmRequest = LLMRequest(requestType: .extract, status: .queued)
+            llmRequest.job = job
+            modelContext.insert(llmRequest)
+        }
 
         // Timeline: record the capture as a system event so the job has provenance history.
         let captureEvent = JobEvent(eventType: "capture", occurredAt: capture.capturedAt)

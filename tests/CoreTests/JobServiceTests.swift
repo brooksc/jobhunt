@@ -88,6 +88,32 @@ final class JobServiceTests: XCTestCase {
         XCTAssertEqual(extractReqs.count, 1, "Re-submitting the same URL must not add extraction requests")
     }
 
+    // TASK-441: a semantic-duplicate capture (same cleaned content, different URL+canonical) is
+    // flagged .duplicate and must NOT auto-queue an extraction request.
+    func testIngestCapture_semanticDuplicateDoesNotQueueExtraction() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let queue = makeQueue(container)
+        let svc = JobService(store: store, queue: queue)
+
+        let desc = "We are hiring a senior platform engineer to build distributed systems at scale "
+            + "using Swift and Go across many teams worldwide with strong end-to-end ownership."
+        _ = try await svc.ingestCapture(CapturePayload(
+            url: "https://a.com/job", pageTitle: "Eng", visibleText: desc,
+            canonicalURL: "https://a.com/canonical-a"))
+        _ = try await svc.ingestCapture(CapturePayload(
+            url: "https://b.com/job", pageTitle: "Eng", visibleText: desc,
+            canonicalURL: "https://b.com/canonical-b"))
+
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertEqual(jobs.count, 2)
+        XCTAssertEqual(jobs.filter { $0.duplicateOfJobID != nil }.count, 1, "second is a semantic duplicate")
+
+        let extractReqs = try await store.fetch(FetchDescriptor<LLMRequest>())
+            .filter { $0.requestType == .extract }
+        XCTAssertEqual(extractReqs.count, 1, "only the unique job auto-queues extraction")
+    }
+
     func testIngestCapture_createsExactlyOneExtractionRequest() async throws {
         let container = try ModelContainerFactory.inMemory()
         let store = makeStore(container)

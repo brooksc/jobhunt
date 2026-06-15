@@ -474,14 +474,35 @@ public actor JobService {
 
     public func listJobs(status: String?, limit: Int) async throws -> [JobListRecord] {
         if let statusRaw = status, let jobStatus = JobStatus(rawValue: statusRaw) {
-            // Status filter: SwiftData can't predicate on enum types, so fetch sorted then filter
-            // in memory. fetchLimit is omitted here because it would count pre-filter rows.
-            let descriptor = FetchDescriptor<Job>(
-                sortBy: [SortDescriptor(\Job.createdAt, order: .reverse)]
-            )
-            let all = try await store.fetch(descriptor)
-            return Array(all.lazy.filter { $0.status == jobStatus }.prefix(limit))
-                .map { JobListRecord(job: $0) }
+            // Status filter: SwiftData can't predicate on the enum `status`, so page through the
+            // table newest-first in bounded chunks and filter each page in memory, stopping once we
+            // have `limit` matches (TASK-366). This bounds peak memory to one page instead of
+            // materialising every row, and stops early in the common case where the requested
+            // status has plenty of recent matches. A stable id tiebreaker keeps page boundaries
+            // from skipping/duplicating rows that share a createdAt.
+            guard limit > 0 else { return [] }
+            let pageSize = max(limit, 200)
+            var offset = 0
+            var matches: [Job] = []
+            while matches.count < limit {
+                var descriptor = FetchDescriptor<Job>(
+                    sortBy: [
+                        SortDescriptor(\Job.createdAt, order: .reverse),
+                        SortDescriptor(\Job.id, order: .reverse)
+                    ]
+                )
+                descriptor.fetchLimit = pageSize
+                descriptor.fetchOffset = offset
+                let page = try await store.fetch(descriptor)
+                if page.isEmpty { break }
+                for job in page where job.status == jobStatus {
+                    matches.append(job)
+                    if matches.count == limit { break }
+                }
+                offset += page.count
+                if page.count < pageSize { break } // reached the end of the table
+            }
+            return matches.map { JobListRecord(job: $0) }
         } else {
             // No filter: fetchLimit lets SwiftData avoid materialising every row.
             var descriptor = FetchDescriptor<Job>(

@@ -601,6 +601,48 @@ final class JobServiceTests: XCTestCase {
         XCTAssertTrue(pursuing.allSatisfy { $0.status == .pursuing })
     }
 
+    func testListJobs_statusFilter_largeMixedData_pagesBeyondFirstPageAndBoundsLimit() async throws {
+        // TASK-366: status-filtered listing pages through the table in bounded chunks. Verify it
+        // still finds matches that sort beyond the first page, bounds the result to `limit`, and
+        // handles zero-match and limit==0 without scanning into an error.
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let queue = makeQueue(container)
+        let svc = JobService(store: store, queue: queue)
+
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        // 5 pursuing rows with the OLDEST timestamps → sorted last (newest-first), so the filter
+        // only reaches them after paging past the first 200-row page.
+        var pursuingIDs: Set<String> = []
+        for i in 0 ..< 5 {
+            let job = Job(jobNumber: i + 1, title: "Pursuing \(i)", status: .pursuing,
+                          createdAt: base.addingTimeInterval(Double(i)))
+            try await store.insert(job)
+            pursuingIDs.insert(job.id)
+        }
+        // 250 newer .new rows fill the first page and then some.
+        for i in 0 ..< 250 {
+            let job = Job(jobNumber: 100 + i, title: "New \(i)", status: .new,
+                          createdAt: base.addingTimeInterval(Double(1000 + i)))
+            try await store.insert(job)
+        }
+
+        let pursuing = try await svc.listJobs(status: "pursuing", limit: 50)
+        XCTAssertEqual(pursuing.count, 5, "All pursuing rows found even though they sort beyond page 1")
+        XCTAssertTrue(pursuing.allSatisfy { $0.status == .pursuing })
+        XCTAssertEqual(Set(pursuing.map(\.id)), pursuingIDs)
+
+        let newCapped = try await svc.listJobs(status: "new", limit: 10)
+        XCTAssertEqual(newCapped.count, 10, "limit bounds a status with many matches")
+        XCTAssertTrue(newCapped.allSatisfy { $0.status == .new })
+
+        let offers = try await svc.listJobs(status: "offer", limit: 10)
+        XCTAssertTrue(offers.isEmpty, "Zero-match status returns empty after scanning all pages")
+
+        let none = try await svc.listJobs(status: "new", limit: 0)
+        XCTAssertTrue(none.isEmpty, "limit 0 returns empty")
+    }
+
     func testGetJob_found() async throws {
         let container = try ModelContainerFactory.inMemory()
         let store = makeStore(container)

@@ -245,8 +245,38 @@ private func splitWorkdaySalaryBands(_ text: String) -> String {
 
 // MARK: - Whitespace normalization
 
+/// Removes invisible / junk characters that leak from page text and render as odd gaps or joined
+/// words: maps no-break and other unusual spaces to a normal space, the non-breaking hyphen to
+/// `-`, and drops zero-width characters, variation selectors, and other control / format /
+/// private-use code points. Legitimate content (smart quotes, em/en dashes, emoji) is preserved.
+func scrubInvisibleCharacters(_ value: String) -> String {
+    var scalars = String.UnicodeScalarView()
+    scalars.reserveCapacity(value.unicodeScalars.count)
+    for scalar in value.unicodeScalars {
+        switch scalar.value {
+        case 0x2011: // non-breaking hyphen → plain hyphen
+            scalars.append("-")
+        case 0xFE00 ... 0xFE0F: // variation selectors (category Mn — keep emoji, drop the selector)
+            continue
+        default:
+            switch scalar.properties.generalCategory {
+            case .spaceSeparator: // NBSP, narrow NBSP, en/em/thin spaces, ideographic space, …
+                scalars.append(" ")
+            case .format, .privateUse: // zero-width chars, BOM, soft hyphen, PUA font-icon leftovers
+                continue
+            case .control:
+                if scalar == "\n" || scalar == "\t" { scalars.append(scalar) } // drop other controls (\r, …)
+            default:
+                scalars.append(scalar)
+            }
+        }
+    }
+    return String(scalars)
+}
+
 /// Mirrors cleaning.js `normalizeWhitespace`.
-func normalizeWhitespace(_ value: String) -> String {
+func normalizeWhitespace(_ rawValue: String) -> String {
+    let value = scrubInvisibleCharacters(rawValue)
     let lines = value.split(separator: "\n", omittingEmptySubsequences: false)
         .map { line -> String in
             // Collapse runs of spaces/tabs to single space, then trim

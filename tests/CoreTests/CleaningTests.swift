@@ -217,6 +217,28 @@ final class CleaningTests: XCTestCase {
         XCTAssertFalse(result.contains("---"), "no separator when the selection was deduped")
     }
 
+    func testStripsInvisibleAndControlCharacters() {
+        // ZWSP, NBSP, non-breaking hyphen, BOM, a private-use icon char, and a variation selector.
+        let raw = "Lead\u{200B} the\u{00A0}data\u{2011}platform team.\u{FEFF}\u{F2B7}\u{FE0F}"
+        let result = cleanDescription(visibleText: raw)
+        XCTAssertTrue(result.contains("Lead the data-platform team."), "readable result: \(result)")
+        XCTAssertFalse(result.unicodeScalars.contains { $0.value == 0x200B }, "zero-width space stripped")
+        XCTAssertFalse(result.unicodeScalars.contains { $0.value == 0x00A0 }, "no-break space normalized")
+        XCTAssertFalse(result.unicodeScalars.contains { $0.value == 0xFEFF }, "BOM stripped")
+        XCTAssertFalse(result.unicodeScalars.contains { $0.value == 0xF2B7 }, "private-use char stripped")
+        XCTAssertFalse(
+            result.unicodeScalars.contains { (0xFE00 ... 0xFE0F).contains($0.value) },
+            "variation selector stripped"
+        )
+    }
+
+    func testKeepsEmojiAndSmartPunctuation() {
+        let result = cleanDescription(visibleText: "We\u{2019}re hiring 🚀 — apply soon")
+        XCTAssertTrue(result.contains("🚀"), "emoji preserved")
+        XCTAssertTrue(result.contains("\u{2019}"), "smart apostrophe preserved")
+        XCTAssertTrue(result.contains("—"), "em dash preserved")
+    }
+
     func testStripsCommonBoilerplateLines() {
         let visible = """
         Apply now

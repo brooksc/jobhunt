@@ -71,11 +71,12 @@ final class AppServices: @unchecked Sendable {
             try? await queue.backfillRequestModels()
         }
         // One-time re-clean of existing captures with the improved cleaner (JSON-LD preference,
-        // selection dedupe, boilerplate stripping). Guarded so it runs once.
-        if !settingsStore.bool(forKey: "reclean_captures_v1_done") {
+        // selection dedupe, boilerplate stripping, invisible/control-char scrubbing). Bump the
+        // version suffix whenever the cleaner changes so existing captures are re-cleaned once.
+        if !settingsStore.bool(forKey: "reclean_captures_v2_done") {
             Task {
                 _ = try? await store.recleanAllCaptures()
-                await MainActor.run { settingsStore.setBool(true, forKey: "reclean_captures_v1_done") }
+                await MainActor.run { settingsStore.setBool(true, forKey: "reclean_captures_v2_done") }
             }
         }
 

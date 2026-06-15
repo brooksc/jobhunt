@@ -1404,6 +1404,25 @@ final class StatusTimelineEventTests: XCTestCase {
         XCTAssertEqual(result, "'+malicious")
     }
 
+    // TASK-376: previously-raw fields (application_url, extraction_model, salary_currency) must
+    // also be formula-sanitized now that sanitization is applied to every field.
+    func testCsvExport_previouslyRawFields_areSanitized() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let job = Job(id: "job-fi-2", jobNumber: 11, status: .pursuing)
+        job.applicationURL = "=cmd|'/c calc'!A1"
+        job.extractionModel = "@evilModel"
+        job.salaryCurrency = "+USD"
+        try await store.insert(job)
+
+        let csv = ExportService.jobsCSV(jobs: [job])
+        XCTAssertTrue(csv.contains("'=cmd"), "application_url formula must be sanitized")
+        XCTAssertTrue(csv.contains("'@evilModel"), "extraction_model formula must be sanitized")
+        XCTAssertTrue(csv.contains("'+USD"), "salary_currency formula must be sanitized")
+        XCTAssertFalse(csv.contains(",=cmd"), "no bare formula trigger after a delimiter")
+        XCTAssertFalse(csv.contains(",@evilModel"))
+    }
+
     func testCsvExport_normalTitle_isUnchanged() {
         let result = ExportService.sanitizeCsvCell("Software Engineer")
         XCTAssertEqual(result, "Software Engineer")

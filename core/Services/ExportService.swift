@@ -29,17 +29,17 @@ public enum ExportService {
                 "status": job.status.rawValue,
                 "rating": job.rating.map(String.init) ?? "",
                 "extraction_status": job.extractionStatus.rawValue,
-                "company": sanitizeCsvCell(job.company ?? ""),
-                "title": sanitizeCsvCell(job.title ?? ""),
-                "location": sanitizeCsvCell(job.location ?? ""),
+                "company": job.company ?? "",
+                "title": job.title ?? "",
+                "location": job.location ?? "",
                 "remote_type": job.remoteType?.rawValue ?? "",
                 "salary_min": job.salaryMin.map(String.init) ?? "",
                 "salary_max": job.salaryMax.map(String.init) ?? "",
                 "salary_currency": job.salaryCurrency ?? "",
-                "salary_note": sanitizeCsvCell(job.salaryNote ?? ""),
+                "salary_note": job.salaryNote ?? "",
                 "application_url": job.applicationURL ?? "",
                 "extraction_model": job.extractionModel ?? "",
-                "source_url": sanitizeCsvCell(sourceURL),
+                "source_url": sourceURL,
                 "captured_at": capturedAt,
                 "extracted_at": extractedAt,
                 "fit_score": job.fitScore.map(String.init) ?? "",
@@ -48,7 +48,11 @@ public enum ExportService {
                 "open_actions_count": String(job.actions.filter { $0.completedAt == nil }.count)
             ]
 
-            let rowCSV = columns.map { col in escapeCsv(row[col] ?? "") }.joined(separator: ",")
+            // TASK-376: sanitize EVERY field for spreadsheet formula injection at this single point,
+            // so no string column can be exported raw (application_url/extraction_model/salary_
+            // currency were previously missed). Idempotent on already-prefixed values; harmless on
+            // numeric/date/enum fields (none start with a formula-trigger character).
+            let rowCSV = columns.map { col in escapeCsv(sanitizeCsvCell(row[col] ?? "")) }.joined(separator: ",")
             lines.append(rowCSV)
         }
 

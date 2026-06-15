@@ -239,9 +239,19 @@ struct JobhuntApp: App {
                     Button("Export Job List to CSV…") {
                         Task { @MainActor in
                             let ctx = ModelContext(container)
-                            let jobs = (try? ctx.fetch(FetchDescriptor<Job>(
-                                sortBy: [SortDescriptor(\Job.createdAt, order: .reverse)]
-                            ))) ?? []
+                            // TASK-377: don't let a fetch failure produce a valid-looking empty CSV —
+                            // surface it and abort instead of falling back to an empty job list.
+                            let jobs: [Job]
+                            do {
+                                jobs = try ctx.fetch(FetchDescriptor<Job>(
+                                    sortBy: [SortDescriptor(\Job.createdAt, order: .reverse)]
+                                ))
+                            } catch {
+                                services.toastStore.show(
+                                    "Couldn't read jobs for export: \(error.localizedDescription)", isError: true
+                                )
+                                return
+                            }
                             let csv = ExportService.jobsCSV(jobs: jobs)
                             let panel = NSSavePanel()
                             panel.allowedContentTypes = [.commaSeparatedText]

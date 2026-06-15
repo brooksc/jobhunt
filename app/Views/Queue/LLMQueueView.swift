@@ -20,6 +20,7 @@ private enum StatusFilter: String, CaseIterable {
 
 // MARK: - LLMQueueView
 
+// swiftlint:disable:next type_body_length
 struct LLMQueueView: View {
     // MARK: Dependencies
 
@@ -75,6 +76,17 @@ struct LLMQueueView: View {
         }
     }
 
+    /// In-flight requests (queued or running) — shown in the top "Active" pane.
+    private var activePaneRequests: [LLMRequest] {
+        filteredRequests.filter { $0.status == .queued || $0.status == .running }
+    }
+
+    /// Terminal requests (done / failed / exhausted / cancelled) — shown in the bottom
+    /// "Completed" pane so finished work is visually separated from what's still in flight.
+    private var completedPaneRequests: [LLMRequest] {
+        filteredRequests.filter { $0.status != .queued && $0.status != .running }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             QueueSummaryBar(
@@ -102,62 +114,19 @@ struct LLMQueueView: View {
                 .background(Color.red.opacity(0.08))
             }
 
-            Table(filteredRequests, selection: $selection) {
-                TableColumn("Type") { req in
-                    Text(req.requestType == .extract ? "Extract" : "Fit")
-                        .font(.caption)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            (req.requestType == .extract ? Color.blue : Color.purple).opacity(0.12)
-                        )
-                        .foregroundStyle(req.requestType == .extract ? Color.blue : Color.purple)
-                        .clipShape(Capsule())
-                }
-                .width(70)
-
-                TableColumn("Status") { req in
-                    queueStatusChip(req.status)
-                }
-                .width(90)
-
-                TableColumn("Company") { req in
-                    Text(req.job?.company ?? "—")
-                        .lineLimit(1)
-                }
-
-                TableColumn("Title") { req in
-                    Text(req.job?.title ?? "—")
-                        .lineLimit(1)
-                }
-
-                TableColumn("Model") { req in
-                    Text(req.model ?? "—")
-                        .font(.caption.monospaced())
-                        .lineLimit(1)
-                        .foregroundStyle(.secondary)
-                }
-
-                TableColumn("Duration") { req in
-                    Text(durationString(for: req))
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
-                }
-
-                TableColumn("Error") { req in
-                    if let error = req.error {
-                        Text(error)
-                            .lineLimit(2)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .help(error)
-                    } else {
-                        Text("—").foregroundStyle(.tertiary)
-                    }
-                }
-            }
-            .contextMenu(forSelectionType: String.self) { ids in
-                selectionContextMenu(for: ids)
+            VSplitView {
+                queuePane(
+                    title: "Active",
+                    systemImage: "bolt.horizontal.circle",
+                    requests: activePaneRequests,
+                    emptyText: "Nothing in flight"
+                )
+                queuePane(
+                    title: "Completed",
+                    systemImage: "checkmark.circle",
+                    requests: completedPaneRequests,
+                    emptyText: "No completed requests yet"
+                )
             }
         }
         // Identify the whole view (not just the Table) so the marker is present even when the
@@ -174,6 +143,106 @@ struct LLMQueueView: View {
             }
         }
     }
+
+    // MARK: - Panes
+
+    /// One labeled section of the split: a header with a count, then either the request table or
+    /// an empty-state caption.
+    @ViewBuilder
+    private func queuePane(
+        title: String,
+        systemImage: String,
+        requests: [LLMRequest],
+        emptyText: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                Text(title).fontWeight(.semibold)
+                Text("\(requests.count)")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .font(.caption)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(.bar)
+
+            if requests.isEmpty {
+                Text(emptyText)
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                requestTable(requests)
+            }
+        }
+        .frame(minHeight: 120)
+    }
+
+    // swiftlint:disable function_body_length
+    /// The request table (shared columns + selection + context menu), rendered for a given subset.
+    private func requestTable(_ requests: [LLMRequest]) -> some View {
+        Table(requests, selection: $selection) {
+            TableColumn("Type") { req in
+                Text(req.requestType == .extract ? "Extract" : "Fit")
+                    .font(.caption)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        (req.requestType == .extract ? Color.blue : Color.purple).opacity(0.12)
+                    )
+                    .foregroundStyle(req.requestType == .extract ? Color.blue : Color.purple)
+                    .clipShape(Capsule())
+            }
+            .width(70)
+
+            TableColumn("Status") { req in
+                queueStatusChip(req.status)
+            }
+            .width(90)
+
+            TableColumn("Company") { req in
+                Text(req.job?.company ?? "—")
+                    .lineLimit(1)
+            }
+
+            TableColumn("Title") { req in
+                Text(req.job?.title ?? "—")
+                    .lineLimit(1)
+            }
+
+            TableColumn("Model") { req in
+                Text(req.model ?? "—")
+                    .font(.caption.monospaced())
+                    .lineLimit(1)
+                    .foregroundStyle(.secondary)
+            }
+
+            TableColumn("Duration") { req in
+                Text(durationString(for: req))
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+
+            TableColumn("Error") { req in
+                if let error = req.error {
+                    Text(error)
+                        .lineLimit(2)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .help(error)
+                } else {
+                    Text("—").foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .contextMenu(forSelectionType: String.self) { ids in
+            selectionContextMenu(for: ids)
+        }
+    }
+    // swiftlint:enable function_body_length
 
     // MARK: - Toolbar
 
@@ -402,4 +471,3 @@ struct LLMQueueView: View {
         }
     }
 }
-

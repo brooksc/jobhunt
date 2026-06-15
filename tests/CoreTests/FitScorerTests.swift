@@ -345,4 +345,51 @@ final class FitScorerTests: XCTestCase {
         XCTAssertEqual(result.penalty, 20)
         XCTAssertEqual(result.overall, 80)
     }
+
+    // MARK: - TASK-453: dimension contract validation
+
+    private func validDims() -> [[String: Any]] {
+        [
+            ["name": "required_qualifications", "score": 80],
+            ["name": "preferred_qualifications", "score": 60],
+            ["name": "skills", "score": 70],
+            ["name": "experience_level", "score": 90],
+            ["name": "domain_fit", "score": 50],
+        ]
+    }
+
+    func testValidateDimensions_validReturnsAllFive() throws {
+        let dims = try FitScorer.validateDimensions(validDims())
+        XCTAssertEqual(dims.count, 5)
+        XCTAssertEqual(dims["required_qualifications"], 80)
+        XCTAssertEqual(dims["domain_fit"], 50)
+    }
+
+    func testValidateDimensions_unknownNameThrows() {
+        var d = validDims(); d.append(["name": "Technical", "score": 75])
+        XCTAssertThrowsError(try FitScorer.validateDimensions(d)) {
+            XCTAssertEqual($0 as? FitScorer.FitDimensionError, .unknown("Technical"))
+        }
+    }
+
+    func testValidateDimensions_missingDimensionThrows() {
+        var d = validDims(); d.removeLast() // drop domain_fit
+        XCTAssertThrowsError(try FitScorer.validateDimensions(d)) {
+            XCTAssertEqual($0 as? FitScorer.FitDimensionError, .missing(["domain_fit"]))
+        }
+    }
+
+    func testValidateDimensions_duplicateThrows() {
+        var d = validDims(); d.append(["name": "skills", "score": 10])
+        XCTAssertThrowsError(try FitScorer.validateDimensions(d)) {
+            XCTAssertEqual($0 as? FitScorer.FitDimensionError, .duplicate("skills"))
+        }
+    }
+
+    func testValidateDimensions_nonNumericScoreThrows() {
+        var d = validDims(); d[0] = ["name": "required_qualifications", "score": "high"]
+        XCTAssertThrowsError(try FitScorer.validateDimensions(d)) {
+            XCTAssertEqual($0 as? FitScorer.FitDimensionError, .nonNumericScore("required_qualifications"))
+        }
+    }
 }

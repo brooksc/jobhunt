@@ -226,7 +226,9 @@ public enum ExtractionEngine {
             throw ExtractionEngineError.invalidJSON(repairedJSON)
         }
 
-        let dimensions = parseDimensions(raw["dimensions"])
+        // TASK-453: validate the exact dimension contract before scoring — a malformed dimensions
+        // payload throws (retryable) instead of being stored as a misleading low score.
+        let dimensions = try FitScorer.validateDimensions(raw["dimensions"])
         let requirementsNotMet = (raw["requirements_not_met"] as? [Any])?
             .compactMap { $0 as? String } ?? []
 
@@ -300,19 +302,8 @@ public enum ExtractionEngine {
         )
     }
 
-    private static func parseDimensions(_ raw: Any?) -> [String: Double] {
-        guard let arr = raw as? [[String: Any]] else { return [:] }
-        var result: [String: Double] = [:]
-        for item in arr {
-            guard let name = item["name"] as? String else { continue }
-            if let score = item["score"] as? Double {
-                result[name] = min(100, max(0, score.rounded()))
-            } else if let score = item["score"] as? Int {
-                result[name] = min(100, max(0, Double(score)))
-            }
-        }
-        return result
-    }
+    // Dimension parsing moved to FitScorer.validateDimensions (TASK-453) so the exact dimension
+    // contract is validated (missing/unknown/duplicate/non-numeric → error) before scoring.
 }
 
 // MARK: - ExtractionEngineError

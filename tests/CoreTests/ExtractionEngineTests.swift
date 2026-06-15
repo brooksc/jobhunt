@@ -432,7 +432,10 @@ final class ExtractionEngineTests: XCTestCase {
           "requirements_not_met": ["FPGA"],
           "dimensions": [
             {"name": "required_qualifications", "score": 85, "weight": 0.45, "rationale": "Meets core req"},
-            {"name": "skills", "score": 80, "weight": 0.15, "rationale": "Good skill match"}
+            {"name": "skills", "score": 80, "weight": 0.15, "rationale": "Good skill match"},
+            {"name": "preferred_qualifications", "score": 60, "weight": 0.05, "rationale": "Partial"},
+            {"name": "experience_level", "score": 90, "weight": 0.20, "rationale": "Senior"},
+            {"name": "domain_fit", "score": 70, "weight": 0.15, "rationale": "Adjacent"}
           ]
         }
         """
@@ -457,7 +460,7 @@ final class ExtractionEngineTests: XCTestCase {
         let requirementsNotMet = dict["requirements_not_met"] as? [String]
         XCTAssertEqual(requirementsNotMet?.first, "FPGA")
         let dimensions = dict["dimensions"] as? [[String: Any]]
-        XCTAssertEqual(dimensions?.count, 2)
+        XCTAssertEqual(dimensions?.count, 5)
         XCTAssertEqual(dimensions?.first?["rationale"] as? String, "Meets core req")
 
         // Computed fields must also be present
@@ -470,7 +473,10 @@ final class ExtractionEngineTests: XCTestCase {
 
     func testScoreFit_usesPassedModel() async throws {
         let fitResponseJSON = """
-        {"overall":75,"dimensions":[{"name":"Technical","score":75,"weight":1.0,"rationale":"ok"}],"requirements_not_met":[]}
+        {"overall":75,"dimensions":[{"name":"required_qualifications","score":75,"rationale":"ok"},
+         {"name":"preferred_qualifications","score":60,"rationale":"ok"},{"name":"skills","score":70,"rationale":"ok"},
+         {"name":"experience_level","score":80,"rationale":"ok"},{"name":"domain_fit","score":50,"rationale":"ok"}],
+         "requirements_not_met":[]}
         """
         let capturing = CapturingProvider(response: fitResponseJSON)
         let jobSnap = JobFitSnapshot(title: "iOS Dev", company: "Acme", seniority: nil, extractedJSON: nil, extractionModel: "old-extraction-model")
@@ -510,7 +516,9 @@ final class ExtractionEngineTests: XCTestCase {
 
     func testScoreFit_chatRequest_hasResponseFormat() async throws {
         let fitResponseJSON = """
-        {"overall":80,"dimensions":[{"name":"required_qualifications","score":80,"weight":1.0,"rationale":"ok"}],
+        {"overall":80,"dimensions":[{"name":"required_qualifications","score":80,"rationale":"ok"},
+         {"name":"preferred_qualifications","score":60,"rationale":"ok"},{"name":"skills","score":70,"rationale":"ok"},
+         {"name":"experience_level","score":80,"rationale":"ok"},{"name":"domain_fit","score":50,"rationale":"ok"}],
          "requirements_not_met":[]}
         """
         let capturing = CapturingProvider(response: fitResponseJSON)
@@ -582,7 +590,7 @@ final class ExtractionEngineTests: XCTestCase {
         let store = BackgroundStore(modelContainer: container)
 
         let fitJSON = """
-        {"overall":80,"dimensions":[{"name":"technical_skills","score":80,"weight":1.0,"evidence":"Good match"}],
+        {"overall":80,"dimensions":[{"name":"required_qualifications","score":80,"evidence":"Good match"},{"name":"preferred_qualifications","score":60,"evidence":"ok"},{"name":"skills","score":70,"evidence":"ok"},{"name":"experience_level","score":80,"evidence":"ok"},{"name":"domain_fit","score":50,"evidence":"ok"}],
          "requirements_not_met":[],"summary":"Strong match"}
         """
         let capturingProvider = CapturingProvider(response: fitJSON)
@@ -632,7 +640,7 @@ final class ExtractionEngineTests: XCTestCase {
         let store = BackgroundStore(modelContainer: container)
 
         let fitJSON = """
-        {"overall":80,"dimensions":[{"name":"technical_skills","score":80,"weight":1.0,"evidence":"Good match"}],
+        {"overall":80,"dimensions":[{"name":"required_qualifications","score":80,"evidence":"Good match"},{"name":"preferred_qualifications","score":60,"evidence":"ok"},{"name":"skills","score":70,"evidence":"ok"},{"name":"experience_level","score":80,"evidence":"ok"},{"name":"domain_fit","score":50,"evidence":"ok"}],
          "requirements_not_met":[],"summary":"Strong match"}
         """
         let capturingProvider = CapturingProvider(response: fitJSON)
@@ -687,7 +695,7 @@ final class ExtractionEngineTests: XCTestCase {
         let store = BackgroundStore(modelContainer: container)
 
         let fitJSON = """
-        {"overall":75,"dimensions":[{"name":"technical_skills","score":75,"weight":1.0,"evidence":"Match"}],
+        {"overall":75,"dimensions":[{"name":"required_qualifications","score":75,"evidence":"Match"},{"name":"preferred_qualifications","score":60,"evidence":"ok"},{"name":"skills","score":70,"evidence":"ok"},{"name":"experience_level","score":80,"evidence":"ok"},{"name":"domain_fit","score":50,"evidence":"ok"}],
          "requirements_not_met":[],"summary":"OK match"}
         """
         let capturingProvider = CapturingProvider(response: fitJSON)
@@ -1006,7 +1014,7 @@ final class ExtractionEngineTests: XCTestCase {
         let store = BackgroundStore(modelContainer: container)
 
         let fitJSON = """
-        {"overall":80,"dimensions":[{"name":"technical_skills","score":80,"weight":1.0,"evidence":"Match"}],
+        {"overall":80,"dimensions":[{"name":"required_qualifications","score":80,"evidence":"Match"},{"name":"preferred_qualifications","score":60,"evidence":"ok"},{"name":"skills","score":70,"evidence":"ok"},{"name":"experience_level","score":80,"evidence":"ok"},{"name":"domain_fit","score":50,"evidence":"ok"}],
          "requirements_not_met":[],"summary":"Strong match"}
         """
         let capturingProvider = CapturingProvider(response: fitJSON)

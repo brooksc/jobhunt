@@ -29,7 +29,11 @@ final class WorkflowEndToEndTests: XCTestCase {
 
     private let fitJSON = """
     {"overall":82,"summary":"Strong match.","requirements_met":["Swift"],"requirements_not_met":[],
-     "dimensions":[{"name":"skills","score":82,"weight":1.0,"rationale":"Good"}]}
+     "dimensions":[{"name":"required_qualifications","score":85,"rationale":"Good"},
+                   {"name":"preferred_qualifications","score":60,"rationale":"Good"},
+                   {"name":"skills","score":82,"rationale":"Good"},
+                   {"name":"experience_level","score":80,"rationale":"Good"},
+                   {"name":"domain_fit","score":75,"rationale":"Good"}]}
     """
 
     private func settings() -> ExtractionSettings {

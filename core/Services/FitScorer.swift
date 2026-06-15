@@ -71,6 +71,43 @@ public enum FitScorer {
 
     public static let penaltyCap: Int = 50
 
+    // MARK: - Dimension validation (TASK-453)
+
+    public enum FitDimensionError: Error, Equatable {
+        case notAnArray
+        case missing([String])      // expected dimensions absent from the response
+        case unknown(String)        // a dimension name not in the expected contract
+        case duplicate(String)      // the same dimension appeared twice
+        case nonNumericScore(String) // a dimension's score wasn't a number
+    }
+
+    /// Validate that the LLM `dimensions` array carries EXACTLY the expected dimension names, each
+    /// once, with numeric scores — before computing/persisting a fit score (TASK-453). A malformed
+    /// response (wrong/missing/duplicate names, non-numeric score) throws so it fails as a retryable
+    /// schema error instead of being stored as a misleading low score (missing dims scoring 0).
+    public static func validateDimensions(_ raw: Any?) throws -> [String: Double] {
+        guard let arr = raw as? [[String: Any]] else { throw FitDimensionError.notAnArray }
+        var result: [String: Double] = [:]
+        var seen: Set<String> = []
+        for item in arr {
+            guard let name = item["name"] as? String, dimensionWeights[name] != nil else {
+                throw FitDimensionError.unknown((item["name"] as? String) ?? "<missing name>")
+            }
+            if seen.contains(name) { throw FitDimensionError.duplicate(name) }
+            seen.insert(name)
+            if let d = item["score"] as? Double {
+                result[name] = min(100, max(0, d.rounded()))
+            } else if let i = item["score"] as? Int {
+                result[name] = min(100, max(0, Double(i)))
+            } else {
+                throw FitDimensionError.nonNumericScore(name)
+            }
+        }
+        let missing = Set(dimensionWeights.keys).subtracting(seen)
+        if !missing.isEmpty { throw FitDimensionError.missing(missing.sorted()) }
+        return result
+    }
+
     // MARK: - Public API
 
     /// Compute a fit score from per-dimension scores and missing requirements.

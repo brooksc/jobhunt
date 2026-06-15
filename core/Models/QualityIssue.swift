@@ -49,6 +49,12 @@ public struct QualityIssue: Identifiable, Sendable {
         kinds.count
     }
 
+    /// True when any of this job's issue kinds is itself high-severity (TASK-458) — distinct from
+    /// "has many issues". Use this for high-severity reporting, not a raw issue count.
+    public var isHighSeverity: Bool {
+        kinds.contains { $0.isHighSeverity }
+    }
+
     public init(jobID: String, kinds: [QualityIssueKind]) {
         id = UUID()
         self.jobID = jobID
@@ -67,19 +73,26 @@ public enum QualityChecker: Sendable {
     public static func issues(for job: Job) -> [QualityIssueKind] {
         var kinds: [QualityIssueKind] = []
 
-        // Missing core fields
-        if !hasValue(job.company) { kinds.append(.missingCompany) }
-        if !hasValue(job.title) { kinds.append(.missingTitle) }
-        if !hasValue(job.location) { kinds.append(.missingLocation) }
+        // TASK-459: while extraction is still pending, the extracted fields are EXPECTED to be
+        // missing — those gaps aren't real data-quality defects yet. Suppress the missing-extracted-
+        // field issues (company/title/location/work mode/salary) in the pending state; capture-size
+        // issues below are about the input and still apply.
+        let extractionPending = job.extractionStatus == .pending
+        if !extractionPending {
+            // Missing core fields
+            if !hasValue(job.company) { kinds.append(.missingCompany) }
+            if !hasValue(job.title) { kinds.append(.missingTitle) }
+            if !hasValue(job.location) { kinds.append(.missingLocation) }
 
-        // Work mode: unknown counts as missing
-        if job.remoteType == nil || job.remoteType == .unknown {
-            kinds.append(.missingWorkMode)
-        }
+            // Work mode: unknown counts as missing
+            if job.remoteType == nil || job.remoteType == .unknown {
+                kinds.append(.missingWorkMode)
+            }
 
-        // Salary: missing if no min, max, or note
-        if job.salaryMin == nil && job.salaryMax == nil && !hasValue(job.salaryNote) {
-            kinds.append(.missingSalary)
+            // Salary: missing if no min, max, or note
+            if job.salaryMin == nil && job.salaryMax == nil && !hasValue(job.salaryNote) {
+                kinds.append(.missingSalary)
+            }
         }
 
         // Extraction status

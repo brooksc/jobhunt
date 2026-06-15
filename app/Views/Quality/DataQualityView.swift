@@ -56,12 +56,19 @@ struct DataQualityView: View {
         }
     }
 
-    private var totalIssueCount: Int {
+    // TASK-457: distinguish jobs-with-issues from total issue occurrences. issueRows has one row
+    // per job with ≥1 issue, so its count is JOBS, not issues.
+    private var jobsWithIssuesCount: Int {
         issueRows.count
     }
 
+    private var totalIssueOccurrences: Int {
+        issueRows.reduce(0) { $0 + $1.issue.kinds.count }
+    }
+
+    // TASK-458: high severity means the job has a high-severity issue KIND, not "3+ issues".
     private var highSeverityCount: Int {
-        issueRows.count(where: { $0.issue.severity >= 3 })
+        issueRows.count(where: { $0.issue.isHighSeverity })
     }
 
     private func kindCount(_ kind: QualityIssueKind) -> Int {
@@ -102,9 +109,11 @@ struct DataQualityView: View {
 
     private var summaryHeader: some View {
         HStack(spacing: 16) {
-            summaryMetric(label: "Total issues", value: totalIssueCount, warning: totalIssueCount > 0)
+            summaryMetric(label: "Jobs with issues", value: jobsWithIssuesCount, warning: jobsWithIssuesCount > 0)
             Divider().frame(height: 32)
-            summaryMetric(label: "High severity (3+)", value: highSeverityCount, warning: highSeverityCount > 0)
+            summaryMetric(label: "Total issues", value: totalIssueOccurrences, warning: totalIssueOccurrences > 0)
+            Divider().frame(height: 32)
+            summaryMetric(label: "High severity", value: highSeverityCount, warning: highSeverityCount > 0)
             Divider().frame(height: 32)
             summaryMetric(
                 label: "Extraction failed",

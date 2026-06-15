@@ -177,6 +177,48 @@ final class QualityCheckerTests: XCTestCase {
         XCTAssertFalse(kinds.contains(.extractionPending))
     }
 
+    // MARK: - TASK-459: pending extraction suppresses missing-extracted-field issues
+
+    func testPendingJobWithMissingFieldsSuppressesFieldIssues() {
+        let job = Job(extractionStatus: .pending) // no company/title/location/work mode/salary
+        let kinds = QualityChecker.issues(for: job)
+        XCTAssertTrue(kinds.contains(.extractionPending))
+        for missing in [QualityIssueKind.missingCompany, .missingTitle, .missingLocation, .missingWorkMode, .missingSalary] {
+            XCTAssertFalse(kinds.contains(missing), "\(missing) must be suppressed while extraction is pending")
+        }
+    }
+
+    func testSucceededJobWithMissingFieldsStillReportsThem() {
+        let job = Job(extractionStatus: .succeeded)
+        let kinds = QualityChecker.issues(for: job)
+        XCTAssertTrue(kinds.contains(.missingCompany))
+        XCTAssertTrue(kinds.contains(.missingTitle))
+        XCTAssertTrue(kinds.contains(.missingLocation))
+    }
+
+    func testFailedJobWithMissingFieldsReportsFailureAndFields() {
+        let job = Job(extractionStatus: .failed)
+        let kinds = QualityChecker.issues(for: job)
+        XCTAssertTrue(kinds.contains(.extractionFailed))
+        XCTAssertTrue(kinds.contains(.missingCompany), "failed extraction stays actionable with field gaps")
+    }
+
+    // MARK: - TASK-458: isHighSeverity reflects the issue KIND, not the count
+
+    func testIsHighSeverity_singleHighKindIsHigh() {
+        XCTAssertTrue(QualityIssue(jobID: "j1", kinds: [.extractionFailed]).isHighSeverity)
+    }
+
+    func testIsHighSeverity_multipleLowKindsIsNotHigh() {
+        let issue = QualityIssue(jobID: "j2", kinds: [.missingSalary, .missingWorkMode, .shortRawText])
+        XCTAssertFalse(issue.isHighSeverity, "three low-severity kinds is not high severity")
+    }
+
+    func testIsHighSeverity_mixedIsHigh() {
+        // missingTitle is high-severity.
+        XCTAssertTrue(QualityIssue(jobID: "j3", kinds: [.missingSalary, .missingTitle]).isHighSeverity)
+    }
+
     // MARK: - testIssuesForAllJobs
 
     func testIssuesForAllJobs() throws {

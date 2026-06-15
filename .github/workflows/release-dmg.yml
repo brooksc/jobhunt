@@ -50,13 +50,16 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
           security list-keychains -d user -s build.keychain
 
-      - name: Install Tuist
-        run: curl -Ls https://install.tuist.io | bash
+      # TASK-399: use the same pinned toolchain as normal CI (.mise.toml: Tuist 4.196.1)
+      # instead of curl-installing latest Tuist. mise install fails the job on error
+      # (no `|| true` masking).
+      - name: Install mise
+        run: curl -Ls https://mise.run | sh && echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Install dependencies
-        run: tuist install || true
+      - name: Install pinned tools (Tuist via .mise.toml)
+        run: mise install
 
-      - name: Generate project
+      - name: Generate Xcode project
         run: tuist generate --no-open
 
       - name: Run tests

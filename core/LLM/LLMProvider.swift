@@ -21,6 +21,17 @@ public enum ResponseFormat: Sendable, Equatable {
     case jsonObject
     /// No structured format — model returns free text; prompt must instruct JSON
     case text
+
+    /// Stable string for persistence in `LLMRequestAttempt.responseFormat` (TASK-454).
+    /// Mirrors the OpenAI `response_format.type` wire values so attempt history reflects
+    /// the format the provider actually used (a downgrade shows as "json_object"/"text").
+    public var wireValue: String {
+        switch self {
+        case .jsonSchema: "json_schema"
+        case .jsonObject: "json_object"
+        case .text: "text"
+        }
+    }
 }
 
 // MARK: - StructuredOutputKind

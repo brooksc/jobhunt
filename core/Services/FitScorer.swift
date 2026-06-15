@@ -15,6 +15,8 @@ public struct FitScoreOutput: Sendable {
     public let responseChars: Int
     /// Model identifier reported by the provider (mirrors extraction's `extractionModel`).
     public let modelReturned: String
+    /// Format the provider actually used for this response (may be a downgrade) — TASK-454.
+    public let responseFormat: ResponseFormat
 }
 
 /// Result of a fit score computation.

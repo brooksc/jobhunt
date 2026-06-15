@@ -35,13 +35,19 @@ private final class CapturingProvider: LLMProvider, @unchecked Sendable {
     private(set) var lastRequestedModel: String?
     private(set) var lastRequest: ChatRequest?
     private let response: String
+    /// Format this provider reports it used (TASK-454: lets tests simulate a JSON success,
+    /// a downgrade to json_object, or an always-text provider).
+    private let usedFormat: ResponseFormat
 
-    init(response: String) { self.response = response }
+    init(response: String, usedFormat: ResponseFormat = .text) {
+        self.response = response
+        self.usedFormat = usedFormat
+    }
 
     func complete(_ request: ChatRequest) async throws -> ChatResponse {
         lastRequestedModel = request.model
         lastRequest = request
-        return ChatResponse(content: response, model: request.model, responseFormat: .text)
+        return ChatResponse(content: response, model: request.model, responseFormat: usedFormat)
     }
 }
 
@@ -527,6 +533,71 @@ final class ExtractionEngineTests: XCTestCase {
         _ = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, model: "test-model", provider: capturing)
         XCTAssertNotNil(capturing.lastRequest?.responseFormat,
                         "Fit scoring ChatRequest must include a non-nil responseFormat")
+    }
+
+    // MARK: - TASK-454: engine outputs surface the actual provider response format
+
+    private func valid5DimFitJSON() -> String {
+        """
+        {"overall":80,"dimensions":[{"name":"required_qualifications","score":80},
+         {"name":"preferred_qualifications","score":60},{"name":"skills","score":70},
+         {"name":"experience_level","score":80},{"name":"domain_fit","score":50}],
+         "requirements_not_met":[]}
+        """
+    }
+
+    private func extractionJSON() -> String {
+        """
+        {"title":"Engineer","company":"Acme","location":null,"remote_type":null,
+         "salary_min":null,"salary_max":null,"salary_currency":null,"salary_note":null,
+         "salary_hourly_min":null,"salary_hourly_max":null,
+         "employment_type":null,"seniority":null,"skills":[],"summary":"Good",
+         "requirements":[],"nice_to_haves":[],"benefits":[],
+         "application_url":null,"application_instructions":null,"confidence":null}
+        """
+    }
+
+    private func makeExtractSnapshot() -> JobExtractionSnapshot {
+        JobExtractionSnapshot(
+            captureURL: "https://example.com/job", captureCanonicalURL: nil,
+            capturePageTitle: "Engineer", captureCleanedDescription: "Build amazing things.",
+            captureVisibleText: nil, captureSelectedText: nil
+        )
+    }
+
+    func testExtract_outputReflectsProviderJSONObjectFormat() async throws {
+        let provider = CapturingProvider(response: extractionJSON(), usedFormat: .jsonObject)
+        let result = try await ExtractionEngine.extract(
+            snapshot: makeExtractSnapshot(), provider: provider, settings: makeExtractionSettings())
+        XCTAssertEqual(result.responseFormat, .jsonObject)
+        XCTAssertEqual(result.responseFormat.wireValue, "json_object")
+    }
+
+    func testExtract_outputReflectsProviderTextDowngrade() async throws {
+        // Provider downgraded to free text even though JSON was requested — attempt history must show it.
+        let provider = CapturingProvider(response: extractionJSON(), usedFormat: .text)
+        let result = try await ExtractionEngine.extract(
+            snapshot: makeExtractSnapshot(), provider: provider, settings: makeExtractionSettings())
+        XCTAssertEqual(result.responseFormat, .text)
+        XCTAssertEqual(result.responseFormat.wireValue, "text")
+    }
+
+    func testScoreFit_outputReflectsProviderJSONObjectFormat() async throws {
+        let provider = CapturingProvider(response: valid5DimFitJSON(), usedFormat: .jsonObject)
+        let jobSnap = JobFitSnapshot(title: "Engineer", company: "Acme", seniority: nil, extractedJSON: nil, extractionModel: nil)
+        let resumeSnap = ResumeSnapshot(text: "Swift developer with 5 years experience")
+        let output = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, model: "m", provider: provider)
+        XCTAssertEqual(output.responseFormat, .jsonObject)
+        XCTAssertEqual(output.responseFormat.wireValue, "json_object")
+    }
+
+    func testScoreFit_outputReflectsAlwaysTextProvider() async throws {
+        let provider = CapturingProvider(response: valid5DimFitJSON(), usedFormat: .text)
+        let jobSnap = JobFitSnapshot(title: "Engineer", company: "Acme", seniority: nil, extractedJSON: nil, extractionModel: nil)
+        let resumeSnap = ResumeSnapshot(text: "Swift developer with 5 years experience")
+        let output = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, model: "m", provider: provider)
+        XCTAssertEqual(output.responseFormat, .text)
+        XCTAssertEqual(output.responseFormat.wireValue, "text")
     }
 
     func testScoreFit_snapshot_emptyResumeThrows() async throws {
@@ -1017,7 +1088,8 @@ final class ExtractionEngineTests: XCTestCase {
         {"overall":80,"dimensions":[{"name":"required_qualifications","score":80,"evidence":"Match"},{"name":"preferred_qualifications","score":60,"evidence":"ok"},{"name":"skills","score":70,"evidence":"ok"},{"name":"experience_level","score":80,"evidence":"ok"},{"name":"domain_fit","score":50,"evidence":"ok"}],
          "requirements_not_met":[],"summary":"Strong match"}
         """
-        let capturingProvider = CapturingProvider(response: fitJSON)
+        // TASK-454: the attempt's responseFormat is the provider's actual format, no longer hardcoded.
+        let capturingProvider = CapturingProvider(response: fitJSON, usedFormat: .jsonObject)
 
         let consentedSettings = ExtractionSettings(
             llmModel: "gpt-4o",

@@ -79,6 +79,8 @@ public struct ExtractionResult: Sendable {
     public let extractionModel: String
     public let promptChars: Int
     public let responseChars: Int
+    /// Format the provider actually used (may be a downgrade from what was requested) — TASK-454.
+    public let responseFormat: ResponseFormat
 }
 
 // MARK: - ExtractionEngine
@@ -183,7 +185,8 @@ public enum ExtractionEngine {
             extractionConfidence: confidence,
             extractionModel: response.model,
             promptChars: promptChars,
-            responseChars: responseChars
+            responseChars: responseChars,
+            responseFormat: response.responseFormat
         )
     }
 
@@ -239,7 +242,8 @@ public enum ExtractionEngine {
         let mergedJSON = FitScorer.buildMergedJSON(result: score, rawLLMDict: raw)
         return FitScoreOutput(
             score: score, fitScoreJSON: mergedJSON, promptChars: promptChars,
-            responseChars: responseChars, modelReturned: response.model
+            responseChars: responseChars, modelReturned: response.model,
+            responseFormat: response.responseFormat
         )
     }
 

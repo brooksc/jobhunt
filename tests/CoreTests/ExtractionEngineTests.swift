@@ -20,7 +20,7 @@ private func makeExtractionSettings() -> ExtractionSettings {
 /// A provider that always fails with a given error.
 private struct AlwaysFailProvider: LLMProvider {
     let id: String = "always-fail"
-    let concurrencyLimit: Int = 1
+    var concurrencyLimit: Int = 1
     let error: Error
 
     func complete(_: ChatRequest) async throws -> ChatResponse {
@@ -177,6 +177,43 @@ final class ExtractionEngineTests: XCTestCase {
         )
         XCTAssertEqual(estimate.estimatedCostUSD, 0.0)
         XCTAssertGreaterThan(estimate.totalTokens, 0)
+    }
+
+    // TASK-449: auto-pause works with a provider concurrency limit > 1 (batched), pausing the queue
+    // and cancelling the rest of the batch rather than draining every request.
+    func testAutoPause_withConcurrencyGreaterThanOne() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        let failProvider = AlwaysFailProvider(
+            concurrencyLimit: 3,
+            error: LLMProviderError.unavailable(reason: "stub failure"))
+        var paused = false
+        let queue = QueueActor(
+            store: store,
+            isPaused: { paused },
+            onSetPaused: { paused = $0 },
+            readExtractionSettings: { makeExtractionSettings() },
+            providerFactory: { failProvider }
+        )
+
+        var jobIDs: [String] = []
+        for idx in 0 ..< 5 {
+            let capture = Capture(url: "https://example.com/job\(idx)", pageTitle: "Job \(idx)",
+                                  selectedText: "Description \(idx).", rawHash: "ap-\(idx)")
+            let job = Job(jobNumber: idx + 1, title: "Job \(idx + 1)")
+            job.capture = capture
+            try await store.insert(job)
+            jobIDs.append(job.id)
+        }
+        try await queue.enqueue(jobIDs: jobIDs, mode: .extract)
+        await queue.startProcessing()
+
+        XCTAssertTrue(paused, "repeated failures must auto-pause even with a wide batch")
+        // Not every request was processed to a terminal failure — at least one stayed queued
+        // (cancelled by auto-pause), so the queue stopped rather than draining all 5.
+        let reqs = try await store.fetch(FetchDescriptor<LLMRequest>())
+        let queued = reqs.filter { $0.status == .queued }
+        XCTAssertFalse(queued.isEmpty, "auto-pause should leave remaining batch work queued, not drain it")
     }
 
     // MARK: - QueueActor cancellation during retry backoff (TASK-447)

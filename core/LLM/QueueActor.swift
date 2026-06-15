@@ -297,6 +297,10 @@ public actor QueueActor {
                         if failureStreak >= Self.autoPauseThreshold {
                             await onSetPaused(true)
                             emit(.autoPaused)
+                            // TASK-449: cancel the rest of this batch so still-running sibling tasks
+                            // stop before (or during) their provider call — auto-pause shouldn't keep
+                            // spending on cloud requests after deciding to stop.
+                            group.cancelAll()
                             break
                         }
                     case .cancelled, .skipped:
@@ -382,6 +386,17 @@ public actor QueueActor {
         ).first
         guard current?.status == .running else {
             // The row was cancelled or claimed between snapshot and transition — not a failure.
+            return .cancelled
+        }
+
+        // TASK-449: if the batch was cancelled (auto-pause) before this task reached its provider
+        // call, bail now and put the row back to queued so it isn't lost — don't spend on the call.
+        if Task.isCancelled {
+            try? await store.update(LLMRequest.self, predicate: #Predicate { $0.id == itemID }) { req in
+                guard req.status == .running else { return }
+                req.status = .queued
+                req.startedAt = nil
+            }
             return .cancelled
         }
 

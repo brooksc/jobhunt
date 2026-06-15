@@ -201,6 +201,41 @@ final class JobhuntServerTests: XCTestCase {
         XCTAssertGreaterThan(body.jobNumber, 0)
     }
 
+    // MARK: - TASK-442: centralized structured-data field resolution
+
+    func testResolveStructuredData_prefersTypedField() {
+        let body = try? JSONSerialization.data(withJSONObject: ["structured_data": [["@type": "JobPosting"]]])
+        let resolved = CaptureRequestParsing.resolveStructuredDataJSON(typed: "[{\"x\":1}]", rawBody: body)
+        XCTAssertEqual(resolved, "[{\"x\":1}]", "typed structured_data_json wins over the raw array")
+    }
+
+    func testResolveStructuredData_fallsBackToRawArray() throws {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "structured_data": [["@type": "JobPosting", "title": "Eng"]],
+        ])
+        let resolved = try XCTUnwrap(CaptureRequestParsing.resolveStructuredDataJSON(typed: nil, rawBody: body))
+        let parsed = try JSONSerialization.jsonObject(with: Data(resolved.utf8)) as? [[String: Any]]
+        XCTAssertEqual(parsed?.first?["title"] as? String, "Eng")
+    }
+
+    func testResolveStructuredData_emptyTypedFallsBackToArray() throws {
+        let body = try JSONSerialization.data(withJSONObject: ["structured_data": [["a": 1]]])
+        XCTAssertNotNil(CaptureRequestParsing.resolveStructuredDataJSON(typed: "   ", rawBody: body))
+    }
+
+    func testResolveStructuredData_bothAbsentIsNil() throws {
+        let body = try JSONSerialization.data(withJSONObject: ["visible_text": "hi"])
+        XCTAssertNil(CaptureRequestParsing.resolveStructuredDataJSON(typed: nil, rawBody: body))
+    }
+
+    func testResolveStructuredData_malformedDegradesToNil() throws {
+        // structured_data present but a scalar (not an array/object) → degrade safely to nil.
+        let body = try JSONSerialization.data(withJSONObject: ["structured_data": "not-an-array"])
+        XCTAssertNil(CaptureRequestParsing.resolveStructuredDataJSON(typed: nil, rawBody: body))
+        // Non-JSON body → nil.
+        XCTAssertNil(CaptureRequestParsing.resolveStructuredDataJSON(typed: nil, rawBody: Data("garbage".utf8)))
+    }
+
     /// The extension's "Mark site reviewed" sends `site_url` + reviewed_at/next_review_at/note,
     /// not `url` + interval_days. Before the contract fix this returned 400.
     func testSiteReview_acceptsExtensionPayload() async throws {

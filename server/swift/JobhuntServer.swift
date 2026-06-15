@@ -518,17 +518,10 @@ public actor JobhuntServer {
             return HTTPResponse.error("visible_text or selected_text required")
         }
 
-        // The extension sends JSON-LD/Greenhouse data as a `structured_data` array; the
-        // typed CaptureRequest only sees the pre-stringified `structured_data_json`. When the
-        // latter is absent, serialize the array from the raw body so it reaches extraction.
-        var structuredJSON = captureReq.structuredDataJSON
-        if structuredJSON == nil,
-           let body = request.body,
-           let obj = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
-           let arr = obj["structured_data"], !(arr is NSNull),
-           let data = try? JSONSerialization.data(withJSONObject: arr) {
-            structuredJSON = String(data: data, encoding: .utf8)
-        }
+        // Resolve structured data from either the typed `structured_data_json` field or the
+        // extension's raw `structured_data` array — one shared policy (TASK-442).
+        let structuredJSON = CaptureRequestParsing.resolveStructuredDataJSON(
+            typed: captureReq.structuredDataJSON, rawBody: request.body)
 
         let payload = CapturePayload(
             url: url,

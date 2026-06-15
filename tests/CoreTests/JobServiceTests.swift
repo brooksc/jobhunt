@@ -844,6 +844,31 @@ final class JobServiceTests: XCTestCase {
         XCTAssertTrue(after.allSatisfy { $0.status == .queued }, "all requests must start as queued")
     }
 
+    // MARK: - TASK-442: structured data reaches Capture + cleaned description
+
+    func testIngestCapture_structuredDataJSON_reachesCaptureAndCleanedDescription() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        // JSON-LD JobPosting with a substantial description (≥200 chars) so the cleaner promotes it.
+        let description = String(repeating: "Build distributed systems at scale. ", count: 10)
+        let jsonLd = "[{\"@type\":\"JobPosting\",\"title\":\"Staff Engineer\",\"description\":\"\(description)\"}]"
+        let payload = CapturePayload(
+            url: "https://example.com/jobs/structured",
+            pageTitle: "Staff Engineer",
+            visibleText: "short page text",
+            structuredDataJSON: jsonLd)
+        _ = try await svc.ingestCapture(payload)
+
+        let captures = try await store.fetch(FetchDescriptor<Capture>())
+        let capture = try XCTUnwrap(captures.first)
+        XCTAssertEqual(capture.structuredDataJSON, jsonLd, "structured data must be persisted on the capture")
+        let cleaned = try XCTUnwrap(capture.cleanedDescription)
+        XCTAssertTrue(cleaned.contains("Build distributed systems at scale."),
+                      "cleaner must promote the JSON-LD description into cleanedDescription")
+    }
+
     // MARK: - TASK-146: byte counts persisted at ingest
 
     func testIngestCapture_persistsRawAndCleanedByteCounts() async throws {

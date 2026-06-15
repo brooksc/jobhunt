@@ -23,14 +23,20 @@ COREDATA_EPOCH = datetime(2001, 1, 1, tzinfo=timezone.utc)
 
 
 def to_cd(iso_str):
-    """Convert ISO 8601 string to CoreData timestamp (seconds since 2001-01-01 UTC)."""
+    """Convert ISO 8601 string to CoreData timestamp (seconds since 2001-01-01 UTC).
+
+    Empty/None input returns None (a legitimately-absent optional date). A NON-empty but
+    unparseable value RAISES (TASK-471) rather than silently returning None — that would otherwise
+    insert NULL into NOT-NULL CoreData date columns (e.g. created_at/updated_at/captured_at) and
+    crash the app at read time. The raise is caught by the entry-point wrapper, which rolls back.
+    """
     if not iso_str:
         return None
     try:
         dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
         return (dt - COREDATA_EPOCH).total_seconds()
-    except Exception:
-        return None
+    except Exception as e:
+        raise ValueError(f"Unparseable date '{iso_str}': {e}")
 
 
 def check_preconditions():
@@ -297,4 +303,19 @@ def migrate():
 
 
 if __name__ == "__main__":
-    migrate()
+    # TASK-471: the destructive re-import (DELETE FROM Z…; re-insert) runs in a single sqlite3
+    # transaction with no intermediate commit, so an unhandled exception (e.g. an unparseable date
+    # from to_cd, a bad row) leaves the transaction UNcommitted — it rolls back when the process
+    # exits, so the store is not left half-wiped. Surface that clearly and point at the backup.
+    try:
+        migrate()
+    except Exception as e:
+        sys.stderr.write(
+            f"\nERROR: migration failed and was rolled back — no changes were committed "
+            f"to the store: {e}\n"
+        )
+        sys.stderr.write(
+            f"If the store looks wrong, restore the pre-migration backup:\n"
+            f"  cp '{BACKUP}' '{NEW_STORE}'\n"
+        )
+        sys.exit(1)

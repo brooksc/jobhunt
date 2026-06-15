@@ -21,6 +21,7 @@ set -euo pipefail
 BUNDLE_ID="com.jobhunt-app.jobhunt"
 KEEP="${JOBHUNT_BACKUP_KEEP:-30}"   # how many snapshots to retain
 DEST_DIR="${JOBHUNT_BACKUP_DIR:-$HOME/Documents/jobhunt-backups}"
+MIN_JOBS="${JOBHUNT_BACKUP_MIN_JOBS:-1}"   # refuse a snapshot with fewer jobs (0 = allow empty)
 
 if [[ "${1:-}" == "--mas" ]]; then
   STORE="$HOME/Library/Containers/$BUNDLE_ID/Data/Library/Application Support/Jobhunt/jobhunt.store"
@@ -55,9 +56,20 @@ fi
 
 JOBS="$(sqlite3 "$DEST" 'SELECT COUNT(*) FROM ZJOB;')"
 SIZE="$(du -h "$DEST" | cut -f1)"
+
+# TASK-473: content sanity gate. An empty store passes integrity_check but is not a meaningful
+# backup; keeping it would let it rotate a real backup out (rotation prunes purely by mtime). Refuse
+# a suspect snapshot and remove it BEFORE rotation, so a single bad run can't erode retention.
+if ! [[ "$JOBS" =~ ^[0-9]+$ ]] || (( JOBS < MIN_JOBS )); then
+  echo "Error: snapshot has $JOBS job(s) (need >= $MIN_JOBS) — refusing to keep it or rotate a good backup out." >&2
+  echo "       (Set JOBHUNT_BACKUP_MIN_JOBS=0 to allow empty snapshots, e.g. on a fresh install.)" >&2
+  rm -f "$DEST"
+  exit 1
+fi
+
 echo "OK: integrity ok, $JOBS jobs, $SIZE"
 
-# Rotation: keep the newest $KEEP snapshots.
+# Rotation: keep the newest $KEEP snapshots. Only reached once the snapshot passed the sanity gate.
 COUNT="$(ls -1 "$DEST_DIR"/jobhunt-*.store 2>/dev/null | wc -l | tr -d ' ')"
 if (( COUNT > KEEP )); then
   ls -1t "$DEST_DIR"/jobhunt-*.store | tail -n +"$((KEEP + 1))" | while read -r old; do

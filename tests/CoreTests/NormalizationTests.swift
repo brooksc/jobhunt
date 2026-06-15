@@ -499,6 +499,13 @@ final class LocationInferrerTests: XCTestCase {
         let result = normalize(extracted, description: "Fully remote/telecommute position available for this role.")
         XCTAssertEqual(result["location"] as? String, "Remote")
     }
+
+    // TASK-475: empty/whitespace description must not trap the 0..<(count-1) range.
+    func testSourceLocationFromTitle_emptyDescriptionDoesNotTrap() {
+        XCTAssertNil(LocationInferer.sourceLocationFromTitle("", title: "Engineer"))
+        XCTAssertNil(LocationInferer.sourceLocationFromTitle(nil, title: "Engineer"))
+        XCTAssertNil(LocationInferer.sourceLocationFromTitle("   \n  \n ", title: "Engineer"))
+    }
 }
 
 // MARK: - CompanyBackfiller Tests

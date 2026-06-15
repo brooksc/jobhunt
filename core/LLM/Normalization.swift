@@ -562,7 +562,9 @@ public enum LocationInferer {
         if let metaLoc = metadataValue(lines, label: "Location") { return metaLoc }
         if let basedIn = locationFromBasedIn(description) { return basedIn }
 
-        for idx in 0 ..< (lines.count - 1) {
+        // dropLast() instead of 0..<(count-1): an empty `lines` would make count-1 == -1 and trap
+        // the Range (TASK-475). dropLast() yields an empty range for 0/1 lines.
+        for idx in lines.indices.dropLast() {
             guard lines[idx].lowercased() == normalizedTitle else { continue }
             let candidate = lines[idx + 1]
             // Match "City, State + N more" pattern (Microsoft style)

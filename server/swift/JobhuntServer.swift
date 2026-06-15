@@ -431,6 +431,13 @@ public actor JobhuntServer {
             }
         #endif
 
+        // TASK-478: the request parser only frames bodies by Content-Length. A request using
+        // Transfer-Encoding (e.g. chunked) would otherwise parse with an empty body and the POST
+        // handlers would misreport it as invalid JSON. Reject it explicitly as unsupported.
+        if request.headers["transfer-encoding"] != nil {
+            return HTTPResponse.error("Transfer-Encoding is not supported; send a Content-Length body.", code: 400)
+        }
+
         let origin = request.headers["origin"] ?? ""
         let fromExtension = isAllowedExtensionOrigin(origin)
 

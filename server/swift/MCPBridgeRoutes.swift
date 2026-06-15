@@ -228,9 +228,10 @@
         guard !mcpToken.isEmpty else {
             return HTTPResponse.error("MCP not configured", code: 503)
         }
-        // Reject missing or wrong tokens.
+        // Reject missing or wrong tokens. Use a constant-time compare so a timing side-channel
+        // can't leak the token's length/prefix (TASK-474).
         let provided = request.headers["x-mcp-token"] ?? ""
-        guard !provided.isEmpty, provided == mcpToken else {
+        guard !provided.isEmpty, constantTimeEquals(provided, mcpToken) else {
             return HTTPResponse.error("Unauthorized", code: 401)
         }
 
@@ -635,6 +636,21 @@
             case canonicalURL = "canonical_url"
             case structuredDataJSON = "structured_data_json"
         }
+    }
+
+    /// Constant-time equality for the MCP token (TASK-474). Accumulates byte differences without an
+    /// early exit so comparison time doesn't reveal the token's length or matching prefix.
+    private func constantTimeEquals(_ a: String, _ b: String) -> Bool {
+        let aBytes = Array(a.utf8)
+        let bBytes = Array(b.utf8)
+        var diff = aBytes.count ^ bBytes.count
+        let maxLen = max(aBytes.count, bBytes.count)
+        for i in 0 ..< maxLen {
+            let av = i < aBytes.count ? aBytes[i] : 0
+            let bv = i < bBytes.count ? bBytes[i] : 0
+            diff |= Int(av ^ bv)
+        }
+        return diff == 0
     }
 
 #endif // !MAS_BUILD

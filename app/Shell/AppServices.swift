@@ -33,7 +33,9 @@ final class AppServices: @unchecked Sendable {
             isPaused: { await MainActor.run { settingsStore.llmQueuePaused } },
             onSetPaused: { paused in await MainActor.run { settingsStore.llmQueuePaused = paused } },
             readExtractionSettings: { await MainActor.run { settingsStore.extractionSettings() } },
-            providerFactory: { LLMProviderFactory.makeProvider(settings: settingsStore) }
+            // Snapshot SettingsStore on the main actor (it's not Sendable); the built provider is
+            // Sendable so it crosses back to queue isolation safely (TASK-381).
+            providerFactory: { await MainActor.run { LLMProviderFactory.makeProvider(settings: settingsStore) } }
         )
         let js = JobService(store: store, queue: queue)
         let ss = SiteService(store: store)

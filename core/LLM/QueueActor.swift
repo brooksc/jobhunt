@@ -55,7 +55,9 @@ public actor QueueActor {
     // MARK: - Dependencies
 
     private let store: BackgroundStore
-    private let providerFactory: @Sendable () -> any LLMProvider
+    /// Build a provider from current settings. Async + Sendable so the implementation can snapshot
+    /// the (non-Sendable) SettingsStore on the main actor rather than reading it from queue isolation.
+    private let providerFactory: @Sendable () async -> any LLMProvider
     /// Read the current queue-paused flag. Implementations should dispatch to @MainActor.
     private let isPaused: @Sendable () async -> Bool
     /// Write the queue-paused flag. Implementations should dispatch to @MainActor.
@@ -81,7 +83,7 @@ public actor QueueActor {
         isPaused: @escaping @Sendable () async -> Bool,
         onSetPaused: @escaping @Sendable (Bool) async -> Void,
         readExtractionSettings: @escaping @Sendable () async -> ExtractionSettings,
-        providerFactory: @escaping @Sendable () -> any LLMProvider
+        providerFactory: @escaping @Sendable () async -> any LLMProvider
     ) {
         self.store = store
         self.isPaused = isPaused
@@ -261,7 +263,7 @@ public actor QueueActor {
         while true {
             guard await !isPaused() else { break }
 
-            let provider = providerFactory()
+            let provider = await providerFactory()
             let limit = provider.concurrencyLimit
 
             let requests: [QueuedItem]

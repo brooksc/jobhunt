@@ -3,11 +3,11 @@ id: TASK-431
 title: >-
   Server security: Fail closed for Chrome extension origin allowlist in release
   builds
-status: In Progress
+status: Done
 assignee:
   - claude
 created_date: '2026-06-13 05:43'
-updated_date: '2026-06-15 00:27'
+updated_date: '2026-06-15 00:31'
 labels:
   - audit
   - server
@@ -17,6 +17,10 @@ dependencies: []
 references:
   - server/swift/JobhuntServer.swift
   - tests/ServerTests/JobhuntServerTests.swift
+modified_files:
+  - server/swift/JobhuntServer.swift
+  - tests/ServerTests/JobhuntServerTests.swift
+  - PRIVACY.md
 priority: high
 ---
 
@@ -28,11 +32,11 @@ The local server's extension route authorization currently treats an empty `allo
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Release/production builds reject all `chrome-extension://` origins unless an explicit approved extension origin is configured.
-- [ ] #2 Permissive extension-origin behavior, if still needed for development, is gated behind an explicit debug/development flag that cannot silently ship in release builds.
-- [ ] #3 Server tests assert that arbitrary unapproved Chrome extension origins receive 403 and no reflected CORS headers in production-mode configuration.
-- [ ] #4 Documentation identifies where the approved Chrome Web Store extension ID is configured and how development IDs are handled.
-- [ ] #5 Existing approved-extension capture, site review, job lookup, and focus flows continue to work when the configured origin matches.
+- [x] #1 Release/production builds reject all `chrome-extension://` origins unless an explicit approved extension origin is configured.
+- [x] #2 Permissive extension-origin behavior, if still needed for development, is gated behind an explicit debug/development flag that cannot silently ship in release builds.
+- [x] #3 Server tests assert that arbitrary unapproved Chrome extension origins receive 403 and no reflected CORS headers in production-mode configuration.
+- [x] #4 Documentation identifies where the approved Chrome Web Store extension ID is configured and how development IDs are handled.
+- [x] #5 Existing approved-extension capture, site review, job lookup, and focus flows continue to work when the configured origin matches.
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -49,3 +53,9 @@ Make the Chrome-extension origin allowlist fail closed in release.
 
 Note/assumption: `jekcbebhfeidkpapienoflbcaeeknlch` is taken from the onboarding Chrome Web Store URL as the published extension ID — flag for confirmation.
 <!-- SECTION:PLAN:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Made the Chrome-extension origin allowlist fail closed. The static empty-allowlist permit-all was replaced with two injectable instance settings: `allowedExtensionOrigins` (default = the published CWS origin `chrome-extension://jekcbebhfeidkpapienoflbcaeeknlch`) and `allowArbitraryExtensionOrigins` (default `true` only under `#if DEBUG`, `false` in release — a compile-time flag that cannot ship in release). The decision is a pure `static isApprovedExtensionOrigin(_:allowlist:allowArbitrary:)`; route 403s and CORS reflection both key off it, so unapproved origins now get 403 + no CORS in release. Added JobhuntServerOriginTests: production-mode integration tests (arbitrary origin → 403 + no CORS; approved origin → reflected CORS) plus unit tests of the decision logic and the release default failing closed. Existing tests pass `allowArbitraryExtensionOrigins: true` so they stay green regardless of build config. NOTE: the CWS extension ID was taken from the onboarding Chrome Web Store URL — confirm it matches the published listing before release.
+<!-- SECTION:FINAL_SUMMARY:END -->

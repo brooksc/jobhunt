@@ -6,7 +6,7 @@ Use these notes when submitting the Jobhunt Capture extension for review.
 
 Jobhunt Capture captures job posting page text and structured data, then sends it to the local Jobhunt Mac app so the user can store, organize, and extract fields from job postings locally.
 
-The local companion app is required because Jobhunt stores captures in a local SQLite database and runs local-first workflows from the desktop app.
+The local companion app is required because Jobhunt stores captures locally in the native macOS app and runs local-first workflows from the desktop app.
 
 ## Reviewer Test Instructions
 

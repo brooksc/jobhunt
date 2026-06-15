@@ -30,7 +30,7 @@ HOW IT WORKS
 Click the toolbar button on any job posting page. A preflight check confirms the page contains key details (title, location, salary, remote status) before you save. The captured content is sent to your local Jobhunt app for LLM extraction, fit scoring, and tracking.
 
 WORKS OFFLINE TOO
-If the Jobhunt app isn't running, captures are stored locally in the extension queue and synced automatically the next time the app starts — or manually via the Capture queue page (right-click the toolbar icon → Open capture queue).
+If the Jobhunt app isn't running, captures are stored locally in the extension queue and synced automatically the next time you capture a job while the app is reachable — or on demand via the Capture queue page (right-click the toolbar icon → Open capture queue → Sync to Jobhunt).
 
 FEATURES
 • One-click capture from any job posting page

@@ -24,9 +24,10 @@ struct HelpView: View {
     private var gettingStartedSection: some View {
         HelpSection(title: "Getting Started", systemImage: "star") {
             HelpMarkdown("""
-            **Jobhunt** is a local-first job tracker. The Chrome extension captures job pages, \
-            the local service stores them in SQLite, and the native app helps you extract \
-            structured fields, track follow-ups, review data quality, and manage your pipeline.
+            **Jobhunt** is a local-first job tracker. The Chrome extension captures job pages and \
+            sends them to the native macOS app over a local connection; the app stores them and \
+            helps you extract structured fields, track follow-ups, review data quality, and manage \
+            your pipeline.
 
             **Typical workflow:**
             1. Install the Chrome extension (see instructions in the extension's popup).
@@ -41,8 +42,8 @@ struct HelpView: View {
     private var howItWorksSection: some View {
         HelpSection(title: "How It Works", systemImage: "cpu") {
             HelpMarkdown("""
-            **Capture** → The Chrome extension sends the page HTML and selected text to the \
-            local service running on your machine.
+            **Capture** → The Chrome extension sends the page text and any selected text to the \
+            Jobhunt app over a local connection (localhost) on your machine.
 
             **Extraction** → An AI model (local via LM Studio/Ollama, or a cloud API) reads \
             the captured text and fills structured fields: title, company, location, salary, \
@@ -51,7 +52,7 @@ struct HelpView: View {
             **Fit Scoring** → The model rates each job 0–100 against your resume and breaks \
             the score down by dimension (skills, seniority, location, work arrangement).
 
-            **Local-first** → All data is stored in a local SQLite database. When you use a \
+            **Local-first** → All data is stored locally on your Mac by the app. When you use a \
             local model (LM Studio, Ollama, or a custom endpoint on localhost), all AI \
             processing stays on-device and nothing leaves your machine. When you use a cloud \
             provider — or a custom endpoint that isn't local — job description text is sent for \
@@ -74,8 +75,10 @@ struct HelpView: View {
             - **Location** — proximity or remote preference match
             - **Work arrangement** — remote vs. onsite vs. hybrid preference
 
-            Use **Full extraction** for new jobs, **Missing fields only** for cleanup, and \
-            **Fit score only** after updating your resume without needing to re-extract.
+            New captures are extracted automatically. To re-process a job, use **Re-run AI** \
+            (on a job's detail pane, or on a selection in **Jobs** / **Data Quality**). To \
+            recompute fit after updating your resume without re-extracting, use **Score against \
+            resume** on the job's **Fit** tab.
             """)
         }
     }
@@ -119,9 +122,9 @@ struct HelpView: View {
             **LM Studio not running** — Make sure LM Studio is open and a model is loaded \
             before queuing extraction. Use **Test connection** in Settings → LLM to verify.
 
-            **Extension not connecting** — The local service must be running (the app must be \
-            open). Check that the port in Settings matches the extension configuration. \
-            Restart the app if the service stopped unexpectedly.
+            **Extension not connecting** — The Jobhunt app must be open — it runs the local \
+            connection (localhost) the extension talks to. Restart the app if the extension can't \
+            reach it.
 
             **Extraction fails silently** — Check the LLM Queue for error details and attempt history.
 
@@ -193,7 +196,7 @@ struct HelpView: View {
                 Divider()
 
                 HelpMarkdown("""
-                **Privacy** — All data is stored in a local SQLite database. When you use a \
+                **Privacy** — All data is stored locally on your Mac by the app. When you use a \
                 local model (LM Studio, Ollama, or a custom endpoint on localhost), all AI \
                 processing stays on-device and nothing leaves your machine. When you use a \
                 cloud provider — or a custom endpoint that isn't local — job description text \

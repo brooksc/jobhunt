@@ -6,7 +6,7 @@ Jobhunt is a local-first Mac app with no cloud backend, no user accounts, and no
 
 - The local HTTP server on `127.0.0.1` (not accessible outside your machine)
 - The Chrome extension communicating with that local server
-- SQLite database stored under `~/Library/Application Support/Jobhunt/jobhunt.store` (DMG) or `~/Library/Containers/com.jobhunt-app.jobhunt/Data/Library/Application Support/Jobhunt/jobhunt.store` (MAS)
+- SwiftData store (a SQLite-backed file) under `~/Library/Application Support/Jobhunt/jobhunt.store` (DMG) or `~/Library/Containers/com.jobhunt-app.jobhunt/Data/Library/Application Support/Jobhunt/jobhunt.store` (MAS)
 
 ## Reporting a vulnerability
 

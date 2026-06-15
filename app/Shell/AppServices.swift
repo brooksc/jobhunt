@@ -73,8 +73,19 @@ final class AppServices: @unchecked Sendable {
         // One-time data repairs (re-clean captures, backfill request models) are NOT run here — they
         // live in JobhuntMigrator (--reclean / --backfill-models), run out-of-band with the app quit.
         let queue = queueActor
-        Task {
-            try? await queue.requeueRunningOnLaunch()
+        Task { @MainActor [weak self] in
+            do {
+                try await queue.requeueRunningOnLaunch()
+            } catch {
+                // TASK-382: don't swallow crash-recovery failure — running requests would be left
+                // stuck with no signal. Surface via the toast (also recorded in the Debug tab's
+                // recent-errors log) so the user can re-run the queue.
+                NSLog("AppServices: requeueRunningOnLaunch failed: \(error)")
+                self?.toastStore.show(
+                    "Couldn't recover the LLM queue on launch — some requests may be stuck. \(error.localizedDescription)",
+                    isError: true
+                )
+            }
         }
 
         // Update last-check timestamp when a scheduled availability check completes.

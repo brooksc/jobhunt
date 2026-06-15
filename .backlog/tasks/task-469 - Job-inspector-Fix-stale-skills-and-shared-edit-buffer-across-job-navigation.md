@@ -1,9 +1,10 @@
 ---
 id: TASK-469
 title: 'Job inspector: Fix stale skills and shared edit buffer across job navigation'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-15 03:38'
+updated_date: '2026-06-15 18:06'
 labels:
   - bug
   - app
@@ -12,6 +13,9 @@ dependencies: []
 references:
   - app/Views/Detail/JobDetailView.swift
   - app/Shell/ContentView.swift
+modified_files:
+  - app/ContentView.swift
+  - app/Views/Detail/JobDetailView.swift
 priority: medium
 ---
 
@@ -27,7 +31,13 @@ Two view-identity hazards in the job inspector:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Navigating prev/next between jobs in the inspector shows the correct job's skills
-- [ ] #2 Switching editable rows mid-edit cannot write one field's text into another
-- [ ] #3 In-progress edit buffers reset when the displayed job changes
+- [x] #1 Navigating prev/next between jobs in the inspector shows the correct job's skills
+- [x] #2 Switching editable rows mid-edit cannot write one field's text into another
+- [x] #3 In-progress edit buffers reset when the displayed job changes
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added .id(job.id) to the inspector's JobDetailView so prev/next navigation re-mounts it — onAppear re-fires (skills reload for the new job) and @State edit buffers reset, fixing the stale-skills and carried-over-edit-state across jobs (AC#1/#3). For switching editable rows within a job (AC#2): the pencil-tap now commits any in-progress edit on a different row first, against that row's own stored value+commit closure (activeCurrent/activeCommit), so the shared editText buffer can't be persisted into the wrong field. App builds; no unit test (SwiftUI view-identity/edit behavior — would need XCUITest).
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,9 +1,10 @@
 ---
 id: TASK-465
 title: 'LLM queue: Kick drain loop after enqueueFit so manual re-score runs'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-15 03:38'
+updated_date: '2026-06-15 06:33'
 labels:
   - bug
   - llm
@@ -23,7 +24,13 @@ priority: high
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 enqueueFit starts the drain loop (Task { await startProcessing() }) after a successful batch insert, mirroring enqueue
-- [ ] #2 A manual re-score from JobDetailView produces a fit score without any other queue-triggering event
-- [ ] #3 A focused test verifies enqueueFit alone (without an explicit startProcessing call) drains the queued fit request
+- [x] #1 enqueueFit starts the drain loop (Task { await startProcessing() }) after a successful batch insert, mirroring enqueue
+- [x] #2 A manual re-score from JobDetailView produces a fit score without any other queue-triggering event
+- [x] #3 A focused test verifies enqueueFit alone (without an explicit startProcessing call) drains the queued fit request
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented and committed in a8b2338 (first fix batch). enqueueFit now calls Task { await startProcessing() } after insertFitBatch, mirroring enqueue/enqueueFitForActiveResumes, so a manual "Score against resume" drains without waiting for an unrelated event. Regression test testEnqueueFit_drainsWithoutExplicitStartProcessing added. (Backlog status was missed at the time; verified present and marking Done now.)
+<!-- SECTION:FINAL_SUMMARY:END -->

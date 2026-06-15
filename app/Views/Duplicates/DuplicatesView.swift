@@ -17,6 +17,11 @@ struct DuplicatesView: View {
     @State private var jobIndex: [String: Job] = [:]
     @State private var actionError: String?
 
+    /// Monotonic token guarding stale scan publishes (TASK-384). Each `refreshPairsInBackground`
+    /// captures the current value; the expensive scan runs in a detached task that `.task(id:)`
+    /// cancellation can't stop, so a superseded scan must not overwrite newer pair/jobIndex state.
+    @State private var scanGeneration: Int = 0
+
     /// Stable ID for `.task(id:)` debouncing — changes whenever the jobs array or decisions
     /// change in any way that affects duplicate detection: count, status, or extractionStatus.
     /// Uses a folded hash so that status transitions (e.g. new→passed) retrigger the scan
@@ -180,10 +185,15 @@ struct DuplicatesView: View {
 
     @MainActor
     private func refreshPairsInBackground() async {
-        // Build job index and snapshots synchronously on the main actor (reading @Query values is free)
+        // Supersede any in-flight scan: bump the generation and capture it for the staleness check.
+        scanGeneration += 1
+        let generation = scanGeneration
+
+        // Build job index and snapshots synchronously on the main actor (reading @Query values is free).
+        // Hold the index locally and publish it together with the pairs, so a stale scan can't leave
+        // jobIndex updated while pairs reverts to an older value (TASK-384).
         var index: [String: Job] = [:]
         for job in allJobs { index[job.id] = job }
-        jobIndex = index
 
         let snapshots = allJobs.compactMap { job -> JobSnapshot? in
             guard let capture = job.capture else { return nil }
@@ -196,6 +206,11 @@ struct DuplicatesView: View {
             DuplicateDetector().duplicateGroups(snapshots: snapshots, resolvedHashes: resolvedHashes)
         }.value
 
+        // Only publish if this is still the newest scan and the task wasn't cancelled. A detached
+        // task isn't a child, so `.task(id:)` cancellation lets us resume here after a newer scan
+        // already started — without this guard the older result would clobber newer state.
+        guard generation == scanGeneration, !Task.isCancelled else { return }
+        jobIndex = index
         pairs = newPairs
     }
 

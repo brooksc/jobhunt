@@ -187,6 +187,12 @@ public actor JobService {
         )
         let atomic = try await store.insertCaptureAtomically(input)
         if !atomic.isDuplicate {
+            // insertCaptureAtomically already inserted the .queued extraction request for this job.
+            // This enqueue does NOT create a second one — QueueActor.enqueue dedups against existing
+            // queued/running requests for the same (job, mode) — its job here is to KICK THE DRAIN
+            // (insertCaptureAtomically doesn't). Don't drop this call thinking it's redundant, or
+            // manual-URL jobs would never start processing. (TASK-448 regression tests assert exactly
+            // one extraction request results.)
             try await queue.enqueue(jobIDs: [input.jobID], mode: .extract)
         }
         return IngestResult(captureID: atomic.captureID, jobNumber: atomic.jobNumber, isDuplicate: atomic.isDuplicate)

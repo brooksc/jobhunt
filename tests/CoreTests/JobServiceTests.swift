@@ -58,6 +58,54 @@ final class JobServiceTests: XCTestCase {
         XCTAssertEqual(allJobs.first?.jobNumber, 1)
     }
 
+    // MARK: - TASK-448: manual URL ingest must not double-enqueue extraction
+
+    func testAddJobByURL_createsExactlyOneExtractionRequest() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let queue = makeQueue(container)
+        let svc = JobService(store: store, queue: queue)
+
+        let result = try await svc.addJobByURL("https://example.com/jobs/manual-1")
+        XCTAssertFalse(result.isDuplicate)
+
+        let extractReqs = try await store.fetch(FetchDescriptor<LLMRequest>())
+            .filter { $0.requestType == .extract }
+        XCTAssertEqual(extractReqs.count, 1, "Manual URL add must create exactly one extraction request")
+    }
+
+    func testAddJobByURL_duplicateSubmissionCreatesNoExtraRequest() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let queue = makeQueue(container)
+        let svc = JobService(store: store, queue: queue)
+
+        _ = try await svc.addJobByURL("https://example.com/jobs/manual-dup")
+        _ = try await svc.addJobByURL("https://example.com/jobs/manual-dup")
+
+        let extractReqs = try await store.fetch(FetchDescriptor<LLMRequest>())
+            .filter { $0.requestType == .extract }
+        XCTAssertEqual(extractReqs.count, 1, "Re-submitting the same URL must not add extraction requests")
+    }
+
+    func testIngestCapture_createsExactlyOneExtractionRequest() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let queue = makeQueue(container)
+        let svc = JobService(store: store, queue: queue)
+
+        _ = try await svc.ingestCapture(CapturePayload(
+            url: "https://example.com/jobs/cap-1",
+            pageTitle: "Engineer",
+            selectedText: nil,
+            visibleText: "We are hiring an engineer."
+        ))
+
+        let extractReqs = try await store.fetch(FetchDescriptor<LLMRequest>())
+            .filter { $0.requestType == .extract }
+        XCTAssertEqual(extractReqs.count, 1, "Browser capture ingest must create exactly one extraction request")
+    }
+
     // MARK: - testIngestDuplicateCapture
 
     func testIngestDuplicateCapture() async throws {

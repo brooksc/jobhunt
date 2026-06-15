@@ -123,6 +123,33 @@ Defined in `.github/workflows/ui-tests.yml`. Runs weekly (Monday 8am UTC) or on 
 - **MCPTests sources** include `mcp/swift/MCPHelpers.swift` directly (same reason)
 - **Jobhunt-DMG scheme** test action includes: CoreTests, ServerTests, MCPTests, AppUITests
 
+## Data store location & backup
+
+The store path comes from `ModelContainerFactory.productionStoreURL()`: the system Application Support
+directory + a fixed `Jobhunt/jobhunt.store`. Because the subfolder is fixed (not keyed by bundle ID),
+**which build you run only matters for sandbox status**, and the app bundle ID is the same
+(`com.jobhunt-app.jobhunt`) across all four configs:
+
+| Build config | Sandboxed? | Store location |
+|---|---|---|
+| Debug-DMG / Release-DMG | No | `~/Library/Application Support/Jobhunt/jobhunt.store` |
+| Debug-MAS / Release-MAS | Yes | `~/Library/Containers/com.jobhunt-app.jobhunt/Data/Library/Application Support/Jobhunt/jobhunt.store` |
+
+Consequences:
+- **All DMG builds share one store** — the dev `Debug-DMG` build run from DerivedData and a shipped
+  notarized `Release-DMG` open the *same* file. No migration needed between them.
+- **MAS (App Store) is a separate, sandboxed store.** Moving DMG data into a MAS install (or vice
+  versa) is a one-time copy with the app quit: copy `jobhunt.store` + `-shm` + `-wal` into the other
+  location. A DMG and a MAS install can't live-share — pick one as primary or they diverge.
+
+**Backups.** `scripts/backup-store.sh` makes a consistent single-file snapshot via SQLite's online
+backup (`.backup`) — safe to run *with the app open*, folds in the `-wal`, integrity-checks the
+result, and rotates (keeps newest `JOBHUNT_BACKUP_KEEP`, default 30) into `JOBHUNT_BACKUP_DIR`
+(default `~/Documents/jobhunt-backups`). `--mas` targets the sandbox container. Restore = quit app,
+remove `jobhunt.store{,-shm,-wal}`, copy a snapshot to `jobhunt.store`, relaunch (see the script
+header). Put the backup dir somewhere itself backed up (Time Machine / iCloud / external) — a copy on
+the same disk doesn't survive disk failure.
+
 ## One-time data operations (migrations / cleanup / backfills)
 
 **Do not put one-time data fixups in the app launch path.** They become deprecated code that sits

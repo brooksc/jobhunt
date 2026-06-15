@@ -407,6 +407,10 @@ struct OverviewTabView: View {
     @State private var editingField: String?
     @State private var editText: String = ""
     @FocusState private var editFocused: Bool
+    // TASK-469: the original value + commit closure of the field currently being edited, so a
+    // pencil tap on another row commits the in-progress edit to the RIGHT field before switching.
+    @State private var activeCurrent: String = ""
+    @State private var activeCommit: ((String) -> Void)?
 
     private var projection: JobDetailProjection { JobDetailProjection(job: job) }
     private var summary: String? { projection.summary }
@@ -740,8 +744,15 @@ struct OverviewTabView: View {
                     .foregroundStyle(value.isEmpty ? .tertiary : .primary)
                 Spacer()
                 Button {
+                    // Commit any in-progress edit on a DIFFERENT row first, against that row's own
+                    // value/commit — so the shared editText can't be written into the wrong field.
+                    if editingField != nil, editingField != label, let commitActive = activeCommit {
+                        commitEdit(current: activeCurrent, commit: commitActive)
+                    }
                     editText = value
                     editingField = label
+                    activeCurrent = value
+                    activeCommit = commit
                     editFocused = true
                 } label: {
                     Image(systemName: "pencil").font(.caption2)

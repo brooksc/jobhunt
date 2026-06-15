@@ -257,6 +257,10 @@ struct JobInspectorView: View {
                 onNavigateNext: { navigateAdjacentJob(offset: +1) },
                 onClose: { selectedJobIDs.removeAll() }
             )
+            // TASK-469: give the detail view a per-job identity so prev/next navigation re-mounts it
+            // — otherwise @State (loaded skills, in-progress edit buffers) carries over from the
+            // previously viewed job (onAppear doesn't re-fire on a reused instance).
+            .id(job.id)
         } else if selectedJobIDs.count > 1 {
             multiSelectionSummary
         } else {

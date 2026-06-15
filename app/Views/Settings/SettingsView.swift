@@ -429,24 +429,33 @@ struct LLMTab: View {
     }
 
     private func fetchModels() async {
+        // TASK-468: capture the provider this fetch is for, so a slow fetch that resolves after the
+        // user switched providers can't clobber the now-current provider's model list.
+        let provider = selectedProviderID
         isFetchingModels = true
         fetchError = nil
         defer { isFetchingModels = false }
         do {
             let models = try await ModelCatalog.listModels(
-                provider: selectedProviderID,
+                provider: provider,
                 baseURL: baseURLText.isEmpty ? settings.llmBaseURL : baseURLText,
                 apiKey: apiKeyText
             )
+            guard provider == selectedProviderID else { return }
             fetchedModels = models
             // Do not auto-select — selection is explicit. If the remembered model is no longer in
             // the list, clear it so the picker shows the "Select a model…" placeholder.
             if models.isEmpty {
                 fetchError = "No models returned by the provider"
             } else if !models.contains(modelText) {
+                // Also clear the PERSISTED selection — otherwise the UI shows "unselected" while
+                // settings still points at the unavailable model and extraction/testConnection use
+                // it (the Picker's onChange guards !isEmpty, so it never clears it itself).
                 modelText = ""
+                settings.setModelForProvider("", provider: provider)
             }
         } catch {
+            guard provider == selectedProviderID else { return }
             fetchedModels = []
             fetchError = error.localizedDescription
         }

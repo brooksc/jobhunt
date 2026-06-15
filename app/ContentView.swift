@@ -208,8 +208,14 @@ struct ContentView: View {
         showingExpiredConfirmation = false
         let ids = jobs.map(\.jobID)
         let count = ids.count
-        Task { try? await appServices.jobService.markExpired(jobIDs: ids) }
-        appServices.toastStore.show("\(count) job(s) marked expired")
+        Task {
+            do {
+                try await appServices.jobService.markExpired(jobIDs: ids)
+                appServices.toastStore.show("\(count) job(s) marked expired")
+            } catch {
+                appServices.toastStore.show("Couldn't mark jobs expired: \(error.localizedDescription)", isError: true)
+            }
+        }
     }
 
     // MARK: - Helpers
@@ -236,6 +242,7 @@ struct JobInspectorView: View {
     @Query(sort: \Job.createdAt, order: .reverse) private var allJobs: [Job]
     @Environment(\.jobService) private var jobService
     @Environment(\.queueActor) private var queueActor
+    @Environment(AppServices.self) private var appServices
 
     private var selectedJob: Job? {
         guard selectedJobIDs.count == 1, let id = selectedJobIDs.first else { return nil }
@@ -283,7 +290,16 @@ struct JobInspectorView: View {
             VStack(spacing: 10) {
                 Button {
                     let ids = Array(selectedJobIDs)
-                    Task { for id in ids { try? await jobService?.archive(jobID: id) } }
+                    Task {
+                        var failed = 0
+                        for id in ids {
+                            do { try await jobService?.archive(jobID: id) }
+                            catch { failed += 1 }
+                        }
+                        if failed > 0 {
+                            appServices.toastStore.show("Couldn't archive \(failed) of \(ids.count) job(s)", isError: true)
+                        }
+                    }
                 } label: {
                     Label("Archive All", systemImage: "archivebox").frame(minWidth: 160)
                 }
@@ -291,7 +307,10 @@ struct JobInspectorView: View {
 
                 Button {
                     let ids = Array(selectedJobIDs)
-                    Task { try? await jobService?.resetExtractionBulk(jobIDs: ids) }
+                    Task {
+                        do { try await jobService?.resetExtractionBulk(jobIDs: ids) }
+                        catch { appServices.toastStore.show("Couldn't re-run AI: \(error.localizedDescription)", isError: true) }
+                    }
                 } label: {
                     Label("Re-run AI on All", systemImage: "arrow.clockwise").frame(minWidth: 160)
                 }

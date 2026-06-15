@@ -95,7 +95,11 @@ struct JobsView: View {
             // Mark opened when exactly one job is selected
             if newIDs.count == 1, let id = newIDs.first {
                 let svc = appServices.jobService
-                Task { try? await svc.markOpened(jobID: id) }
+                // Automatic side-effect (not a user command) — log a failure rather than toast.
+                Task {
+                    do { try await svc.markOpened(jobID: id) }
+                    catch { NSLog("JobsView: markOpened failed for \(id): \(error)") }
+                }
             }
         }
         // HIG-20: Space is not used for deselect (macOS convention)
@@ -187,7 +191,12 @@ struct JobsView: View {
                 if !selectedJobIDs.isEmpty {
                     Button {
                         let ids = Array(selectedJobIDs)
-                        Task { try? await appServices.jobService.resetExtractionBulk(jobIDs: ids) }
+                        let svc = appServices.jobService
+                        let toast = appServices.toastStore
+                        Task {
+                            do { try await svc.resetExtractionBulk(jobIDs: ids) }
+                            catch { toast.show("Couldn't re-run AI: \(error.localizedDescription)", isError: true) }
+                        }
                     } label: {
                         Label("Re-run AI on \(selectedJobIDs.count) Selected", systemImage: "arrow.clockwise")
                     }
@@ -514,17 +523,41 @@ struct JobsView: View {
         let targets: [String] = selectedJobIDs.contains(job.id) ? Array(selectedJobIDs) : [job.id]
         let label: String = targets.count > 1 ? "\(targets.count) Jobs" : "Job"
         let svc = appServices.jobService
+        let toast = appServices.toastStore
 
         Menu("Set Status") {
             ForEach(JobStatus.allCases, id: \.self) { status in
                 Button(status.displayName) {
-                    Task { for id in targets { try? await svc.setStatus(status, for: id) } }
+                    Task {
+                        var failed = 0
+                        for id in targets {
+                            do { try await svc.setStatus(status, for: id) } catch { failed += 1 }
+                        }
+                        if failed > 0 {
+                            toast.show("Couldn't update status for \(failed) of \(targets.count) job(s)", isError: true)
+                        }
+                    }
                 }
             }
         }
-        Button { Task { for id in targets { try? await svc.archive(jobID: id) } } }
+        Button {
+            Task {
+                var failed = 0
+                for id in targets {
+                    do { try await svc.archive(jobID: id) } catch { failed += 1 }
+                }
+                if failed > 0 {
+                    toast.show("Couldn't archive \(failed) of \(targets.count) job(s)", isError: true)
+                }
+            }
+        }
             label: { Label("Archive \(label)", systemImage: "archivebox") }
-        Button { Task { try? await svc.resetExtractionBulk(jobIDs: targets) } }
+        Button {
+            Task {
+                do { try await svc.resetExtractionBulk(jobIDs: targets) }
+                catch { toast.show("Couldn't re-run AI: \(error.localizedDescription)", isError: true) }
+            }
+        }
             label: { Label("Re-run AI on \(label)", systemImage: "arrow.clockwise") }
         Divider()
         Button(role: .destructive) { jobIDsToDelete = targets }

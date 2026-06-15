@@ -514,7 +514,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
             capturedAt: Date()
         )
 
-        let result = await AvailabilityChecker.checkStaleJobs(
+        let result = try await AvailabilityChecker.checkStaleJobs(
             store: store,
             staleDays: 21,
             limit: 10,
@@ -556,7 +556,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
             capturedAt: staleDate
         )
 
-        let result = await AvailabilityChecker.checkStaleJobs(
+        let result = try await AvailabilityChecker.checkStaleJobs(
             store: store,
             staleDays: 21,
             limit: 5,
@@ -600,6 +600,27 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         XCTAssertNil(result.reason)
         // checked is a number (could be 0 if no stale jobs).
         XCTAssertGreaterThanOrEqual(result.checked, 0)
+        XCTAssertEqual(result.failed, 0, "No per-job marking failures expected on a clean store")
+    }
+
+    // TASK-389 AC#2/#4: the last-check timestamp (driven by .availabilityCheckCompleted) is only
+    // advanced after a valid check pass. On success the completion notification must fire; the
+    // app layer's observer is what writes the timestamp.
+    func testMaybeRunStaleCheck_postsCompletionOnSuccessfulPass() async {
+        let context = ModelContext(container)
+        let settings = SettingsStore(modelContext: context)
+        settings.setBool(true, forKey: SettingsKey.availabilityAutoCheckEnabled)
+        settings.set("2020-01-01T00:00:00Z", forKey: SettingsKey.availabilityLastAutoCheckAt)
+
+        let expectation = expectation(forNotification: .availabilityCheckCompleted, object: nil) { note in
+            (note.userInfo?["timestamp"] as? String)?.isEmpty == false
+        }
+
+        let result = await AvailabilityChecker.maybeRunStaleCheck(store: store, settings: settings, session: session)
+        XCTAssertFalse(result.skipped)
+        XCTAssertNil(result.reason, "A successful pass must not report a fetch-error reason")
+
+        await fulfillment(of: [expectation], timeout: 2)
     }
 }
 

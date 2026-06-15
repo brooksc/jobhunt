@@ -292,9 +292,9 @@ public enum AvailabilityChecker {
         _ jobs: [Job],
         store: BackgroundStore,
         session: URLSession = .shared
-    ) async -> (checked: Int, unavailable: Int, marked: Int) {
+    ) async -> (checked: Int, unavailable: Int, marked: Int, failed: Int) {
         let eligible = jobs.filter { $0.status == .pursuing }
-        guard !eligible.isEmpty else { return (0, 0, 0) }
+        guard !eligible.isEmpty else { return (0, 0, 0, 0) }
 
         // Extract lightweight metadata before entering async task group (avoids sending Job across actors).
         struct JobSpec: Sendable {
@@ -308,7 +308,7 @@ public enum AvailabilityChecker {
             guard !urlString.isEmpty, let url = URL(string: urlString) else { return nil }
             return JobSpec(id: job.id, jobNumber: job.jobNumber, title: job.title ?? "", url: url)
         }
-        guard !specs.isEmpty else { return (0, 0, 0) }
+        guard !specs.isEmpty else { return (0, 0, 0, 0) }
 
         var checkedJobs: [CheckedJob] = []
 
@@ -343,6 +343,7 @@ public enum AvailabilityChecker {
 
         // Mark gone jobs.
         var markedCount = 0
+        var failedCount = 0
         let unavailableCount = checkedJobs.count(where: { if case .gone = $0.result { return true }; return false })
 
         for checked in checkedJobs {
@@ -375,56 +376,57 @@ public enum AvailabilityChecker {
                         ]
                     )
                 } catch {
-                    // Skip — mirrors JS catch { /* skip */ }
+                    // A gone job we failed to mark/record is NOT a successful check — count it and
+                    // log it instead of silently dropping it, so callers can surface the failure.
+                    failedCount += 1
+                    NSLog("AvailabilityChecker: failed to mark job \(checked.jobID) expired: \(error)")
                 }
             }
         }
 
-        return (checked: checkedJobs.count, unavailable: unavailableCount, marked: markedCount)
+        return (checked: checkedJobs.count, unavailable: unavailableCount, marked: markedCount, failed: failedCount)
     }
 
     // MARK: - checkStaleJobs
 
     /// Checks jobs that haven't been touched in `staleDays` days, up to `limit` per run.
+    /// Throws if the underlying store fetch fails — callers must treat that as a failed check
+    /// (not a zero-result success), or future checks get suppressed for the interval.
     public static func checkStaleJobs(
         store: BackgroundStore,
         staleDays: Int = 21,
         limit: Int = 25,
         session: URLSession = .shared
-    ) async -> (checked: Int, unavailable: Int, marked: Int) {
+    ) async throws -> (checked: Int, unavailable: Int, marked: Int, failed: Int) {
         let cutoff = Date().addingTimeInterval(-Double(max(1, staleDays)) * 86400)
 
         // Use capturedAtDenormalized (populated on insert since TASK-216) to sort jobs
         // oldest-first at the DB level, bounding the query with fetchLimit.
         // Status and date are still filtered in-memory (enum predicates unsupported; optional
         // date comparison in predicates requires force-unwrap which SwiftData doesn't support).
-        let jobs: [Job]
-        do {
-            var descriptor = FetchDescriptor<Job>(
-                predicate: #Predicate { $0.capturedAtDenormalized != nil },
-                sortBy: [SortDescriptor(\Job.capturedAtDenormalized, order: .forward)]
-            )
-            descriptor.fetchLimit = limit * 4  // over-fetch to allow for in-memory status filter
-            let newStyleRows = try await store.fetch(descriptor)
+        // A fetch failure propagates (do NOT swallow it as an empty result).
+        var descriptor = FetchDescriptor<Job>(
+            predicate: #Predicate { $0.capturedAtDenormalized != nil },
+            sortBy: [SortDescriptor(\Job.capturedAtDenormalized, order: .forward)]
+        )
+        descriptor.fetchLimit = limit * 4  // over-fetch to allow for in-memory status filter
+        let newStyleRows = try await store.fetch(descriptor)
 
-            // Legacy rows with nil capturedAtDenormalized: fetch separately, filter via relationship
-            var legacyDescriptor = FetchDescriptor<Job>(
-                predicate: #Predicate { $0.capturedAtDenormalized == nil },
-                sortBy: [SortDescriptor(\Job.createdAt, order: .forward)]
-            )
-            legacyDescriptor.fetchLimit = limit * 2
-            let legacyRows = try await store.fetch(legacyDescriptor)
+        // Legacy rows with nil capturedAtDenormalized: fetch separately, filter via relationship
+        var legacyDescriptor = FetchDescriptor<Job>(
+            predicate: #Predicate { $0.capturedAtDenormalized == nil },
+            sortBy: [SortDescriptor(\Job.createdAt, order: .forward)]
+        )
+        legacyDescriptor.fetchLimit = limit * 2
+        let legacyRows = try await store.fetch(legacyDescriptor)
 
-            let all = newStyleRows + legacyRows
-            jobs = all.filter { job in
-                guard job.status != .passed, job.status != .archived,
-                      job.status != .closed, job.status != .expired else { return false }
-                let ageDate = job.capturedAtDenormalized ?? job.capture?.capturedAt ?? job.createdAt
-                return ageDate <= cutoff
-            }.prefix(limit).map(\.self)
-        } catch {
-            return (0, 0, 0)
-        }
+        let all = newStyleRows + legacyRows
+        let jobs = all.filter { job in
+            guard job.status != .passed, job.status != .archived,
+                  job.status != .closed, job.status != .expired else { return false }
+            let ageDate = job.capturedAtDenormalized ?? job.capture?.capturedAt ?? job.createdAt
+            return ageDate <= cutoff
+        }.prefix(limit).map(\.self)
 
         return await checkJobs(jobs, store: store, session: session)
     }
@@ -436,10 +438,10 @@ public enum AvailabilityChecker {
         store: BackgroundStore,
         settings: SettingsStore,
         session: URLSession = .shared
-    ) async -> (skipped: Bool, reason: String?, checked: Int, unavailable: Int, marked: Int) {
+    ) async -> (skipped: Bool, reason: String?, checked: Int, unavailable: Int, marked: Int, failed: Int) {
         // Check if auto-check is enabled.
         guard settings.bool(forKey: SettingsKey.availabilityAutoCheckEnabled) else {
-            return (skipped: true, reason: "disabled", checked: 0, unavailable: 0, marked: 0)
+            return (skipped: true, reason: "disabled", checked: 0, unavailable: 0, marked: 0, failed: 0)
         }
 
         // Check interval gate.
@@ -448,15 +450,24 @@ public enum AvailabilityChecker {
         if !lastCheckStr.isEmpty, let lastCheck = ISO8601DateFormatter().date(from: lastCheckStr) {
             let elapsed = Date().timeIntervalSince(lastCheck)
             if elapsed < Double(intervalDays) * 86400 {
-                return (skipped: true, reason: "interval", checked: 0, unavailable: 0, marked: 0)
+                return (skipped: true, reason: "interval", checked: 0, unavailable: 0, marked: 0, failed: 0)
             }
         }
 
         let staleDays = max(1, settings.int(forKey: SettingsKey.availabilityStaleDays))
-        let result = await checkStaleJobs(store: store, staleDays: staleDays, limit: 25, session: session)
+        let result: (checked: Int, unavailable: Int, marked: Int, failed: Int)
+        do {
+            result = try await checkStaleJobs(store: store, staleDays: staleDays, limit: 25, session: session)
+        } catch {
+            // Fetch failed — no valid check ran. Do NOT post availabilityCheckCompleted, or the app
+            // layer would advance the last-check timestamp and suppress checks for the whole interval
+            // despite nothing being checked. Surface as a failed (not skipped) result.
+            NSLog("AvailabilityChecker: stale check fetch failed: \(error)")
+            return (skipped: false, reason: "fetch-error", checked: 0, unavailable: 0, marked: 0, failed: 0)
+        }
 
-        // Update last-check timestamp. SettingsStore isn't Sendable-safe off-main-actor,
-        // so we post a notification for the app layer to update the setting on the main actor.
+        // Only after a valid pass: update last-check timestamp. SettingsStore isn't Sendable-safe
+        // off-main-actor, so we post a notification for the app layer to update the setting.
         NotificationCenter.default.post(
             name: .availabilityCheckCompleted,
             object: nil,
@@ -468,7 +479,8 @@ public enum AvailabilityChecker {
             reason: nil,
             checked: result.checked,
             unavailable: result.unavailable,
-            marked: result.marked
+            marked: result.marked,
+            failed: result.failed
         )
     }
 }

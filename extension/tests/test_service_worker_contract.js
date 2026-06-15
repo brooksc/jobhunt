@@ -48,6 +48,7 @@ let badgeColor = '';
 // --- Chrome mock ---------------------------------------------------------
 
 let messageListener = null;
+let contextMenuListener = null;
 
 global.importScripts = () => {}; // deps loaded separately below
 
@@ -61,7 +62,7 @@ global.chrome = {
   contextMenus: {
     create: () => {},
     update: async () => {},
-    onClicked: { addListener: () => {} }
+    onClicked: { addListener: (fn) => { contextMenuListener = fn; } }
   },
   runtime: {
     onInstalled: { addListener: () => {} },
@@ -252,6 +253,46 @@ describe('service_worker: message handler', () => {
 
       global.chrome.scripting.executeScript = orig;
       assert.ok(result.error && result.error.includes('Tab not found'), 'error detail must be returned');
+    });
+  });
+
+  // TASK-436: the Mark-Site-Reviewed payload must stay decodable by the Swift server's
+  // SiteReviewRequest model (server/swift/JobhuntServer.swift). This fails if the extension
+  // payload keys drift from the server request model again.
+  describe('markSiteReviewed — payload contract with the Swift server', () => {
+    // snake_case keys the server's SiteReviewRequest accepts (its CodingKeys raw values).
+    const SERVER_SITE_REVIEW_KEYS = new Set([
+      'url', 'site_url', 'site_origin', 'page_title', 'note', 'reviewed_at', 'next_review_at', 'interval_days'
+    ]);
+    // Extension-only fields the server intentionally ignores (e.g. payload versioning).
+    const EXTENSION_ONLY_KEYS = new Set(['schema_version']);
+
+    test('Mark Site Reviewed posts a body the server can decode', async () => {
+      assert.ok(contextMenuListener, 'service_worker must register a contextMenus.onClicked listener');
+
+      let siteReviewBody = null;
+      global.fetch = async (url, opts) => {
+        if (url.includes('/ping')) return { ok: true, json: async () => ({ app: 'jobhunt' }) };
+        if (url.includes('/site-reviews')) {
+          siteReviewBody = opts && opts.body ? JSON.parse(opts.body) : null;
+          return { ok: true, json: async () => ({ ok: true, site_review_id: 'sr-1' }) };
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      };
+
+      await contextMenuListener(
+        { menuItemId: 'mark-site-reviewed' },
+        { id: 1, url: 'https://boards.example.com/careers', title: 'Careers' }
+      );
+
+      assert.ok(siteReviewBody, 'Mark Site Reviewed must POST a body to /site-reviews');
+      assert.ok(siteReviewBody.site_url, 'payload must include site_url (server resolvedURL)');
+      for (const key of Object.keys(siteReviewBody)) {
+        assert.ok(
+          SERVER_SITE_REVIEW_KEYS.has(key) || EXTENSION_ONLY_KEYS.has(key),
+          `payload key "${key}" is not in the server SiteReviewRequest model — extension/server contract drift`
+        );
+      }
     });
   });
 });

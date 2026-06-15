@@ -1,9 +1,10 @@
 ---
 id: TASK-422
 title: 'Fixture DB build: Verify SQLite fixture is self-contained before commit'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-13 04:21'
+updated_date: '2026-06-15 06:38'
 labels:
   - audit
   - fixtures
@@ -13,6 +14,9 @@ references:
   - scripts/build-fixture-db.sh
   - core/Models/ModelContainerFactory.swift
   - docs/test-db-spec.md
+modified_files:
+  - scripts/build-fixture-db.sh
+  - tests/fixtures/README.md
 priority: high
 ---
 
@@ -24,9 +28,15 @@ The fixture build script currently runs the app to write the main fixture file a
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The fixture build process produces a self-contained SQLite fixture that can be copied and opened without relying on WAL or SHM sidecar files.
-- [ ] #2 The script validates the generated fixture by reopening a fresh copy with the app's SwiftData migration/schema configuration and checking expected fixture counts or manifest values.
-- [ ] #3 Cleanup handles the companion-file naming patterns actually produced by SQLite/SwiftData for the configured store URL.
-- [ ] #4 The build fails with a clear error if validation fails or sidecar state would be required to read the fixture.
-- [ ] #5 Documentation states the fixture artifact policy for main DB and sidecar files.
+- [x] #1 The fixture build process produces a self-contained SQLite fixture that can be copied and opened without relying on WAL or SHM sidecar files.
+- [x] #2 The script validates the generated fixture by reopening a fresh copy with the app's SwiftData migration/schema configuration and checking expected fixture counts or manifest values.
+- [x] #3 Cleanup handles the companion-file naming patterns actually produced by SQLite/SwiftData for the configured store URL.
+- [x] #4 The build fails with a clear error if validation fails or sidecar state would be required to read the fixture.
+- [x] #5 Documentation states the fixture artifact policy for main DB and sidecar files.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+build-fixture-db.sh now (1) fails if a non-empty -wal/-shm sidecar remains after seeding — meaning data is still in the WAL and a main-file-only copy would be stale (AC#1) — and removes empty sidecars so only the self-contained main file is committed (AC#3); (2) validates the generated fixture by running CoreTests/FixtureTests, which reopens an isolated copy via the app's SwiftData config and checks expected counts (AC#2), failing the build with a clear message on drift/unreadability (AC#4). The fixtures README documents that only the main .sqlite is committed and tests copy it fresh (AC#5).
+<!-- SECTION:FINAL_SUMMARY:END -->

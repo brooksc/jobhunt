@@ -74,10 +74,16 @@ struct JobhuntApp: App {
             let integration = PlatformIntegration(router: sharedRouter, modelContainer: container)
             platformIntegration = integration
             storeFailure = nil
+            // TASK-427: demo seeding is only safe in the isolated UI-test store. Passing
+            // --seed-demo-data to a normal launch must never seed the production/selected store.
+            let allowDemoSeed = LaunchPolicy.allowsDemoSeed(isUITest: isUITest, seedRequested: shouldSeed)
             Task { @MainActor in
                 integration.start(queue: services.queueActor)
-                if shouldSeed {
+                if allowDemoSeed {
                     try? await DemoSeeder.seedDemo(into: services.backgroundStore)
+                } else if shouldSeed {
+                    fputs("Refusing --seed-demo-data without --ui-test-store: demo seeding is only "
+                        + "allowed into the isolated UI-test store, not the selected store.\n", stderr)
                 }
                 if fixtureOutputPath != nil {
                     do {

@@ -18,6 +18,23 @@ private struct SettingsTabView: View {
     let settings: SettingsStore
 
     var body: some View {
+        VStack(spacing: 0) {
+            // TASK-388: stored settings couldn't be read — tell the user their preferences may not
+            // be the saved ones and that changes won't be persisted until a relaunch succeeds.
+            if let loadError = settings.loadError {
+                Label(loadError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                    .padding([.horizontal, .top])
+            }
+            tabView
+        }
+    }
+
+    private var tabView: some View {
         TabView {
             SettingsTab(settings: settings)
                 .tabItem { Label("Settings", systemImage: "gear") }

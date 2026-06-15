@@ -248,6 +248,28 @@ final class SettingsStoreTests: XCTestCase {
         let fetched = try context.fetch(FetchDescriptor<Job>())
         XCTAssertGreaterThanOrEqual(fetched.count, 5)
     }
+
+    // MARK: - TASK-388: load-failure recovery state
+    //
+    // NOTE: the actual load-FAILURE path (loadError set, writes blocked) can't be unit-tested —
+    // SwiftData's fetch doesn't throw on demand and BackgroundStore/ModelContext has no
+    // failure-injection seam. The behavior is exercised only on a real store-read failure. This
+    // covers the readable/recovered baseline.
+
+    /// Baseline / recovered behavior: a readable store loads cleanly, persists, and reload keeps
+    /// values and the cleared recovery state.
+    func testNormalLoad_persistsAndSurvivesReloadAndReopen() throws {
+        XCTAssertNil(store.loadError)
+        store.llmBaseURL = "https://saved.example.com"
+
+        store.reload()
+        XCTAssertNil(store.loadError, "Reload on a readable store keeps the cleared recovery state")
+        XCTAssertEqual(store.llmBaseURL, "https://saved.example.com")
+
+        // A fresh store on the same context reads the persisted value back.
+        let reopened = SettingsStore(modelContext: context)
+        XCTAssertEqual(reopened.llmBaseURL, "https://saved.example.com")
+    }
 }
 
 // MARK: - ConsentHelper snapshot-based tests (QueueActor path)

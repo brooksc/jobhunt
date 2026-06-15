@@ -42,6 +42,10 @@ public final class SettingsStore {
     /// Set when a SwiftData persist fails; cleared on the next successful write.
     /// Contains the key name and error type — never the setting value.
     public var lastSettingsError: String?
+    /// Set when the initial load of stored settings failed. While this is non-nil the store is in a
+    /// recovery state: reads fall back to defaults but writes are NOT persisted, so a default value
+    /// can't overwrite stored settings that merely couldn't be read. Cleared by a successful `reload()`.
+    public private(set) var loadError: String?
 
     public init(modelContext: ModelContext, keychain: KeychainStore = KeychainStore()) {
         self.modelContext = modelContext
@@ -208,10 +212,26 @@ public final class SettingsStore {
     // MARK: - Private
 
     private func loadCache() {
-        let all = (try? modelContext.fetch(FetchDescriptor<Setting>())) ?? []
-        for setting in all {
-            cache[setting.key] = setting.value
+        do {
+            let all = try modelContext.fetch(FetchDescriptor<Setting>())
+            cache.removeAll()
+            for setting in all {
+                cache[setting.key] = setting.value
+            }
+            loadError = nil
+        } catch {
+            // Couldn't read stored settings. Don't treat defaults as authoritative and — critically —
+            // don't let subsequent writes persist defaults over the stored values we failed to read
+            // (persistToStore is gated on loadError). Surface a recovery state instead.
+            NSLog("SettingsStore: failed to load settings: \(error)")
+            loadError = "Couldn't load saved settings (\(type(of: error))). Your preferences weren't read; relaunch to retry."
         }
+    }
+
+    /// Re-attempt the initial load — e.g. after a transient store error clears. On success the cache
+    /// is repopulated from disk and `loadError` is cleared (re-enabling persistence).
+    public func reload() {
+        loadCache()
     }
 
     // MARK: - ExtractionSettings snapshot
@@ -248,6 +268,13 @@ public final class SettingsStore {
     // MARK: - Private
 
     private func persistToStore(key: String, value: String) {
+        // In the load-failure recovery state, the on-disk settings couldn't be read. Persisting now
+        // would risk writing a default over a real stored value we never loaded, so skip the write
+        // (the in-memory cache still updates for this session). reload() re-enables persistence.
+        guard loadError == nil else {
+            NSLog("SettingsStore: skipping persist of '\(key)' while in load-failure recovery state")
+            return
+        }
         let descriptor = FetchDescriptor<Setting>(predicate: #Predicate { $0.key == key })
         do {
             if let existing = try modelContext.fetch(descriptor).first {

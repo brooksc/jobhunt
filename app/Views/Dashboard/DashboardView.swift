@@ -16,9 +16,15 @@ struct DashboardView: View {
     @Query(sort: \Site.addedAt) private var sites: [Site]
     /// LLM requests — used for the queue card in Housekeeping
     @Query private var llmRequests: [LLMRequest]
+    /// Pending follow-up actions — drives the follow-ups recompute so it stays correct when an
+    /// action is completed/snoozed without a `jobs` change.
+    @Query(filter: #Predicate<JobAction> { $0.completedAt == nil }) private var pendingActions: [JobAction]
 
     /// Cached aggregate metrics — recomputed only when `jobs` changes, not on every render.
     @State private var summary: JobStatusSummary = .zero
+    /// Cached per-section derivations (TASK-363) — recomputed only when `jobs`/pending actions
+    /// change, replacing repeated all-job scans in `body` computed properties.
+    @State private var derived = DashboardDerived()
 
     init() {
         let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
@@ -51,15 +57,24 @@ struct DashboardView: View {
         }
         .accessibilityIdentifier("content.dashboard")
         .navigationTitle("Dashboard")
-        .onAppear { summary = JobStatusSummary(jobs: jobs) }
-        .onChange(of: jobs) { _, updated in summary = JobStatusSummary(jobs: updated) }
+        .onAppear { recomputeMetrics() }
+        .onChange(of: jobs) { _, _ in recomputeMetrics() }
+        // Follow-ups depend on action state, which can change without a `jobs` change.
+        .onChange(of: pendingActions) { _, _ in recomputeMetrics() }
+    }
+
+    // MARK: - Cached metrics (TASK-363)
+
+    private func recomputeMetrics() {
+        summary = JobStatusSummary(jobs: jobs)
+        derived = DashboardDerived(jobs: jobs, now: Date())
     }
 
     // MARK: - Stat Cards
 
     private var housekeepingSection: some View {
         let now = Date()
-        let dupCount = jobs.filter { $0.duplicateOfJobID != nil }.count
+        let dupCount = derived.duplicateCount
         let sitesDue = sites.filter { $0.state != .exclude && ($0.nextReviewAt.map { $0 <= now } ?? true) }.count
         let activeQueueCount = llmRequests.filter { $0.status == .queued || $0.status == .running }.count
         return VStack(alignment: .leading, spacing: 10) {
@@ -111,10 +126,7 @@ struct DashboardView: View {
     // MARK: - Recommended to Apply
 
     private var recommendedToApplySection: some View {
-        let recommended = jobs
-            .filter { $0.status == .pursuing && $0.fitStatus == .succeeded && ($0.fitScore ?? 0) > 0 }
-            .sorted { ($0.fitScore ?? 0) > ($1.fitScore ?? 0) }
-            .prefix(4)
+        let recommended = derived.recommended
 
         return GroupBox {
             VStack(alignment: .leading, spacing: 0) {
@@ -180,7 +192,7 @@ struct DashboardView: View {
     // MARK: - Recent Captures
 
     private var recentCapturesSection: some View {
-        let recent = Array(jobs.sorted { ($0.capture?.capturedAt ?? $0.createdAt) > ($1.capture?.capturedAt ?? $1.createdAt) }.prefix(4))
+        let recent = derived.recent
 
         return GroupBox {
             VStack(alignment: .leading, spacing: 0) {
@@ -241,20 +253,7 @@ struct DashboardView: View {
 
     private var followUpsDueSection: some View {
         let now = Date()
-        let dueSoon = jobs
-            .filter { job in
-                job.actions.contains { action in
-                    action.completedAt == nil
-                        && (action.snoozedUntil == nil || action.snoozedUntil! <= now)
-                        && action.dueDate <= Calendar.current.date(byAdding: .day, value: 7, to: now)!
-                }
-            }
-            .sorted { a, b in
-                let aDate = a.actions.filter { $0.completedAt == nil && ($0.snoozedUntil == nil || $0.snoozedUntil! <= now) }.map(\.dueDate).min() ?? Date.distantFuture
-                let bDate = b.actions.filter { $0.completedAt == nil && ($0.snoozedUntil == nil || $0.snoozedUntil! <= now) }.map(\.dueDate).min() ?? Date.distantFuture
-                return aDate < bDate
-            }
-            .prefix(4)
+        let dueSoon = derived.followUps
 
         return GroupBox {
             VStack(alignment: .leading, spacing: 0) {
@@ -490,8 +489,7 @@ struct DashboardView: View {
     // MARK: - Quality Summary
 
     private var qualitySummarySection: some View {
-        let issueCount = jobs.count(where: { !QualityChecker.issues(for: $0).isEmpty })
-        return QualitySummarySection(issueCount: issueCount)
+        QualitySummarySection(issueCount: derived.qualityIssueCount)
     }
 
     // MARK: - Helpers
@@ -515,6 +513,53 @@ struct DashboardView: View {
         }
         .frame(maxWidth: .infinity)
         .padding()
+    }
+}
+
+// MARK: - DashboardDerived (TASK-363)
+
+/// Cached, all-job-derived dashboard sections, computed once per data change instead of in `body`
+/// computed properties on every render. Lists are pre-bounded to what each section shows (top 4).
+private struct DashboardDerived {
+    var recommended: [Job] = []
+    var recent: [Job] = []
+    var followUps: [Job] = []
+    var duplicateCount: Int = 0
+    var qualityIssueCount: Int = 0
+
+    init() {}
+
+    init(jobs: [Job], now: Date) {
+        recommended = Array(
+            jobs.filter { $0.status == .pursuing && $0.fitStatus == .succeeded && ($0.fitScore ?? 0) > 0 }
+                .sorted { ($0.fitScore ?? 0) > ($1.fitScore ?? 0) }
+                .prefix(4)
+        )
+
+        recent = Array(
+            jobs.sorted { ($0.capture?.capturedAt ?? $0.createdAt) > ($1.capture?.capturedAt ?? $1.createdAt) }
+                .prefix(4)
+        )
+
+        let dueCutoff = Calendar.current.date(byAdding: .day, value: 7, to: now) ?? now
+        func activeDue(_ job: Job) -> Date? {
+            job.actions
+                .filter { $0.completedAt == nil && ($0.snoozedUntil == nil || $0.snoozedUntil! <= now) }
+                .map(\.dueDate).min()
+        }
+        followUps = Array(
+            jobs
+                .compactMap { job -> (job: Job, due: Date)? in
+                    guard let due = activeDue(job), due <= dueCutoff else { return nil }
+                    return (job, due)
+                }
+                .sorted { $0.due < $1.due }
+                .prefix(4)
+                .map(\.job)
+        )
+
+        duplicateCount = jobs.count(where: { $0.duplicateOfJobID != nil })
+        qualityIssueCount = jobs.count(where: { !QualityChecker.issues(for: $0).isEmpty })
     }
 }
 

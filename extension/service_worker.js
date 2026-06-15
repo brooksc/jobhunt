@@ -266,7 +266,13 @@ async function submitOrQueue(payload) {
     const result = await submitCapture(payload);
     await showBadge(result.duplicate ? "DUP" : "OK", "#137333");
     return result;
-  } catch (_error) {
+  } catch (error) {
+    // TASK-438: a permanent server rejection must NOT go into the retry queue — it would retry the
+    // same bad payload until TTL. Surface it distinctly (ERR) instead of the "queued" state.
+    if (error && error.permanent) {
+      await showBadge("ERR", "#c0392b");
+      return { queued: false, permanent: true, status: error.status, error: error.message };
+    }
     const enqueueResult = await jobhuntRetryQueue.enqueueCapture(chrome.storage.local, payload);
     if (enqueueResult.duplicate) {
       await showBadge("DUP", "#f9ab00");
@@ -315,7 +321,14 @@ async function submitCapture(payload) {
   });
 
   if (!response.ok) {
-    throw new Error(`Capture failed: ${response.status}`);
+    const err = new Error(`Capture failed: ${response.status}`);
+    err.status = response.status;
+    // TASK-438: 4xx (except 408 Request Timeout / 429 Too Many Requests) are PERMANENT — the same
+    // payload will keep failing (validation error, forbidden origin, 413 too large). Don't retry
+    // those. 5xx and network errors are retryable (server busy/unavailable).
+    err.permanent = response.status >= 400 && response.status < 500
+      && response.status !== 408 && response.status !== 429;
+    throw err;
   }
 
   return response.json();

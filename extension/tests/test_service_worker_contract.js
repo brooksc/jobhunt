@@ -256,6 +256,38 @@ describe('service_worker: message handler', () => {
     });
   });
 
+  // TASK-438: permanent (4xx) capture failures must NOT be queued for retry; retryable failures must.
+  describe('captureWithNote — permanent vs retryable failures', () => {
+    beforeEach(() => {
+      sessionStorage.reset();
+      localChrome.reset();
+    });
+
+    test('a permanent 413 failure is not queued', async () => {
+      await sessionStorage.set({ pendingNoteTabId: 7 });
+      global.fetch = async (url) => {
+        if (url.includes('/ping')) return { ok: true, json: async () => ({ app: 'jobhunt' }) };
+        if (url.includes('/captures')) return { ok: false, status: 413, json: async () => ({}) };
+        throw new Error(`unexpected ${url}`);
+      };
+      await sendMessage({ type: 'captureWithNote', note: 'too big' });
+      const queue = await localChrome.get({ 'jobhunt.captureQueue': [] });
+      assert.equal(queue['jobhunt.captureQueue'].length, 0, '413 must not be queued for retry');
+    });
+
+    test('a retryable 503 failure is queued', async () => {
+      await sessionStorage.set({ pendingNoteTabId: 7 });
+      global.fetch = async (url) => {
+        if (url.includes('/ping')) return { ok: true, json: async () => ({ app: 'jobhunt' }) };
+        if (url.includes('/captures')) return { ok: false, status: 503, json: async () => ({}) };
+        throw new Error(`unexpected ${url}`);
+      };
+      await sendMessage({ type: 'captureWithNote', note: 'server busy' });
+      const queue = await localChrome.get({ 'jobhunt.captureQueue': [] });
+      assert.equal(queue['jobhunt.captureQueue'].length, 1, '503 must be queued for later retry');
+    });
+  });
+
   // TASK-436: the Mark-Site-Reviewed payload must stay decodable by the Swift server's
   // SiteReviewRequest model (server/swift/JobhuntServer.swift). This fails if the extension
   // payload keys drift from the server request model again.

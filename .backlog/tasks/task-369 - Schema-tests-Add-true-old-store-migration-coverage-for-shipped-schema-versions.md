@@ -3,10 +3,10 @@ id: TASK-369
 title: >-
   Schema tests: Add true old-store migration coverage for shipped schema
   versions
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 22:25'
-updated_date: '2026-06-15 04:10'
+updated_date: '2026-06-15 06:39'
 labels:
   - audit
   - schema
@@ -41,3 +41,9 @@ AC#3 satisfied and extended: added testSchemaV1StoredPropertyTypesAreStable, whi
 
 REMAINING (AC#1, AC#2): a true old-store migration test still needs either (a) a committed golden file-backed V1 store fixture, or (b) an explicit SchemaV1Snapshot→SchemaV2 migration test — both depend on work deferred to when V2 lands (and the golden-binary-fixture path also intersects the open fixture-policy tasks TASK-417/422). Deliberately deferred. Note: the current same-process round-trip tests can't catch type drift because they write and read with the same live models — the compile-time type guard is the now-available substitute until a frozen on-disk fixture exists.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+AC#3 satisfied and extended: testSchemaV1StoredPropertyTypesAreStable fails to compile if any storage-critical stored property is renamed, removed, OR retyped without a migration stage (the prior name-only guard missed type changes). AC#1/#2 (golden file-backed old-store fixture + true V1→V2 migration test) are inherently impossible until a SchemaV2 exists to migrate to — carried forward in TASK-480, to be done at the first breaking schema change. Closing here as the pre-V2 coverage is in place.
+<!-- SECTION:FINAL_SUMMARY:END -->

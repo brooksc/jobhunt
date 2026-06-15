@@ -123,8 +123,46 @@ Defined in `.github/workflows/ui-tests.yml`. Runs weekly (Monday 8am UTC) or on 
 - **MCPTests sources** include `mcp/swift/MCPHelpers.swift` directly (same reason)
 - **Jobhunt-DMG scheme** test action includes: CoreTests, ServerTests, MCPTests, AppUITests
 
+## One-time data operations (migrations / cleanup / backfills)
+
+**Do not put one-time data fixups in the app launch path.** They become deprecated code that sits
+forever behind a "have we done this yet?" flag, and a stale flag silently skips the work on data that
+needs it (we hit exactly this: an in-app re-clean guarded by `reclean_captures_v2_done` had its flag
+set *before* a later cleaner change, so 67 captures kept the old cleaning until re-run from the CLI).
+
+Instead, put the transformation logic in **JobhuntCore** (so it's shared and tested) and expose a
+one-shot entry point in the **JobhuntMigrator** CLI (`tools/migrator/`). Run it deliberately,
+out-of-band, with the app quit. Keep the launch path for **recurring operational work only** (e.g.
+`requeueRunningOnLaunch` crash recovery, `pruneFinishedRequests`, the availability re-check loop).
+
+Why the CLI and not a second live process: the SwiftData store (`@ModelActor BackgroundStore` over
+SQLite at `~/Library/Application Support/Jobhunt/jobhunt.store`) is **single-writer** and not
+multi-process-safe. A separate program must only touch it while the app is **not running**.
+
+Existing migrator modes (default `--store` = the live store; all idempotent):
+
+```bash
+osascript -e 'quit app "Jobhunt"'          # the store is single-writer — quit first
+JobhuntMigrator --reclean                   # recompute every capture's cleanedDescription
+JobhuntMigrator --backfill-models           # fill LLMRequest.model on old finished rows
+JobhuntMigrator --prune-orphan-fit-scores   # delete resume-less fit scores, recompute job mirrors
+# --migrate / --patch / --verify / --repair-fit-scores: the original SQLite→SwiftData import path
+```
+
+**Before running any of these against prod data: quit the app, then back up the store *with its
+WAL*** — CoreData leaves an uncheckpointed `-wal`, so copy `jobhunt.store` **and** `jobhunt.store-shm`
+**and** `jobhunt.store-wal` together (a `.store`-only copy loses recent changes). Relaunch the app
+afterward. When shipping a release build, re-run the same modes once against that build's store if it
+carries the same legacy data.
+
+When adding a new fixup: add a `BackgroundStore` (or other JobhuntCore) method + a unit test, then a
+`Mode` case + handler in `tools/migrator/Args.swift` and `main.swift`, and document it in
+`tools/migrator/README.md`. Once every install has passed a given fixup, the mode can be deleted.
+
 ## Conventions
 
+- **One-time data ops live in the CLI, not app launch** — see the section above. The launch path is
+  recurring operational work only.
 - **Actor isolation**: `QueueActor` uses closure-based init (`isPaused:`, `onSetPaused:`, `readExtractionSettings:`, `providerFactory:`). Don't use direct property access on settings from outside the actor.
 - **Server errors**: Use `safeServerError(_:context:)` instead of `error.localizedDescription` in HTTP response bodies to avoid leaking file paths or SwiftData internals.
 - **HTTP server**: `JobhuntServer.receiveRequest` accumulates TCP chunks until a complete request (headers + full Content-Length body) is parsed before dispatching. Don't process partial reads.

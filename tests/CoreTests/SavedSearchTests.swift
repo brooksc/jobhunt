@@ -269,3 +269,89 @@ final class SavedSearchMatchesTests: XCTestCase {
         XCTAssertFalse(search.matches(job))
     }
 }
+
+// MARK: - SavedSearchCriteriaTests (TASK-364)
+
+/// Covers the Sendable projection the Sidebar uses to compute badge counts off-main, including
+/// count correctness after status/field/search changes.
+final class SavedSearchCriteriaTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+    private func fields(
+        status: JobStatus = .new,
+        remoteType: RemoteType? = nil,
+        fitScore: Int? = nil,
+        rating: Int? = nil,
+        salaryMin: Int? = nil,
+        capturedAt: Date? = nil,
+        company: String? = nil,
+        title: String? = nil,
+        jobNumber: Int? = nil
+    ) -> JobMatchFields {
+        let job = Job(
+            jobNumber: jobNumber, company: company, title: title,
+            remoteType: remoteType, salaryMin: salaryMin,
+            status: status, fitScore: fitScore, rating: rating
+        )
+        job.capturedAtDenormalized = capturedAt
+        return JobMatchFields(job: job)
+    }
+
+    private func count(_ search: SavedSearch, _ items: [JobMatchFields]) -> Int {
+        let criteria = SavedSearchCriteria(search)
+        return items.count(where: { criteria.matches($0, now: now) })
+    }
+
+    func testStatusFilterCount() {
+        let search = SavedSearch(name: "pursuing", statusFilterRaw: [JobStatus.pursuing.rawValue])
+        let items = [fields(status: .pursuing), fields(status: .new), fields(status: .pursuing)]
+        XCTAssertEqual(count(search, items), 2)
+    }
+
+    func testCountUpdatesWhenAStatusChanges() {
+        let search = SavedSearch(name: "pursuing", statusFilterRaw: [JobStatus.pursuing.rawValue])
+        let before = [fields(status: .new), fields(status: .new)]
+        XCTAssertEqual(count(search, before), 0)
+        // Flip one job to pursuing → count reflects it.
+        let after = [fields(status: .pursuing), fields(status: .new)]
+        XCTAssertEqual(count(search, after), 1)
+    }
+
+    func testCountUpdatesWhenAFilteredFieldChanges() {
+        let search = SavedSearch(name: "fit60", minFitScore: 60)
+        XCTAssertEqual(count(search, [fields(fitScore: 30)]), 0)
+        XCTAssertEqual(count(search, [fields(fitScore: 80)]), 1)
+    }
+
+    func testCountUpdatesWhenSearchCriteriaChange() {
+        let items = [fields(fitScore: 50), fields(fitScore: 90)]
+        XCTAssertEqual(count(SavedSearch(name: "a", minFitScore: 40), items), 2)
+        XCTAssertEqual(count(SavedSearch(name: "b", minFitScore: 80), items), 1)
+    }
+
+    func testRecentDaysUsesInjectedNowDeterministically() {
+        let search = SavedSearch(name: "recent", recentDays: 7)
+        let within = fields(capturedAt: now.addingTimeInterval(-3 * 86400))
+        let outside = fields(capturedAt: now.addingTimeInterval(-30 * 86400))
+        XCTAssertEqual(count(search, [within, outside]), 1)
+    }
+
+    func testTextAndJobNumberMatch() {
+        let textSearch = SavedSearch(name: "t", searchText: "acme")
+        XCTAssertEqual(count(textSearch, [fields(company: "Acme Corp"), fields(company: "Other")]), 1)
+        let numSearch = SavedSearch(name: "n", searchText: "#42")
+        XCTAssertEqual(count(numSearch, [fields(jobNumber: 42), fields(jobNumber: 7)]), 1)
+    }
+
+    func testEqualFieldsHashAndCompareEqual() {
+        // Stability of the change signal: identical inputs produce equal, equally-hashing snapshots.
+        // capturedAt is pinned because a real Job's createdAt is stable across re-snapshots.
+        let cap = now
+        let a = fields(status: .new, fitScore: 80, capturedAt: cap, company: "Acme")
+        let b = fields(status: .new, fitScore: 80, capturedAt: cap, company: "Acme")
+        XCTAssertEqual(a, b)
+        XCTAssertEqual(a.hashValue, b.hashValue)
+        let c = fields(status: .pursuing, fitScore: 80, capturedAt: cap, company: "Acme")
+        XCTAssertNotEqual(a, c)
+    }
+}

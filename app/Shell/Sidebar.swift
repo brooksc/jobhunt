@@ -23,6 +23,10 @@ struct Sidebar: View {
     /// Unresolved duplicate pairs awaiting review — same set the Duplicates screen shows,
     /// so the badge only appears when there is something to act on (not for already-merged dupes).
     @State private var duplicatePairCount = 0
+    /// Badge counts computed off the synchronous render path (TASK-364). Recomputed off-main only
+    /// when the underlying job/search data actually changes, debounced via `.task(id:)`.
+    @State private var statusCounts: [JobStatus: Int] = [:]
+    @State private var savedSearchCounts: [String: Int] = [:]
     @State private var renamingSearch: SavedSearch?
     @State private var renameText = ""
     @State private var searchToDelete: SavedSearch?
@@ -39,9 +43,6 @@ struct Sidebar: View {
                 .help("Jobs with pending follow-up")
 
             Section("Jobs") {
-                // Compute status counts once — avoids O(N×S) work from per-status filter calls.
-                let statusCounts = Dictionary(grouping: allJobs, by: \.status).mapValues(\.count)
-
                 sidebarRow(.jobsAll, id: "sidebar.jobs.all",
                            label: Label("All Jobs", systemImage: "tray.2"))
                     .badge(allJobs.count)
@@ -58,17 +59,8 @@ struct Sidebar: View {
 
             if !savedSearches.isEmpty {
                 Section("Saved Searches") {
-                    // Compute all search counts in one pass over allJobs per search.
-                    // Cached into a dictionary so each search label doesn't re-filter.
-                    let searchCounts: [String: Int] = {
-                        var counts = [String: Int]()
-                        for search in savedSearches {
-                            counts[search.id] = allJobs.count(where: { search.matches($0) })
-                        }
-                        return counts
-                    }()
                     ForEach(savedSearches) { search in
-                        let count = searchCounts[search.id] ?? 0
+                        let count = savedSearchCounts[search.id] ?? 0
                         sidebarRow(.savedSearch(search.id), id: nil,
                                    label: Label(search.name, systemImage: "pin"))
                             .badge(count)
@@ -128,6 +120,10 @@ struct Sidebar: View {
         // Recompute the review-queue count off the main thread whenever jobs/decisions change.
         // SwiftUI restarts this task on each duplicateRefreshID change, giving implicit debouncing.
         .task(id: duplicateRefreshID) { await refreshDuplicateCount() }
+        // Recompute status + saved-search badge counts off-main, debounced on the same idea.
+        // The change signal is built from JobMatchFields/criteria — exactly the fields matching
+        // consults — so a badge can never go stale from a field the signal forgot (TASK-364).
+        .task(id: countsRefreshID) { await refreshBadgeCounts() }
         .sheet(item: $renamingSearch) { search in
             renameSheet(search)
         }
@@ -216,6 +212,48 @@ struct Sidebar: View {
             DuplicateDetector().duplicateGroups(snapshots: snapshots, resolvedHashes: resolvedHashes).count
         }.value
         duplicatePairCount = count
+    }
+
+    // MARK: - Badge counts (TASK-364)
+
+    /// Change signal for the badge counts. Built from `JobMatchFields`/`SavedSearchCriteria` — the
+    /// exact fields matching consults — so the counts re-run iff something that could change a badge
+    /// changed. O(N+S) per body, versus the old O(N×S) match work that ran in `body` directly.
+    private var countsRefreshID: Int {
+        var hasher = Hasher()
+        for job in allJobs { hasher.combine(JobMatchFields(job: job)) }
+        for search in savedSearches {
+            hasher.combine(search.id)
+            hasher.combine(SavedSearchCriteria(search))
+        }
+        return hasher.finalize()
+    }
+
+    @MainActor
+    private func refreshBadgeCounts() async {
+        // Snapshot on main (cheap), run the O(N×S) matching off-main.
+        let fields = allJobs.map { JobMatchFields(job: $0) }
+        let criteria = savedSearches.map { (id: $0.id, criteria: SavedSearchCriteria($0)) }
+        let now = Date()
+        let result = await Task.detached(priority: .utility) {
+            var statusByRaw: [String: Int] = [:]
+            for field in fields { statusByRaw[field.statusRaw, default: 0] += 1 }
+            var searchCounts: [String: Int] = [:]
+            for entry in criteria {
+                searchCounts[entry.id] = fields.count(where: { entry.criteria.matches($0, now: now) })
+            }
+            return (statusByRaw, searchCounts)
+        }.value
+
+        // A newer refresh supersedes this one: `.task(id:)` cancels the old task, so bail rather
+        // than publish stale counts (same hazard fixed in DuplicatesView / TASK-384).
+        guard !Task.isCancelled else { return }
+        var statusByEnum: [JobStatus: Int] = [:]
+        for (raw, count) in result.0 {
+            if let status = JobStatus(rawValue: raw) { statusByEnum[status] = count }
+        }
+        statusCounts = statusByEnum
+        savedSearchCounts = result.1
     }
 
     // MARK: - Selection sync

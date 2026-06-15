@@ -51,28 +51,8 @@ public final class SavedSearch {
 
     /// Whether a given Job passes this search's filters.
     public func matches(_ job: Job) -> Bool {
-        if !statusFilterRaw.isEmpty, !statusFilterRaw.contains(job.status.rawValue) { return false }
-        if !remoteFilterRaw.isEmpty {
-            guard let rt = job.remoteType, remoteFilterRaw.contains(rt.rawValue) else { return false }
-        }
-        if let min = minFitScore, (job.fitScore ?? 0) < min { return false }
-        if let min = minRating, (job.rating ?? 0) < min { return false }
-        if let min = minSalary {
-            let salary = job.salaryMin ?? job.salaryMax ?? 0
-            if salary < min { return false }
-        }
-        if let days = recentDays {
-            let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
-            if (job.capturedAtDenormalized ?? job.createdAt) < cutoff { return false }
-        }
-        if !searchText.isEmpty {
-            let q = searchText.lowercased().trimmingCharacters(in: .whitespaces)
-            let matchNum = q.hasPrefix("#") ? String(q.dropFirst()) : q
-            let textFields = [job.company, job.title, job.location].compactMap { $0 }.joined(separator: " ").lowercased()
-            let textMatch = textFields.contains(q)
-            let numMatch = job.jobNumber.map { String($0).contains(matchNum) } ?? false
-            if !textMatch && !numMatch { return false }
-        }
-        return true
+        // Delegates to the Sendable projection (TASK-364) so the filter logic has one definition,
+        // usable both here and off the main actor for bounded count computation.
+        SavedSearchCriteria(self).matches(JobMatchFields(job: job), now: Date())
     }
 }

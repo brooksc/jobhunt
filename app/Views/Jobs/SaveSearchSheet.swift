@@ -11,6 +11,7 @@ struct SaveSearchSheet: View {
     @Query(sort: \SavedSearch.sortOrder) private var existing: [SavedSearch]
 
     @State private var name: String = ""
+    @State private var saveError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -19,6 +20,11 @@ struct SaveSearchSheet: View {
             TextField("e.g. Remote Staff+, Strong fit NYC", text: $name)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { save() }
+
+            if let saveError {
+                Label(saveError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption).foregroundStyle(.red)
+            }
 
             // Summary of active filters
             filterSummary
@@ -100,8 +106,15 @@ struct SaveSearchSheet: View {
         guard !trimmed.isEmpty else { return }
         let nextOrder = (existing.map(\.sortOrder).max() ?? -1) + 1
         let search = merged.toSavedSearch(name: trimmed, sortOrder: nextOrder)
-        Task { try? await appServices.jobService.insertSavedSearch(search) }
-        dismiss()
+        // Don't dismiss until the save actually persists, so a failure doesn't look successful.
+        Task {
+            do {
+                try await appServices.jobService.insertSavedSearch(search)
+                dismiss()
+            } catch {
+                saveError = "Couldn't save: \(error.localizedDescription)"
+            }
+        }
     }
 }
 

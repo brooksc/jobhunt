@@ -138,12 +138,19 @@ struct Sidebar: View {
         ) {
             Button("Delete", role: .destructive) {
                 if let search = searchToDelete {
-                    if listSelection == .savedSearch(search.id) {
-                        listSelection = .jobsAll
-                    }
                     let id = search.id
-                    Task { try? await appServices.jobService.deleteSavedSearch(id: id) }
+                    let wasSelected = listSelection == .savedSearch(search.id)
                     searchToDelete = nil
+                    // Only move navigation away once the delete actually succeeds, so a failed
+                    // delete doesn't strand the user on a selection that's gone (or still there).
+                    Task {
+                        do {
+                            try await appServices.jobService.deleteSavedSearch(id: id)
+                            if wasSelected { listSelection = .jobsAll }
+                        } catch {
+                            appServices.toastStore.show("Couldn't delete saved search: \(error.localizedDescription)", isError: true)
+                        }
+                    }
                 }
             }
             Button("Cancel", role: .cancel) { searchToDelete = nil }

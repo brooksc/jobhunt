@@ -108,13 +108,19 @@ struct ResumesTab: View {
 private struct ResumeRow: View {
     let resume: Resume
     let resumeService: ResumeService
+    @Environment(AppServices.self) private var appServices
 
     var body: some View {
         HStack(spacing: 12) {
             Button {
                 let id = resume.id
                 let newActive = !resume.active
-                Task { try? await resumeService.setResumeActive(id: id, active: newActive) }
+                // The checkmark reflects resume.active (store-backed), so a failed write leaves the
+                // displayed state correct; just surface the error rather than swallow it.
+                Task {
+                    do { try await resumeService.setResumeActive(id: id, active: newActive) }
+                    catch { appServices.toastStore.show("Couldn't change active resume: \(error.localizedDescription)", isError: true) }
+                }
             } label: {
                 Image(systemName: resume.active ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(resume.active ? .green : .secondary)

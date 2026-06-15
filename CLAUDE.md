@@ -1,5 +1,14 @@
 # Jobhunt — Claude Code Guide
 
+## Git workflow
+
+- **Work directly on `main`** unless there's a specific reason not to (e.g. a subagent running in
+  its own worktree). Don't create feature/fix branches for routine work — they accumulate and have
+  to be cleaned up.
+- **Commit after each completed change** (one logical change per commit) once it builds and the
+  relevant tests pass. Don't batch many unrelated changes into one commit.
+- Commits are SSH-signed via 1Password (must be unlocked); never use `--no-gpg-sign`.
+
 ## Project Overview
 
 Jobhunt is a native macOS SwiftUI app (macOS 15+) for tracking job applications. It uses:

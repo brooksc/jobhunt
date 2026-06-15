@@ -120,16 +120,36 @@ struct StoreRecoveryView: View {
             return
         }
 
-        // Best-effort: rename the corrupt store aside before overwriting
+        // TASK-375: do NOT move the failed store aside before restoring. BackupService.restore
+        // stages the backup, deep-validates it against the current schema/migration plan, and only
+        // then moves the live store aside with rollback — so a rejected backup leaves the original
+        // store untouched at storeURL. Moving it aside first defeats that: a failed restore would
+        // leave the expected path empty. Instead, *copy* the corrupt store aside for manual recovery
+        // while leaving the original in place for restore's rollback to protect.
         let storeURL = failure.storeURL
         let timestamp = Int(Date().timeIntervalSince1970)
         let corruptURL = storeURL.deletingLastPathComponent()
             .appendingPathComponent("jobhunt.store.corrupt-\(timestamp)")
-        try? FileManager.default.moveItem(at: storeURL, to: corruptURL)
+        let fm = FileManager.default
+        try? fm.copyItem(at: storeURL, to: corruptURL)
+        // Copy companions too so the preserved snapshot is faithful (WAL may hold recent pages).
+        for suffix in ["-wal", "-shm"] {
+            let live = storeURL.deletingLastPathComponent()
+                .appendingPathComponent(storeURL.lastPathComponent + suffix)
+            let aside = corruptURL.deletingLastPathComponent()
+                .appendingPathComponent(corruptURL.lastPathComponent + suffix)
+            try? fm.copyItem(at: live, to: aside)
+        }
 
         do {
             try BackupService.restore(from: backupURL, to: storeURL)
         } catch {
+            // Restore rolled the original back to storeURL, so the corrupt-* copy is redundant — drop it.
+            try? fm.removeItem(at: corruptURL)
+            for suffix in ["-wal", "-shm"] {
+                try? fm.removeItem(at: corruptURL.deletingLastPathComponent()
+                    .appendingPathComponent(corruptURL.lastPathComponent + suffix))
+            }
             restoreError = error.localizedDescription
             showRestoreError = true
             return

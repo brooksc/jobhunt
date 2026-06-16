@@ -78,6 +78,11 @@ final class AppServices: @unchecked Sendable {
         runtimeTasks.append(Task { @MainActor [weak self] in
             do {
                 try await queue.requeueRunningOnLaunch()
+                // TASK-383: automatically resume the drain after recovery so requests recovered from
+                // a crash (reset running → queued) and any other pending work don't sit idle until a
+                // UI action. startProcessing() breaks immediately when the queue is paused, so this
+                // respects the user's paused setting.
+                await queue.startProcessing()
             } catch {
                 // TASK-382: don't swallow crash-recovery failure — running requests would be left
                 // stuck with no signal. Surface via the toast (also recorded in the Debug tab's

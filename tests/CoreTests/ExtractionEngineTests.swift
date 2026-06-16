@@ -879,6 +879,33 @@ final class ExtractionEngineTests: XCTestCase {
         XCTAssertNil(updated.startedAt, "requeueRunningOnLaunch must clear startedAt")
     }
 
+    func testLaunchResume_pausedQueue_leavesRecoveredRequestQueued() async throws {
+        // TASK-383: launch auto-resume calls startProcessing(), which must respect the paused
+        // setting — a recovered (.queued) request stays queued while paused.
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        let queue = QueueActor(
+            store: store,
+            isPaused: { true },
+            onSetPaused: { _ in },
+            readExtractionSettings: { makeExtractionSettings() },
+            providerFactory: { AlwaysFailProvider(error: LLMProviderError.unavailable(reason: "should not run")) }
+        )
+
+        let job = Job(jobNumber: 1, title: "Recovered Job")
+        try await store.insert(job)
+        let req = LLMRequest(requestType: .extract, status: .queued)
+        req.job = job
+        try await store.insert(req)
+
+        // Simulate the launch path: recover, then auto-resume.
+        try await queue.requeueRunningOnLaunch()
+        await queue.startProcessing()
+
+        let after = try await store.fetch(FetchDescriptor<LLMRequest>())
+        XCTAssertEqual(after.first?.status, .queued, "paused launch resume must leave recovered work queued")
+    }
+
     // MARK: - TASK-246: Cancellation during in-flight request prevents success overwrite
 
     func testCancelDuringExecution_requestRemainsCancel() async throws {

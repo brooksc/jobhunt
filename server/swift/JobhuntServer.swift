@@ -166,7 +166,12 @@ public actor JobhuntServer {
     }
 
     /// Try fixed ports 8765–8784; fall back to an OS-assigned ephemeral port.
+    ///
+    /// Idempotent: if a listener is already bound this is a no-op, so the Settings "Retry" flow can't
+    /// bind a second conflicting listener (TASK-430). A failed start leaves `listener == nil`, so a
+    /// retry after failure still proceeds.
     public func start() async throws {
+        guard listener == nil else { return }
         let candidatePorts: [UInt16] = Array(8765 ... 8784)
 
         for candidate in candidatePorts {
@@ -186,6 +191,7 @@ public actor JobhuntServer {
     /// Start on an OS-assigned ephemeral port. Suitable for tests where the exact port
     /// doesn't matter and port reuse/TIME_WAIT must be avoided.
     public func startOnAnyPort() async throws {
+        guard listener == nil else { return }
         try await startListener(on: 0)
     }
 

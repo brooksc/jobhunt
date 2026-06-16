@@ -95,6 +95,42 @@ final class JobhuntServerTests: XCTestCase {
         return "http://127.0.0.1:\(port)"
     }
 
+    // MARK: - Lifecycle (TASK-430)
+
+    /// start() is idempotent: a second start while already listening is a no-op (same port, no
+    /// second listener) — so the Settings "Retry" flow can't create conflicting lifecycle state.
+    func testStart_idempotent_doesNotRebindOrChangePort() async throws {
+        let s = try makeTestServer()
+        try await s.startOnAnyPort()
+        let port1 = await s.listeningPort
+        XCTAssertGreaterThan(port1, 0)
+
+        // Second start must be a no-op.
+        try await s.start()
+        let port2 = await s.listeningPort
+        XCTAssertEqual(port1, port2, "idempotent start must keep the same listener/port")
+
+        await s.stop()
+        let stopped = await s.listeningPort
+        XCTAssertEqual(stopped, 0, "stop() releases the port")
+    }
+
+    /// After stop(), start() can run again (clean restart) — the lifecycle seam app shutdown relies on.
+    func testStartStopRestart() async throws {
+        let s = try makeTestServer()
+        try await s.startOnAnyPort()
+        let p1 = await s.listeningPort
+        XCTAssertGreaterThan(p1, 0)
+        await s.stop()
+        let pStopped = await s.listeningPort
+        XCTAssertEqual(pStopped, 0)
+        // Restart on a fresh OS-assigned port.
+        try await s.startOnAnyPort()
+        let p2 = await s.listeningPort
+        XCTAssertGreaterThan(p2, 0)
+        await s.stop()
+    }
+
     // MARK: - Tests
 
     func testPingEndpoint() async throws {

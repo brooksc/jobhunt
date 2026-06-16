@@ -180,6 +180,12 @@ struct JobhuntApp: App {
                     .onOpenURL { url in
                         integration.handleDeepLink(url)
                     }
+                    // App-owned shutdown on termination (TASK-430): stop the local HTTP server and
+                    // cancel runtime tasks. Best-effort — the process exit also releases the port.
+                    .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+                        integration.stop()
+                        Task { await services.shutdown() }
+                    }
                     .modelContainer(container)
             }
         }

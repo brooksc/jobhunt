@@ -18,6 +18,8 @@ final class AppServices: @unchecked Sendable {
     let toastStore = ToastStore()
     var serverRunning: Bool = false
     var serverError: String?
+    /// Long-lived tasks started by `startRuntime()` so `shutdown()` can cancel them (TASK-430).
+    private var runtimeTasks: [Task<Void, Never>] = []
 
     /// Builds the service graph ONLY — no runtime side effects (TASK-425). The HTTP server,
     /// crash recovery, availability checks, and launch observers are started by `startRuntime()`,
@@ -61,19 +63,19 @@ final class AppServices: @unchecked Sendable {
     /// starts a server or touches user-machine state.
     func startRuntime() {
         let localServer = server
-        Task { @MainActor [weak self] in
+        runtimeTasks.append(Task { @MainActor [weak self] in
             do {
                 try await localServer.start()
                 self?.serverRunning = true
             } catch {
                 self?.serverError = error.localizedDescription
             }
-        }
+        })
         // Crash recovery: reset requests stuck in "running" back to "queued" and prune old history.
         // One-time data repairs (re-clean captures, backfill request models) are NOT run here — they
         // live in JobhuntMigrator (--reclean / --backfill-models), run out-of-band with the app quit.
         let queue = queueActor
-        Task { @MainActor [weak self] in
+        runtimeTasks.append(Task { @MainActor [weak self] in
             do {
                 try await queue.requeueRunningOnLaunch()
             } catch {
@@ -86,14 +88,14 @@ final class AppServices: @unchecked Sendable {
                     isError: true
                 )
             }
-        }
+        })
 
         // Persist the last-check timestamp through an explicit callback (TASK-428) rather than a
         // global notification observer: the checker hands us the completion time, we write the
         // setting on the main actor.
         let settingsStore = settings
         let store = backgroundStore
-        Task {
+        runtimeTasks.append(Task {
             // Run on launch, then re-check hourly (Electron parity: AUTO_AVAILABILITY_INTERVAL_MS).
             // maybeRunStaleCheck gates on the configured interval internally, so this only does real
             // work when a check is actually due — a long-running session no longer stops re-checking.
@@ -108,6 +110,18 @@ final class AppServices: @unchecked Sendable {
                 }
                 do { try await Task.sleep(for: .seconds(3600)) } catch { break }
             }
-        }
+        })
+    }
+
+    /// Explicit, app-owned shutdown (TASK-430): cancel runtime tasks and stop the local HTTP server
+    /// so the bound port is released. Idempotent — safe to call from a termination hook even if the
+    /// server never started. Production relies on this for clean restart/teardown; process exit also
+    /// reclaims the port, so it's best-effort on hard termination.
+    @MainActor
+    func shutdown() async {
+        for task in runtimeTasks { task.cancel() }
+        runtimeTasks.removeAll()
+        await server.stop()
+        serverRunning = false
     }
 }

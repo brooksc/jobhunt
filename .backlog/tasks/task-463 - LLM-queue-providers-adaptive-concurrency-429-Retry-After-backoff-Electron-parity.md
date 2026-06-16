@@ -3,9 +3,10 @@ id: TASK-463
 title: >-
   LLM queue/providers: adaptive concurrency + 429 Retry-After backoff (Electron
   parity)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-14 04:40'
+updated_date: '2026-06-16 23:40'
 labels:
   - llm
   - provider
@@ -54,14 +55,26 @@ Live keys + the ability to trigger 429 (hard to reproduce deterministically). UN
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 LLMProviderError gains a rate-limited case carrying an optional retryAfter; OpenAICompatibleTransport parses Retry-After header / 'retry in Ns' body on 429 and throws it
-- [ ] #2 QueueActor honors the parsed retryAfter for 429 (clamped) instead of generic exponential backoff
-- [ ] #3 GoogleProvider has its own bounded (~4) rate-limit retry that parses the Gemini delay
-- [ ] #4 QueueActor uses an effective runtime concurrency that drops to 1 on a 429 and promotes back toward the provider ceiling after K (~10) consecutive successes; implemented as a pure, unit-tested state machine
-- [ ] #5 No behavior change when no 429s occur (effective concurrency == provider ceiling)
-- [ ] #6 Decision on raising hosted concurrency ceilings (Electron used 5) is made and documented in the task notes
-- [ ] #7 Retry-After parser and adaptive-concurrency state machine each have isolated unit tests with synthetic inputs
+- [x] #1 LLMProviderError gains a rate-limited case carrying an optional retryAfter; OpenAICompatibleTransport parses Retry-After header / 'retry in Ns' body on 429 and throws it
+- [x] #2 QueueActor honors the parsed retryAfter for 429 (clamped) instead of generic exponential backoff
+- [x] #3 GoogleProvider has its own bounded (~4) rate-limit retry that parses the Gemini delay
+- [x] #4 QueueActor uses an effective runtime concurrency that drops to 1 on a 429 and promotes back toward the provider ceiling after K (~10) consecutive successes; implemented as a pure, unit-tested state machine
+- [x] #5 No behavior change when no 429s occur (effective concurrency == provider ceiling)
+- [x] #6 Decision on raising hosted concurrency ceilings (Electron used 5) is made and documented in the task notes
+- [x] #7 Retry-After parser and adaptive-concurrency state machine each have isolated unit tests with synthetic inputs
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+AC#6 decision: hosted concurrency ceilings stay at 3 (OpenAI/OpenRouter/Google), NOT raised to Electron's 5. Rationale: the new adaptive drop-to-1-then-recover handles rate-limit bursts, and bumping the ceiling risks more 429s with no measured benefit at this app's scale (consistent with the project's "don't over-optimize" convention). DoD#2 (manual verification against a real provider that returns 429) is NOT done — a live 429 isn't reproducible here; the pure parser + state machine are unit-tested with synthetic 429/success sequences instead (DoD#1).
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+429 Retry-After: added `LLMProviderError.rateLimited(retryAfter:)` + a pure `RetryAfterParser` (header delta-seconds/HTTP-date, Gemini `retryDelay`, OpenAI "retry in Ns"). OpenAICompatibleTransport throws `.rateLimited` on 429; `QueueActor.backoffMs` honors the parsed delay (clamped to 60s) over exponential backoff, and a 429 is classified as a transient `.rateLimited` outcome — requeued but NOT counted toward the auto-pause streak (so a rate-limit burst can't trip auto-pause). GoogleProvider (its own request path) got a bounded 4-retry budget that parses the Gemini delay then throws `.rateLimited`. Adaptive concurrency: `AdaptiveConcurrency` pure state machine (ceiling = provider.concurrencyLimit, drops to 1 on 429, +1 per 10 consecutive successes); QueueActor dispatches at the effective value, re-seeds on ceiling change, resets each session; no behavior change with no 429s (AC#5). AC#6: ceilings kept at 3 (documented). AC#7/DoD#1: RetryAfterParserTests + AdaptiveConcurrencyTests + QueueBackoffTests (18 tests, synthetic sequences). Full fast gate (797) green; app builds. PENDING (DoD#2): manual verification against a real 429 — not reproducible in this environment.
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->

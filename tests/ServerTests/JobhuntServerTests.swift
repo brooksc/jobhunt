@@ -237,6 +237,33 @@ final class JobhuntServerTests: XCTestCase {
         XCTAssertGreaterThan(body.jobNumber, 0)
     }
 
+    /// TASK-437: the extension now sends BOTH the `structured_data` array and the preferred typed
+    /// `structured_data_json` string. The server must accept this dual-field shape.
+    func testCaptureEndpoint_acceptsDualStructuredDataFields() async throws {
+        // swiftlint:disable:next force_unwrapping
+        let url = await URL(string: baseURL() + "/captures")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("chrome-extension://testextension", forHTTPHeaderField: "Origin")
+        let jsonLd: [[String: Any]] = [["@type": "JobPosting", "title": "Dual Engineer", "baseSalary": 210000]]
+        let payloadObj: [String: Any] = [
+            "url": "https://example.com/jobs/dual-1",
+            "page_title": "Dual Engineer",
+            "visible_text": "We are hiring.",
+            "structured_data": jsonLd,
+            "structured_data_json": String(data: try JSONSerialization.data(withJSONObject: jsonLd), encoding: .utf8)!,
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payloadObj)
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+        XCTAssertEqual(http.statusCode, 200)
+        let body = try JSONDecoder().decode(CaptureBody.self, from: data)
+        XCTAssertTrue(body.isOK)
+        XCTAssertGreaterThan(body.jobNumber, 0)
+    }
+
     // MARK: - TASK-442: centralized structured-data field resolution
 
     func testResolveStructuredData_prefersTypedField() {

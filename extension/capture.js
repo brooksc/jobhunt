@@ -471,7 +471,11 @@
       page_title: pageTitle,
       selected_text: collectSelectedText(win),
       visible_text: collectVisibleText(doc, win),
+      // `structured_data` (array) is kept for the preflight stats and as a fallback; also send the
+      // server's preferred typed field `structured_data_json` so Greenhouse-enriched JSON-LD reaches
+      // ingestion via the explicit contract, not just the raw-body fallback (TASK-437/442).
       structured_data: structuredData,
+      structured_data_json: structuredData.length ? JSON.stringify(structuredData) : null,
       user_note: "",
       source: {
         extension_version: (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getManifest)

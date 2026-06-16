@@ -3,9 +3,10 @@ id: TASK-383
 title: >-
   Startup: Define and implement automatic queue resume behavior after launch
   recovery
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-12 22:55'
+updated_date: '2026-06-16 16:43'
 labels:
   - audit
   - concurrency
@@ -27,7 +28,13 @@ requeueRunningOnLaunch() resets stuck running requests to queued, but nothing st
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Decide whether launch recovery should auto-start processing when the queue is not paused or remain manual by design.
-- [ ] #2 If automatic, start the drain loop after successful recovery and respect the queue paused setting.
+- [x] #1 Decide whether launch recovery should auto-start processing when the queue is not paused or remain manual by design.
+- [x] #2 If automatic, start the drain loop after successful recovery and respect the queue paused setting.
 - [ ] #3 If manual, make the queue view/dashboard surface pending recovered work clearly.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+AC#1 decision: automatic resume. After `requeueRunningOnLaunch()` succeeds, `AppServices.startRuntime` now calls `queue.startProcessing()` so crash-recovered (running→queued) requests and any other pending work resume automatically instead of sitting idle until a UI action. AC#2: `startProcessing()` breaks at the top of its loop when `isPaused()` is true, so the auto-resume respects the user's paused setting — no change needed there. Test (CoreTests): the launch sequence (requeueRunningOnLaunch + startProcessing) on a paused queue leaves a recovered `.queued` request queued; the non-paused drain is already covered by existing startProcessing tests. AC#3 (manual surfacing) is N/A given the automatic decision. App builds; CoreTests green.
+<!-- SECTION:FINAL_SUMMARY:END -->

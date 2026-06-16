@@ -78,6 +78,6 @@ AC#6 decision: hosted concurrency ceilings stay at 3 (OpenAI/OpenRouter/Google),
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 Retry-After parser and adaptive-concurrency state machine covered by isolated unit tests (synthetic 429/success sequences)
+- [x] #1 Retry-After parser and adaptive-concurrency state machine covered by isolated unit tests (synthetic 429/success sequences)
 - [ ] #2 Manually verified backoff respects Retry-After against a real provider that returns 429
 <!-- DOD:END -->

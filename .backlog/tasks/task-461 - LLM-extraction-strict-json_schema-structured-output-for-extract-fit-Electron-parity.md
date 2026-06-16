@@ -3,9 +3,10 @@ id: TASK-461
 title: >-
   LLM extraction: strict json_schema structured output for extract + fit
   (Electron parity)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-14 04:39'
+updated_date: '2026-06-16 23:33'
 labels:
   - llm
   - provider
@@ -51,13 +52,25 @@ This changes the wire format for providers that ACCEPT json_schema. A wrong sche
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 extractedJobSchema and fitScoreSchema string constants exist (e.g. core/LLM/ExtractionSchemas.swift) and a unit test confirms JSONSerialization can parse each as valid JSON
-- [ ] #2 ExtractionEngine extraction (line ~121) and fit (line ~206) pass .jsonSchema(name:schema:) instead of .jsonObject
-- [ ] #3 Schema shapes are compatible with JobFieldNormalizer and FitScorer.rescoreFromJSON (no field the parser needs is excluded; fit dimensions array matches the 5 FIT_DIMENSIONS)
-- [ ] #4 On a provider that rejects json_schema (HTTP 400 format error) the transport ladder falls back to json_object then text without failing extraction (confirm via a transport unit test)
-- [ ] #5 Google structured output is either implemented via responseSchema/responseMimeType OR this task is explicitly scoped to OpenAI-compatible providers with a separate Google follow-up filed
+- [x] #1 extractedJobSchema and fitScoreSchema string constants exist (e.g. core/LLM/ExtractionSchemas.swift) and a unit test confirms JSONSerialization can parse each as valid JSON
+- [x] #2 ExtractionEngine extraction (line ~121) and fit (line ~206) pass .jsonSchema(name:schema:) instead of .jsonObject
+- [x] #3 Schema shapes are compatible with JobFieldNormalizer and FitScorer.rescoreFromJSON (no field the parser needs is excluded; fit dimensions array matches the 5 FIT_DIMENSIONS)
+- [x] #4 On a provider that rejects json_schema (HTTP 400 format error) the transport ladder falls back to json_object then text without failing extraction (confirm via a transport unit test)
+- [x] #5 Google structured output is either implemented via responseSchema/responseMimeType OR this task is explicitly scoped to OpenAI-compatible providers with a separate Google follow-up filed
 - [ ] #6 LLMEval with a real cloud key shows equal-or-better field completeness vs json_object on the reference JDs, with no schema-rejection loops
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Reused the existing `StructuredOutputSchemas.jobExtraction`/`fitScore` (already authored with additionalProperties:false + nullable-required idiom) rather than creating a new ExtractionSchemas.swift — they already satisfy the task's schema requirements and are shared with the Anthropic path. AC#6 + both DoD items (LLMEval against a real key, before/after field completeness) are NOT done — no API key available in this environment; the user will run LLMEval later (they approved proceeding). Confidence note: strict additionalProperties:false means OpenAI-compatible providers no longer return `confidence` (not in schema) → extractionConfidence nil for those; matches Anthropic's existing structured behavior; revisit if confidence matters.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Wired ExtractionEngine extract + fit to send `.jsonSchema(name:schema:)` (from the existing `StructuredOutputSchemas`) instead of `.jsonObject`, so OpenAI-compatible providers now get strict json_schema with the transport's existing json_schema→json_object→text 400-fallback ladder (AC#2). Anthropic already enforced the same schema via `structuredOutput` and Google maps `.jsonSchema` to its JSON-mode branch — so only OpenAI-compatible behavior changes (AC#5 scope; strict Gemini responseSchema filed as TASK-481). AC#1/#3: new StructuredOutputSchemasTests verify both schemas parse as valid JSON (additionalProperties:false + required), the extraction schema exposes every field JobFieldNormalizer reads, and the fit `dimensions` items carry name+score with requirements_not_met (what FitScorer.rescoreFromJSON reads). AC#4: covered by existing OpenAIProvider format-negotiation fallback tests. Full CoreTests (779) green; app builds. PENDING (AC#6/DoD): live LLMEval verification with a real cloud key — not runnable here; flagged in the commit and the user will verify before relying. Confidence is dropped for OpenAI-compatible under strict schema (matches Anthropic).
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->

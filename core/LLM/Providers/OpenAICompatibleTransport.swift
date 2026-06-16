@@ -77,8 +77,12 @@ enum OpenAICompatibleTransport {
                 continue
             }
             if http.statusCode == 429 {
+                // TASK-463: surface a typed rate-limit error carrying the server-advised wait so the
+                // queue can honor Retry-After instead of generic exponential backoff.
                 let body = String(data: data, encoding: .utf8) ?? ""
-                throw LLMProviderError.httpError(statusCode: 429, body: body)
+                let retryAfter = RetryAfterParser.parse(
+                    header: http.value(forHTTPHeaderField: "Retry-After"), body: body, now: Date())
+                throw LLMProviderError.rateLimited(retryAfter: retryAfter)
             }
             guard (200 ..< 300).contains(http.statusCode) else {
                 let body = String(data: data, encoding: .utf8) ?? ""

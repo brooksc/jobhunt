@@ -11,6 +11,9 @@ import Foundation
 public final class GoogleProvider: LLMProvider, @unchecked Sendable {
     public let id = "google"
     public let concurrencyLimit = 3
+    /// Bounded 429 retry budget + per-wait clamp (TASK-463, Electron parity ~4 RL retries).
+    static let maxRateLimitRetries = 4
+    static let maxRateLimitDelaySeconds: Double = 60
 
     private let apiKey: String
     private let model: String
@@ -60,13 +63,35 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
         urlRequest.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         urlRequest.httpBody = body
 
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await session.data(for: urlRequest)
-        } catch let urlError as URLError where urlError.code == .timedOut {
-            throw LLMProviderError.timeout(seconds: timeoutSeconds)
+        // TASK-463: Gemini doesn't go through OpenAICompatibleTransport, so honor 429 here with a
+        // bounded retry budget that parses the advised retryDelay; after the budget is spent, throw
+        // a typed rateLimited so the queue backs off too.
+        var data = Data()
+        var http: HTTPURLResponse
+        var rlAttempt = 0
+        while true {
+            let response: URLResponse
+            do {
+                (data, response) = try await session.data(for: urlRequest)
+            } catch let urlError as URLError where urlError.code == .timedOut {
+                throw LLMProviderError.timeout(seconds: timeoutSeconds)
+            }
+            guard let httpResponse = response as? HTTPURLResponse else { throw LLMProviderError.noResponse }
+            http = httpResponse
+            if http.statusCode == 429 {
+                let bodyStr = String(data: data, encoding: .utf8) ?? ""
+                let retryAfter = RetryAfterParser.parse(
+                    header: http.value(forHTTPHeaderField: "Retry-After"), body: bodyStr, now: Date())
+                guard rlAttempt < Self.maxRateLimitRetries else {
+                    throw LLMProviderError.rateLimited(retryAfter: retryAfter)
+                }
+                rlAttempt += 1
+                let delay = min(retryAfter ?? pow(2.0, Double(rlAttempt)), Self.maxRateLimitDelaySeconds)
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                continue
+            }
+            break
         }
-        guard let http = response as? HTTPURLResponse else { throw LLMProviderError.noResponse }
         guard (200 ..< 300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
             throw LLMProviderError.httpError(statusCode: http.statusCode, body: body)

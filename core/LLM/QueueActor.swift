@@ -72,9 +72,14 @@ public actor QueueActor {
     private var failureStreak = 0
     /// Active in-flight request count per provider id.
     private var activeCounts: [String: Int] = [:]
+    /// Runtime concurrency that backs off on 429 and recovers on success (TASK-463). Re-seeded when
+    /// the provider's static ceiling changes; resets each session (no persistence).
+    private var adaptive: AdaptiveConcurrency?
 
     static let maxRetries = 3
     static let autoPauseThreshold = 2
+    /// Clamp for honoring a server Retry-After (seconds) so a hostile/huge value can't stall the queue.
+    static let maxRetryAfterSeconds: Double = 60
 
     // MARK: - Init
 
@@ -267,7 +272,12 @@ public actor QueueActor {
             guard await !isPaused() else { break }
 
             let provider = await providerFactory()
-            let limit = provider.concurrencyLimit
+            // TASK-463: dispatch at the adaptive runtime concurrency (drops to 1 after a 429, recovers
+            // toward the provider's static ceiling after sustained success). Re-seed if the ceiling
+            // changed (e.g. the user switched providers).
+            let ceiling = provider.concurrencyLimit
+            if adaptive?.ceiling != ceiling { adaptive = AdaptiveConcurrency(ceiling: ceiling) }
+            let limit = adaptive?.effective ?? ceiling
 
             let requests: [QueuedItem]
             do {
@@ -293,10 +303,12 @@ public actor QueueActor {
                     case .succeeded:
                         totalProcessed += 1
                         failureStreak = 0
+                        adaptive?.onSuccess()
                     case .providerFailure:
                         totalProcessed += 1
                         totalFailed += 1
                         failureStreak += 1
+                        adaptive?.onFailure()
                         if failureStreak >= Self.autoPauseThreshold {
                             await onSetPaused(true)
                             emit(.autoPaused)
@@ -306,6 +318,11 @@ public actor QueueActor {
                             group.cancelAll()
                             break
                         }
+                    case .rateLimited:
+                        // TASK-463: a 429 is transient — collapse concurrency to 1 and let the request
+                        // retry (it was requeued with a Retry-After-honoring backoff). Not counted as a
+                        // provider failure, so a rate-limit burst can't trip auto-pause.
+                        adaptive?.onRateLimit()
                     case .cancelled, .skipped:
                         // TASK-450: not a provider failure — don't count it or touch the streak,
                         // so a user cancellation can't push the queue toward auto-pause.
@@ -335,6 +352,7 @@ public actor QueueActor {
     private enum ProcessOutcome {
         case succeeded
         case providerFailure
+        case rateLimited // HTTP 429 — transient; drops adaptive concurrency, retried, not a failure
         case cancelled   // user-cancelled in flight, or the row was already cancelled/taken
         case skipped     // couldn't claim the row (store error / not queued) — neutral
     }
@@ -423,6 +441,10 @@ public actor QueueActor {
             return finalStatus == .cancelled ? .cancelled : .providerFailure
         } catch {
             await markRequestFailed(item: item, error: error, startedAt: startedAt)
+            // TASK-463: a 429 is a transient rate limit, not a provider failure — the inner processor
+            // already requeued the row with a Retry-After-honoring backoff. Signal it so the drain
+            // loop drops adaptive concurrency without counting toward the auto-pause streak.
+            if case LLMProviderError.rateLimited = error { return .rateLimited }
             return .providerFailure
         }
     }
@@ -590,8 +612,9 @@ public actor QueueActor {
                     job.updatedAt = Date()
                 }
             } else {
-                // Backoff then re-queue
-                let backoffMs = min(Int(pow(2.0, Double(item.attempt))) * 1000, 30000)
+                // Backoff then re-queue. A 429 honors the server's Retry-After (TASK-463); otherwise
+                // generic exponential backoff.
+                let backoffMs = Self.backoffMs(for: error, attempt: item.attempt)
                 try await Task.sleep(nanoseconds: UInt64(backoffMs) * 1_000_000)
                 // TASK-447: a user cancellation during the backoff sleep sets the row to .cancelled.
                 // Only requeue if it's still .running, so the cancellation stays authoritative and a
@@ -609,6 +632,14 @@ public actor QueueActor {
             }
             throw error
         }
+    }
+
+    /// Backoff in ms: honor a 429's Retry-After (clamped) over generic exponential backoff (TASK-463).
+    static func backoffMs(for error: Error, attempt: Int) -> Int {
+        if case let LLMProviderError.rateLimited(retryAfter) = error, let retryAfter {
+            return Int(min(retryAfter, maxRetryAfterSeconds) * 1000)
+        }
+        return min(Int(pow(2.0, Double(attempt))) * 1000, 30000)
     }
 
     private func processFitRequest(
@@ -778,7 +809,7 @@ public actor QueueActor {
                 }
                 try? await store.markFitScoreFailed(jobID: jobID, resumeID: resumeID, errorMessage: errorStr)
             } else {
-                let backoffMs = min(Int(pow(2.0, Double(item.attempt))) * 1000, 30000)
+                let backoffMs = Self.backoffMs(for: error, attempt: item.attempt)
                 try await Task.sleep(nanoseconds: UInt64(backoffMs) * 1_000_000)
                 // TASK-447: a user cancellation during the backoff sleep sets the row to .cancelled.
                 // Only requeue if it's still .running, so the cancellation stays authoritative and a

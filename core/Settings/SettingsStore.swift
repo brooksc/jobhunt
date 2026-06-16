@@ -20,6 +20,7 @@ private let settingsDefaults: [String: String] = [
     SettingsKey.locationAllowHybrid: "true",
     SettingsKey.locationAllowOnsite: "true",
     SettingsKey.llmQueuePaused: "false",
+    SettingsKey.llmOpenRouterFreeRotate: "false",
     SettingsKey.availabilityAutoCheckEnabled: "true",
     SettingsKey.availabilityAutoCheckIntervalDays: "1",
     SettingsKey.availabilityStaleDays: "21",
@@ -136,6 +137,13 @@ public final class SettingsStore {
     public var llmQueuePaused: Bool {
         get { bool(forKey: SettingsKey.llmQueuePaused) }
         set { setBool(newValue, forKey: SettingsKey.llmQueuePaused) }
+    }
+
+    /// TASK-462: when on (and provider is OpenRouter), rotate over free structured-output models with
+    /// failover instead of using the single configured model. Default off.
+    public var llmOpenRouterFreeRotate: Bool {
+        get { bool(forKey: SettingsKey.llmOpenRouterFreeRotate) }
+        set { setBool(newValue, forKey: SettingsKey.llmOpenRouterFreeRotate) }
     }
 
     public var locationFilterEnabled: Bool {

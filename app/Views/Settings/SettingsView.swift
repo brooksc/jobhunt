@@ -252,6 +252,17 @@ struct LLMTab: View {
                     .foregroundStyle(.secondary)
             }
 
+            // TASK-462: OpenRouter free-model rotation + failover.
+            if selectedProviderID == "openrouter" {
+                Toggle("Rotate free structured-output models", isOn: Binding(
+                    get: { settings.llmOpenRouterFreeRotate },
+                    set: { settings.llmOpenRouterFreeRotate = $0 }
+                ))
+                Text("Round-robin over OpenRouter's free models with failover, instead of the single model above.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             HStack {
                 Button {
                     Task { await testConnection() }

@@ -36,6 +36,7 @@ public enum SettingsKey {
     public static let locationAllowHybrid = "location_allow_hybrid"
     public static let locationAllowOnsite = "location_allow_onsite"
     public static let llmQueuePaused = "llm_queue_paused"
+    public static let llmOpenRouterFreeRotate = "llm_openrouter_free_rotate"
     public static let availabilityAutoCheckEnabled = "availability_auto_check_enabled"
     public static let availabilityAutoCheckIntervalDays = "availability_auto_check_interval_days"
     public static let availabilityStaleDays = "availability_stale_days"

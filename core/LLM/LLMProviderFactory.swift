@@ -24,7 +24,11 @@ public enum LLMProviderFactory {
         case "google":
             return GoogleProvider(apiKey: apiKey, model: model, timeoutSeconds: timeout, session: session)
         case "openrouter":
-            return OpenRouterProvider(apiKey: apiKey, model: model, timeoutSeconds: timeout, session: session)
+            // TASK-462: share the rotation pool (cache + index) across the per-drain provider
+            // rebuilds; nil disables rotation (single configured model).
+            let pool = settings.llmOpenRouterFreeRotate ? OpenRouterModelPool.shared : nil
+            return OpenRouterProvider(
+                apiKey: apiKey, model: model, timeoutSeconds: timeout, session: session, pool: pool)
         case "custom":
             let baseURL = settings.llmBaseURL
             return CustomProvider(

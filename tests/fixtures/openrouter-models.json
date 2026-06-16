@@ -1,0 +1,34 @@
+{
+  "data": [
+    {
+      "id": "meta-llama/llama-3.1-8b-instruct:free",
+      "pricing": { "prompt": "0", "completion": "0", "request": "0", "image": "0" },
+      "supported_parameters": ["response_format", "structured_outputs", "tools"],
+      "architecture": { "modality": "text->text", "input_modalities": ["text"] }
+    },
+    {
+      "id": "google/gemini-flash-1.5-8b:free",
+      "pricing": { "prompt": "0", "completion": "0" },
+      "supported_parameters": ["structured_outputs"],
+      "architecture": { "modality": "text+image->text" }
+    },
+    {
+      "id": "openai/gpt-4o",
+      "pricing": { "prompt": "0.0000025", "completion": "0.00001" },
+      "supported_parameters": ["response_format", "structured_outputs"],
+      "architecture": { "modality": "text->text" }
+    },
+    {
+      "id": "some/free-but-no-structured:free",
+      "pricing": { "prompt": "0", "completion": "0" },
+      "supported_parameters": ["tools"],
+      "architecture": { "modality": "text->text" }
+    },
+    {
+      "id": "some/free-image-only:free",
+      "pricing": { "prompt": "0", "completion": "0" },
+      "supported_parameters": ["structured_outputs"],
+      "architecture": { "modality": "image->image" }
+    }
+  ]
+}

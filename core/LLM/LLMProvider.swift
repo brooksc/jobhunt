@@ -68,6 +68,14 @@ public struct ChatRequest: Sendable {
         self.maxTokens = maxTokens
         self.structuredOutput = structuredOutput
     }
+
+    /// A copy with a different model — used for OpenRouter free-model rotation (TASK-462).
+    public func replacingModel(_ newModel: String) -> ChatRequest {
+        ChatRequest(
+            messages: messages, model: newModel, responseFormat: responseFormat,
+            maxTokens: maxTokens, structuredOutput: structuredOutput
+        )
+    }
 }
 
 // MARK: - ChatResponse

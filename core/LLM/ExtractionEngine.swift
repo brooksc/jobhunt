@@ -123,9 +123,14 @@ public enum ExtractionEngine {
         let promptText = messages.map(\.content).joined()
         let promptChars = promptText.count
 
+        // TASK-461: send a strict json_schema as the preferred format. The OpenAICompatibleTransport
+        // ladder falls back to json_object then text on a 400 format rejection; Anthropic already
+        // enforces the same schema via `structuredOutput`, and Google treats jsonSchema as JSON mode.
+        let extractionSchema = StructuredOutputSchemas.schema(for: .jobExtraction)
         let request = ChatRequest(
             messages: messages, model: settings.llmModel,
-            responseFormat: .jsonObject, structuredOutput: .jobExtraction
+            responseFormat: .jsonSchema(name: extractionSchema.name, schema: extractionSchema.schema),
+            structuredOutput: .jobExtraction
         )
         let response = try await provider.complete(request)
         let responseChars = response.content.count
@@ -221,9 +226,12 @@ public enum ExtractionEngine {
 
         let promptChars = messages.map(\.content).joined().count
 
+        // TASK-461: strict json_schema (same ladder/fallback as extraction).
+        let fitSchema = StructuredOutputSchemas.schema(for: .fitScore)
         let request = ChatRequest(
             messages: messages, model: model,
-            responseFormat: .jsonObject, structuredOutput: .fitScore
+            responseFormat: .jsonSchema(name: fitSchema.name, schema: fitSchema.schema),
+            structuredOutput: .fitScore
         )
         let response = try await provider.complete(request)
 

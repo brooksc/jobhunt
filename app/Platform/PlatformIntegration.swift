@@ -9,6 +9,10 @@ public final class PlatformIntegration: NSObject, ObservableObject {
     private let router: Router
     private let modelContainer: ModelContainer
     private var eventTask: Task<Void, Never>?
+    /// Guards against repeated `start(queue:)` calls duplicating observers/subscriptions/prompts
+    /// (TASK-429). `stop()` clears it so a restart is possible.
+    public private(set) var isStarted = false
+    private let focusNotificationName = Notification.Name("JobhuntFocusRequest")
 
     /// Track whether we're currently in a batch so we can suppress individual
     /// notifications and summarise at .processingComplete instead.
@@ -20,8 +24,12 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         super.init()
     }
 
-    /// Call once on app launch.
+    /// Call once on app launch. Idempotent — a second call while already started is a no-op, so it
+    /// can't duplicate the queue subscription, notification observer/delegate, or OS prompts.
     public func start(queue: QueueActor) {
+        guard !isStarted else { return }
+        isStarted = true
+
         requestNotificationAuthorization()
         registerNotificationDelegate()
         observeFocusRequests()
@@ -32,6 +40,26 @@ public final class PlatformIntegration: NSObject, ObservableObject {
                 await self?.handleEvent(event)
             }
         }
+    }
+
+    /// Cancel the queue subscription and unregister the focus observer + notification delegate.
+    /// Safe to call repeatedly; after `stop()`, `start(queue:)` can run again (TASK-429).
+    public func stop() {
+        guard isStarted else { return }
+        isStarted = false
+
+        eventTask?.cancel()
+        eventTask = nil
+        NotificationCenter.default.removeObserver(self, name: focusNotificationName, object: nil)
+        if UNUserNotificationCenter.current().delegate === self {
+            UNUserNotificationCenter.current().delegate = nil
+        }
+    }
+
+    deinit {
+        // Best-effort teardown if the owner drops us without calling stop().
+        eventTask?.cancel()
+        NotificationCenter.default.removeObserver(self)
     }
 
     private func applyWindowPolicy() {
@@ -190,7 +218,7 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleFocusRequest(_:)),
-            name: Notification.Name("JobhuntFocusRequest"),
+            name: focusNotificationName,
             object: nil
         )
     }

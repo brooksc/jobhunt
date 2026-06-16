@@ -210,6 +210,7 @@ let coreTestsTarget = testTarget(
         "tools/migrator/Migration.swift",
         "tools/migrator/Patch.swift",
         "tools/migrator/SQLiteHelpers.swift",
+        "tools/migrator/RepairJobNumbers.swift",
     ],
     deps: [.target(name: "JobhuntCore")]
 )

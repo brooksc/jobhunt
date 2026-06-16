@@ -285,6 +285,25 @@ case let .detectDuplicates(storePath):
         fputs("Error: detection failed: \(error)\n", stderr); exit(1)
     }
 
+case let .repairDuplicateJobNumbers(storePath):
+    guard FileManager.default.fileExists(atPath: storePath) else {
+        fputs("Error: store not found at '\(storePath)'\n", stderr); exit(1)
+    }
+    print("=== Repair Duplicate Job Numbers ===")
+    print("Store: \(storePath)")
+    print("(Run with the Jobhunt app quit — the store is single-writer. Back up first.)")
+    // Raw SQLite: a store with duplicate job numbers can't be opened by SwiftData (the unique
+    // index fails), so this runs before any ModelContainer open. Renumbers collisions, keeping
+    // the oldest row's number — non-destructive.
+    guard let result = repairDuplicateJobNumbers(at: storePath) else {
+        fputs("Error: repair failed.\n", stderr); exit(1)
+    }
+    if result.duplicatesFound == 0 {
+        print("No duplicate job numbers found — nothing to repair.")
+    } else {
+        print("Repair complete: renumbered \(result.renumbered) of \(result.duplicatesFound) duplicate row(s).")
+    }
+
 case let .repairFitScores(storePath):
     guard FileManager.default.fileExists(atPath: storePath) else {
         fputs("Error: store not found at '\(storePath)'\n", stderr)

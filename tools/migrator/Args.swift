@@ -14,6 +14,7 @@ enum Mode {
     case pruneOrphanAttempts(storePath: String)
     case recomputeFitMirrors(storePath: String)
     case detectDuplicates(storePath: String)
+    case repairDuplicateJobNumbers(storePath: String)
 
     /// True for modes that open the live store read-WRITE. The store is single-writer, so these
     /// must not run while the Jobhunt app is running (TASK-470). `migrate` writes a NEW output
@@ -23,7 +24,8 @@ enum Mode {
         case .migrate, .verify:
             return false
         case .repairFitScores, .patch, .patchFitScores, .reclean, .backfillModels,
-             .pruneOrphanFitScores, .pruneOrphanAttempts, .recomputeFitMirrors, .detectDuplicates:
+             .pruneOrphanFitScores, .pruneOrphanAttempts, .recomputeFitMirrors, .detectDuplicates,
+             .repairDuplicateJobNumbers:
             return true
         }
     }
@@ -47,6 +49,7 @@ func parseArgs() -> Mode? {
     var pruneOrphanAttempts = false
     var recomputeFitMirrors = false
     var detectDuplicates = false
+    var repairDuplicateJobNumbers = false
     var storePath = defaultStorePath
     var inputPath = defaultInputPath
     var outputPath: String? = nil
@@ -75,6 +78,8 @@ func parseArgs() -> Mode? {
             recomputeFitMirrors = true
         case "--detect-duplicates":
             detectDuplicates = true
+        case "--repair-duplicate-job-numbers":
+            repairDuplicateJobNumbers = true
         case "--store":
             i += 1
             guard i < args.count, !args[i].hasPrefix("--") else {
@@ -110,6 +115,7 @@ func parseArgs() -> Mode? {
     if pruneOrphanAttempts { return .pruneOrphanAttempts(storePath: storePath) }
     if recomputeFitMirrors { return .recomputeFitMirrors(storePath: storePath) }
     if detectDuplicates { return .detectDuplicates(storePath: storePath) }
+    if repairDuplicateJobNumbers { return .repairDuplicateJobNumbers(storePath: storePath) }
 
     guard let out = outputPath else {
         fputs("Error: --output <path> is required.\n", stderr)

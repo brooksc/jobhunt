@@ -1,6 +1,24 @@
 import Foundation
 import SwiftData
 
+// MARK: - Uniqueness-constraint strategy (TASK-372)
+//
+// SwiftData enforces `@Attribute(.unique)` with a SQLite unique index. A store that already holds
+// duplicate values on a newly-constrained column can't be opened — index creation fails during
+// migration and `ModelContainer(...)` throws. The app handles that throw by showing
+// `StoreRecoveryView` (restore-from-backup / start-fresh) rather than crashing, so a constrained
+// store always fails *closed*, never silently corrupting data.
+//
+// Before adding a NEW uniqueness constraint to an existing field, ship a one-shot **JobhuntMigrator**
+// repair mode that removes/renumbers duplicates (run out-of-band, app quit), the same way
+// `jobNumber` uniqueness is recovered today by `--repair-duplicate-job-numbers`
+// (`tools/migrator/RepairJobNumbers.swift`, raw SQLite — it must run *before* any `ModelContainer`
+// open). Do NOT auto-dedup on launch: per project convention one-time fixups live in the CLI, and a
+// launch-path repair would add risk and a "have we done this yet?" flag to the critical open path.
+//
+// `jobNumber` is the only unique field today; app-created data can't collide (atomic ingest assigns
+// numbers under the single-writer store), so duplicates would only arise from an externally-modified
+// or pre-constraint legacy store — exactly what the migrator repair recovers.
 public enum ModelContainerFactory {
     /// Production container stored in the app's Application Support directory.
     public static func production() throws -> ModelContainer {

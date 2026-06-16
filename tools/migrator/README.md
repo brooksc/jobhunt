@@ -33,6 +33,7 @@ app runs risks `SQLITE_BUSY` or corruption.
 | `--prune-orphan-attempts [--store <path>]` | Delete `LLMRequestAttempt` rows whose parent request is gone (historical orphans from prunes that predate the cascade delete rule). | same |
 | `--recompute-fit-mirrors [--store <path>]` | Recompute every job's denormalized fit mirror (`fitScore`/`fitStatus`/`fitScoreJSON`) from its best resume-linked score; touches only drifted rows. | same |
 | `--detect-duplicates [--store <path>]` | Run the app's duplicate detector and persist results (flag candidates with `duplicateOfJobID` + `.duplicate` status). Useful after a bulk `--reclean` changes cleaned hashes. Skips pairs resolved via DuplicateDecision. | same |
+| `--repair-duplicate-job-numbers [--store <path>]` | Renumber duplicate `jobNumber` rows (keep the oldest, reassign collisions to fresh `max+1` numbers) so the store can open under the `jobNumber` unique constraint. **Raw SQLite** — runs without opening the store via SwiftData, because a store with duplicates can't be opened. Non-destructive; idempotent. | same |
 
 ```bash
 # Quit Jobhunt, then:

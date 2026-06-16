@@ -165,16 +165,19 @@ public actor JobhuntServer {
         #endif
     }
 
-    /// Try fixed ports 8765–8784; fall back to an OS-assigned ephemeral port.
+    /// Bind one of the shared `ServerPortContract.discoveryPorts` (8765–8769). There is NO ephemeral
+    /// fallback in production (TASK-433): an OS-assigned port is undiscoverable by the extension/MCP
+    /// helper, so if every contract port is taken this throws `ServerError.noPortAvailable` and the
+    /// failure is surfaced in Settings → Local Server (with Retry) rather than running on a port no
+    /// client can find.
     ///
     /// Idempotent: if a listener is already bound this is a no-op, so the Settings "Retry" flow can't
     /// bind a second conflicting listener (TASK-430). A failed start leaves `listener == nil`, so a
     /// retry after failure still proceeds.
     public func start() async throws {
         guard listener == nil else { return }
-        let candidatePorts: [UInt16] = Array(8765 ... 8784)
 
-        for candidate in candidatePorts {
+        for candidate in ServerPortContract.discoveryPorts {
             do {
                 try await startListener(on: candidate)
                 port = candidate
@@ -183,9 +186,7 @@ public actor JobhuntServer {
                 continue
             }
         }
-        // Fall back to an OS-assigned ephemeral port (port 0). This always succeeds
-        // and the actual port is read back from the listener in startListener.
-        try await startListener(on: 0)
+        throw ServerError.noPortAvailable
     }
 
     /// Start on an OS-assigned ephemeral port. Suitable for tests where the exact port

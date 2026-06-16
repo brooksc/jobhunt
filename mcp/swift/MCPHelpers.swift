@@ -1,6 +1,7 @@
 // Extracted from main.swift so these symbols are importable by MCPTests (@testable import JobhuntMCP).
 // main.swift symbols are implicitly @MainActor-isolated and can't be imported.
 import Foundation
+import JobhuntCore
 
 // MARK: - Simple string error
 
@@ -27,7 +28,8 @@ func readToken() -> String? {
 }
 
 func discoverPort() -> Int? {
-    let candidates = [8765, 8766, 8767, 8768, 8769]
+    // Shared contract with the app server + extension (TASK-433).
+    let candidates = ServerPortContract.discoveryPorts.map(Int.init)
     for port in candidates {
         guard let url = URL(string: "http://127.0.0.1:\(port)/api/ping") else { continue }
         var request = URLRequest(url: url)

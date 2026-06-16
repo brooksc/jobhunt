@@ -7,8 +7,9 @@ const BUILD_DATE = "2026-06-02";
 // Show build date in the icon tooltip so it's easy to confirm the loaded version
 chrome.action.setTitle({ title: `Capture job [${BUILD_DATE}]` });
 
-// Ports to probe when looking for the jobhunt server (must match electron/main.js PREFERRED_PORTS
-// plus the CLI default). The extension tries each in order and caches the winner.
+// Ports to probe when looking for the jobhunt server. MUST match the shared port contract in
+// core/App/ServerPortContract.swift (8765–8769) — the app server binds only these and never an
+// ephemeral port (TASK-433). The extension tries each in order and caches the winner.
 const CANDIDATE_PORTS = [8765, 8766, 8767, 8768, 8769];
 const PING_PATH = "/api/ping";
 const PORT_CACHE_KEY = "jobhuntServerPort";

@@ -434,10 +434,15 @@ public enum AvailabilityChecker {
     // MARK: - maybeRunStaleCheck
 
     /// Runs stale availability check if enabled and the check interval has elapsed.
+    /// - Parameter onAutoCheckCompleted: called with the completion time ONLY after a valid pass, so
+    ///   the caller can persist `availabilityLastAutoCheckAt` through an explicit dependency rather
+    ///   than a global notification (TASK-428). Not called when the check is skipped or the fetch
+    ///   fails, so the interval gate never advances without real work.
     public static func maybeRunStaleCheck(
         store: BackgroundStore,
         settings: SettingsStore,
-        session: URLSession = .shared
+        session: URLSession = .shared,
+        onAutoCheckCompleted: (@Sendable (Date) async -> Void)? = nil
     ) async -> (skipped: Bool, reason: String?, checked: Int, unavailable: Int, marked: Int, failed: Int) {
         // Check if auto-check is enabled.
         guard settings.bool(forKey: SettingsKey.availabilityAutoCheckEnabled) else {
@@ -459,20 +464,17 @@ public enum AvailabilityChecker {
         do {
             result = try await checkStaleJobs(store: store, staleDays: staleDays, limit: 25, session: session)
         } catch {
-            // Fetch failed — no valid check ran. Do NOT post availabilityCheckCompleted, or the app
+            // Fetch failed — no valid check ran. Do NOT invoke onAutoCheckCompleted, or the app
             // layer would advance the last-check timestamp and suppress checks for the whole interval
             // despite nothing being checked. Surface as a failed (not skipped) result.
             NSLog("AvailabilityChecker: stale check fetch failed: \(error)")
             return (skipped: false, reason: "fetch-error", checked: 0, unavailable: 0, marked: 0, failed: 0)
         }
 
-        // Only after a valid pass: update last-check timestamp. SettingsStore isn't Sendable-safe
-        // off-main-actor, so we post a notification for the app layer to update the setting.
-        NotificationCenter.default.post(
-            name: .availabilityCheckCompleted,
-            object: nil,
-            userInfo: ["timestamp": ISO8601DateFormatter().string(from: Date())]
-        )
+        // Only after a valid pass: hand the completion time to the caller so it can persist
+        // `availabilityLastAutoCheckAt` (TASK-428). The caller hops to the main actor as needed —
+        // the checker no longer depends on a global notification observer being registered.
+        await onAutoCheckCompleted?(Date())
 
         return (
             skipped: false,
@@ -485,10 +487,5 @@ public enum AvailabilityChecker {
     }
 }
 
-public extension Notification.Name {
-    /// Posted after maybeRunStaleCheck completes. userInfo["timestamp"] = ISO8601 string.
-    /// The app layer should listen and update SettingsKey.availabilityLastAutoCheckAt.
-    static let availabilityCheckCompleted = Notification.Name("jobhunt.availabilityCheckCompleted")
-}
 
 // swiftlint:enable line_length cyclomatic_complexity function_body_length large_tuple type_body_length

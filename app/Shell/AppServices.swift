@@ -88,25 +88,24 @@ final class AppServices: @unchecked Sendable {
             }
         }
 
-        // Update last-check timestamp when a scheduled availability check completes.
+        // Persist the last-check timestamp through an explicit callback (TASK-428) rather than a
+        // global notification observer: the checker hands us the completion time, we write the
+        // setting on the main actor.
         let settingsStore = settings
-        NotificationCenter.default.addObserver(
-            forName: .availabilityCheckCompleted,
-            object: nil,
-            queue: .main
-        ) { notification in
-            if let timestamp = notification.userInfo?["timestamp"] as? String {
-                settingsStore.set(timestamp, forKey: SettingsKey.availabilityLastAutoCheckAt)
-            }
-        }
-
         let store = backgroundStore
         Task {
             // Run on launch, then re-check hourly (Electron parity: AUTO_AVAILABILITY_INTERVAL_MS).
             // maybeRunStaleCheck gates on the configured interval internally, so this only does real
             // work when a check is actually due — a long-running session no longer stops re-checking.
             while true {
-                await AvailabilityChecker.maybeRunStaleCheck(store: store, settings: settingsStore)
+                await AvailabilityChecker.maybeRunStaleCheck(store: store, settings: settingsStore) { date in
+                    await MainActor.run {
+                        settingsStore.set(
+                            ISO8601DateFormatter().string(from: date),
+                            forKey: SettingsKey.availabilityLastAutoCheckAt
+                        )
+                    }
+                }
                 do { try await Task.sleep(for: .seconds(3600)) } catch { break }
             }
         }

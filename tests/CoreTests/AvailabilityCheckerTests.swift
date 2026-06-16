@@ -603,24 +603,49 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         XCTAssertEqual(result.failed, 0, "No per-job marking failures expected on a clean store")
     }
 
-    // TASK-389 AC#2/#4: the last-check timestamp (driven by .availabilityCheckCompleted) is only
-    // advanced after a valid check pass. On success the completion notification must fire; the
-    // app layer's observer is what writes the timestamp.
-    func testMaybeRunStaleCheck_postsCompletionOnSuccessfulPass() async {
+    /// Records the completion date the checker hands to the explicit callback.
+    private actor CompletionRecorder {
+        private(set) var date: Date?
+        private(set) var callCount = 0
+        func record(_ d: Date) { date = d; callCount += 1 }
+    }
+
+    // TASK-428/389 AC#2/#4: the last-check timestamp is advanced only after a valid pass, delivered
+    // through the explicit `onAutoCheckCompleted` callback (no global notification observer).
+    func testMaybeRunStaleCheck_invokesCompletionCallbackOnSuccessfulPass() async {
         let context = ModelContext(container)
         let settings = SettingsStore(modelContext: context)
         settings.setBool(true, forKey: SettingsKey.availabilityAutoCheckEnabled)
         settings.set("2020-01-01T00:00:00Z", forKey: SettingsKey.availabilityLastAutoCheckAt)
 
-        let expectation = expectation(forNotification: .availabilityCheckCompleted, object: nil) { note in
-            (note.userInfo?["timestamp"] as? String)?.isEmpty == false
-        }
-
-        let result = await AvailabilityChecker.maybeRunStaleCheck(store: store, settings: settings, session: session)
+        let recorder = CompletionRecorder()
+        let result = await AvailabilityChecker.maybeRunStaleCheck(
+            store: store, settings: settings, session: session,
+            onAutoCheckCompleted: { await recorder.record($0) }
+        )
         XCTAssertFalse(result.skipped)
         XCTAssertNil(result.reason, "A successful pass must not report a fetch-error reason")
 
-        await fulfillment(of: [expectation], timeout: 2)
+        let count = await recorder.callCount
+        let date = await recorder.date
+        XCTAssertEqual(count, 1, "callback must fire exactly once on a valid pass")
+        XCTAssertNotNil(date, "callback must carry the completion timestamp")
+    }
+
+    func testMaybeRunStaleCheck_skipped_doesNotInvokeCompletionCallback() async {
+        let context = ModelContext(container)
+        let settings = SettingsStore(modelContext: context)
+        // Auto-check disabled → skipped → callback must NOT fire (interval gate must not advance).
+        settings.setBool(false, forKey: SettingsKey.availabilityAutoCheckEnabled)
+
+        let recorder = CompletionRecorder()
+        let result = await AvailabilityChecker.maybeRunStaleCheck(
+            store: store, settings: settings, session: session,
+            onAutoCheckCompleted: { await recorder.record($0) }
+        )
+        XCTAssertTrue(result.skipped)
+        let count = await recorder.callCount
+        XCTAssertEqual(count, 0, "skipped check must not advance the last-check timestamp")
     }
 }
 

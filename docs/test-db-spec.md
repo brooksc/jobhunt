@@ -185,7 +185,13 @@ To keep fixture changes reviewable even though the SQLite binary diff is opaque,
 
 1. Add `--fixture-db <path>` launch arg to `app/JobhuntApp.swift`: copy the file to a temp path and open that container.
 2. Add `ModelContainerFactory.fixture(copying:)` to `JobhuntCore` for use in unit tests.
-3. Add `FixtureSeeder` class to `core/Demo/` (separate from `DemoSeeder`): deterministic UUIDs, fixed timestamps relative to seeding date, real JD content.
+3. Add `FixtureSeeder` class to `core/Demo/` (separate from `DemoSeeder`): deterministic UUIDs, fixed timestamps, real JD content.
+
+   **Timestamp policy (TASK-421):** every fixture date derives from a single FIXED base instant —
+   `Date(timeIntervalSince1970: 1_750_000_000)` (2025-06-15T07:46:40Z) — via `daysAgo(n)`/
+   `daysFromNow(n)`, NOT wall-clock `Date()`. This makes regenerated fixtures byte-stable (same
+   SQLite + manifest) regardless of when `build-fixture-db.sh` runs. `CoreTests/FixtureTests
+   .testFixtureSeed_isDeterministicAcrossRuns` guards that two seed runs produce identical timestamps.
 4. Write `scripts/build-fixture-db.sh`.
 5. Add `tests/fixtures/` to `.gitignore` exclusion (currently ignored by a glob — add explicit allow).
 

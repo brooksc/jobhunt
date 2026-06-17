@@ -33,9 +33,12 @@ extension BackgroundStore {
 
     // swiftlint:disable:next cyclomatic_complexity
     private func executeFixtureSeed() throws {
-        let now = Date()
-        func daysAgo(_ n: Double) -> Date { Date(timeIntervalSinceNow: -n * 86400) }
-        func daysFromNow(_ n: Double) -> Date { Date(timeIntervalSinceNow: n * 86400) }
+        // TASK-421: a FIXED base date so regenerating the fixture yields byte-stable SQLite + manifest
+        // (no wall-clock drift). All fixture timestamps derive from this. 1_750_000_000 =
+        // 2025-06-15T07:46:40Z — see docs/test-db-spec.md.
+        let now = Date(timeIntervalSince1970: 1_750_000_000)
+        func daysAgo(_ n: Double) -> Date { now.addingTimeInterval(-n * 86400) }
+        func daysFromNow(_ n: Double) -> Date { now.addingTimeInterval(n * 86400) }
 
         // MARK: - SeedJob struct (same shape as DemoSeeder)
 

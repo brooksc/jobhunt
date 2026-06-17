@@ -113,4 +113,25 @@ final class FixtureTests: XCTestCase {
         XCTAssertNotNil(pathB)
         XCTAssertNotEqual(pathA, pathB, "Each fixture copy must use a distinct temp destination")
     }
+
+    // TASK-421: seeding twice yields identical timestamps (fixed base date, no wall-clock drift).
+    func testFixtureSeed_isDeterministicAcrossRuns() async throws {
+        func seedAndSnapshot() async throws -> [(Int, Date, Date?)] {
+            let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+            try await FixtureSeeder.seed(into: store)
+            let jobs = try await store.fetch(FetchDescriptor<Job>(sortBy: [SortDescriptor(\.jobNumber)]))
+            return jobs.map { ($0.jobNumber ?? -1, $0.createdAt, $0.capturedAtDenormalized) }
+        }
+        let runA = try await seedAndSnapshot()
+        let runB = try await seedAndSnapshot()
+        XCTAssertFalse(runA.isEmpty)
+        XCTAssertEqual(runA.count, runB.count)
+        for (a, b) in zip(runA, runB) {
+            XCTAssertEqual(a.0, b.0)
+            XCTAssertEqual(a.1, b.1, "createdAt must be identical across regenerations")
+            XCTAssertEqual(a.2, b.2, "capturedAt must be identical across regenerations")
+        }
+        // And anchored to the documented fixed base date, not wall-clock now.
+        XCTAssertLessThan(runA.map(\.1).max()!, Date(timeIntervalSince1970: 1_760_000_000))
+    }
 }

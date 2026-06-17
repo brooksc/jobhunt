@@ -214,6 +214,23 @@ struct JobsView: View {
                     } label: {
                         Label("Archive Selected", systemImage: "archivebox")
                     }
+                    // TASK-464: bulk fit-only queue + open all source pages.
+                    Button {
+                        let ids = Array(selectedJobIDs)
+                        let queue = appServices.queueActor
+                        let toast = appServices.toastStore
+                        Task {
+                            do { try await queue.enqueueFitForActiveResumes(jobIDs: ids) }
+                            catch { toast.show("Couldn't queue fit scoring: \(error.localizedDescription)", isError: true) }
+                        }
+                    } label: {
+                        Label("Score Fit on \(selectedJobIDs.count) Selected", systemImage: "person.crop.circle.badge.checkmark")
+                    }
+                    Button {
+                        openSelectedPages()
+                    } label: {
+                        Label("Open \(selectedJobIDs.count) Pages", systemImage: "safari")
+                    }
                     Divider()
                 }
                 Button {
@@ -602,6 +619,16 @@ struct JobsView: View {
         searchText = ""
         filterState = JobsFilterState()
         router.activeSavedSearchID = nil
+    }
+
+    /// TASK-464: open the source/display page for every selected job in the browser.
+    private func openSelectedPages() {
+        let selected = cachedFilteredJobs.filter { selectedJobIDs.contains($0.id) }
+        for job in selected {
+            if let urlStr = JobURLPolicy.displayURL(job: job), let url = URL(string: urlStr) {
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
 
     private func exportCSV() {

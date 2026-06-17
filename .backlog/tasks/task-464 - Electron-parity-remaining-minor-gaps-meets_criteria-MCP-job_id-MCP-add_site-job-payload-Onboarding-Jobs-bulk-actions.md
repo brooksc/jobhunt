@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-06-14 04:40'
+updated_date: '2026-06-17 02:55'
 labels:
   - electron-parity
   - cleanup
@@ -55,9 +56,24 @@ NOTE: Deliberately excluded by the user (do NOT implement): the Apply workflow (
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 meets_criteria: optional Job.meetsCriteria computed post-extraction, shown in detail + available as a Jobs filter
-- [ ] #2 MCP job tools accept either job_id or job_number (job_id resolved internally)
+- [x] #2 MCP job tools accept either job_id or job_number (job_id resolved internally)
 - [ ] #3 MCP add_site accepts the richer field set (note/state/company_website/jobs_url/company_description/interval_days); job_get/jobs_list re-add events[], employment_type, seniority, duplicate_of_job_id
 - [ ] #4 Onboarding adds per-provider Get-API-key links; Settings adds a Reopen-Onboarding button
 - [ ] #5 Jobs bulk actions add Open-pages and a fit-only/extract-only queue mode
-- [ ] #6 Apply workflow and Jobs configurable columns remain intentionally NOT implemented
+- [x] #6 Apply workflow and Jobs configurable columns remain intentionally NOT implemented
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Backend MCP items done + committed:
+- #2 (AC#2) DONE: MCP job tools accept job_id (Electron's internal jobs.id string, confirmed via `git show 8c438ca:server/mcp.js` → WHERE jobs.id = ?) OR job_number. CLI schemas/dispatch + server routes + JobService.getJob(byID:); resolveJob helper. Tested.
+- #3 (AC#3) PARTIAL: add_site now accepts state/interval_days/note/company_website/jobs_url/company_description (create-then-update); job_get/jobs_list re-added employment_type, seniority, duplicate_of_job_id (JobDetailRecord/JobListRecord). DEFERRED: events[] payload — needs a new JobEvent projection.
+- AC#6 holds: Apply workflow + Jobs configurable columns remain intentionally NOT implemented.
+
+REMAINING (UI/model — recommend splitting into focused tasks; not runtime-verifiable in this headless env):
+- #1 (AC#1): Job.meetsCriteria optional field + post-extraction compute + detail display + Jobs filter.
+- #4 (AC#4): Onboarding per-provider Get-API-key links + Settings "Reopen Onboarding" button.
+- #5 (AC#5): Jobs bulk "Open pages" + fit-only/extract-only queue mode.
+- events[] for job_get; #6 settings odds-and-ends (low).
+<!-- SECTION:NOTES:END -->

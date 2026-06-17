@@ -131,7 +131,9 @@ xcodebuild build \
 
 ### Test
 
-**Fast gate** (matches CI — CoreTests + ServerTests + MCPTests, ~30s):
+**Fast gate** (CoreTests + ServerTests + MCPTests, ~30s) — a *partial* check for quick feedback. The
+full CI gate (both-scheme builds, extension tests, SwiftLint/SwiftFormat, coverage) is in
+[CONTRIBUTING.md](CONTRIBUTING.md#running-tests); run it before a PR.
 
 ```bash
 xcodebuild test \

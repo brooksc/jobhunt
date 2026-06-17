@@ -46,7 +46,9 @@ xcodebuild build \
 
 ## Running tests
 
-**Fast gate** (CoreTests + ServerTests + MCPTests, ~30s) — this is what CI runs:
+**Fast gate** (CoreTests + ServerTests + MCPTests, ~30s) — a *partial* check for quick local
+feedback while iterating. It is NOT the full CI gate (CI also builds both schemes, runs the
+extension tests, and lints — see below). Run this constantly; run the full gate before opening a PR.
 
 ```bash
 xcodebuild test \
@@ -59,6 +61,36 @@ xcodebuild test \
   -only-testing:MCPTests \
   CODE_SIGNING_ALLOWED=NO
 ```
+
+**Full CI-equivalent gate** (TASK-411) — run this before opening a PR; it mirrors
+`.github/workflows/swift-build.yml` step-for-step. Each step must pass:
+
+```bash
+mise install                                    # pinned Tuist / SwiftLint / SwiftFormat
+tuist generate --no-open
+
+# 1. Build both shipping schemes
+xcodebuild -scheme Jobhunt-DMG -configuration Debug-DMG -destination 'platform=macOS' build CODE_SIGNING_ALLOWED=NO
+xcodebuild -scheme Jobhunt-MAS -configuration Debug-MAS -destination 'platform=macOS' build CODE_SIGNING_ALLOWED=NO
+
+# 2. Fast tests + line-coverage floor
+xcodebuild test -scheme Jobhunt-DMG -configuration Debug-DMG -destination 'platform=macOS' \
+  -only-testing CoreTests -only-testing ServerTests -only-testing MCPTests \
+  -resultBundlePath build/FastTests.xcresult CODE_SIGNING_ALLOWED=NO
+./scripts/check-coverage.sh build/FastTests.xcresult
+
+# 3. Extension Node tests
+npm test --prefix extension
+
+# 4. Lint + format (must be clean)
+swiftlint lint --strict
+swiftformat --lint app core server/swift mcp/swift tests
+```
+
+CI additionally guards against mixed-case test paths and verifies the committed fixture matches its
+manifest (`scripts/build-fixture-db.sh` writes both) — those only matter if you touched test paths or
+regenerated the fixture. **AppUITests are NOT in either gate** — they need a display and run in a VM /
+scheduled lane (below).
 
 **UI tests** (requires a display; run manually or on a scheduled CI lane):
 

@@ -244,10 +244,23 @@ This happens whether the run passed or failed, so a failure is debuggable withou
 
 ## Pinning the VM image
 
-The default image tag is `:latest`, which can silently change Xcode/OS between runs. For reproducible runs (releases, CI), pin via the `VM_IMAGE` env var to a version tag or an immutable digest:
+`run-ui-tests-in-vm.sh` pins `VM_IMAGE` to an **immutable digest** (TASK-403) so `:latest` can't
+silently drift to a new Xcode/macOS patch and break tests with no code change:
+
+- Image: `ghcr.io/cirruslabs/macos-sequoia-xcode` — macOS Sequoia 15.x, bundled latest Xcode
+- Digest: `sha256:31413f28df83c37b94e76f8feea8046fb1950b3ed42195523408477189a3f76d` (resolved from
+  `:latest` on 2026-06-17)
+
+**To upgrade** the pin: re-resolve the digest and update both the script and this doc, then confirm
+the bundled Xcode/macOS:
 
 ```bash
-# capture the digest of the image you currently have, then pin to it
+# Resolve the current :latest digest (no Tart needed):
+TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:cirruslabs/macos-sequoia-xcode:pull" | jq -r .token)
+curl -sI -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/vnd.oci.image.index.v1+json" \
+  https://ghcr.io/v2/cirruslabs/macos-sequoia-xcode/manifests/latest | grep -i docker-content-digest
+# then set the new VM_IMAGE digest in scripts/run-ui-tests-in-vm.sh (and here), or per-run:
 VM_IMAGE=ghcr.io/cirruslabs/macos-sequoia-xcode@sha256:<digest> ./scripts/run-ui-tests-in-vm.sh
 ```
 

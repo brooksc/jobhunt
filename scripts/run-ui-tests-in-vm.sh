@@ -30,10 +30,15 @@ set -euo pipefail
 # ── Configuration ────────────────────────────────────────────────────────────
 
 VM_NAME="jobhunt-uitest-env"
-# Pin for reproducibility. Override with e.g.
-#   VM_IMAGE=ghcr.io/cirruslabs/macos-sequoia-xcode:26 ./scripts/run-ui-tests-in-vm.sh
-# or pin to an immutable digest (ghcr.io/...@sha256:…). Avoid :latest for release validation.
-VM_IMAGE="${VM_IMAGE:-ghcr.io/cirruslabs/macos-sequoia-xcode:latest}"
+# Pinned to an immutable digest for reproducibility (TASK-403) — :latest silently drifts to new
+# Xcode/macOS patches on each `tart clone`, breaking tests with no code change.
+#   Image:  ghcr.io/cirruslabs/macos-sequoia-xcode  (macOS Sequoia 15.x, bundled latest Xcode)
+#   Digest: sha256:31413f28df83c37b94e76f8feea8046fb1950b3ed42195523408477189a3f76d
+#           (resolved from :latest on 2026-06-17)
+# To upgrade: re-resolve `docker manifest inspect ghcr.io/cirruslabs/macos-sequoia-xcode:latest`
+# (or `crane digest …`), update this digest + the date, and confirm the bundled Xcode/macOS in
+# docs/vm-testing.md. Override per-run with `VM_IMAGE=…:26 ./scripts/run-ui-tests-in-vm.sh`.
+VM_IMAGE="${VM_IMAGE:-ghcr.io/cirruslabs/macos-sequoia-xcode@sha256:31413f28df83c37b94e76f8feea8046fb1950b3ed42195523408477189a3f76d}"
 
 # Results (xcresult + screenshots) are copied back here before the VM is torn down.
 HOST_RESULTS="build/vm-results"

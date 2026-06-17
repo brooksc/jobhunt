@@ -249,6 +249,13 @@ and diffable:
 - **CI:** the *Record toolchain versions* step writes `build/toolchain.txt`, uploaded with the results
   artifact.
 
+**Last observed versions** (update when you re-pin `VM_IMAGE` or notice CI drift):
+
+| Environment | macOS | Xcode | Observed |
+|---|---|---|---|
+| Tart VM (digest `sha256:31413f…`) | 15.7.3 (24G419) | 26.4.1 | 2026-06-17 |
+| `macos-15` CI runner | (see `build/toolchain.txt` in the latest run's artifact) | | |
+
 **Drift check:** compare the two `Xcode <version>` lines. They should report the same **major** Xcode.
 If they don't, reconcile — bump `VM_IMAGE` to a digest whose bundled Xcode matches the `macos-15`
 runner (or pin the runner's Xcode with `xcode-select` to match the VM) — then note the new versions

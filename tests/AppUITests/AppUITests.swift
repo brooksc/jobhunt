@@ -6,12 +6,15 @@ import XCTest
 //   same command; requires a graphical display session (use macos-latest runner, not Linux)
 
 // One timestamped folder shared across all tests in a process run.
-// Written to /tmp first (always writable from test runner), then logged so
-// the caller can move/copy it to the project directory if desired.
+// Written to /tmp (always writable from the test runner) at a FIXED, well-known path so the VM
+// runner can retrieve it — run-ui-tests-in-vm.sh scp's GUEST_SCREENSHOTS=/tmp/jobhunt-screenshots
+// back to the host (TASK-402). Do NOT use NSTemporaryDirectory(): on macOS that resolves to a
+// per-process $TMPDIR under /var/folders/…, which the retrieval can't predict, so the PNGs would be
+// silently left behind in the VM.
 let screenshotDir: URL = {
     let fmt = DateFormatter()
     fmt.dateFormat = "yyyy-MM-dd_HH-mm-ss"
-    let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+    let tmp = URL(fileURLWithPath: "/tmp")
     let dir = tmp.appendingPathComponent("jobhunt-screenshots/\(fmt.string(from: Date()))")
     do {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

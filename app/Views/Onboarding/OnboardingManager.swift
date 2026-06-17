@@ -15,4 +15,15 @@ final class OnboardingManager {
         settings.set("1", forKey: "onboarding_complete")
         isPresented = false
     }
+
+    /// Re-present the onboarding flow from the start (TASK-464: Settings → Debug "Reopen Onboarding").
+    func reopen() {
+        currentStep = 0
+        isPresented = true
+    }
+}
+
+extension Notification.Name {
+    /// Posted by Settings → Debug to re-present onboarding (TASK-464).
+    static let reopenOnboarding = Notification.Name("Jobhunt.reopenOnboarding")
 }

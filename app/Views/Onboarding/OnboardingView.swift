@@ -310,12 +310,19 @@ private struct AIProviderStep: View {
                     TextField("Base URL", text: $baseURLText)
                         .onChange(of: baseURLText) { _, new in settings.llmBaseURL = new }
                 }
+                if selectedProviderID == "lmstudio", let url = URL(string: "https://lmstudio.ai/download") {
+                    Link("Download LM Studio", destination: url).font(.caption)
+                }
 
                 if needsAPIKey {
                     SecureField("API Key", text: $apiKeyText)
                         .onChange(of: apiKeyText) { _, _ in
                             settings.setAPIKey(apiKeyText, forProvider: selectedProviderID)
                         }
+                    // TASK-464: per-provider "Get API key" link.
+                    if let keyURL = Self.apiKeyURL(for: selectedProviderID) {
+                        Link("Get an API key →", destination: keyURL).font(.caption)
+                    }
                 }
 
                 HStack {
@@ -390,6 +397,17 @@ private struct AIProviderStep: View {
 
     private var needsAPIKey: Bool {
         ["openai", "anthropic", "google", "openrouter", "custom"].contains(selectedProviderID)
+    }
+
+    /// Where to obtain an API key for a hosted provider (TASK-464, Electron API_KEY_URLS).
+    static func apiKeyURL(for providerID: String) -> URL? {
+        let urls = [
+            "openai": "https://platform.openai.com/api-keys",
+            "anthropic": "https://console.anthropic.com/settings/keys",
+            "google": "https://aistudio.google.com/app/apikey",
+            "openrouter": "https://openrouter.ai/keys",
+        ]
+        return urls[providerID].flatMap(URL.init(string:))
     }
 
     private var canFetchModels: Bool {

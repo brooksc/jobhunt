@@ -166,6 +166,11 @@ struct DebugTab: View {
                     "(file paths, URL query strings, API keys/tokens) are redacted on a best-effort " +
                     "basis. Does not include job descriptions or resume content. Review before sharing."
             )
+            // TASK-464: re-present the onboarding flow.
+            Button("Reopen Onboarding") {
+                NotificationCenter.default.post(name: .reopenOnboarding, object: nil)
+            }
+            .help("Show the first-run setup flow again.")
         }
     }
 

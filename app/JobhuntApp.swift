@@ -186,6 +186,10 @@ struct JobhuntApp: App {
                         integration.stop()
                         Task { await services.shutdown() }
                     }
+                    // TASK-464: Settings → Debug "Reopen Onboarding".
+                    .onReceive(NotificationCenter.default.publisher(for: .reopenOnboarding)) { _ in
+                        mgr.reopen()
+                    }
                     .modelContainer(container)
             }
         }

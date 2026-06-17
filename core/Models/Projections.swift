@@ -120,6 +120,10 @@ public struct JobListRecord: Sendable {
     public let sourceURL: String?
     public let capturedAt: Date?
     public let createdAt: Date
+    // TASK-464: re-added MCP jobs_list payload fields dropped vs Electron.
+    public let employmentType: String?
+    public let seniority: String?
+    public let duplicateOfJobID: String?
 
     init(job: Job) {
         id = job.id
@@ -138,6 +142,9 @@ public struct JobListRecord: Sendable {
         sourceURL = JobURLPolicy.sourceURL(job: job)
         capturedAt = job.capture?.capturedAt ?? job.capture?.createdAt
         createdAt = job.createdAt
+        employmentType = job.employmentType
+        seniority = job.seniority
+        duplicateOfJobID = job.duplicateOfJobID
     }
 }
 
@@ -171,6 +178,10 @@ public struct JobDetailRecord: Sendable {
     public let createdAt: Date
     public let selectedText: String?
     public let visibleText: String?
+    // TASK-464: re-added MCP payload fields dropped vs Electron.
+    public let employmentType: String?
+    public let seniority: String?
+    public let duplicateOfJobID: String?
 
     init(job: Job) {
         id = job.id
@@ -192,6 +203,9 @@ public struct JobDetailRecord: Sendable {
         createdAt = job.createdAt
         selectedText = job.capture?.selectedText
         visibleText = job.capture?.visibleText
+        employmentType = job.employmentType
+        seniority = job.seniority
+        duplicateOfJobID = job.duplicateOfJobID
     }
 }
 

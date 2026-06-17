@@ -177,4 +177,22 @@ final class ProjectionsTests: XCTestCase {
     func testSalaryDisplay_subThousandAmount() {
         XCTAssertEqual(SalaryDisplay.text(min: 500, max: nil, currency: nil), "$500+")
     }
+
+    // MARK: - TASK-464: MCP payload fields re-added to JobDetailRecord/JobListRecord
+
+    func testJobRecords_exposeEmploymentSeniorityAndDuplicate() {
+        let job = Job(jobNumber: 1, title: "Eng", employmentType: "full_time",
+                      seniority: "staff", duplicateOfJobID: "orig-1")
+        job.status = .duplicate
+
+        let detail = JobDetailRecord(job: job)
+        XCTAssertEqual(detail.employmentType, "full_time")
+        XCTAssertEqual(detail.seniority, "staff")
+        XCTAssertEqual(detail.duplicateOfJobID, "orig-1")
+
+        let list = JobListRecord(job: job)
+        XCTAssertEqual(list.employmentType, "full_time")
+        XCTAssertEqual(list.seniority, "staff")
+        XCTAssertEqual(list.duplicateOfJobID, "orig-1")
+    }
 }

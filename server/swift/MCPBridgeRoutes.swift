@@ -77,6 +77,20 @@
     private struct MCPSiteAddRequest: Decodable {
         let url: String
         let name: String?
+        // TASK-464: Electron parity — richer add_site fields.
+        let state: String?
+        let intervalDays: Int?
+        let note: String?
+        let companyWebsite: String?
+        let jobsURL: String?
+        let companyDescription: String?
+        enum CodingKeys: String, CodingKey {
+            case url, name, state, note
+            case intervalDays = "interval_days"
+            case companyWebsite = "company_website"
+            case jobsURL = "jobs_url"
+            case companyDescription = "company_description"
+        }
     }
 
     private struct MCPSiteUpdateRequest: Decodable {
@@ -122,6 +136,9 @@
         let sourceURL: String?
         let capturedAt: String?
         let createdAt: String
+        let employmentType: String?
+        let seniority: String?
+        let duplicateOfJobID: String?
 
         enum CodingKeys: String, CodingKey {
             case jobNumber = "job_number"
@@ -129,6 +146,9 @@
             case status
             case extractionStatus = "extraction_status"
             case company, title, location
+            case employmentType = "employment_type"
+            case seniority
+            case duplicateOfJobID = "duplicate_of_job_id"
             case remoteType = "remote_type"
             case salaryMin = "salary_min"
             case salaryMax = "salary_max"
@@ -161,6 +181,9 @@
         let createdAt: String
         let selectedText: String?
         let visibleText: String?
+        let employmentType: String?
+        let seniority: String?
+        let duplicateOfJobID: String?
 
         enum CodingKeys: String, CodingKey {
             case jobNumber = "job_number"
@@ -180,6 +203,9 @@
             case createdAt = "created_at"
             case selectedText = "selected_text"
             case visibleText = "visible_text"
+            case employmentType = "employment_type"
+            case seniority
+            case duplicateOfJobID = "duplicate_of_job_id"
         }
     }
 
@@ -336,7 +362,10 @@
                     pageTitle: r.pageTitle,
                     sourceURL: r.sourceURL,
                     capturedAt: formatDate(r.capturedAt),
-                    createdAt: formatDate(r.createdAt)
+                    createdAt: formatDate(r.createdAt),
+                    employmentType: r.employmentType,
+                    seniority: r.seniority,
+                    duplicateOfJobID: r.duplicateOfJobID
                 )
             }
             return HTTPResponse.ok(summaries)
@@ -383,7 +412,10 @@
                 capturedAt: formatDate(r.capturedAt),
                 createdAt: formatDate(r.createdAt),
                 selectedText: req.includeRawText == true ? r.selectedText : nil,
-                visibleText: req.includeRawText == true ? r.visibleText : nil
+                visibleText: req.includeRawText == true ? r.visibleText : nil,
+                employmentType: r.employmentType,
+                seniority: r.seniority,
+                duplicateOfJobID: r.duplicateOfJobID
             )
             return HTTPResponse.ok(detail)
         } catch {
@@ -562,9 +594,29 @@
         guard !req.url.trimmingCharacters(in: .whitespaces).isEmpty else {
             return HTTPResponse.error("url required")
         }
+        if let stateStr = req.state, SiteState(rawValue: stateStr) == nil {
+            let valid = SiteState.allCases.map(\.rawValue).joined(separator: ", ")
+            return HTTPResponse.error("Unknown site state: '\(stateStr)'; valid values: \(valid)", code: 400)
+        }
 
         do {
-            let siteID = try await siteService.createSite(url: req.url, name: req.name)
+            let interval = req.intervalDays.map { max(1, min(365, $0)) }
+            let siteID = try await siteService.createSite(
+                url: req.url, name: req.name, intervalDays: interval ?? 14)
+            // Apply the richer fields (state/note/company_website/jobs_url/company_description) via
+            // the same update path update_site uses — TASK-464.
+            let state = req.state.flatMap { SiteState(rawValue: $0) }
+            if state != nil || req.note != nil || req.companyWebsite != nil
+                || req.jobsURL != nil || req.companyDescription != nil {
+                try await siteService.updateSite(
+                    id: siteID,
+                    excludeState: state,
+                    note: req.note,
+                    companyWebsite: req.companyWebsite,
+                    jobsURL: req.jobsURL,
+                    companyDescription: req.companyDescription
+                )
+            }
             struct AddResult: Encodable {
                 let ok: Bool
                 let id: String

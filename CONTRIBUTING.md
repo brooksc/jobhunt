@@ -15,19 +15,25 @@ Open an issue at [github.com/brooksc/jobhunt/issues](https://github.com/brooksc/
 
 ## Dependency versions
 
-Tuist is pinned in `.mise.toml`. CI reads this file via `mise install tuist`.
+The whole build toolchain is pinned in `.mise.toml` — **Tuist, SwiftLint, and SwiftFormat** — and CI
+installs exactly these via `mise install`. Install all of them the same way (don't install Tuist via
+its upstream curl script, or you may generate the project with a different version):
 
-To update Tuist:
-1. Edit `.mise.toml` — change the `tuist` version.
-2. Run `mise install tuist` locally.
-3. Regenerate the project: `tuist generate --no-open`.
-4. Verify tests pass, then commit `.mise.toml`.
+```bash
+mise install   # installs the pinned Tuist + SwiftLint + SwiftFormat
+```
+
+To update a pinned tool:
+1. Edit `.mise.toml` — change the tool's version.
+2. Run `mise install` locally.
+3. If Tuist changed, regenerate the project: `tuist generate --no-open`.
+4. Verify the full gate passes, then commit `.mise.toml`.
 
 ## Development setup
 
 ```bash
-# First time: install Tuist (version pinned in .mise.toml)
-mise install tuist
+# First time: install the pinned toolchain (Tuist + SwiftLint + SwiftFormat)
+mise install
 
 # Regenerate the Xcode project whenever Project.swift changes
 tuist generate --no-open

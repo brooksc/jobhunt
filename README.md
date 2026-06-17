@@ -37,17 +37,21 @@ Install from the [Chrome Web Store](https://chromewebstore.google.com/detail/job
 
 - **macOS 15.0 (Sequoia)** or later
 - **Xcode 16+** (for development)
-- **Tuist 4.196.1** (for project generation)
+- **[mise](https://mise.jdx.dev)** — pins the build toolchain via `.mise.toml`: Tuist 4.196.1,
+  SwiftLint 0.63.3, SwiftFormat 0.61.1 (the exact versions CI uses)
 - **AI Provider**: LM Studio (recommended for local inference), or any OpenAI-compatible endpoint
 
 ## Setup (Development)
 
+Install the **pinned** toolchain from `.mise.toml` (same versions as CI — don't install Tuist
+separately, or you may generate the project with a different version):
+
 ```bash
-# Install Tuist
-curl -Ls https://install.tuist.io | bash
+# Install mise once (https://mise.jdx.dev), then from the repo root:
+mise install               # installs the pinned Tuist + SwiftLint + SwiftFormat
 
 # Generate Xcode project
-tuist generate
+tuist generate --no-open
 
 # Open in Xcode
 open Jobhunt.xcodeproj

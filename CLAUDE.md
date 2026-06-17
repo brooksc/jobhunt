@@ -169,6 +169,21 @@ remove `jobhunt.store{,-shm,-wal}`, copy a snapshot to `jobhunt.store`, relaunch
 header). Put the backup dir somewhere itself backed up (Time Machine / iCloud / external) — a copy on
 the same disk doesn't survive disk failure.
 
+**Secrets are NOT in the backup (TASK-378).** The backup/restore (both the in-app *Back Up / Restore*
+buttons via `BackupService` and `backup-store.sh`) covers the SQLite store only. AI provider **API
+keys live in the macOS Keychain**, and the **MCP token** is a transient file (`~/.jobhunt-mcp-token`),
+so neither is in a snapshot. After a restore — especially onto a new Mac — the user re-enters API keys
+in AI Provider settings; the MCP token regenerates on its own.
+
+**Restore smoke checklist** (run after any restore/migration before trusting it):
+1. App relaunches and the **job count / list** matches the source.
+2. **Settings → AI Provider**: the selected provider + model are correct (these are store-backed), but
+   the **API key field state** is as expected — present if the Keychain item survived (same Mac), empty
+   if not (new Mac). Re-enter the key if empty and confirm it saves.
+3. Run one **extraction or fit-score** to prove the provider + key actually work end-to-end.
+4. A **capture from the extension** still reaches the app (MCP token regenerated, server reachable).
+5. Spot-check that **resumes and sites** are present.
+
 ## One-time data operations (migrations / cleanup / backfills)
 
 **Do not put one-time data fixups in the app launch path.** They become deprecated code that sits

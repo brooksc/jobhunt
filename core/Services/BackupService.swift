@@ -8,6 +8,18 @@ import SwiftData
 /// ALL user data (captures, jobs, related records, resumes, sites, settings, LLM history) can
 /// be restored from the backup file.
 ///
+/// ## What is and isn't in the backup (TASK-378)
+///
+/// "Full-fidelity" means the full SQLite **store** — it does NOT cover secrets kept outside it:
+///   - **AI provider API keys** live in the macOS **Keychain** (`KeychainStore`), not the store, so
+///     they are never written to the backup file. After restoring onto a new Mac — or any time the
+///     Keychain items aren't present — the user must re-enter them in AI Provider settings. (Only the
+///     `SettingsStore` key/preference rows, e.g. which provider/model is selected, are in the store.)
+///   - **The MCP bridge token** is a transient file at `~/.jobhunt-mcp-token` (`MCPTokenManager`),
+///     regenerated on demand; it is intentionally not backed up or restored.
+/// Everything else (jobs, captures, resumes, sites, non-secret settings, LLM history) is in the store
+/// and therefore in the backup.
+///
 /// Usage:
 ///   let storeURL = container.configurations.first!.url
 ///   try BackupService.backup(storeURL: storeURL, to: destinationURL)

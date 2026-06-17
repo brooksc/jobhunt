@@ -46,6 +46,8 @@ struct SettingsTab: View {
             Text(
                 "All current jobs, captures, settings, and resumes will be replaced with the backup. " +
                 "A pre-restore backup will be saved automatically. " +
+                "API keys are not part of the backup (they live in the Keychain) — you may need to " +
+                "re-enter them in AI Provider settings afterward. " +
                 "The app must relaunch to apply the restored data."
             )
         }
@@ -233,6 +235,14 @@ struct SettingsTab: View {
                     Label("Restore from Backup…", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
                 }
             }
+            // TASK-378: the backup is the SQLite store only. API keys live in the macOS Keychain,
+            // not the store, so they're never in the backup file — set this expectation up front.
+            Text("Backups include all jobs, captures, resumes, and settings — but not your AI "
+                + "provider API keys, which are stored separately in the macOS Keychain. After "
+                + "restoring on a new Mac (or if the Keychain items are missing), re-enter them in "
+                + "AI Provider settings.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -374,6 +384,8 @@ struct SettingsTab: View {
         alert.messageText = "Restore Complete"
         alert.informativeText =
             "Your data has been restored from \(backupURL.lastPathComponent). " +
+            "If your AI provider API keys are missing after relaunch, re-enter them in " +
+            "AI Provider settings — they're kept in the Keychain, not the backup. " +
             "The app will now quit and must be relaunched to load the restored data."
         alert.alertStyle = .informational
         alert.addButton(withTitle: "Quit Now")

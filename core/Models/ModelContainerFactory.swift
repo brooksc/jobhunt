@@ -35,6 +35,29 @@ public enum ModelContainerFactory {
         return try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
     }
 
+    /// The store file + its CoreData/SQLite WAL/SHM sidecars. The sidecars are hyphen-suffixed
+    /// (`…store-wal` / `…store-shm`) — the names SQLite actually creates — NOT `.wal`/`.shm`
+    /// extensions (TASK-424).
+    public static func storeAndSidecars(of url: URL) -> [URL] {
+        let dir = url.deletingLastPathComponent()
+        let name = url.lastPathComponent
+        return [url,
+                dir.appendingPathComponent(name + "-wal"),
+                dir.appendingPathComponent(name + "-shm")]
+    }
+
+    /// Like `test(at:)` but FAILS CLOSED (TASK-424): creates the parent directory and removes any
+    /// existing store + sidecars, throwing if that cleanup can't complete — so a UI-test run can never
+    /// silently open stale data left by a previous run.
+    public static func freshTestStore(at url: URL) throws -> ModelContainer {
+        let fm = FileManager.default
+        try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        for file in storeAndSidecars(of: url) where fm.fileExists(atPath: file.path) {
+            try fm.removeItem(at: file)
+        }
+        return try test(at: url)
+    }
+
     /// In-memory container for unit tests — isolated, never touches disk.
     public static func inMemory() throws -> ModelContainer {
         let schema = Schema(SchemaV1.models)

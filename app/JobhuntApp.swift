@@ -124,16 +124,11 @@ struct JobhuntApp: App {
     private static func openStore(for mode: LaunchMode) throws -> ModelContainer {
         switch mode {
         case .uiTest:
-            // Dedicated temp store that cannot touch the user's production database.
+            // Dedicated temp store that cannot touch the user's production database. Fail closed if
+            // the clean-slate cleanup can't complete, so a test never opens stale data (TASK-424).
             let storeURL = URL(fileURLWithPath: NSTemporaryDirectory())
                 .appendingPathComponent("JobhuntUITest/jobhunt-ui-test.store")
-            try? FileManager.default.createDirectory(
-                at: storeURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            // Always start fresh so tests see a clean slate.
-            let shmURL = storeURL.appendingPathExtension("shm")
-            let walURL = storeURL.appendingPathExtension("wal")
-            for url in [storeURL, shmURL, walURL] { try? FileManager.default.removeItem(at: url) }
-            return try ModelContainerFactory.test(at: storeURL)
+            return try ModelContainerFactory.freshTestStore(at: storeURL)
         case .fixtureRead(let path):
             // Open an isolated copy of a committed fixture database.
             return try ModelContainerFactory.fixture(copying: URL(fileURLWithPath: path))
@@ -147,7 +142,8 @@ struct JobhuntApp: App {
                 throw FixtureOutputError.refusedProductionPath(outputPath)
             }
             let outputURL = URL(fileURLWithPath: outputPath)
-            try? FileManager.default.createDirectory(
+            // Fail closed if the output directory can't be created (TASK-424).
+            try FileManager.default.createDirectory(
                 at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             return try ModelContainerFactory.test(at: outputURL)
         case .production:

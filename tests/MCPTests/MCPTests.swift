@@ -96,6 +96,56 @@ final class MCPTests: XCTestCase {
         }
     }
 
+    // MARK: - TASK-464: MCP job tools accept job_id (Electron back-compat) or job_number
+
+    func testResolveToolRoute_jobGet_acceptsJobNumber() {
+        guard case let .success((path, body)) = resolveToolRoute(name: "job_get", args: ["job_number": 7]) else {
+            return XCTFail("job_number should succeed")
+        }
+        XCTAssertEqual(path, "/mcp/jobs/get")
+        XCTAssertEqual(body["job_number"] as? Int, 7)
+    }
+
+    func testResolveToolRoute_jobGet_acceptsJobId() {
+        guard case let .success((_, body)) = resolveToolRoute(name: "job_get", args: ["job_id": "job-abc"]) else {
+            return XCTFail("job_id should succeed (back-compat)")
+        }
+        XCTAssertEqual(body["job_id"] as? String, "job-abc")
+        XCTAssertNil(body["job_number"])
+    }
+
+    func testResolveToolRoute_jobTools_requireAnIdentifier() {
+        for tool in ["job_get", "update_job", "rerun_extraction"] {
+            guard case let .failure(err) = resolveToolRoute(name: tool, args: [:]) else {
+                return XCTFail("\(tool) with no identifier must fail")
+            }
+            XCTAssertTrue(err.message.contains("job_number or job_id"), "\(tool): \(err.message)")
+        }
+        // status/note tools also need their second arg.
+        guard case .failure = resolveToolRoute(name: "set_job_status", args: ["job_id": "x"]) else {
+            return XCTFail("set_job_status needs status")
+        }
+    }
+
+    func testResolveToolRoute_setStatus_acceptsJobIdWithStatus() {
+        guard case let .success((path, _)) = resolveToolRoute(
+            name: "set_job_status", args: ["job_id": "job-x", "status": "applied"]) else {
+            return XCTFail("job_id + status should succeed")
+        }
+        XCTAssertEqual(path, "/mcp/jobs/status")
+    }
+
+    func testJobTools_schemas_exposeJobId() {
+        for name in ["job_get", "update_job", "set_job_status", "add_job_note", "rerun_extraction"] {
+            let tool = tools.first { $0["name"] as? String == name }
+            let props = (tool?["inputSchema"] as? [String: Any])?["properties"] as? [String: Any]
+            XCTAssertNotNil(props?["job_id"], "\(name) schema must expose job_id")
+            // job_number must no longer be a hard requirement (so job_id alone is valid).
+            let required = (tool?["inputSchema"] as? [String: Any])?["required"] as? [String] ?? []
+            XCTAssertFalse(required.contains("job_number"), "\(name) must not require job_number")
+        }
+    }
+
     // MARK: - TASK-265: job_get schema has include_raw_text and correct description
 
     func testJobGet_schema_hasIncludeRawTextParameter() {

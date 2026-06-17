@@ -558,6 +558,13 @@ public actor JobService {
         return jobs.first.map { JobDetailRecord(job: $0) }
     }
 
+    /// Fetch a job by its internal id string (MCP `job_id` back-compat — TASK-464).
+    public func getJob(byID id: String) async throws -> JobDetailRecord? {
+        let descriptor = FetchDescriptor<Job>(predicate: #Predicate { $0.id == id })
+        let jobs = try await store.fetch(descriptor)
+        return jobs.first.map { JobDetailRecord(job: $0) }
+    }
+
     public func workflowSnapshot() async throws -> WorkflowSnapshot {
         let jobs = try await store.fetch(FetchDescriptor<Job>())
         let sites = try await store.fetch(FetchDescriptor<Site>())

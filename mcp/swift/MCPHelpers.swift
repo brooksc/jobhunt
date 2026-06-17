@@ -122,12 +122,13 @@ let tools: [[String: Any]] = [
     ],
     [
         "name": "job_get",
-        "description": "Fetch full job metadata. Raw captured page text (selected_text, visible_text) is omitted by default; pass include_raw_text: true to include it.",
+        "description": "Fetch full job metadata. Identify the job by job_number (preferred) or job_id. Raw captured page text (selected_text, visible_text) is omitted by default; pass include_raw_text: true to include it.",
         "inputSchema": [
             "type": "object",
-            "required": ["job_number"],
+            "required": [],
             "properties": [
                 "job_number": ["type": "integer"],
+                "job_id": ["type": "string", "description": "Internal job id (back-compat alternative to job_number)."] as [String: Any],
                 "include_raw_text": [
                     "type": "boolean",
                     "description": "Set to true to include raw captured page text (selected_text, visible_text). Omitted by default for privacy."
@@ -154,12 +155,13 @@ let tools: [[String: Any]] = [
     ],
     [
         "name": "update_job",
-        "description": "Patch selected job fields.",
+        "description": "Patch selected job fields. Identify the job by job_number (preferred) or job_id.",
         "inputSchema": [
             "type": "object",
-            "required": ["job_number"],
+            "required": [],
             "properties": [
                 "job_number": ["type": "integer"],
+                "job_id": ["type": "string"],
                 "company": ["type": "string"],
                 "title": ["type": "string"],
                 "location": ["type": "string"],
@@ -171,36 +173,39 @@ let tools: [[String: Any]] = [
     ],
     [
         "name": "set_job_status",
-        "description": "Set workflow status for a job.",
+        "description": "Set workflow status for a job. Identify the job by job_number (preferred) or job_id.",
         "inputSchema": [
             "type": "object",
-            "required": ["job_number", "status"],
+            "required": ["status"],
             "properties": [
                 "job_number": ["type": "integer"],
+                "job_id": ["type": "string"],
                 "status": ["type": "string"]
             ] as [String: Any]
         ] as [String: Any]
     ],
     [
         "name": "add_job_note",
-        "description": "Add a note event to a job.",
+        "description": "Add a note event to a job. Identify the job by job_number (preferred) or job_id.",
         "inputSchema": [
             "type": "object",
-            "required": ["job_number", "note"],
+            "required": ["note"],
             "properties": [
                 "job_number": ["type": "integer"],
+                "job_id": ["type": "string"],
                 "note": ["type": "string"]
             ] as [String: Any]
         ] as [String: Any]
     ],
     [
         "name": "rerun_extraction",
-        "description": "Reset extraction so it will be retried on the next run.",
+        "description": "Reset extraction so it will be retried on the next run. Identify the job by job_number (preferred) or job_id.",
         "inputSchema": [
             "type": "object",
-            "required": ["job_number"],
+            "required": [],
             "properties": [
-                "job_number": ["type": "integer"]
+                "job_number": ["type": "integer"],
+                "job_id": ["type": "string"]
             ] as [String: Any]
         ] as [String: Any]
     ],
@@ -284,8 +289,13 @@ func resolveToolRoute(name: String, args: [String: Any]) -> Result<(String, [Str
         if let l = args["limit"] { b["limit"] = l }
         return .success(("/mcp/jobs/list", b))
     case "job_get":
-        guard let num = args["job_number"] else { return .failure(MCPError("job_number required")) }
-        var b: [String: Any] = ["job_number": num]
+        // TASK-464: accept either job_number (primary) or job_id (Electron back-compat).
+        guard args["job_number"] != nil || args["job_id"] != nil else {
+            return .failure(MCPError("job_number or job_id required"))
+        }
+        var b: [String: Any] = [:]
+        if let num = args["job_number"] { b["job_number"] = num }
+        if let jid = args["job_id"] { b["job_id"] = jid }
         if let raw = args["include_raw_text"] { b["include_raw_text"] = raw }
         return .success(("/mcp/jobs/get", b))
     case "add_capture":
@@ -294,20 +304,24 @@ func resolveToolRoute(name: String, args: [String: Any]) -> Result<(String, [Str
         }
         return .success(("/mcp/captures/add", args))
     case "update_job":
-        guard args["job_number"] != nil else { return .failure(MCPError("job_number required")) }
+        guard args["job_number"] != nil || args["job_id"] != nil else {
+            return .failure(MCPError("job_number or job_id required"))
+        }
         return .success(("/mcp/jobs/update", args))
     case "set_job_status":
-        guard args["job_number"] != nil, args["status"] != nil else {
-            return .failure(MCPError("job_number and status required"))
+        guard args["job_number"] != nil || args["job_id"] != nil, args["status"] != nil else {
+            return .failure(MCPError("job_number or job_id, and status, required"))
         }
         return .success(("/mcp/jobs/status", args))
     case "add_job_note":
-        guard args["job_number"] != nil, args["note"] != nil else {
-            return .failure(MCPError("job_number and note required"))
+        guard args["job_number"] != nil || args["job_id"] != nil, args["note"] != nil else {
+            return .failure(MCPError("job_number or job_id, and note, required"))
         }
         return .success(("/mcp/jobs/note", args))
     case "rerun_extraction":
-        guard args["job_number"] != nil else { return .failure(MCPError("job_number required")) }
+        guard args["job_number"] != nil || args["job_id"] != nil else {
+            return .failure(MCPError("job_number or job_id required"))
+        }
         return .success(("/mcp/jobs/rerun", args))
     case "list_sites": return .success(("/mcp/sites/list", [:]))
     case "add_site":

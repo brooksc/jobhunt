@@ -12,16 +12,19 @@
     }
 
     private struct MCPJobGetRequest: Decodable {
-        let jobNumber: Int
+        let jobNumber: Int?
+        let jobId: String?
         let includeRawText: Bool?
         enum CodingKeys: String, CodingKey {
             case jobNumber = "job_number"
+            case jobId = "job_id"
             case includeRawText = "include_raw_text"
         }
     }
 
     private struct MCPJobUpdateRequest: Decodable {
-        let jobNumber: Int
+        let jobNumber: Int?
+        let jobId: String?
         let company: String?
         let title: String?
         let location: String?
@@ -31,6 +34,7 @@
         let salaryNote: String?
         enum CodingKeys: String, CodingKey {
             case jobNumber = "job_number"
+            case jobId = "job_id"
             case company, title, location
             case salaryMin = "salary_min"
             case salaryMax = "salary_max"
@@ -40,27 +44,33 @@
     }
 
     private struct MCPJobStatusRequest: Decodable {
-        let jobNumber: Int
+        let jobNumber: Int?
+        let jobId: String?
         let status: String
         enum CodingKeys: String, CodingKey {
             case jobNumber = "job_number"
+            case jobId = "job_id"
             case status
         }
     }
 
     private struct MCPJobNoteRequest: Decodable {
-        let jobNumber: Int
+        let jobNumber: Int?
+        let jobId: String?
         let note: String
         enum CodingKeys: String, CodingKey {
             case jobNumber = "job_number"
+            case jobId = "job_id"
             case note
         }
     }
 
     private struct MCPJobRerunRequest: Decodable {
-        let jobNumber: Int
+        let jobNumber: Int?
+        let jobId: String?
         enum CodingKeys: String, CodingKey {
             case jobNumber = "job_number"
+            case jobId = "job_id"
         }
     }
 
@@ -337,11 +347,20 @@
 
     private func handleMCPJobGet(_ request: HTTPRequest, jobService: JobService) async -> HTTPResponse {
         guard let req = try? request.decodeBody(as: MCPJobGetRequest.self) else {
-            return HTTPResponse.error("job_number required")
+            return HTTPResponse.error("job_number or job_id required")
         }
 
         do {
-            guard let r = try await jobService.getJob(byNumber: req.jobNumber) else {
+            // TASK-464: resolve by job_id (back-compat) or job_number (preferred).
+            let record: JobDetailRecord?
+            if let jobId = req.jobId, !jobId.isEmpty {
+                record = try await jobService.getJob(byID: jobId)
+            } else if let num = req.jobNumber {
+                record = try await jobService.getJob(byNumber: num)
+            } else {
+                return HTTPResponse.error("job_number or job_id required")
+            }
+            guard let r = record else {
                 return HTTPResponse.error("job not found", code: 404)
             }
 
@@ -428,7 +447,7 @@
         }
 
         do {
-            let jobID = try await resolveJobID(jobNumber: req.jobNumber, store: store)
+            let jobID = try await resolveJob(jobNumber: req.jobNumber, jobId: req.jobId, store: store)?.id
             guard let jobID else {
                 return HTTPResponse.error("job not found", code: 404)
             }
@@ -461,7 +480,7 @@
         }
 
         do {
-            let jobID = try await resolveJobID(jobNumber: req.jobNumber, store: store)
+            let jobID = try await resolveJob(jobNumber: req.jobNumber, jobId: req.jobId, store: store)?.id
             guard let jobID else {
                 return HTTPResponse.error("job not found", code: 404)
             }
@@ -482,7 +501,7 @@
         }
 
         do {
-            let jobID = try await resolveJobID(jobNumber: req.jobNumber, store: store)
+            let jobID = try await resolveJob(jobNumber: req.jobNumber, jobId: req.jobId, store: store)?.id
             guard let jobID else {
                 return HTTPResponse.error("job not found", code: 404)
             }
@@ -503,7 +522,7 @@
         }
 
         do {
-            let jobID = try await resolveJobID(jobNumber: req.jobNumber, store: store)
+            let jobID = try await resolveJob(jobNumber: req.jobNumber, jobId: req.jobId, store: store)?.id
             guard let jobID else {
                 return HTTPResponse.error("job not found", code: 404)
             }
@@ -616,12 +635,20 @@
 
     // MARK: - Helpers
 
-    private func resolveJobID(jobNumber: Int, store: BackgroundStore) async throws -> String? {
-        let descriptor = FetchDescriptor<Job>(
-            predicate: #Predicate { $0.jobNumber == jobNumber }
-        )
-        let jobs = try await store.fetch(descriptor)
-        return jobs.first?.id
+    /// Resolve a job by `job_id` (internal id string — Electron back-compat) or `job_number`
+    /// (preferred), returning both identifiers (TASK-464). Returns nil if neither is given or no
+    /// job matches.
+    private func resolveJob(jobNumber: Int?, jobId: String?, store: BackgroundStore) async throws
+        -> (id: String, number: Int?)? {
+        if let jobId, !jobId.isEmpty {
+            let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobId }))
+            return jobs.first.map { ($0.id, $0.jobNumber) }
+        }
+        if let jobNumber {
+            let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.jobNumber == jobNumber }))
+            return jobs.first.map { ($0.id, $0.jobNumber) }
+        }
+        return nil
     }
 
     /// Capture ingestion request body for MCP bridge (mirrors CapturePayload fields).

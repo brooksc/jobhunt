@@ -177,13 +177,20 @@ sshpass -p admin scp -o StrictHostKeyChecking=no -r \
 
 ### Step 4: Run a single test class
 
-Isolate the failing suite to reduce iteration time:
+Isolate the failing suite to reduce iteration time. `--class`/`--test` are shortcuts that expand to
+`-only-testing AppUITests/…` (TASK-404):
 
 ```bash
+# Whole suite filter (full path):
 ./scripts/run-ui-tests-in-vm.sh --only-testing AppUITests/BehaviorUITests
-./scripts/run-ui-tests-in-vm.sh --only-testing AppUITests/WorkflowUITests
-./scripts/run-ui-tests-in-vm.sh --only-testing AppUITests/ScreenshotTests
+# One class (shortcut):
+./scripts/run-ui-tests-in-vm.sh --class BehaviorUITests
+# One method (shortcut):
+./scripts/run-ui-tests-in-vm.sh --test BehaviorUITests/testSidebarNavigationChangesSections
 ```
+
+The in-VM `xcodebuild` is capped at `XCODEBUILD_TIMEOUT` (15 min, TASK-405): a hung run exits 124
+with a clear `TIMEOUT` message and the VM is stopped cleanly by the host trap.
 
 ### Step 5: Run directly in the VM (no script)
 

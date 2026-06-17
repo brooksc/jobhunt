@@ -17,11 +17,13 @@
 #   - Code signing is disabled for the test build (no provisioning needed)
 #
 # USAGE:
-#   ./scripts/run-ui-tests-in-vm.sh [--scheme <scheme>] [--only-testing <target>] [--no-shutdown] [--regen]
+#   ./scripts/run-ui-tests-in-vm.sh [--scheme <scheme>] [--only-testing <target>] [--class <Class>] [--test <Class/method>] [--no-shutdown] [--regen]
 #
 # FLAGS:
 #   --scheme <name>         Xcode scheme (default: Jobhunt-DMG)
 #   --only-testing <target> Test target filter (default: AppUITests)
+#   --class <Class>         Run only AppUITests/<Class>     (e.g. --class BehaviorUITests)
+#   --test <Class/method>   Run only one method             (e.g. --test BehaviorUITests/testSidebarNav)
 #   --no-shutdown           Leave the VM running after tests (useful for debugging)
 #   --regen                 Run tuist generate --no-open before building
 #
@@ -44,6 +46,10 @@ VM_IMAGE="${VM_IMAGE:-ghcr.io/cirruslabs/macos-sequoia-xcode@sha256:31413f28df83
 HOST_RESULTS="build/vm-results"
 GUEST_RESULT_BUNDLE="/tmp/jobhunt-uitest.xcresult"
 GUEST_SCREENSHOTS="/tmp/jobhunt-screenshots"
+
+# TASK-405: hard cap on the in-VM xcodebuild run so a launch crash / hung test host can't wedge the
+# script forever. On timeout the guest exits 124 and the host EXIT trap shuts the VM down.
+XCODEBUILD_TIMEOUT=900   # 15 minutes
 
 SCHEME="Jobhunt-DMG"
 ONLY_TESTING="AppUITests"
@@ -73,10 +79,14 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --scheme)           SCHEME="$2"; shift 2 ;;
         --only-testing)     ONLY_TESTING="$2"; shift 2 ;;
+        # TASK-404: convenience filters that expand to -only-testing under AppUITests, so iterating
+        # on one class/method doesn't run the whole ~8-min suite.
+        --class)            ONLY_TESTING="AppUITests/$2"; shift 2 ;;
+        --test)             ONLY_TESTING="AppUITests/$2"; shift 2 ;;
         --no-shutdown)      SHUTDOWN=false; shift ;;
         --regen)            REGEN=true; shift ;;
         --build-in-vm)      BUILD_ON_HOST=false; shift ;;  # fall back to building inside VM
-        *) echo "Usage: $0 [--scheme <scheme>] [--only-testing <target>] [--no-shutdown] [--regen] [--build-in-vm]" >&2; exit 1 ;;
+        *) echo "Usage: $0 [--scheme <scheme>] [--only-testing <target>] [--class <Class>] [--test <Class/method>] [--no-shutdown] [--regen] [--build-in-vm]" >&2; exit 1 ;;
     esac
 done
 
@@ -341,6 +351,16 @@ set -uo pipefail
 # Read the project root written by GUEST_SETUP (used in build-in-vm mode)
 PROJ_DIR="\$(cat /tmp/jobhunt_proj_root)"
 
+# TASK-405: a timeout wrapper so a hung xcodebuild can't run forever. macOS has no \`timeout\` by
+# default, so fall back to coreutils' \`gtimeout\`; if neither is present, run unguarded with a warning.
+TIMEOUT_BIN="\$(command -v timeout || command -v gtimeout || true)"
+if [ -n "\$TIMEOUT_BIN" ]; then
+    TIMEOUT_CMD="\$TIMEOUT_BIN ${XCODEBUILD_TIMEOUT}"
+else
+    echo "WARNING: no 'timeout'/'gtimeout' in the VM — xcodebuild runs without a time cap." >&2
+    TIMEOUT_CMD=""
+fi
+
 if [ "${BUILD_ON_HOST}" = true ]; then
     # test-without-building from host-built artifacts
     XCTESTRUN="\$(ls "${GUEST_PRODUCTS}"/*.xctestrun 2>/dev/null | head -1)"
@@ -351,7 +371,7 @@ if [ "${BUILD_ON_HOST}" = true ]; then
     fi
     echo "  xctestrun: \$XCTESTRUN"
     rm -rf "${GUEST_RESULT_BUNDLE}"
-    xcodebuild test-without-building \\
+    \$TIMEOUT_CMD xcodebuild test-without-building \\
         -xctestrun "\$XCTESTRUN" \\
         -destination 'platform=macOS' \\
         -only-testing "${ONLY_TESTING}" \\
@@ -366,7 +386,7 @@ else
     echo "  cd \$PROJ_DIR"
     cd "\$PROJ_DIR"
     rm -rf "${GUEST_RESULT_BUNDLE}"
-    xcodebuild test \\
+    \$TIMEOUT_CMD xcodebuild test \\
         -project "${PROJECT}" \\
         -scheme "${SCHEME}" \\
         -configuration "${CONFIG}" \\
@@ -393,6 +413,12 @@ grep -E "(Test Suite|Test Case 'test|error:|FAILED|PASS|Executed [0-9])" \
 echo
 if [ "\$XC_EXIT" -eq 0 ]; then
     echo "✓ All tests passed"
+elif [ "\$XC_EXIT" -eq 124 ]; then
+    # TASK-405: timeout exit code. Surface clearly; the host trap stops the VM.
+    echo "✗ TIMEOUT: xcodebuild exceeded ${XCODEBUILD_TIMEOUT}s and was killed (exit 124)." >&2
+    echo "--- last 40 lines ---" >&2
+    tail -40 /tmp/xcodebuild-test.log >&2
+    exit 124
 else
     echo "✗ xcodebuild exited \$XC_EXIT" >&2
     echo "--- last 40 lines ---" >&2

@@ -28,6 +28,8 @@ All captured data is sent exclusively to a companion app running on your own mac
 
 If the local app is not running, captures are held temporarily in Chrome's local extension storage (`chrome.storage.local`) on your device until you sync or clear them.
 
+**CSV export:** The queue page lets you export held captures as a CSV file. That file includes the full captured page text, your selected text, the job URL, and any notes you added — save it somewhere private. The export is a local file download; nothing is sent anywhere.
+
 ## Data sharing
 
 We do not sell, share, or transfer any user data to third parties for any purpose.

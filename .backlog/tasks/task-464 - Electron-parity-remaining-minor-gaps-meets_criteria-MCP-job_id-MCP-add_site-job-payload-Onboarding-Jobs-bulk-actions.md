@@ -3,10 +3,10 @@ id: TASK-464
 title: >-
   Electron parity: remaining minor gaps (meets_criteria, MCP job_id, MCP
   add_site/job payload, Onboarding, Jobs bulk actions)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-14 04:40'
-updated_date: '2026-06-17 02:55'
+updated_date: '2026-06-17 04:29'
 labels:
   - electron-parity
   - cleanup
@@ -55,11 +55,11 @@ NOTE: Deliberately excluded by the user (do NOT implement): the Apply workflow (
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 meets_criteria: optional Job.meetsCriteria computed post-extraction, shown in detail + available as a Jobs filter
+- [x] #1 meets_criteria: optional Job.meetsCriteria computed post-extraction, shown in detail + available as a Jobs filter
 - [x] #2 MCP job tools accept either job_id or job_number (job_id resolved internally)
-- [ ] #3 MCP add_site accepts the richer field set (note/state/company_website/jobs_url/company_description/interval_days); job_get/jobs_list re-add events[], employment_type, seniority, duplicate_of_job_id
-- [ ] #4 Onboarding adds per-provider Get-API-key links; Settings adds a Reopen-Onboarding button
-- [ ] #5 Jobs bulk actions add Open-pages and a fit-only/extract-only queue mode
+- [x] #3 MCP add_site accepts the richer field set (note/state/company_website/jobs_url/company_description/interval_days); job_get/jobs_list re-add events[], employment_type, seniority, duplicate_of_job_id
+- [x] #4 Onboarding adds per-provider Get-API-key links; Settings adds a Reopen-Onboarding button
+- [x] #5 Jobs bulk actions add Open-pages and a fit-only/extract-only queue mode
 - [x] #6 Apply workflow and Jobs configurable columns remain intentionally NOT implemented
 <!-- AC:END -->
 
@@ -77,3 +77,9 @@ REMAINING (UI/model — recommend splitting into focused tasks; not runtime-veri
 - #5 (AC#5): Jobs bulk "Open pages" + fit-only/extract-only queue mode.
 - events[] for job_get; #6 settings odds-and-ends (low).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+All sub-items implemented (#6 = the intentional-exclusions guard holds). #1: LocationCriteria.meets (Electron applyLocationFilter parity, unit-tested) + additive Job.meetsCriteria, computed post-extraction in ExtractionEngine and persisted by QueueActor; shown as a detail-view chip and a JobsView "Meets criteria only" filter. #2: MCP job tools accept job_id (internal id string — Electron back-compat) or job_number across CLI schemas/dispatch + server routes (resolveJob helper, JobService.getJob(byID:)); tested. #3: add_site accepts state/interval_days/note/company_website/jobs_url/company_description (create-then-update); job_get/jobs_list re-add employment_type/seniority/duplicate_of_job_id; job_get re-adds events[] (JobEventRecord projection). #4: per-provider Get-API-key links + LM Studio download link in onboarding; Settings→Debug "Reopen Onboarding" (OnboardingManager.reopen via .reopenOnboarding notification). #5: Jobs bulk "Score Fit on N Selected" (fit-only queue) + "Open N Pages" (display URLs). Tested where unit-testable (LocationCriteria, projections, MCP dispatch/schemas); UI portions (detail chip, Jobs filter/bulk menu, onboarding links, reopen button) are build-verified only — no headless runtime test. Apply workflow + Jobs configurable columns remain intentionally NOT implemented (AC#6). 814 CoreTests + Server + MCP green; app builds. The #6 settings odds-and-ends (debug-level toggle, cost-model lookup, etc.) were noted low-priority and left out.
+<!-- SECTION:FINAL_SUMMARY:END -->

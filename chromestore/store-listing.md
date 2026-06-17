@@ -84,8 +84,23 @@ Suggested copy:
 
 | Asset | File | Status |
 |---|---|---|
-| Store icon (128×128) | `icon-128.png` | ✓ ready |
-| Screenshot 1 (1280×800) | `screenshot-capture-queue-1280x800.png` | ✓ ready |
+| Store icon (128×128) | `extension/icons/icon-128.png` | Tracked (the extension icon doubles as the store icon) |
+| Screenshot 1 (1280×800) | `chromestore/assets/screenshot-capture-queue-1280x800.png` | Tracked |
 | Small promo tile (440×280) | — | Optional; not needed for unlisted |
 | Marquee promo tile (1400×560) | — | Optional; not needed for unlisted |
-| Extension zip | `jobhunt-capture-1.0.1.zip` | Built at release from extension/ (matches manifest version) |
+| Extension zip | `chromestore/jobhunt-capture-<version>.zip` | Generated — run `./scripts/package-extension.sh` (version-stamped from manifest) |
+
+### Asset policy (TASK-415)
+
+- **Tracked** (present in any clean checkout): the store icon (`extension/icons/icon-128.png`) and
+  every store screenshot/promo image (committed under `chromestore/assets/`). `chromestore/*.png`
+  loose files are git-ignored scratch copies and are NOT authoritative — the `assets/` subdir is the
+  tracked home.
+- **Generated**: the extension zip (`./scripts/package-extension.sh`, see the freshness note above).
+- **Validate before submitting** that every referenced asset exists:
+
+  ```sh
+  for f in extension/icons/icon-128.png chromestore/assets/screenshot-capture-queue-1280x800.png; do
+    [ -f "$f" ] && echo "✓ $f" || { echo "✗ MISSING: $f"; exit 1; }
+  done
+  ```

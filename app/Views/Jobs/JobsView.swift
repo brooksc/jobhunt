@@ -582,6 +582,7 @@ struct JobsView: View {
             }
         }
             label: { Label("Archive \(label)", systemImage: "archivebox") }
+            .accessibilityIdentifier("jobContextMenu.archive")
         Button {
             Task {
                 do { try await svc.resetExtractionBulk(jobIDs: targets) }

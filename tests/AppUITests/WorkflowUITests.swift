@@ -44,32 +44,26 @@ final class WorkflowUITests: XCTestCase {
         ) == .completed
         XCTAssertTrue(isHittable, "First job row must be hittable before right-clicking")
 
-        // Right-click to open context menu.
-        // On headless VMs, the context menu may not be accessible via the standard
-        // app.menus hierarchy. Search the entire app tree for any "archive"-labeled element
-        // right after the right-click; skip if context menu is inaccessible on this VM.
-        // Seeded data has no archived jobs, so no "Archived" StatusChips exist yet —
-        // the only "archive"-labeled element is the "Archive Job" context menu item.
+        // Right-click to open the row's context menu, then click its "Archive Job" item.
+        // Target the item by its accessibility identifier (jobContextMenu.archive) scoped to
+        // app.menuItems — NOT a loose "label CONTAINS 'archive'" scan over every descendant, which
+        // could match an unrelated/disabled control and click nothing. On headless VMs the context
+        // menu sometimes never registers with the accessibility service; if so, skip gracefully.
         firstJob.rightClick()
-        Thread.sleep(forTimeInterval: 1.5)  // Allow NSMenu to register with accessibility service
-
-        let archiveItem = app.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS[c] 'archive'")
-        ).firstMatch
+        let archiveItem = app.menuItems["jobContextMenu.archive"]
         guard archiveItem.waitForExistence(timeout: 3) else {
-            // Context menu items not accessible on this headless VM — skip remaining assertions.
+            // Context menu not accessible on this headless VM — skip remaining assertions.
             return
         }
-        archiveItem.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
-        Thread.sleep(forTimeInterval: 1.5)  // Allow async archive + SwiftUI re-render
+        archiveItem.click()
 
-        // Verify: the job's status changed to Archived.
-        // Since seeded data has no pre-archived jobs, "Archived" StatusChip text appearing
-        // confirms the archive operation succeeded. ("All Jobs" view includes archived jobs,
-        // so the row stays — but its StatusChip changes from e.g. "Pursuing" to "Archived".)
+        // Verify: the job's status changed to Archived. Seeded data has no pre-archived jobs, so an
+        // "Archived" StatusChip appearing confirms the archive succeeded ("All Jobs" keeps archived
+        // jobs visible — the row stays, its chip flips to "Archived"). Archiving is async (a detached
+        // Task + SwiftUI re-render), so WAIT for the chip rather than checking .exists immediately.
         let archivedChip = app.staticTexts["Archived"].firstMatch
         XCTAssertTrue(
-            archivedChip.exists,
+            archivedChip.waitForExistence(timeout: 5),
             "Job's StatusChip should show 'Archived' after archiving — seeded data has no pre-archived jobs"
         )
     }

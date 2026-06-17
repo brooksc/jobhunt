@@ -22,29 +22,8 @@ final class JobsScreenUITests: XCTestCase {
         snap(app, "sidebar-pursuing-filtered")
     }
 
-    // TASK-114 AC#5: verify the "Jobs" CommandMenu exists in the menu bar and that
-    // "Re-run AI Extraction" is present and correctly disabled when no jobs are selected.
-    func testJobsMenuCommandsExist() {
-        // The Jobs section must be shown to activate the focusedSceneValue handler.
-        navigate(app, label: "All Jobs")
-
-        let menuBar = app.menuBars.firstMatch
-        XCTAssertTrue(menuBar.exists, "Menu bar must exist")
-
-        // Open the Jobs menu
-        let jobsMenu = menuBar.menuBarItems["Jobs"]
-        XCTAssertTrue(jobsMenu.waitForExistence(timeout: 3), "Jobs menu must be in the menu bar")
-        jobsMenu.click()
-
-        // Verify "Re-run AI Extraction" exists in the menu
-        let reRunItem = app.menuItems["Re-run AI Extraction"]
-        XCTAssertTrue(reRunItem.waitForExistence(timeout: 2), "Re-run AI Extraction must be in the Jobs menu")
-
-        // Verify "Archive Selected" exists
-        let archiveItem = app.menuItems["Archive Selected"]
-        XCTAssertTrue(archiveItem.exists, "Archive Selected must be in the Jobs menu")
-
-        // Close the menu with Escape
-        app.typeKey(.escape, modifierFlags: [])
-    }
+    // NOTE: the menu-bar "Jobs" CommandMenu (TASK-114 AC#5) was intentionally removed in 388097b
+    // ("remove menu-bar Jobs menu") — its actions moved to the toolbar + right-click menu, and the
+    // removal cleared a Cmd-R collision with the Data Quality menu. The former testJobsMenuCommandsExist
+    // was deleted with it; archiving via the row context menu is covered by WorkflowUITests.
 }

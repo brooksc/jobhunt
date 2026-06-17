@@ -178,6 +178,18 @@ jobs:
           echo "  Workflow: ${{ github.workflow }}" >> provenance.txt
           cat provenance.txt
 
+      # TASK-400: package the Chrome extension zip (allowlisted contents, version-stamped from
+      # extension/manifest.json) and attach it to the same release as the DMG.
+      - name: Package Chrome extension
+        id: ext
+        run: |
+          ./scripts/package-extension.sh
+          EXT_VERSION=$(node -e "console.log(require('./extension/manifest.json').version)")
+          ZIP="chromestore/jobhunt-capture-${EXT_VERSION}.zip"
+          test -f "$ZIP" || { echo "ERROR: extension zip not produced at $ZIP"; exit 1; }
+          shasum -a 256 "$ZIP" > "$ZIP.sha256"
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+
       - name: Upload to GitHub Release
         # softprops/action-gh-release@v2
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
@@ -186,5 +198,7 @@ jobs:
             build/Jobhunt-${{ github.ref_name }}.dmg
             build/Jobhunt-${{ github.ref_name }}.dmg.sha256
             provenance.txt
+            ${{ steps.ext.outputs.zip }}
+            ${{ steps.ext.outputs.zip }}.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

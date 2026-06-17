@@ -1,5 +1,10 @@
 # Chrome Web Store Listing — Jobhunt Capture
 
+> **Artifact freshness (TASK-418):** the `jobhunt-capture-*.zip` files in this directory are
+> git-ignored build outputs and are **not authoritative**. Always regenerate before submitting —
+> `./scripts/package-extension.sh` produces exactly one version-stamped zip (older ones are pruned).
+> Run `./scripts/check-stale-artifacts.sh` to flag any stale local DMGs / extension zips first.
+
 ## Metadata
 
 | Field | Value |

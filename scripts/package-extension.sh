@@ -13,8 +13,10 @@ ZIP="$OUT_DIR/jobhunt-capture-${VERSION}.zip"
 
 mkdir -p "$OUT_DIR"
 
-# Remove stale zip for this version if present
-rm -f "$ZIP"
+# TASK-418: remove ALL previously-built extension zips so chromestore/ holds exactly the zip this run
+# produces — a stale older-version zip can't be mistaken for the current submission artifact. The zip
+# name is version-stamped from manifest.json, so the output is authoritative-by-construction.
+rm -f "$OUT_DIR"/jobhunt-capture-*.zip
 
 # Build into a clean staging directory so only allowlisted files are included
 STAGING=$(mktemp -d)

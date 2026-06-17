@@ -226,17 +226,36 @@ rm -rf build/Jobhunt-testing
 
 ## Comparison with CI
 
-| | Tart VM (local) | GitHub Actions (`macos-latest`) |
+| | Tart VM (local) | GitHub Actions (`macos-15`) |
 |---|---|---|
 | Trigger | Manual (`./scripts/run-ui-tests-in-vm.sh`) | Weekly (Mon 8am UTC) or manual dispatch |
-| Environment | `ghcr.io/cirruslabs/macos-sequoia-xcode:latest` | `macos-latest` runner (OS/Xcode version varies) |
+| Environment | `ghcr.io/cirruslabs/macos-sequoia-xcode` (digest-pinned) | `macos-15` runner (default Xcode) |
 | Build cache | Persists across runs on reused VM | Cold cache every run |
-| Artifacts | Lost on VM shutdown (not yet auto-retrieved) | `.xcresult` uploaded for 7 days |
+| Artifacts | Retrieved to host on exit (see Results Retrieval) | `.xcresult` + `toolchain.txt` uploaded for 7 days |
 | Focus-steal | None (headless VM) | None (CI runner) |
 | Speed (cold) | ~12 min (clone + build + test) | ~12 min (install Tuist + build + test) |
 | Speed (warm) | ~6 min (incremental build + test) | ~12 min (always cold) |
 
-CI is defined in `.github/workflows/ui-tests.yml`. It uses `continue-on-error: true` on the test step so a flaky test doesn't block artifact upload.
+CI is defined in `.github/workflows/ui-tests.yml`. A UI-test failure fails the job (no `continue-on-error`); the `.xcresult` still uploads via `if: always()`.
+
+### Toolchain parity (TASK-406)
+
+The two environments pin their toolchains **independently**: the VM via the immutable `VM_IMAGE`
+digest (below), CI via the `macos-15` runner's default Xcode. Both can move without a code change, so
+each prints its exact `sw_vers` + `xcodebuild -version` at run time, making any divergence explicit
+and diffable:
+
+- **VM:** the guest run logs a `── VM toolchain (TASK-406 parity check) ──` block (streamed to the host).
+- **CI:** the *Record toolchain versions* step writes `build/toolchain.txt`, uploaded with the results
+  artifact.
+
+**Drift check:** compare the two `Xcode <version>` lines. They should report the same **major** Xcode.
+If they don't, reconcile — bump `VM_IMAGE` to a digest whose bundled Xcode matches the `macos-15`
+runner (or pin the runner's Xcode with `xcode-select` to match the VM) — then note the new versions
+here. We deliberately don't hard-fail on a mismatch: GitHub rolls the runner's default Xcode forward
+on its own schedule, and a forced `xcode-select -s /Applications/Xcode_X.Y.app` to a path that isn't
+installed would break the scheduled job outright. Recording-and-comparing is the lighter, non-brittle
+signal for an app at this scale.
 
 ## Results Retrieval
 

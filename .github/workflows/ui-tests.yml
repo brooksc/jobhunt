@@ -16,6 +16,21 @@ jobs:
       # actions/checkout@v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
+      # TASK-406: record the runner's exact macOS + Xcode so it can be compared against the local
+      # Tart VM (scripts/run-ui-tests-in-vm.sh prints the same two lines from inside the VM). The
+      # macos-15 runner's default Xcode and the digest-pinned VM image's bundled Xcode can drift
+      # independently; capturing both makes the divergence explicit and diffable. toolchain.txt is
+      # uploaded with the results so the versions for any given run are recoverable later.
+      - name: Record toolchain versions (parity vs VM)
+        run: |
+          mkdir -p build
+          {
+            echo "── CI toolchain (.github/workflows/ui-tests.yml, runs-on: macos-15) ──"
+            sw_vers
+            xcodebuild -version
+            echo "xcode-select path: $(xcode-select -p)"
+          } | tee build/toolchain.txt
+
       - name: Install mise
         run: curl -Ls https://mise.run | sh && echo "$HOME/.local/bin" >> $GITHUB_PATH
 
@@ -51,5 +66,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ui-test-results
-          path: build/UITestResults.xcresult
+          path: |
+            build/UITestResults.xcresult
+            build/toolchain.txt
           retention-days: 7

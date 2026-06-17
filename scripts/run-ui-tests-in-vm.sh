@@ -359,6 +359,14 @@ set -uo pipefail
 # Read the project root written by GUEST_SETUP (used in build-in-vm mode)
 PROJ_DIR="\$(cat /tmp/jobhunt_proj_root)"
 
+# TASK-406: record the VM's exact toolchain so it can be compared against CI's (.github/workflows/
+# ui-tests.yml prints the same two lines). If the Xcode major version here diverges from CI's, that's
+# the drift signal — reconcile by re-pinning VM_IMAGE or the CI runner. See docs/vm-testing.md.
+echo "── VM toolchain (TASK-406 parity check) ──"
+sw_vers || true
+xcodebuild -version || true
+echo "──────────────────────────────────────────"
+
 # TASK-405: a timeout wrapper so a hung xcodebuild can't run forever. macOS has no \`timeout\` by
 # default, so fall back to coreutils' \`gtimeout\`; if neither is present, run unguarded with a warning.
 TIMEOUT_BIN="\$(command -v timeout || command -v gtimeout || true)"

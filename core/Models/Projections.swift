@@ -182,6 +182,7 @@ public struct JobDetailRecord: Sendable {
     public let employmentType: String?
     public let seniority: String?
     public let duplicateOfJobID: String?
+    public let events: [JobEventRecord]
 
     init(job: Job) {
         id = job.id
@@ -206,7 +207,17 @@ public struct JobDetailRecord: Sendable {
         employmentType = job.employmentType
         seniority = job.seniority
         duplicateOfJobID = job.duplicateOfJobID
+        events = job.events
+            .sorted { $0.occurredAt < $1.occurredAt }
+            .map { JobEventRecord(eventType: $0.eventType, note: $0.note, occurredAt: $0.occurredAt) }
     }
+}
+
+/// Sendable projection of a job timeline event for MCP payloads (TASK-464).
+public struct JobEventRecord: Sendable {
+    public let eventType: String
+    public let note: String?
+    public let occurredAt: Date
 }
 
 public struct SiteListRecord: Sendable {

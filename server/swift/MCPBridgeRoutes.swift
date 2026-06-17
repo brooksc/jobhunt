@@ -184,6 +184,18 @@
         let employmentType: String?
         let seniority: String?
         let duplicateOfJobID: String?
+        let events: [MCPJobEvent]
+
+        struct MCPJobEvent: Encodable {
+            let eventType: String
+            let note: String?
+            let occurredAt: String
+            enum CodingKeys: String, CodingKey {
+                case eventType = "event_type"
+                case note
+                case occurredAt = "occurred_at"
+            }
+        }
 
         enum CodingKeys: String, CodingKey {
             case jobNumber = "job_number"
@@ -206,6 +218,7 @@
             case employmentType = "employment_type"
             case seniority
             case duplicateOfJobID = "duplicate_of_job_id"
+            case events
         }
     }
 
@@ -415,7 +428,11 @@
                 visibleText: req.includeRawText == true ? r.visibleText : nil,
                 employmentType: r.employmentType,
                 seniority: r.seniority,
-                duplicateOfJobID: r.duplicateOfJobID
+                duplicateOfJobID: r.duplicateOfJobID,
+                events: r.events.map {
+                    MCPJobDetail.MCPJobEvent(
+                        eventType: $0.eventType, note: $0.note, occurredAt: formatDate($0.occurredAt))
+                }
             )
             return HTTPResponse.ok(detail)
         } catch {

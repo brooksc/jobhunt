@@ -195,4 +195,17 @@ final class ProjectionsTests: XCTestCase {
         XCTAssertEqual(list.seniority, "staff")
         XCTAssertEqual(list.duplicateOfJobID, "orig-1")
     }
+
+    func testJobDetailRecord_includesEventsSortedByTime() {
+        let job = Job(jobNumber: 1)
+        let older = JobEvent(eventType: "status", note: "a")
+        older.occurredAt = Date(timeIntervalSince1970: 100)
+        let newer = JobEvent(eventType: "note", note: "b")
+        newer.occurredAt = Date(timeIntervalSince1970: 200)
+        job.events = [newer, older] // intentionally unsorted
+
+        let detail = JobDetailRecord(job: job)
+        XCTAssertEqual(detail.events.map(\.eventType), ["status", "note"], "events sorted by occurredAt")
+        XCTAssertEqual(detail.events.first?.note, "a")
+    }
 }

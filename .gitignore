@@ -29,6 +29,8 @@ chromestore/*.png
 
 # View screenshots
 screenshots/
+# VM UI-test screenshots retrieved by run-ui-tests-in-vm.sh (TASK-402)
+local-screenshots/
 
 # Xcode / Tuist generated files
 *.xcodeproj

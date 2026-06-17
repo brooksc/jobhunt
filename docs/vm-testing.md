@@ -108,7 +108,7 @@ xcodebuild test-without-building \
 Full output streams back to the host in real time via SSH. After xcodebuild finishes, the script replays a summary filtered to `Test Case`, `error:`, `FAILED`, `PASS`, and `Executed N tests` lines.
 
 ### Teardown
-On exit (success, failure, or Ctrl-C), the script first **copies the result bundle and screenshots back to the host** at `build/vm-results/` (best-effort), then the `EXIT` trap stops the VM unless `--no-shutdown` was passed.
+On exit (success, failure, or Ctrl-C), the script first **copies the artifacts back to the host** (best-effort) — the result bundle to `build/UITestResults.xcresult` (overwritten each run) and the screenshots to `local-screenshots/<timestamp>/` — then the `EXIT` trap stops the VM unless `--no-shutdown` was passed. Because retrieval runs in the `EXIT` trap, the artifacts come back even when the tests failed.
 
 ## App Launch Arguments
 
@@ -243,8 +243,8 @@ CI is defined in `.github/workflows/ui-tests.yml`. It uses `continue-on-error: t
 On every exit the script copies the result bundle and screenshots back to the host **before** stopping the VM:
 
 ```
-build/vm-results/jobhunt-uitest.xcresult   ← open in Xcode: open build/vm-results/jobhunt-uitest.xcresult
-build/vm-results/jobhunt-screenshots/      ← PNGs from ScreenshotTests
+build/UITestResults.xcresult     ← open in Xcode: open build/UITestResults.xcresult
+local-screenshots/<timestamp>/   ← PNGs from ScreenshotTests
 ```
 
 This happens whether the run passed or failed, so a failure is debuggable without re-running with `--no-shutdown`.

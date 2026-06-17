@@ -43,7 +43,9 @@ VM_NAME="jobhunt-uitest-env"
 VM_IMAGE="${VM_IMAGE:-ghcr.io/cirruslabs/macos-sequoia-xcode@sha256:31413f28df83c37b94e76f8feea8046fb1950b3ed42195523408477189a3f76d}"
 
 # Results (xcresult + screenshots) are copied back here before the VM is torn down.
-HOST_RESULTS="build/vm-results"
+# TASK-402: host destinations for artifacts retrieved from the VM.
+HOST_XCRESULT="build/UITestResults.xcresult"   # latest run, overwritten each time
+HOST_SCREENSHOTS="local-screenshots"           # per-run timestamped subdirs land directly here
 GUEST_RESULT_BUNDLE="/tmp/jobhunt-uitest.xcresult"
 GUEST_SCREENSHOTS="/tmp/jobhunt-screenshots"
 
@@ -181,19 +183,25 @@ TART_PID=$!
 # Ensure VM is stopped on script exit unless --no-shutdown was passed
 cleanup() {
     local exit_code=$?
-    # Retrieve results before the VM is destroyed (best-effort; never fail teardown).
+    # Retrieve artifacts before the VM is destroyed (TASK-402; best-effort, never fails teardown —
+    # this runs in the EXIT trap, so it happens even when xcodebuild exited non-zero).
     if [ -n "${VM_IP:-}" ]; then
-        step "Retrieving results to $HOST_RESULTS/"
-        mkdir -p "$HOST_RESULTS"
+        step "Retrieving artifacts from the VM"
+        # xcresult → build/UITestResults.xcresult (overwrite so the latest run is always here).
+        mkdir -p "$(dirname "$HOST_XCRESULT")"
+        rm -rf "$HOST_XCRESULT"
         if sshpass -p "$SSH_PASS" scp $SSH_OPTS -r \
-                "${SSH_USER}@${VM_IP}:${GUEST_RESULT_BUNDLE}" "$HOST_RESULTS/" 2>/dev/null; then
-            log "xcresult → $HOST_RESULTS/$(basename "$GUEST_RESULT_BUNDLE")"
+                "${SSH_USER}@${VM_IP}:${GUEST_RESULT_BUNDLE}" "$HOST_XCRESULT" 2>/dev/null; then
+            log "xcresult → $HOST_XCRESULT  (open in Xcode)"
         else
             log "(no xcresult to retrieve)"
         fi
+        # screenshots → local-screenshots/<timestamp>/  (the trailing /. copies the dir CONTENTS,
+        # so the guest's timestamped subdirs land directly under local-screenshots/).
+        mkdir -p "$HOST_SCREENSHOTS"
         if sshpass -p "$SSH_PASS" scp $SSH_OPTS -r \
-                "${SSH_USER}@${VM_IP}:${GUEST_SCREENSHOTS}" "$HOST_RESULTS/" 2>/dev/null; then
-            log "screenshots → $HOST_RESULTS/$(basename "$GUEST_SCREENSHOTS")"
+                "${SSH_USER}@${VM_IP}:${GUEST_SCREENSHOTS}/." "$HOST_SCREENSHOTS/" 2>/dev/null; then
+            log "screenshots → $HOST_SCREENSHOTS/"
         else
             log "(no screenshots to retrieve)"
         fi

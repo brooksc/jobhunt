@@ -632,6 +632,27 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         XCTAssertNotNil(date, "callback must carry the completion timestamp")
     }
 
+    func testMaybeRunStaleCheck_fetchFailure_doesNotAdvanceTimestamp() async {
+        // TASK-479/389 AC#4: a store fetch failure must surface as fetch-error and NOT invoke the
+        // completion callback (so the interval gate isn't advanced without a real check).
+        let context = ModelContext(container)
+        let settings = SettingsStore(modelContext: context)
+        settings.setBool(true, forKey: SettingsKey.availabilityAutoCheckEnabled)
+        settings.set("2020-01-01T00:00:00Z", forKey: SettingsKey.availabilityLastAutoCheckAt)
+        struct FakeStoreError: Error {}
+        await store.setFetchFault(FakeStoreError())
+
+        let recorder = CompletionRecorder()
+        let result = await AvailabilityChecker.maybeRunStaleCheck(
+            store: store, settings: settings, session: session,
+            onAutoCheckCompleted: { await recorder.record($0) })
+
+        XCTAssertFalse(result.skipped, "a fetch failure is a failed pass, not a skip")
+        XCTAssertEqual(result.reason, "fetch-error")
+        let count = await recorder.callCount
+        XCTAssertEqual(count, 0, "fetch failure must not advance the last-check timestamp")
+    }
+
     func testMaybeRunStaleCheck_skipped_doesNotInvokeCompletionCallback() async {
         let context = ModelContext(container)
         let settings = SettingsStore(modelContext: context)

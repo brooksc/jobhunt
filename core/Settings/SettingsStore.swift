@@ -219,8 +219,13 @@ public final class SettingsStore {
 
     // MARK: - Private
 
+    /// Test-only fault injection (TASK-479): when set, `loadCache`/`reload` treat the load as failed
+    /// (SwiftData's fetch can't be made to error on demand). Nil in production.
+    public var loadFault: Error?
+
     private func loadCache() {
         do {
+            if let loadFault { throw loadFault }
             let all = try modelContext.fetch(FetchDescriptor<Setting>())
             cache.removeAll()
             for setting in all {

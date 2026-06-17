@@ -390,4 +390,24 @@ final class MCPTokenManagerTests: XCTestCase {
         XCTAssertEqual(perms & 0o077, 0, "Generated token file must be owner-only (0600)")
         XCTAssertNotNil(MCPTokenManager.read(), "Token written with correct permissions should be readable")
     }
+
+    // TASK-479/388 AC#4: a settings load failure sets loadError and gates persistence.
+    func testLoadFailure_setsLoadErrorAndSkipsPersistence() throws {
+        let container = try ModelContainerFactory.inMemory()
+        let context = ModelContext(container)
+        let settings = SettingsStore(modelContext: context)
+        struct FakeLoadError: Error {}
+        settings.loadFault = FakeLoadError()
+        settings.reload()
+        XCTAssertNotNil(settings.loadError, "load failure must set loadError")
+
+        // A write while in the load-failure recovery state must NOT persist (could clobber unread
+        // stored values), though the in-memory cache updates for the session.
+        settings.set("should-not-persist", forKey: SettingsKey.preferredLocations)
+        let fresh = ModelContext(container)
+        let rows = try fresh.fetch(FetchDescriptor<Setting>(
+            predicate: #Predicate { $0.key == "preferred_locations" }))
+        XCTAssertTrue(rows.allSatisfy { $0.value != "should-not-persist" },
+                      "write must not persist while in load-failure recovery state")
+    }
 }

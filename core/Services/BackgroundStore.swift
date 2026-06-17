@@ -43,6 +43,16 @@ public struct AtomicIngestResult: Sendable {
 /// UI @Query views update automatically via SwiftData change tracking — no manual broadcast needed.
 @ModelActor
 public actor BackgroundStore {
+    /// Test-only fault injection (TASK-479). When set, `fetch` throws the given error before touching
+    /// the context, so the degraded-state paths in QueueActor / AvailabilityChecker (which SwiftData
+    /// can't otherwise be made to error on demand) get real coverage. Nil in production.
+    private var fetchFault: Error?
+
+    /// Make the next (and subsequent) `fetch` calls throw `error`, or clear with nil.
+    public func setFetchFault(_ error: Error?) {
+        fetchFault = error
+    }
+
     /// Insert a single model and save immediately.
     public func insert(_ model: some PersistentModel) throws {
         modelContext.insert(model)
@@ -219,7 +229,8 @@ public actor BackgroundStore {
 
     /// Fetch items in the background context.
     public func fetch<T: PersistentModel>(_ descriptor: FetchDescriptor<T>) throws -> [T] {
-        try modelContext.fetch(descriptor)
+        if let fetchFault { throw fetchFault } // TASK-479 test seam (nil in production)
+        return try modelContext.fetch(descriptor)
     }
 
     /// Save the current context state.

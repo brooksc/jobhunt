@@ -271,6 +271,33 @@ final class ExtractionEngineTests: XCTestCase {
 
     // TASK-387 AC#5: a genuinely empty queue (no fetch error) still emits the normal
     // processingComplete event — only a store-read *failure* takes the degraded path.
+    func testStartProcessing_fetchFailure_emitsQueueErrorNotComplete() async throws {
+        // TASK-479/387 AC#4: a store-read failure during the drain must surface as a queueError and
+        // NOT a (false) processingComplete that would look like all work finished.
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        struct FakeStoreError: Error {}
+        await store.setFetchFault(FakeStoreError())
+        var paused = false
+        let queue = QueueActor(
+            store: store,
+            isPaused: { paused },
+            onSetPaused: { paused = $0 },
+            readExtractionSettings: { makeExtractionSettings() },
+            providerFactory: { AlwaysFailProvider(error: LLMProviderError.unavailable(reason: "unused")) }
+        )
+
+        let events = await queue.subscribe()
+        await queue.startProcessing()
+
+        var received: QueueEvent?
+        for await event in events { received = event; break }
+        guard case let .queueError(message) = received else {
+            return XCTFail("Expected queueError, got \(String(describing: received))")
+        }
+        XCTAssertTrue(message.contains("Couldn't read the LLM queue"))
+    }
+
     func testEmptyQueueEmitsProcessingComplete() async throws {
         let container = try ModelContainerFactory.inMemory()
         let store = BackgroundStore(modelContainer: container)

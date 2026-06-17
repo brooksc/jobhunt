@@ -104,6 +104,19 @@ jobs:
           test -x "$HELPER" || { echo "ERROR: MCP helper not executable"; exit 1; }
           codesign --verify --verbose "$HELPER" || { echo "ERROR: MCP helper not signed"; exit 1; }
 
+          # TASK-401: assert the hardened runtime is enabled BEFORE notarization — Developer ID apps
+          # without it are rejected by notarytool, and catching it here gives a clear error instead
+          # of a late, opaque notarization failure. `codesign -dvv` prints `flags=0x10000(runtime)`.
+          for target in "$APP_PATH" "$HELPER"; do
+            if codesign -dvv "$target" 2>&1 | grep -q 'flags=.*runtime'; then
+              echo "✓ hardened runtime enabled: $target"
+            else
+              echo "ERROR: hardened runtime NOT enabled on $target (notarization would fail)." >&2
+              codesign -dvv "$target" 2>&1 | grep -i 'flags' >&2 || true
+              exit 1
+            fi
+          done
+
           echo "DMG smoke check passed"
 
       - name: Create DMG
@@ -115,12 +128,28 @@ jobs:
 
       - name: Notarize
         run: |
-          xcrun notarytool submit build/Jobhunt-${{ github.ref_name }}.dmg \
+          DMG="build/Jobhunt-${{ github.ref_name }}.dmg"
+          # TASK-401: capture the submission output so that on failure we can fetch the detailed
+          # notarization log (the reason is otherwise buried in Apple's portal, not the CI logs).
+          SUBMIT_OUTPUT=$(xcrun notarytool submit "$DMG" \
             --apple-id "${{ secrets.APPLE_ID }}" \
             --password "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" \
             --team-id "${{ secrets.APPLE_TEAM_ID }}" \
-            --wait
-          xcrun stapler staple build/Jobhunt-${{ github.ref_name }}.dmg
+            --wait 2>&1) && NOTARIZE_OK=1 || NOTARIZE_OK=0
+          echo "$SUBMIT_OUTPUT"
+          if [ "$NOTARIZE_OK" != "1" ]; then
+            SUBMISSION_ID=$(echo "$SUBMIT_OUTPUT" | grep -Eo 'id: [0-9a-f-]+' | head -1 | awk '{print $2}')
+            if [ -n "$SUBMISSION_ID" ]; then
+              echo "--- notarization log ($SUBMISSION_ID) ---"
+              xcrun notarytool log "$SUBMISSION_ID" \
+                --apple-id "${{ secrets.APPLE_ID }}" \
+                --password "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" \
+                --team-id "${{ secrets.APPLE_TEAM_ID }}" || true
+            fi
+            echo "ERROR: notarization failed (see log above)." >&2
+            exit 1
+          fi
+          xcrun stapler staple "$DMG"
 
       # TASK-356: Clean up signing certificate material before upload steps
       - name: Clean up signing certificate

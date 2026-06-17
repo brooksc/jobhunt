@@ -132,6 +132,16 @@ Defined in `.github/workflows/ui-tests.yml`. Runs weekly (Monday 8am UTC) or on 
 - **MCPTests sources** include `mcp/swift/MCPHelpers.swift` directly (same reason)
 - **Jobhunt-DMG scheme** test action includes: CoreTests, ServerTests, MCPTests, AppUITests
 
+## Release (Developer ID / DMG)
+
+- **Hardened runtime is required and explicit** (TASK-401): `Debug-DMG`/`Release-DMG` set
+  `ENABLE_HARDENED_RUNTIME = YES` at the project level in `Project.swift`, so signing emits
+  `--options runtime` for the app *and* the bundled `jobhunt-mcp` helper — Developer ID apps without
+  it are rejected by `notarytool`. Don't rely on the generated default. The `release-dmg.yml` smoke
+  check asserts `codesign -dvv … flags=…(runtime)` on both binaries *before* notarization, and on a
+  notarization failure pulls `notarytool log <id>` into the workflow logs. (MAS builds use the App
+  Sandbox; hardened runtime is a DMG-only concern.)
+
 ## Data store location & backup
 
 The store path comes from `ModelContainerFactory.productionStoreURL()`: the system Application Support

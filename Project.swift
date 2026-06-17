@@ -5,9 +5,13 @@ let deploymentTarget: DeploymentTargets = .macOS("15.0")
 
 // MARK: - Project-level configurations (four: debug+release × dmg+mas)
 
+// TASK-401: Developer ID (DMG) builds MUST notarize with the hardened runtime. Set it explicitly
+// at the project level (cascades to the app + bundled MCP helper) instead of relying on a
+// generated default, so signing always produces `--options runtime` and notarization can't fail
+// late. (MAS builds use the App Sandbox; hardened runtime is a separate, DMG-only concern.)
 let projectConfigurations: [Configuration] = [
-    .debug(name: "Debug-DMG"),
-    .release(name: "Release-DMG"),
+    .debug(name: "Debug-DMG", settings: ["ENABLE_HARDENED_RUNTIME": "YES"]),
+    .release(name: "Release-DMG", settings: ["ENABLE_HARDENED_RUNTIME": "YES"]),
     .debug(name: "Debug-MAS", settings: ["SWIFT_ACTIVE_COMPILATION_CONDITIONS": "MAS_BUILD"]),
     .release(name: "Release-MAS", settings: ["SWIFT_ACTIVE_COMPILATION_CONDITIONS": "MAS_BUILD"]),
 ]

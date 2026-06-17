@@ -32,11 +32,19 @@
       const url = escapeHtml(payload.url || "");
       const capturedAt = escapeHtml(payload.captured_at || item.queued_at || "");
       const note = payload.user_note ? ` · Note: ${escapeHtml(payload.user_note)}` : "";
+      // TASK-439: warn when the job description was trimmed to fit the storage quota.
+      const truncated = payload.visible_text_truncated
+        ? `<div class="capture-meta capture-truncated">⚠ Description shortened to fit storage`
+          + `${payload.visible_text_original_chars
+            ? ` (${payload.visible_text_stored_chars}/${payload.visible_text_original_chars} chars)`
+            : ""}</div>`
+        : "";
       return `
         <article class="capture">
           <div class="capture-title">${title}</div>
           <div class="capture-meta">${capturedAt}${note}</div>
           <div class="capture-meta">${url}</div>
+          ${truncated}
         </article>
       `;
     }).join("");

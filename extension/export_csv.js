@@ -6,6 +6,10 @@
     ["canonical_url", item => item.payload?.canonical_url || ""],
     ["selected_text", item => item.payload?.selected_text || ""],
     ["visible_text", item => item.payload?.visible_text || ""],
+    // TASK-439: flag captures whose visible_text was trimmed to fit the storage quota, so an
+    // exported row isn't mistaken for a full capture.
+    ["visible_text_truncated", item => (item.payload?.visible_text_truncated ? "true" : "")],
+    ["visible_text_original_chars", item => (item.payload?.visible_text_original_chars ?? "")],
     ["user_note", item => item.payload?.user_note || ""],
     ["queued_at", item => item.queued_at || ""],
   ];

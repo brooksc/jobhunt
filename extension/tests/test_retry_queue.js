@@ -188,3 +188,19 @@ describe('retry_queue: purgeExpired', () => {
     assert.equal(q.purgeExpired(bad).length, 0);
   });
 });
+
+describe('retry_queue: quota truncation marker (TASK-439)', () => {
+  test('records truncation metadata when visible_text is trimmed', () => {
+    const big = 'x'.repeat(200 * 1024); // > MAX_ITEM_BYTES (100KB)
+    const out = q.fitItemToQuota({ url: 'https://example.com/big', visible_text: big });
+    assert.equal(out.payload.visible_text_truncated, true);
+    assert.equal(out.payload.visible_text_original_chars, big.length);
+    assert.ok(out.payload.visible_text_stored_chars < big.length);
+    assert.equal(out.payload.visible_text.length, out.payload.visible_text_stored_chars);
+  });
+
+  test('no marker when the item is under quota', () => {
+    const out = q.fitItemToQuota({ url: 'https://example.com/small', visible_text: 'short' });
+    assert.equal(out.payload.visible_text_truncated, undefined);
+  });
+});

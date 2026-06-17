@@ -27,13 +27,22 @@
     return new TextEncoder().encode(JSON.stringify(value)).length;
   }
 
-  /** Trim visible_text so the serialized item fits within MAX_ITEM_BYTES. */
+  /** Trim visible_text so the serialized item fits within MAX_ITEM_BYTES. Records truncation
+   *  metadata on the payload so the queue UI, CSV export, and the synced app can tell the capture
+   *  was shortened (TASK-439). */
   function fitItemToQuota(payload) {
     const item = { payload, queued_at: new Date().toISOString() };
     if (byteSize(item) <= MAX_ITEM_BYTES) return item;
     // Truncate visible_text until it fits; preserve all other fields including selected_text.
     const trimmed = Object.assign({}, payload);
     const text = trimmed.visible_text || "";
+    // TASK-439: set the truncation markers BEFORE the size search so their bytes are accounted for
+    // (otherwise adding them afterward could push the item back over the quota). `stored_chars` uses
+    // a conservative placeholder (full length → max digit count) during the search; the real value
+    // (≤ placeholder) is written after, so the final item never exceeds MAX_ITEM_BYTES.
+    trimmed.visible_text_truncated = true;
+    trimmed.visible_text_original_chars = text.length;
+    trimmed.visible_text_stored_chars = text.length;
     let lo = 0, hi = text.length;
     while (lo < hi) {
       const mid = Math.floor((lo + hi + 1) / 2);
@@ -45,6 +54,7 @@
       }
     }
     trimmed.visible_text = text.slice(0, lo);
+    trimmed.visible_text_stored_chars = lo;
     return { payload: trimmed, queued_at: item.queued_at };
   }
 

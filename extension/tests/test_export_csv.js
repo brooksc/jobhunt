@@ -71,7 +71,8 @@ describe('export_csv: queueToCsv', () => {
     const headers = result.split('\r\n')[0].split(',');
     assert.deepEqual(headers, [
       'captured_at', 'page_title', 'url', 'canonical_url',
-      'selected_text', 'visible_text', 'user_note', 'queued_at'
+      'selected_text', 'visible_text', 'visible_text_truncated',
+      'visible_text_original_chars', 'user_note', 'queued_at'
     ]);
   });
 
@@ -122,5 +123,24 @@ describe('export_csv: csvFilename', () => {
     const name = csv.csvFilename(new Date('2026-06-01T12:30:00Z'));
     assert.ok(name.includes('20260601'), 'date digits present');
     assert.ok(!name.includes('-', 'jobhunt-captures-'.length), 'no hyphens in timestamp portion');
+  });
+});
+
+describe('export_csv: truncation column (TASK-439)', () => {
+  test('flags trimmed captures in the visible_text_truncated column', () => {
+    const out = csv.queueToCsv([queueItem({ visible_text_truncated: true, visible_text_original_chars: 5000, visible_text_stored_chars: 1200 })]);
+    const lines = out.split('\r\n');
+    const headers = lines[0].split(',');
+    const idx = headers.indexOf('visible_text_truncated');
+    assert.ok(idx >= 0, 'header present');
+    assert.equal(lines[1].split(',')[idx], 'true');
+  });
+
+  test('truncation column is empty for full captures', () => {
+    const out = csv.queueToCsv([queueItem()]);
+    const lines = out.split('\r\n');
+    const headers = lines[0].split(',');
+    const idx = headers.indexOf('visible_text_truncated');
+    assert.equal(lines[1].split(',')[idx], '');
   });
 });

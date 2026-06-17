@@ -28,17 +28,19 @@ struct JobsFilterState: Equatable {
     var recentDays: Int?
     /// Session-only filter (not persisted to SavedSearch): extraction outcome.
     var extractionFilter: ExtractionStatus?
+    /// TASK-464: session-only filter — show only jobs that passed the location/remote criteria.
+    var meetsCriteriaOnly: Bool = false
 
     var hasActiveFilters: Bool {
         statusFilter != nil || remoteFilter != nil || !searchText.isEmpty
             || minFitScore != nil || minRating != nil || minSalary != nil || recentDays != nil
-            || extractionFilter != nil
+            || extractionFilter != nil || meetsCriteriaOnly
     }
 
     var activeFilterCount: Int {
         [statusFilter != nil, remoteFilter != nil, !searchText.isEmpty,
          minFitScore != nil, minRating != nil, minSalary != nil, recentDays != nil,
-         extractionFilter != nil]
+         extractionFilter != nil, meetsCriteriaOnly]
             .filter { $0 }.count
     }
 

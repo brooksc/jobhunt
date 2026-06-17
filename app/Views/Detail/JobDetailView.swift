@@ -162,6 +162,12 @@ private struct DetailHeader: View {
                 if let remote = job.remoteType, remote != .unknown { metaChip(remote.displayName) }
                 if let sal = salaryText { metaChip(sal).font(.caption.monospacedDigit()) }
                 if let emp = job.employmentType { metaChip(emp) }
+                // TASK-464: location/remote criteria pass/fail (only when computed).
+                if let meets = job.meetsCriteria {
+                    Label(meets ? "Meets criteria" : "Outside criteria",
+                          systemImage: meets ? "checkmark.circle" : "xmark.circle")
+                        .foregroundStyle(meets ? Color.green : Color.orange)
+                }
             }
             .font(.caption)
             .foregroundStyle(.secondary)

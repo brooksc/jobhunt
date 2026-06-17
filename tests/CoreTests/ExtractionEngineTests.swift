@@ -600,6 +600,33 @@ final class ExtractionEngineTests: XCTestCase {
         XCTAssertEqual(output.responseFormat.wireValue, "text")
     }
 
+    func testExtract_computesMeetsCriteria_fromSettings() async throws {
+        // TASK-464: an onsite job with onsite disallowed → meets_criteria false.
+        let json = """
+        {"title":"Eng","company":"Acme","location":"Austin, TX","remote_type":"onsite",
+         "salary_min":null,"salary_max":null,"salary_currency":null,"salary_note":null,
+         "salary_hourly_min":null,"salary_hourly_max":null,"employment_type":null,"seniority":null,
+         "skills":[],"summary":"x","requirements":[],"nice_to_haves":[],"benefits":[],
+         "application_url":null,"application_instructions":null,"confidence":null}
+        """
+        let provider = CapturingProvider(response: json, usedFormat: .jsonObject)
+        let settings = ExtractionSettings(
+            llmModel: "m", preferredLocations: "", locationFilterEnabled: true,
+            locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: false)
+        let result = try await ExtractionEngine.extract(
+            snapshot: makeExtractSnapshot(), provider: provider, settings: settings)
+        XCTAssertFalse(result.meetsCriteria, "onsite job must fail when onsite is disallowed")
+
+        // Filter disabled → always meets.
+        let settings2 = ExtractionSettings(
+            llmModel: "m", preferredLocations: "", locationFilterEnabled: false,
+            locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true)
+        let result2 = try await ExtractionEngine.extract(
+            snapshot: makeExtractSnapshot(), provider: CapturingProvider(response: json, usedFormat: .jsonObject),
+            settings: settings2)
+        XCTAssertTrue(result2.meetsCriteria)
+    }
+
     func testExtract_malformedFieldShape_throws() async throws {
         // TASK-456: a salary field with an incompatible shape fails the extraction (retryable)
         // instead of silently dropping the value.

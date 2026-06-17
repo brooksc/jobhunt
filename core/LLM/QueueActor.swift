@@ -527,6 +527,7 @@ public actor QueueActor {
                 if !overrides.contains("seniority") { job.seniority = result.seniority }
                 if !overrides.contains("applicationURL") { job.applicationURL = result.applicationURL }
                 job.extractionConfidence = result.extractionConfidence
+                job.meetsCriteria = result.meetsCriteria
                 job.extractionModel = result.extractionModel
                 job.extractionStatus = .succeeded
                 job.extractionError = nil

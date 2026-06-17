@@ -81,6 +81,8 @@ public struct ExtractionResult: Sendable {
     public let responseChars: Int
     /// Format the provider actually used (may be a downgrade from what was requested) — TASK-454.
     public let responseFormat: ResponseFormat
+    /// Whether the job passed the user's location/remote criteria (TASK-464).
+    public let meetsCriteria: Bool
 }
 
 // MARK: - ExtractionEngine
@@ -166,6 +168,18 @@ public enum ExtractionEngine {
         let remoteTypeStr = extracted["remote_type"] as? String
         var remoteType: RemoteType? = remoteTypeStr.flatMap { RemoteType(rawValue: $0) }
 
+        // TASK-464: compute meets_criteria from the EXTRACTED remote mode (before the clamp below) +
+        // location against the user's location/remote settings — Electron parity.
+        let meetsCriteria = LocationCriteria.meets(
+            remoteType: remoteType,
+            location: extracted["location"] as? String,
+            preferredLocations: settings.preferredLocations,
+            allowRemote: settings.locationAllowRemote,
+            allowHybrid: settings.locationAllowHybrid,
+            allowOnsite: settings.locationAllowOnsite,
+            filterEnabled: settings.locationFilterEnabled
+        )
+
         // TASK-270: Clamp remoteType to nil when the user has disallowed that mode.
         // The prompt already asks the LLM to prefer allowed modes, but it can still return
         // a disallowed value. Clear it post-extraction so disallowed modes are never persisted.
@@ -197,7 +211,8 @@ public enum ExtractionEngine {
             extractionModel: response.model,
             promptChars: promptChars,
             responseChars: responseChars,
-            responseFormat: response.responseFormat
+            responseFormat: response.responseFormat,
+            meetsCriteria: meetsCriteria
         )
     }
 

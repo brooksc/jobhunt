@@ -333,6 +333,15 @@ struct JobsView: View {
                         extractionChip(.failed, label: "Failed")
                     }
                 }
+                Divider()
+                filterSection("Location criteria") {
+                    Toggle("Meets criteria only", isOn: Binding(
+                        get: { filterState.meetsCriteriaOnly },
+                        set: { filterState.meetsCriteriaOnly = $0 }
+                    ))
+                    .toggleStyle(.checkbox)
+                    .font(.caption)
+                }
             }
             } // end ScrollView
         } // end outer VStack
@@ -500,6 +509,10 @@ struct JobsView: View {
             }
             if let extraction = filterState.extractionFilter {
                 guard job.extractionStatus == extraction else { return false }
+            }
+            // TASK-464: only jobs that passed the location/remote criteria (nil = not computed → excluded).
+            if filterState.meetsCriteriaOnly {
+                guard job.meetsCriteria == true else { return false }
             }
             // Text search
             let q = searchText.trimmingCharacters(in: .whitespaces)

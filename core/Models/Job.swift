@@ -39,6 +39,9 @@ public final class Job {
     public var extractionModel: String?
     public var applicationURL: String?
     public var extractionConfidence: Double?
+    /// Whether the job passed the user's location/remote criteria at extraction time (TASK-464,
+    /// Electron `meets_criteria`). Nil for jobs extracted before this field / when not computed.
+    public var meetsCriteria: Bool?
     public var lastOpenedAt: Date?
     public var unread: Bool
     public var createdAt: Date
@@ -104,6 +107,7 @@ public final class Job {
         extractionModel: String? = nil,
         applicationURL: String? = nil,
         extractionConfidence: Double? = nil,
+        meetsCriteria: Bool? = nil,
         lastOpenedAt: Date? = nil,
         unread: Bool = false,
         createdAt: Date = Date(),
@@ -139,6 +143,7 @@ public final class Job {
         self.extractionModel = extractionModel
         self.applicationURL = applicationURL
         self.extractionConfidence = extractionConfidence
+        self.meetsCriteria = meetsCriteria
         self.lastOpenedAt = lastOpenedAt
         self.unread = unread
         self.createdAt = createdAt

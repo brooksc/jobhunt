@@ -363,6 +363,146 @@ final class GoogleProviderTests: LLMMockProviderTestCase {
     func testConcurrencyLimit() {
         XCTAssertEqual(GoogleProvider(apiKey: "").concurrencyLimit, 3)
     }
+
+    // MARK: - TASK-481: strict structured output via responseSchema
+
+    /// AC#2: the converted schema drops `additionalProperties`, expresses `["string","null"]`
+    /// nullability as a `nullable: true` flag, and uppercases types to Gemini's `Type` enum.
+    func testGeminiSchemaConversion_dialectTransform() throws {
+        let (_, schema) = StructuredOutputSchemas.schema(for: .jobExtraction)
+        let converted = try XCTUnwrap(GoogleProvider.geminiResponseSchema(fromJSONSchema: schema))
+
+        XCTAssertEqual(converted["type"] as? String, "OBJECT")
+        XCTAssertNil(converted["additionalProperties"], "Gemini rejects additionalProperties")
+
+        let props = try XCTUnwrap(converted["properties"] as? [String: Any])
+        // A nullable scalar: ["string","null"] -> type STRING + nullable true.
+        let company = try XCTUnwrap(props["company"] as? [String: Any])
+        XCTAssertEqual(company["type"] as? String, "STRING")
+        XCTAssertEqual(company["nullable"] as? Bool, true)
+        // A non-null array of strings: type ARRAY, items type STRING, no nullable flag.
+        let skills = try XCTUnwrap(props["skills"] as? [String: Any])
+        XCTAssertEqual(skills["type"] as? String, "ARRAY")
+        XCTAssertNil(skills["nullable"])
+        let skillItems = try XCTUnwrap(skills["items"] as? [String: Any])
+        XCTAssertEqual(skillItems["type"] as? String, "STRING")
+    }
+
+    /// AC#2: nested objects (fit-score `dimensions[].…`) are converted recursively — the inner
+    /// object also loses `additionalProperties` and gets uppercased types.
+    func testGeminiSchemaConversion_recursesIntoArrayItems() throws {
+        let (_, schema) = StructuredOutputSchemas.schema(for: .fitScore)
+        let converted = try XCTUnwrap(GoogleProvider.geminiResponseSchema(fromJSONSchema: schema))
+        let props = try XCTUnwrap(converted["properties"] as? [String: Any])
+        let dimensions = try XCTUnwrap(props["dimensions"] as? [String: Any])
+        let item = try XCTUnwrap(dimensions["items"] as? [String: Any])
+        XCTAssertEqual(item["type"] as? String, "OBJECT")
+        XCTAssertNil(item["additionalProperties"], "nested object must also drop additionalProperties")
+        let itemProps = try XCTUnwrap(item["properties"] as? [String: Any])
+        XCTAssertEqual((itemProps["score"] as? [String: Any])?["type"] as? String, "INTEGER")
+    }
+
+    func testGeminiSchemaConversion_invalidJSONReturnsNil() {
+        XCTAssertNil(GoogleProvider.geminiResponseSchema(fromJSONSchema: "not json"))
+    }
+
+    /// AC#1: a `.jsonSchema` request sends `generationConfig.responseSchema` alongside JSON mode.
+    func testJSONSchemaRequest_sendsResponseSchema() async throws {
+        var capturedGen: [String: Any]?
+        LLMMockURLProtocol.requestHandler = { req in
+            let body = try? JSONSerialization.jsonObject(with: requestBody(req) ?? Data()) as? [String: Any]
+            capturedGen = body?["generationConfig"] as? [String: Any]
+            return (mockHTTPResponse(url: req.url!), self.googleResponse(text: "{}"))
+        }
+        let provider = GoogleProvider(apiKey: "k", model: "gemini-2.5-flash", session: session)
+        let (name, schema) = StructuredOutputSchemas.schema(for: .jobExtraction)
+        let req = ChatRequest(
+            messages: [ChatMessage(role: "user", content: "q")],
+            model: "gemini-2.5-flash",
+            responseFormat: .jsonSchema(name: name, schema: schema)
+        )
+        _ = try await provider.complete(req)
+
+        let gen = try XCTUnwrap(capturedGen)
+        XCTAssertEqual(gen["responseMimeType"] as? String, "application/json")
+        let sentSchema = try XCTUnwrap(gen["responseSchema"] as? [String: Any])
+        XCTAssertEqual(sentSchema["type"] as? String, "OBJECT")
+        XCTAssertNil(sentSchema["additionalProperties"])
+    }
+
+    /// `.jsonObject` stays JSON-mode-only — no responseSchema.
+    func testJSONObjectRequest_omitsResponseSchema() async throws {
+        var capturedGen: [String: Any]?
+        LLMMockURLProtocol.requestHandler = { req in
+            let body = try? JSONSerialization.jsonObject(with: requestBody(req) ?? Data()) as? [String: Any]
+            capturedGen = body?["generationConfig"] as? [String: Any]
+            return (mockHTTPResponse(url: req.url!), self.googleResponse(text: "{}"))
+        }
+        let provider = GoogleProvider(apiKey: "k", model: "gemini-2.5-flash", session: session)
+        let req = ChatRequest(
+            messages: [ChatMessage(role: "user", content: "q")],
+            model: "gemini-2.5-flash",
+            responseFormat: .jsonObject
+        )
+        _ = try await provider.complete(req)
+
+        let gen = try XCTUnwrap(capturedGen)
+        XCTAssertEqual(gen["responseMimeType"] as? String, "application/json")
+        XCTAssertNil(gen["responseSchema"], ".jsonObject must not send a strict schema")
+    }
+
+    /// AC#3: if Gemini rejects the responseSchema with 400, retry once in plain JSON mode and succeed.
+    func testResponseSchemaRejected400_fallsBackToJSONMode() async throws {
+        var callCount = 0
+        var secondHadSchema = true
+        LLMMockURLProtocol.requestHandler = { req in
+            callCount += 1
+            let body = try? JSONSerialization.jsonObject(with: requestBody(req) ?? Data()) as? [String: Any]
+            let gen = body?["generationConfig"] as? [String: Any]
+            if callCount == 1 {
+                // First attempt carries the schema → reject it.
+                return (mockHTTPResponse(url: req.url!, statusCode: 400), Data("{\"error\":\"bad schema\"}".utf8))
+            }
+            secondHadSchema = gen?["responseSchema"] != nil
+            return (mockHTTPResponse(url: req.url!), self.googleResponse(text: "ok"))
+        }
+        let provider = GoogleProvider(apiKey: "k", model: "gemini-2.5-flash", session: session)
+        let (name, schema) = StructuredOutputSchemas.schema(for: .jobExtraction)
+        let req = ChatRequest(
+            messages: [ChatMessage(role: "user", content: "q")],
+            model: "gemini-2.5-flash",
+            responseFormat: .jsonSchema(name: name, schema: schema)
+        )
+        let resp = try await provider.complete(req)
+
+        XCTAssertEqual(callCount, 2, "should retry exactly once after the 400")
+        XCTAssertFalse(secondHadSchema, "the retry must drop responseSchema (plain JSON mode)")
+        XCTAssertEqual(resp.content, "ok")
+    }
+
+    /// A 400 that is NOT from a responseSchema request must still surface as an error (no retry).
+    func testJSONObject400_doesNotRetry() async {
+        var callCount = 0
+        LLMMockURLProtocol.requestHandler = { req in
+            callCount += 1
+            return (mockHTTPResponse(url: req.url!, statusCode: 400), Data("{\"error\":\"x\"}".utf8))
+        }
+        let provider = GoogleProvider(apiKey: "k", model: "gemini-2.5-flash", session: session)
+        let req = ChatRequest(
+            messages: [ChatMessage(role: "user", content: "q")],
+            model: "gemini-2.5-flash",
+            responseFormat: .jsonObject
+        )
+        do {
+            _ = try await provider.complete(req)
+            XCTFail("expected httpError")
+        } catch LLMProviderError.httpError(let code, _) {
+            XCTAssertEqual(code, 400)
+            XCTAssertEqual(callCount, 1, "no schema was sent, so there must be no fallback retry")
+        } catch {
+            XCTFail("expected httpError(400), got \(error)")
+        }
+    }
 }
 
 // MARK: - LMStudio provider tests

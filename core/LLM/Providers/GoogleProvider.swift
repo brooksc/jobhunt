@@ -41,56 +41,47 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
             return ["role": role, "parts": [["text": msg.content]]]
         }
 
-        var payload: [String: Any] = ["contents": contents]
+        // TASK-481: for a strict `.jsonSchema` request, send Gemini's `generationConfig.responseSchema`
+        // (its OpenAPI-3.0 dialect) in addition to JSON mode, so the model is constrained to the field
+        // contract — parity with the OpenAI `json_schema` / Anthropic `structuredOutput` paths. Plain
+        // `.jsonObject` stays JSON-mode-only (no schema).
+        let responseSchema: [String: Any]?
+        let wantsJSON: Bool
         switch request.responseFormat {
-        case .jsonObject, .jsonSchema:
-            payload["generationConfig"] = ["responseMimeType": "application/json"]
+        case .jsonSchema(_, let schema):
+            responseSchema = Self.geminiResponseSchema(fromJSONSchema: schema)
+            wantsJSON = true
+        case .jsonObject:
+            responseSchema = nil
+            wantsJSON = true
         case .text, .none:
-            break
+            responseSchema = nil
+            wantsJSON = false
         }
-        if let sys = systemMsg {
-            payload["systemInstruction"] = ["parts": [["text": sys.content]]]
+
+        func makePayload(includeSchema: Bool) -> [String: Any] {
+            var payload: [String: Any] = ["contents": contents]
+            if wantsJSON {
+                var gen: [String: Any] = ["responseMimeType": "application/json"]
+                if includeSchema, let responseSchema { gen["responseSchema"] = responseSchema }
+                payload["generationConfig"] = gen
+            }
+            if let sys = systemMsg {
+                payload["systemInstruction"] = ["parts": [["text": sys.content]]]
+            }
+            return payload
         }
 
         let urlStr = "https://generativelanguage.googleapis.com/v1beta/models/\(request.model):generateContent"
         guard let url = URL(string: urlStr) else { throw LLMProviderError.unavailable(reason: "Invalid Google URL") }
 
-        let body = try JSONSerialization.data(withJSONObject: payload)
-        var urlRequest = URLRequest(url: url)
-        urlRequest.httpMethod = "POST"
-        urlRequest.timeoutInterval = Double(timeoutSeconds)
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
-        urlRequest.httpBody = body
-
-        // TASK-463: Gemini doesn't go through OpenAICompatibleTransport, so honor 429 here with a
-        // bounded retry budget that parses the advised retryDelay; after the budget is spent, throw
-        // a typed rateLimited so the queue backs off too.
-        var data = Data()
-        var http: HTTPURLResponse
-        var rlAttempt = 0
-        while true {
-            let response: URLResponse
-            do {
-                (data, response) = try await session.data(for: urlRequest)
-            } catch let urlError as URLError where urlError.code == .timedOut {
-                throw LLMProviderError.timeout(seconds: timeoutSeconds)
-            }
-            guard let httpResponse = response as? HTTPURLResponse else { throw LLMProviderError.noResponse }
-            http = httpResponse
-            if http.statusCode == 429 {
-                let bodyStr = String(data: data, encoding: .utf8) ?? ""
-                let retryAfter = RetryAfterParser.parse(
-                    header: http.value(forHTTPHeaderField: "Retry-After"), body: bodyStr, now: Date())
-                guard rlAttempt < Self.maxRateLimitRetries else {
-                    throw LLMProviderError.rateLimited(retryAfter: retryAfter)
-                }
-                rlAttempt += 1
-                let delay = min(retryAfter ?? pow(2.0, Double(rlAttempt)), Self.maxRateLimitDelaySeconds)
-                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                continue
-            }
-            break
+        let sentSchema = responseSchema != nil
+        var (data, http) = try await send(makePayload(includeSchema: true), to: url)
+        // TASK-481 AC#3: Gemini rejects unsupported schema keywords/dialect with a 400. Rather than
+        // fail the whole extraction, retry once in plain JSON mode (no responseSchema) — the prompt
+        // still instructs the field contract, so this degrades to the pre-481 behavior.
+        if http.statusCode == 400, sentSchema {
+            (data, http) = try await send(makePayload(includeSchema: false), to: url)
         }
         guard (200 ..< 300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
@@ -113,6 +104,92 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
             promptTokens: decoded.usageMetadata?.promptTokenCount,
             completionTokens: decoded.usageMetadata?.candidatesTokenCount
         )
+    }
+
+    /// POSTs `payload` and returns the raw `(data, response)` without throwing on a non-2xx status,
+    /// so the caller can branch on it (e.g. the 400 → drop-schema fallback). Maps timeouts to a typed
+    /// error and honors 429 here (Gemini doesn't go through OpenAICompatibleTransport): a bounded
+    /// retry budget that parses the advised retryDelay, then throws `.rateLimited` so the queue backs
+    /// off too (TASK-463).
+    private func send(_ payload: [String: Any], to url: URL) async throws -> (Data, HTTPURLResponse) {
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "POST"
+        urlRequest.timeoutInterval = Double(timeoutSeconds)
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+        urlRequest.httpBody = body
+
+        var rlAttempt = 0
+        while true {
+            let data: Data
+            let response: URLResponse
+            do {
+                (data, response) = try await session.data(for: urlRequest)
+            } catch let urlError as URLError where urlError.code == .timedOut {
+                throw LLMProviderError.timeout(seconds: timeoutSeconds)
+            }
+            guard let http = response as? HTTPURLResponse else { throw LLMProviderError.noResponse }
+            if http.statusCode == 429 {
+                let bodyStr = String(data: data, encoding: .utf8) ?? ""
+                let retryAfter = RetryAfterParser.parse(
+                    header: http.value(forHTTPHeaderField: "Retry-After"), body: bodyStr, now: Date())
+                guard rlAttempt < Self.maxRateLimitRetries else {
+                    throw LLMProviderError.rateLimited(retryAfter: retryAfter)
+                }
+                rlAttempt += 1
+                let delay = min(retryAfter ?? pow(2.0, Double(rlAttempt)), Self.maxRateLimitDelaySeconds)
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                continue
+            }
+            return (data, http)
+        }
+    }
+
+    /// Convert an OpenAI/Anthropic-style JSON Schema string into Gemini's `responseSchema` dialect
+    /// (TASK-481). Gemini accepts an OpenAPI-3.0 `Schema` subset that differs from JSON Schema:
+    ///   - it **rejects `additionalProperties`** (and we drop the irrelevant `$schema`);
+    ///   - nullability is a **`nullable: true`** flag, not a `["type", "null"]` union;
+    ///   - `type` is the **uppercase** `Type` enum (STRING/INTEGER/NUMBER/BOOLEAN/ARRAY/OBJECT).
+    /// `properties`/`items`/`required` carry over. Returns nil if the input isn't a JSON object, in
+    /// which case the caller falls back to plain JSON mode.
+    static func geminiResponseSchema(fromJSONSchema jsonString: String) -> [String: Any]? {
+        guard let data = jsonString.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data),
+              let dict = obj as? [String: Any] else { return nil }
+        return convertSchemaNode(dict) as? [String: Any]
+    }
+
+    private static func convertSchemaNode(_ node: Any) -> Any {
+        guard let dict = node as? [String: Any] else { return node }
+        var out: [String: Any] = [:]
+        for (key, value) in dict {
+            switch key {
+            case "additionalProperties", "$schema":
+                continue  // unsupported in / irrelevant to Gemini's dialect
+            case "type":
+                if let types = value as? [String] {
+                    let nonNull = types.first { $0 != "null" } ?? "string"
+                    out["type"] = nonNull.uppercased()
+                    if types.contains("null") { out["nullable"] = true }
+                } else if let single = value as? String {
+                    out["type"] = single.uppercased()
+                } else {
+                    out["type"] = value
+                }
+            case "properties":
+                if let props = value as? [String: Any] {
+                    out["properties"] = props.mapValues { convertSchemaNode($0) }
+                } else {
+                    out["properties"] = value
+                }
+            case "items":
+                out["items"] = convertSchemaNode(value)
+            default:
+                out[key] = value  // required, etc. — passes through unchanged
+            }
+        }
+        return out
     }
 }
 

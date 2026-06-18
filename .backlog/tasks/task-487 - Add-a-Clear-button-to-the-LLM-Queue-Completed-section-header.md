@@ -4,6 +4,7 @@ title: Add a Clear button to the LLM Queue Completed section header
 status: Done
 assignee: []
 created_date: '2026-06-18 18:00'
+updated_date: '2026-06-18 18:00'
 labels:
   - ux
   - llm-queue
@@ -21,10 +22,12 @@ Files: app/Views/Queue/LLMQueueView.swift.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The Completed section header shows a Clear button
-- [ ] #2 Clicking it removes all finished requests (reuses clearCompleted)
-- [ ] #3 The button is disabled when there are no completed requests
+- [x] #1 The Completed section header shows a Clear button
+- [x] #2 Clicking it removes all finished requests (reuses clearCompleted)
+- [x] #3 The button is disabled when there are no completed requests
 <!-- AC:END -->
+
+
 
 ## Final Summary
 

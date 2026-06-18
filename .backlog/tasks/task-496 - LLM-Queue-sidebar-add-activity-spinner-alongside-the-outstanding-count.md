@@ -4,6 +4,7 @@ title: 'LLM Queue sidebar: add activity spinner alongside the outstanding count'
 status: Done
 assignee: []
 created_date: '2026-06-18 21:32'
+updated_date: '2026-06-18 21:32'
 labels:
   - ux
   - queue
@@ -23,10 +24,12 @@ Files: app/Shell/Sidebar.swift.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 LLM Queue sidebar row shows a spinner while any request is running
-- [ ] #2 The outstanding-count badge (queued + running) is retained and updates live
-- [ ] #3 Spinner disappears when nothing is running; badge hidden at zero
+- [x] #1 LLM Queue sidebar row shows a spinner while any request is running
+- [x] #2 The outstanding-count badge (queued + running) is retained and updates live
+- [x] #3 Spinner disappears when nothing is running; badge hidden at zero
 <!-- AC:END -->
+
+
 
 ## Final Summary
 

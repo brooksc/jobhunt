@@ -484,7 +484,7 @@ struct LLMTab: View {
             let models = try await ModelCatalog.listModels(
                 provider: provider,
                 baseURL: baseURLText.isEmpty ? settings.llmBaseURL : baseURLText,
-                apiKey: apiKeyText
+                apiKey: apiKeyText.trimmingCharacters(in: .whitespacesAndNewlines)
             )
             guard provider == selectedProviderID else { return }
             fetchedModels = models

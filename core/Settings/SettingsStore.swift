@@ -217,8 +217,11 @@ public final class SettingsStore {
 
     public func setAPIKey(_ value: String, forProvider provider: String) {
         let key = provider == "default" ? SettingsKey.llmAPIKey : "llm_api_key_\(provider)"
+        // Trim pasted whitespace/newlines — a trailing space alone makes a valid key get rejected
+        // (e.g. Google returns 401) with no obvious cause.
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
-            try keychain.set(value, forKey: key)
+            try keychain.set(trimmed, forKey: key)
             keychainWriteError = nil
         } catch {
             keychainWriteError = error.localizedDescription

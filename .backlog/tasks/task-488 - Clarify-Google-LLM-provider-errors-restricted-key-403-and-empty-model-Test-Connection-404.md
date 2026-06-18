@@ -6,6 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-06-18 18:26'
+updated_date: '2026-06-18 18:26'
 labels:
   - bug
   - ux
@@ -32,11 +33,13 @@ Files: core/LLM/ModelCatalog.swift, app/Views/Settings/SettingsView.swift.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Fetch Models 401/403 shows an actionable message (restricted key / API not enabled) plus the provider's own error text
-- [ ] #2 Test Connection with no model selected shows 'Select or enter a model first' instead of a 404
-- [ ] #3 Test Connection HTTP errors surface the provider's error message + a 401/403 hint
-- [ ] #4 The connection-status failure text can wrap to show the full message
+- [x] #1 Fetch Models 401/403 shows an actionable message (restricted key / API not enabled) plus the provider's own error text
+- [x] #2 Test Connection with no model selected shows 'Select or enter a model first' instead of a 404
+- [x] #3 Test Connection HTTP errors surface the provider's error message + a 401/403 hint
+- [x] #4 The connection-status failure text can wrap to show the full message
 <!-- AC:END -->
+
+
 
 ## Final Summary
 

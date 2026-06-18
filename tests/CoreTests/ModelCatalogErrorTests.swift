@@ -27,4 +27,20 @@ final class ModelCatalogErrorTests: XCTestCase {
         XCTAssertTrue(message.contains("boom"))
         XCTAssertFalse(message.localizedCaseInsensitiveContains("rejected"))
     }
+
+    // MARK: - Diagnostic key fingerprint (TASK-489) — never leaks the full secret
+
+    func testKeyFingerprint_safeShape() {
+        let fp = ModelCatalog.keyFingerprint("AQ.AReplacedFakeTestKeyNeverRealRedactedgXZg")
+        XCTAssertTrue(fp.contains("AQ.A"))      // first 4
+        XCTAssertTrue(fp.contains("gXZg"))      // last 4
+        XCTAssertTrue(fp.contains("ws=false"))
+        XCTAssertTrue(fp.contains("ascii=true"))
+        XCTAssertFalse(fp.contains("Ab8RN6"))   // middle of the key is NOT logged
+    }
+
+    func testKeyFingerprint_flagsWhitespaceAndEmpty() {
+        XCTAssertEqual(ModelCatalog.keyFingerprint(""), "EMPTY")
+        XCTAssertTrue(ModelCatalog.keyFingerprint("AIzaSExample ").contains("ws=true"))
+    }
 }

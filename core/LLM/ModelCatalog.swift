@@ -111,9 +111,28 @@ public enum ModelCatalog {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw ModelCatalogError.decodeFailed }
         guard (200 ..< 300).contains(http.statusCode) else {
+            // Diagnostic logging for "valid key still fails" reports (TASK-489). Logs the request and a
+            // SAFE key fingerprint (length + first/last 4 + whitespace/ASCII flags) — never the full
+            // secret — plus the server's reason. View in Console.app, filter process "Jobhunt".
+            let authHeader = headers["x-goog-api-key"] ?? headers["Authorization"] ?? headers["x-api-key"] ?? ""
+            let rawKey = authHeader.hasPrefix("Bearer ") ? String(authHeader.dropFirst(7)) : authHeader
+            NSLog("[jobhunt-llm] model fetch FAILED status=%d url=%@ key=%@ body=%@",
+                  http.statusCode, url.absoluteString, Self.keyFingerprint(rawKey),
+                  String(data: data.prefix(500), encoding: .utf8) ?? "<non-utf8>")
             throw ModelCatalogError.httpError(statusCode: http.statusCode, serverMessage: Self.serverErrorMessage(data))
         }
         return data
+    }
+
+    /// A non-secret fingerprint of an API key for diagnostics: length, first/last 4 chars, and whether
+    /// it carries whitespace or non-ASCII bytes (the usual cause of a "valid key rejected" mystery).
+    static func keyFingerprint(_ key: String) -> String {
+        if key.isEmpty { return "EMPTY" }
+        let head = String(key.prefix(4))
+        let tail = String(key.suffix(4))
+        let hasWhitespace = key.rangeOfCharacter(from: .whitespacesAndNewlines) != nil
+        let isASCII = key.allSatisfy { $0.isASCII }
+        return "len=\(key.count) \(head)…\(tail) ws=\(hasWhitespace) ascii=\(isASCII)"
     }
 
     /// Pull the human-readable reason out of a provider error body. Google, OpenAI, and Anthropic all

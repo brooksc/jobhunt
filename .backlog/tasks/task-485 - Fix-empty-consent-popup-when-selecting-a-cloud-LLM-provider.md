@@ -4,6 +4,7 @@ title: Fix empty consent popup when selecting a cloud LLM provider
 status: Done
 assignee: []
 created_date: '2026-06-18 16:54'
+updated_date: '2026-06-18 16:54'
 labels:
   - bug
   - ux
@@ -27,10 +28,12 @@ Files: app/Views/Settings/SettingsView.swift, app/Views/Settings/LLMConsentSheet
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Selecting a cloud provider (Google/OpenAI/Anthropic/OpenRouter) shows the full consent sheet with title, body, privacy link, and Cancel/I Agree buttons
-- [ ] #2 Agreeing grants consent and switches the provider; cancelling leaves the prior provider selected
-- [ ] #3 The custom-provider base-URL consent path also presents the populated sheet
+- [x] #1 Selecting a cloud provider (Google/OpenAI/Anthropic/OpenRouter) shows the full consent sheet with title, body, privacy link, and Cancel/I Agree buttons
+- [x] #2 Agreeing grants consent and switches the provider; cancelling leaves the prior provider selected
+- [x] #3 The custom-provider base-URL consent path also presents the populated sheet
 <!-- AC:END -->
+
+
 
 ## Final Summary
 

@@ -214,6 +214,7 @@ private struct DetailHeader: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .disabled(isEnqueuing || job.extractionStatus == .running)
                 .help(job.extractionStatus == .pending ? "Run AI extraction" : "Re-run AI extraction")
 
                 Button {
@@ -232,6 +233,34 @@ private struct DetailHeader: View {
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 10)
+
+            // Surface WHY extraction failed, with a one-click re-run — otherwise the only place the
+            // reason appears is the LLM Queue's error column, and the job just shows a red chip.
+            if job.extractionStatus == .failed, let err = job.extractionError, !err.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(err)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                    Spacer(minLength: 8)
+                    Button("Re-run") {
+                        guard !isEnqueuing else { return }
+                        isEnqueuing = true
+                        Task {
+                            do { try await jobService?.resetExtraction(jobID: job.id) }
+                            catch { appServices.toastStore.show("Couldn't re-run AI: \(error.localizedDescription)", isError: true) }
+                            try? await Task.sleep(nanoseconds: 800_000_000)
+                            isEnqueuing = false
+                        }
+                    }
+                    .font(.caption)
+                    .disabled(isEnqueuing)
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 10)
+            }
         }
     }
 
@@ -884,6 +913,20 @@ struct FitTabView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                // Resumes exist but none is active → fit scoring is silently off for new jobs.
+                if activeResumes.isEmpty && !allResumes.isEmpty {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        Text("No active résumé — new jobs won't be fit-scored. Activate one in Settings → Resumes.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(10)
+                    .background(Color.orange.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+
                 if sortedScores.isEmpty && activeResumes.isEmpty {
                     ContentUnavailableView(
                         "No resume configured",

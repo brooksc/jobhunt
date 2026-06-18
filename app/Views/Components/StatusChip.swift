@@ -20,7 +20,7 @@ extension JobStatus {
     var displayName: String {
         switch self {
         case .new:       "New"
-        case .pursuing:  "Pursuing"
+        case .pursuing:  "Interested"  // display only — stored rawValue stays "pursuing" (no migration)
         case .applied:   "Applied"
         case .interview: "Interview"
         case .offer:     "Offer"

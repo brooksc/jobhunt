@@ -73,7 +73,13 @@ struct ResumesTab: View {
         .sheet(item: $editingResume) { resume in
             ResumeEditSheet(resume: resume, onSave: { name, text in
                 let id = resume.id
-                try await appServices.resumeService.updateResume(id: id, name: name, text: text)
+                // Editing the text invalidates this résumé's fit scores — tell the user instead of
+                // letting them silently vanish.
+                let cleared = try await appServices.resumeService.updateResume(id: id, name: name, text: text)
+                if cleared > 0 {
+                    appServices.toastStore.show(
+                        "Résumé updated — cleared \(cleared) fit score\(cleared == 1 ? "" : "s"). Re-score jobs to update.")
+                }
             })
         }
         .alert("Delete Resume?", isPresented: $showingDeleteAlert, presenting: deleteCandidate) { resume in

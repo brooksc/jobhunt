@@ -353,6 +353,11 @@ struct LLMQueueView: View {
         return request.job?.id
     }
 
+    /// Whether the selection contains any finished-with-error request (a discoverable "Retry").
+    private func selectionHasFailed(_ ids: Set<String>) -> Bool {
+        allRequests.contains { ids.contains($0.id) && ($0.status == .failed || $0.status == .retryExhausted) }
+    }
+
     @ViewBuilder
     private func selectionContextMenu(for ids: Set<String>) -> some View {
         if ids.isEmpty {
@@ -361,6 +366,12 @@ struct LLMQueueView: View {
             if let jobID = jobID(forSelection: ids) {
                 Button("Open Job") {
                     router.selectJob(id: jobID)
+                }
+                Divider()
+            }
+            if selectionHasFailed(ids) {
+                Button("Retry") {
+                    Task { await processSelected(Array(ids)) }
                 }
                 Divider()
             }

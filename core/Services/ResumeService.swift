@@ -36,7 +36,10 @@ public actor ResumeService {
 
     // MARK: - Update
 
-    public func updateResume(id: String, name: String, text: String) async throws {
+    /// Returns the number of fit scores cleared because the résumé text changed (0 if only the name
+    /// changed). Editing the text invalidates this résumé's scores, so the caller can tell the user.
+    @discardableResult
+    public func updateResume(id: String, name: String, text: String) async throws -> Int {
         let existing = try await store.fetch(FetchDescriptor<Resume>(predicate: #Predicate { $0.id == id }))
         let textChanged = existing.first.map { $0.text != text } ?? false
 
@@ -47,9 +50,8 @@ public actor ResumeService {
             r.updatedAt = Date()
         }
 
-        if textChanged {
-            try await store.deleteFitScores(forResumeID: id)
-        }
+        guard textChanged else { return 0 }
+        return try await store.deleteFitScores(forResumeID: id)
     }
 
     // MARK: - Delete

@@ -377,10 +377,12 @@ public actor BackgroundStore {
 
     /// Delete all JobFitScore records for a resume and reset denormalized fit fields on affected jobs.
     /// Called when resume text changes so stale scores are not shown as current.
-    public func deleteFitScores(forResumeID resumeID: String) throws {
+    /// Returns how many fit scores were deleted (so callers can tell the user what was cleared).
+    @discardableResult
+    public func deleteFitScores(forResumeID resumeID: String) throws -> Int {
         let allScores = try modelContext.fetch(FetchDescriptor<JobFitScore>())
         let toDelete = allScores.filter { $0.resume?.id == resumeID }
-        guard !toDelete.isEmpty else { return }
+        guard !toDelete.isEmpty else { return 0 }
 
         let affectedJobs = toDelete.compactMap(\.job)
         for score in toDelete { modelContext.delete(score) }
@@ -390,6 +392,7 @@ public actor BackgroundStore {
             recomputeJobFitSummary(job)
         }
         try modelContext.save()
+        return toDelete.count
     }
 
     /// Create or update a JobFitScore record with fitStatus = .pending.

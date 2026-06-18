@@ -4,6 +4,7 @@ title: 'Duplicates view: only show pairs where neither job is already marked dup
 status: Done
 assignee: []
 created_date: '2026-06-18 21:53'
+updated_date: '2026-06-18 21:53'
 labels:
   - ux
   - duplicates
@@ -23,10 +24,12 @@ Files: app/Views/Duplicates/DuplicatesView.swift, app/Shell/Sidebar.swift.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A pair where either job is already marked .duplicate is not shown in the Duplicates view
-- [ ] #2 The Duplicates sidebar badge counts only un-marked pairs and updates when a job is marked duplicate
-- [ ] #3 When all detected pairs have a marked side, the view shows the empty state ('No new duplicates to review.')
+- [x] #1 A pair where either job is already marked .duplicate is not shown in the Duplicates view
+- [x] #2 The Duplicates sidebar badge counts only un-marked pairs and updates when a job is marked duplicate
+- [x] #3 When all detected pairs have a marked side, the view shows the empty state ('No new duplicates to review.')
 <!-- AC:END -->
+
+
 
 ## Final Summary
 

@@ -80,11 +80,10 @@ on its own** — no manual action needed. For each job it:
 **This requires a configured AI provider** (Settings → AI Provider; the API key lives in the macOS
 Keychain) **and, for fit scoring, at least one active resume.**
 
-- **No provider configured:** *(target — TASK-483)* you get an immediate notice when a capture lands —
-  "Job captured ✓ — set up an AI provider to enable extraction & fit scoring" — deep-linking to AI
-  Provider settings. *Today* this is reactive instead: the request fails on each attempt and, after a
-  run of failures, the queue **auto-pauses** with a critical "AI Queue Paused" notification that
-  deep-links to the **LLM Queue** view.
+- **No provider configured:** you get an immediate notice when a capture lands — "Set up an AI
+  provider" — deep-linking to AI Provider settings, and the work stays queued until you do
+  (TASK-483). "Not configured" means a key-requiring provider (OpenAI/Anthropic/Google/OpenRouter)
+  with no key; a local provider that's simply unreachable still surfaces via the auto-pause below.
 - **Provider failing at runtime** (bad key, outages, rate limits): transient rate-limits back off and
   retry; sustained failures auto-pause the queue (critical notification → LLM Queue). Rate-limit bursts
   and user cancellations deliberately don't count toward auto-pause.
@@ -93,12 +92,13 @@ Keychain) **and, for fit scoring, at least one active resume.**
 
 ## 4. "Ready to review" notification
 
-When a job finishes extraction + fit, Jobhunt emits a `jobReady` event and notifies you.
+When a job finishes extraction + fit, Jobhunt notifies you (TASK-482):
 
-- **Target (TASK-482):** one **"ready to review"** notification per completed job, regardless of fit
-  score, with **strong matches (fit ≥ 75%)** highlighted as **"Strong Match!"**.
-- **Today:** only strong matches notify individually; a single sub-75% job is silent, and a batch of
-  several jobs is summarized as "N jobs processed" at the end of the run.
+- A single capture (or a handful — up to 3 in one processing run) posts one **"ready to review"**
+  notification per job, **regardless of fit score**, with **strong matches (fit ≥ 75%)** highlighted as
+  **"Strong Match!"**.
+- A larger run (e.g. re-extracting many jobs at once) collapses into a single **summary** ("N jobs
+  ready to review · K strong matches") instead of one banner per job.
 
 Supporting cues, regardless of the above:
 - The **Dock badge** shows the unread-job count.
@@ -153,7 +153,8 @@ Then you move on to the next posting and the loop repeats.
 - **UI test coverage of these flows:** `tests/AppUITests/WorkflowUITests.swift` (archive workflow) and
   [docs/vm-testing.md](vm-testing.md).
 
-## Gaps tracked against this doc
+## History
 
-- **TASK-482** — per-job "ready to review" notification (highlight strong matches). *(step 4)*
-- **TASK-483** — upfront "no AI provider configured" notice at capture time. *(step 3)*
+- **TASK-482** — per-job "ready to review" notification (highlight strong matches), bulk runs
+  summarized. *(step 4 — implemented)*
+- **TASK-483** — upfront "no AI provider configured" notice at capture time. *(step 3 — implemented)*

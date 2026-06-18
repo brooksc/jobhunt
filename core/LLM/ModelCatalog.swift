@@ -111,9 +111,21 @@ public enum ModelCatalog {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw ModelCatalogError.decodeFailed }
         guard (200 ..< 300).contains(http.statusCode) else {
-            throw ModelCatalogError.httpError(statusCode: http.statusCode)
+            throw ModelCatalogError.httpError(statusCode: http.statusCode, serverMessage: Self.serverErrorMessage(data))
         }
         return data
+    }
+
+    /// Pull the human-readable reason out of a provider error body. Google, OpenAI, and Anthropic all
+    /// return `{ "error": { "message": ... } }`, so the same parse surfaces the real cause (e.g. a
+    /// restricted key or a disabled API) instead of a bare status code.
+    private static func serverErrorMessage(_ data: Data) -> String? {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        if let error = obj["error"] as? [String: Any], let message = error["message"] as? String, !message.isEmpty {
+            return message
+        }
+        if let message = obj["error"] as? String, !message.isEmpty { return message }
+        return nil
     }
 }
 
@@ -137,19 +149,28 @@ private struct GoogleModelList: Decodable {
 public enum ModelCatalogError: Error, LocalizedError, Equatable {
     case missingAPIKey(provider: String)
     case missingBaseURL
-    case httpError(statusCode: Int)
+    case httpError(statusCode: Int, serverMessage: String? = nil)
     case decodeFailed
 
     public var errorDescription: String? {
         switch self {
         case let .missingAPIKey(provider):
-            "Enter an API key to load \(provider) models"
+            return "Enter an API key to load \(provider) models"
         case .missingBaseURL:
-            "Enter a base URL to load models"
-        case let .httpError(code):
-            "Could not load models (HTTP \(code))"
+            return "Enter a base URL to load models"
+        case let .httpError(code, serverMessage):
+            var text = "Could not load models (HTTP \(code))"
+            // 401/403 = the key reached the provider but was rejected/forbidden — almost always a
+            // restricted key or a not-enabled API, NOT a malformed key (that returns 400). Point the
+            // user at the real fix rather than leaving them staring at a status code.
+            if code == 401 || code == 403 {
+                text += ": the API key was rejected. Make sure it's an unrestricted key (no HTTP-referrer / "
+                    + "IP / app restrictions) and that the provider's API is enabled for it."
+            }
+            if let serverMessage { text += "\n\(serverMessage)" }
+            return text
         case .decodeFailed:
-            "Could not read the model list from the provider"
+            return "Could not read the model list from the provider"
         }
     }
 }

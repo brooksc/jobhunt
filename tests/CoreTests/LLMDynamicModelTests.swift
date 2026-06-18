@@ -99,7 +99,7 @@ final class ModelCatalogTests: LLMMockProviderTestCase {
                 provider: "lmstudio", baseURL: "http://127.0.0.1:1234", apiKey: "", session: session
             )
             XCTFail("expected httpError")
-        } catch let ModelCatalogError.httpError(code) {
+        } catch let ModelCatalogError.httpError(code, _) {
             XCTAssertEqual(code, 500)
         } catch {
             XCTFail("unexpected error: \(error)")

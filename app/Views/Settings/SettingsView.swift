@@ -358,7 +358,10 @@ struct LLMTab: View {
                 .accessibilityIdentifier("llm.connection.success")
         case let .failure(msg):
             Label(msg, systemImage: "xmark.circle.fill")
-                .foregroundStyle(.red).font(.callout).lineLimit(2)
+                .foregroundStyle(.red).font(.callout)
+                .lineLimit(5)
+                .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.leading)
                 .accessibilityIdentifier("llm.connection.failure")
         }
     }
@@ -428,20 +431,46 @@ struct LLMTab: View {
     }
 
     private func testConnection() async {
+        // A request with no model hits e.g. Google's `models/:generateContent` and returns a baffling
+        // 404. Fail fast with a clear instruction instead.
+        let model = settings.llmModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !model.isEmpty else {
+            connectionStatus = .failure("Select or enter a model first (use Fetch Models, or type a model name).")
+            return
+        }
         connectionStatus = .testing
         let provider = LLMProviderFactory.makeProvider(settings: settings)
         let request = ChatRequest(
             messages: [ChatMessage(role: "user", content: "Reply with the word OK and nothing else.")],
-            model: settings.llmModel,
+            model: model,
             maxTokens: 16
         )
         do {
             let response = try await provider.complete(request)
             let preview = String(response.content.prefix(40))
             connectionStatus = .success(preview.isEmpty ? "Connected" : preview)
+        } catch let LLMProviderError.httpError(code, body) {
+            connectionStatus = .failure(Self.httpFailureMessage(code: code, body: body))
         } catch {
             connectionStatus = .failure(error.localizedDescription)
         }
+    }
+
+    /// Turn a provider HTTP error into something actionable: a 401/403 hint plus the provider's own
+    /// error message (Google/OpenAI/Anthropic all return `{ "error": { "message": … } }`).
+    private static func httpFailureMessage(code: Int, body: String) -> String {
+        var text = "HTTP \(code)"
+        if code == 401 || code == 403 {
+            text += " — the API key was rejected. Use an unrestricted key (no HTTP-referrer / IP / app "
+                + "restrictions) with the provider's API enabled."
+        }
+        if let data = body.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let error = obj["error"] as? [String: Any],
+           let message = error["message"] as? String, !message.isEmpty {
+            text += "\n\(message)"
+        }
+        return text
     }
 
     private func fetchModels() async {

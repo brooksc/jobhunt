@@ -49,6 +49,9 @@ public enum SettingsKey {
     public static let llmConsentOpenAI = "llm_consent_openai"
     /// Persisted last-viewed sidebar selection, so relaunch restores the same view (e.g. "Pursuing").
     public static let lastSidebarSelection = "last_sidebar_selection"
+    /// Persisted Jobs-list sort, so it survives sidebar-selection changes and relaunch.
+    public static let jobsSortKey = "jobs_sort_key"
+    public static let jobsSortAscending = "jobs_sort_ascending"
 
     /// API key settings that must live in Keychain, not SwiftData (App Store hygiene).
     public static let keychainKeys: Set<String> = [

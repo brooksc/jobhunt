@@ -76,6 +76,9 @@ struct JobsView: View {
                 searchTokens = []
                 searchText = ""
                 filterState = JobsFilterState()
+                // #7: a sidebar/smart-folder switch clears the saved search but should keep
+                // the user's chosen sort rather than snapping back to the default.
+                applyPersistedSort()
             }
         }
         .onChange(of: router.sidebarJobFilter) { _, status in
@@ -283,17 +286,32 @@ struct JobsView: View {
         jobList
             .onAppear {
                 localSidebarFilter = router.sidebarJobFilter
+                // #7: restore the persisted sort when no saved search is dictating one.
+                if router.activeSavedSearchID == nil { applyPersistedSort() }
                 cachedFilteredJobs = computeFilteredJobs()
             }
             .onChange(of: allJobs) { _, _ in cachedFilteredJobs = computeFilteredJobs() }
             .onChange(of: searchText) { _, _ in cachedFilteredJobs = computeFilteredJobs() }
             .onChange(of: filterState) { _, _ in cachedFilteredJobs = computeFilteredJobs() }
+            .onChange(of: filterState.sortKey) { _, newKey in
+                appServices.settings.jobsSortKey = newKey.rawValue
+            }
+            .onChange(of: filterState.sortAscending) { _, newAsc in
+                appServices.settings.jobsSortAscending = newAsc
+            }
             .onChange(of: localSidebarFilter) { _, _ in cachedFilteredJobs = computeFilteredJobs() }
     }
 
     // MARK: - Job list (extracted to help compiler type-check)
 
     private var jobList: some View {
+        VStack(spacing: 0) {
+            activeFiltersBar
+            jobListInner
+        }
+    }
+
+    private var jobListInner: some View {
         List(filteredJobs, selection: $selectedJobIDs) { job in
             JobListRow(job: job, isSelected: selectedJobIDs.contains(job.id))
                 .tag(job.id)
@@ -514,6 +532,87 @@ struct JobsView: View {
         filterState.hasActiveFilters || !searchTokens.isEmpty || !searchText.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
+    /// #7: load the persisted Jobs sort into `filterState`.
+    private func applyPersistedSort() {
+        filterState.sortKey = JobsSortKey(rawValue: appServices.settings.jobsSortKey) ?? .capturedAt
+        filterState.sortAscending = appServices.settings.jobsSortAscending
+    }
+
+    // MARK: - Active filters bar (#6)
+
+    private var anyActiveConstraint: Bool {
+        localSidebarFilter != nil || router.activeSavedSearchID != nil
+            || !searchTokens.isEmpty || !searchText.trimmingCharacters(in: .whitespaces).isEmpty
+            || filterState.hasActiveFilters
+    }
+
+    private var savedSearchName: String {
+        guard let id = router.activeSavedSearchID,
+              let s = savedSearches.first(where: { $0.id == id }) else { return "Saved search" }
+        return s.name
+    }
+
+    /// A visible bar listing what's currently constraining the list, so the user always knows
+    /// why they're seeing a subset — each chip removes just that constraint.
+    @ViewBuilder
+    private var activeFiltersBar: some View {
+        if anyActiveConstraint {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    if router.activeSavedSearchID != nil {
+                        filterChip(savedSearchName, icon: "bookmark.fill") { router.activeSavedSearchID = nil }
+                    }
+                    if let status = localSidebarFilter {
+                        filterChip(status.displayName, icon: "tag") { router.sidebarJobFilter = nil }
+                    }
+                    let q = searchText.trimmingCharacters(in: .whitespaces)
+                    if !q.isEmpty {
+                        filterChip("“\(q)”", icon: "magnifyingglass") { searchText = "" }
+                    }
+                    ForEach(searchTokens) { token in
+                        filterChip(token.label, icon: token.systemImage) {
+                            searchTokens.removeAll { $0 == token }
+                        }
+                    }
+                    if router.activeSavedSearchID == nil, filterState.hasActiveFilters {
+                        let n = filterState.activeFilterCount
+                        filterChip("\(n) filter\(n == 1 ? "" : "s")", icon: "line.3.horizontal.decrease.circle") {
+                            let key = filterState.sortKey
+                            let asc = filterState.sortAscending
+                            filterState = JobsFilterState()
+                            filterState.sortKey = key
+                            filterState.sortAscending = asc
+                        }
+                    }
+                    Button("Clear All") { clearAllFilters() }
+                        .buttonStyle(.plain)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(Color.accentColor)
+                        .padding(.leading, 2)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+            }
+            .background(.bar)
+            Divider()
+        }
+    }
+
+    private func filterChip(_ label: String, icon: String? = nil, onRemove: @escaping () -> Void) -> some View {
+        HStack(spacing: 4) {
+            if let icon { Image(systemName: icon).font(.caption2) }
+            Text(label).font(.caption).lineLimit(1)
+            Button(action: onRemove) {
+                Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.accentColor.opacity(0.12), in: Capsule())
+    }
+
     private var filteredJobIDs: Set<String> {
         Set(cachedFilteredJobs.map(\.id))
     }
@@ -669,6 +768,7 @@ struct JobsView: View {
         searchTokens = []
         searchText = ""
         filterState = JobsFilterState()
+        applyPersistedSort()  // #7: clearing filters shouldn't reset the chosen sort
         router.activeSavedSearchID = nil
     }
 

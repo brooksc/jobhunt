@@ -31,7 +31,9 @@ private let settingsDefaults: [String: String] = [
     SettingsKey.llmConsentGoogle: "0",
     SettingsKey.llmConsentOpenRouter: "0",
     SettingsKey.llmConsentOpenAI: "0",
-    SettingsKey.lastSidebarSelection: ""
+    SettingsKey.lastSidebarSelection: "",
+    SettingsKey.jobsSortKey: "capturedAt",
+    SettingsKey.jobsSortAscending: "false"
 ]
 
 @Observable
@@ -145,6 +147,18 @@ public final class SettingsStore {
     public var lastSidebarSelection: String {
         get { string(forKey: SettingsKey.lastSidebarSelection) }
         set { set(newValue, forKey: SettingsKey.lastSidebarSelection) }
+    }
+
+    /// Persisted Jobs-list sort (review-2 #7). Survives sidebar-selection resets and relaunch.
+    /// Stored as the `JobsSortKey` rawValue; the view maps it back to the enum.
+    public var jobsSortKey: String {
+        get { string(forKey: SettingsKey.jobsSortKey) }
+        set { set(newValue, forKey: SettingsKey.jobsSortKey) }
+    }
+
+    public var jobsSortAscending: Bool {
+        get { bool(forKey: SettingsKey.jobsSortAscending) }
+        set { setBool(newValue, forKey: SettingsKey.jobsSortAscending) }
     }
 
     /// TASK-462: when on (and provider is OpenRouter), rotate over free structured-output models with

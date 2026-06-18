@@ -96,6 +96,30 @@ final class ProjectionsTests: XCTestCase {
         XCTAssertTrue(p.requirementsMet.isEmpty)
         XCTAssertTrue(p.requirementsNotMet.isEmpty)
         XCTAssertTrue(p.dimensions.isEmpty)
+        XCTAssertTrue(p.requirementAssessments.isEmpty)
+    }
+
+    // TASK-490: structured per-requirement assessments parse, and met/not-met are derived from them
+    // (met → met; partial + missing → not met).
+    func testFitProjection_requirementAssessments() {
+        let json = """
+        {
+            "requirement_assessments": [
+                {"requirement": "5+ years iOS", "status": "met", "evidence": "6 years."},
+                {"requirement": "SwiftUI", "status": "partial", "evidence": "Some exposure."},
+                {"requirement": "Kotlin", "status": "missing", "evidence": "Absent."}
+            ],
+            "dimensions": [{"name": "skills", "score": 80}]
+        }
+        """
+        let p = FitScoreProjection(fitScore: JobFitScore(fitScore: 72, fitStatus: .succeeded, fitScoreJSON: json))
+        XCTAssertEqual(p.requirementAssessments.count, 3)
+        XCTAssertEqual(p.requirementAssessments[0].status, "met")
+        XCTAssertTrue(p.requirementAssessments[0].isMet)
+        XCTAssertEqual(p.requirementAssessments[1].evidence, "Some exposure.")
+        // Derived splits: met vs (partial + missing)
+        XCTAssertEqual(p.requirementsMet, ["5+ years iOS"])
+        XCTAssertEqual(Set(p.requirementsNotMet), ["SwiftUI", "Kotlin"])
     }
 
     func testFitProjection_malformedJSON_returnsEmptyDefaults() {

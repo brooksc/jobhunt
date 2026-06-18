@@ -114,8 +114,11 @@ enum MockLLMResponder {
         jsonString([
             "overall": 72,
             "summary": "Mock fit assessment.",
-            "requirements_met": ["Swift", "iOS"],
-            "requirements_not_met": ["Kotlin"],
+            "requirement_assessments": [
+                ["requirement": "5+ years iOS", "status": "met", "evidence": "6 years of Swift/iOS."],
+                ["requirement": "SwiftUI", "status": "partial", "evidence": "Some SwiftUI exposure."],
+                ["requirement": "Kotlin", "status": "missing", "evidence": "No Kotlin on the resume."]
+            ],
             "dimensions": [
                 ["name": "required_qualifications", "score": 75, "weight": 0.45, "rationale": "mock"],
                 ["name": "preferred_qualifications", "score": 60, "weight": 0.05, "rationale": "mock"],

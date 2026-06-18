@@ -41,13 +41,25 @@ final class StructuredOutputSchemasTests: XCTestCase {
 
     func testFitSchemaDimensionsMatchFitScorer() throws {
         let props = try XCTUnwrap(parse(.fitScore)["properties"] as? [String: Any])
-        // FitScorer.rescoreFromJSON reads dimensions:[{name,score}] + requirements_not_met.
+        // FitScorer reads dimensions:[{name,score}]; the engine derives the not-met list from the
+        // per-requirement assessments (TASK-490).
         let dimensions = try XCTUnwrap(props["dimensions"] as? [String: Any])
         XCTAssertEqual(dimensions["type"] as? String, "array")
         let item = try XCTUnwrap(dimensions["items"] as? [String: Any])
         let itemProps = try XCTUnwrap(item["properties"] as? [String: Any])
         XCTAssertNotNil(itemProps["name"], "dimension item must have a name")
         XCTAssertNotNil(itemProps["score"], "dimension item must have a score")
-        XCTAssertNotNil(props["requirements_not_met"])
+
+        // TASK-490: requirement_assessments replaces the free-form met/not-met arrays — one object
+        // per job qualification with a met/partial/missing status, so gaps are consistent per resume.
+        let assessments = try XCTUnwrap(props["requirement_assessments"] as? [String: Any])
+        XCTAssertEqual(assessments["type"] as? String, "array")
+        let aItem = try XCTUnwrap(assessments["items"] as? [String: Any])
+        let aProps = try XCTUnwrap(aItem["properties"] as? [String: Any])
+        XCTAssertNotNil(aProps["requirement"])
+        XCTAssertNotNil(aProps["status"])
+        XCTAssertNotNil(aProps["evidence"])
+        let statusEnum = (aProps["status"] as? [String: Any])?["enum"] as? [String]
+        XCTAssertEqual(Set(statusEnum ?? []), ["met", "partial", "missing"])
     }
 }

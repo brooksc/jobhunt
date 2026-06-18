@@ -56,8 +56,19 @@ public enum StructuredOutputSchemas {
       "properties": {
         "overall": {"type": "integer"},
         "summary": {"type": ["string", "null"]},
-        "requirements_met": {"type": "array", "items": {"type": "string"}},
-        "requirements_not_met": {"type": "array", "items": {"type": "string"}},
+        "requirement_assessments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "requirement": {"type": "string"},
+              "status": {"type": "string", "enum": ["met", "partial", "missing"]},
+              "evidence": {"type": "string"}
+            },
+            "required": ["requirement", "status", "evidence"]
+          }
+        },
         "dimensions": {
           "type": "array",
           "items": {
@@ -73,7 +84,7 @@ public enum StructuredOutputSchemas {
           }
         }
       },
-      "required": ["overall", "summary", "requirements_met", "requirements_not_met", "dimensions"]
+      "required": ["overall", "summary", "requirement_assessments", "dimensions"]
     }
     """
 }

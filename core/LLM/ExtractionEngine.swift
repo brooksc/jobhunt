@@ -261,8 +261,16 @@ public enum ExtractionEngine {
         // TASK-453: validate the exact dimension contract before scoring — a malformed dimensions
         // payload throws (retryable) instead of being stored as a misleading low score.
         let dimensions = try FitScorer.validateDimensions(raw["dimensions"])
-        let requirementsNotMet = (raw["requirements_not_met"] as? [Any])?
-            .compactMap { $0 as? String } ?? []
+        // TASK-490: derive the not-met list (which feeds the domain-gap penalty) from the structured
+        // per-requirement assessments — the "missing" ones. Fall back to the legacy free-form
+        // `requirements_not_met` array for older/other responses that don't send assessments.
+        let assessments = (raw["requirement_assessments"] as? [[String: Any]]) ?? []
+        let derivedNotMet = assessments
+            .filter { ($0["status"] as? String) == "missing" }
+            .compactMap { $0["requirement"] as? String }
+        let requirementsNotMet = derivedNotMet.isEmpty
+            ? ((raw["requirements_not_met"] as? [Any])?.compactMap { $0 as? String } ?? [])
+            : derivedNotMet
 
         let score = FitScorer.computeScore(
             dimensions: dimensions,

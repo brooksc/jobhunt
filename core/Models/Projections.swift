@@ -47,15 +47,42 @@ public struct FitDimension: Sendable {
     public let rationale: String?
 }
 
+/// One job qualification evaluated against a resume (TASK-490). `status` is "met" / "partial" /
+/// "missing". Because the requirement list is extracted once per job, every resume is assessed
+/// against the identical set — the gaps are consistent across resumes.
+public struct RequirementAssessment: Sendable, Hashable {
+    public let requirement: String
+    public let status: String
+    public let evidence: String
+    public var isMet: Bool { status == "met" }
+}
+
 public struct FitScoreProjection {
     public let requirementsMet: [String]
     public let requirementsNotMet: [String]
+    /// Structured per-requirement assessments (TASK-490). Empty for legacy fit scores that predate it.
+    public let requirementAssessments: [RequirementAssessment]
     public let dimensions: [FitDimension]
 
     public init(fitScore: JobFitScore) {
         let dict = Self.parseJSON(fitScore.fitScoreJSON)
-        requirementsMet = (dict?["requirements_met"] as? [String]) ?? []
-        requirementsNotMet = (dict?["requirements_not_met"] as? [String]) ?? []
+
+        let assessments = (dict?["requirement_assessments"] as? [[String: Any]])?.compactMap { a -> RequirementAssessment? in
+            guard let requirement = a["requirement"] as? String, let status = a["status"] as? String else { return nil }
+            return RequirementAssessment(requirement: requirement, status: status, evidence: a["evidence"] as? String ?? "")
+        } ?? []
+        requirementAssessments = assessments
+
+        if assessments.isEmpty {
+            // Legacy fit scores: read the old free-form arrays.
+            requirementsMet = (dict?["requirements_met"] as? [String]) ?? []
+            requirementsNotMet = (dict?["requirements_not_met"] as? [String]) ?? []
+        } else {
+            // Derive the met/not-met splits from the structured assessments (met vs partial+missing).
+            requirementsMet = assessments.filter(\.isMet).map(\.requirement)
+            requirementsNotMet = assessments.filter { !$0.isMet }.map(\.requirement)
+        }
+
         dimensions = (dict?["dimensions"] as? [[String: Any]])?.compactMap { d in
             guard let name = d["name"] as? String else { return nil }
             let score: Int

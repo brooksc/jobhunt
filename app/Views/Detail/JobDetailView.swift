@@ -1009,7 +1009,51 @@ private struct ResumeScoreCard: View {
     private var fitProjection: FitScoreProjection { FitScoreProjection(fitScore: fitScore) }
     private var requirementsMet: [String] { fitProjection.requirementsMet }
     private var requirementsNotMet: [String] { fitProjection.requirementsNotMet }
+    private var requirementAssessments: [RequirementAssessment] { fitProjection.requirementAssessments }
     private var dimensions: [FitDimension] { fitProjection.dimensions }
+
+    @ViewBuilder
+    private func assessmentColumn(_ title: String, _ items: [RequirementAssessment]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(items, id: \.self) { item in
+                HStack(alignment: .top, spacing: 5) {
+                    Image(systemName: Self.assessmentIcon(item.status))
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Self.assessmentColor(item.status))
+                        .frame(width: 10)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(item.requirement).font(.caption2).lineSpacing(2)
+                        if !item.evidence.isEmpty {
+                            Text(item.evidence)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                                .lineSpacing(1)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private static func assessmentIcon(_ status: String) -> String {
+        switch status {
+        case "met": "checkmark"
+        case "partial": "exclamationmark"
+        default: "xmark"  // missing
+        }
+    }
+
+    private static func assessmentColor(_ status: String) -> Color {
+        switch status {
+        case "met": Color(red: 0.34, green: 0.76, blue: 0.45)
+        case "partial": Color(red: 0.90, green: 0.62, blue: 0.0)   // amber for partial evidence
+        default: Color(red: 0.88, green: 0.45, blue: 0.44)         // red for missing
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1059,8 +1103,21 @@ private struct ResumeScoreCard: View {
                 Divider()
 
                 VStack(alignment: .leading, spacing: 14) {
-                    // Met / Not Met two-column
-                    if !requirementsMet.isEmpty || !requirementsNotMet.isEmpty {
+                    // Per-requirement assessments (TASK-490): every job qualification is evaluated
+                    // (met / partial / missing) with evidence — the same list for every resume, so
+                    // gaps are consistent. Falls back to the legacy met/not-met lists for old scores.
+                    if !requirementAssessments.isEmpty {
+                        let met = requirementAssessments.filter(\.isMet)
+                        let gaps = requirementAssessments.filter { !$0.isMet }
+                        HStack(alignment: .top, spacing: 12) {
+                            if !met.isEmpty {
+                                assessmentColumn("Requirements met", met)
+                            }
+                            if !gaps.isEmpty {
+                                assessmentColumn("Gaps", gaps)
+                            }
+                        }
+                    } else if !requirementsMet.isEmpty || !requirementsNotMet.isEmpty {
                         HStack(alignment: .top, spacing: 12) {
                             if !requirementsMet.isEmpty {
                                 VStack(alignment: .leading, spacing: 4) {

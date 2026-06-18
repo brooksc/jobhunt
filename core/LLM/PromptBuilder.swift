@@ -225,12 +225,15 @@ public enum PromptBuilder {
         return """
         Score how well the candidate fits this job.
 
-        IMPORTANT: Application instructions (labeled "submission mechanics" in the job posting below) describe HOW to apply — e.g. "include phrase X at the top of your resume". These are NOT job qualifications. Never include them in requirements_met or requirements_not_met, and never penalize any dimension for the candidate not following them.
+        IMPORTANT: Application instructions (labeled "submission mechanics" in the job posting below) describe HOW to apply — e.g. "include phrase X at the top of your resume". These are NOT job qualifications. Never include them in requirement_assessments, and never penalize any dimension for the candidate not following them.
 
         Return JSON with exactly these keys:
         - summary: string — 1-3 sentences explaining the overall fit
-        - requirements_met: array of concise strings naming job qualifications the resume clearly satisfies; include evidence when useful; exclude any submission mechanics
-        - requirements_not_met: array of concise strings naming important job qualifications with weak, missing, or unclear evidence in the resume; exclude any submission mechanics
+        - requirement_assessments: array — assess EVERY qualification listed under "Required qualifications" and "Preferred / nice-to-have" in the job posting below. Output exactly one object per listed qualification: do not skip any, do not merge them, and do not invent qualifications that aren't listed. (This list is the SAME for every candidate scored against this job, so judge each consistently.) Each object has:
+          - requirement: the qualification text (verbatim or lightly paraphrased)
+          - status: "met" (clear, direct evidence in the resume), "partial" (some or indirect evidence), or "missing" (no clear evidence in the resume)
+          - evidence: one sentence citing the specific resume evidence, or stating what is absent
+          Exclude any submission mechanics.
         - dimensions: array of exactly \(fitDimensions.count) objects, one per dimension, each with:
           - name: one of \(dimensionNames)
           - score: integer 0-100
@@ -243,9 +246,8 @@ public enum PromptBuilder {
         - 0 = no evidence of fit; 50 = partial / mixed fit; 100 = clearly exceeds what the role needs.
         - If the job omits information for a dimension, score conservatively and say so in the rationale.
         - Do not provide an overall score. The application computes it from the dimension scores.
-        - For requirements_met and requirements_not_met, focus on concrete job requirements, not generic praise.
-        - If evidence is mixed or absent, put the item in requirements_not_met and explain what is missing.
-        - Application instructions (labeled above as "submission mechanics") describe HOW to apply, not whether the candidate is qualified. Do NOT include them in requirements_met or requirements_not_met. Do NOT penalize any dimension score for them — they can be acted on at application time.
+        - In requirement_assessments, judge against the listed qualifications, not generic praise; when evidence is indirect mark "partial", and when there is none mark "missing" (explain what is absent).
+        - Application instructions (labeled above as "submission mechanics") describe HOW to apply, not whether the candidate is qualified. Do NOT include them in requirement_assessments. Do NOT penalize any dimension score for them — they can be acted on at application time.
 
         Job posting:
         \(jobSection)

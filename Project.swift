@@ -211,6 +211,8 @@ let coreTestsTarget = testTarget(
     bundleSuffix: "CoreTests",
     sources: [
         "tests/CoreTests/**/*.swift",
+        // Shared mock OpenAI server (also compiled into AppUITests) for the keyless inference path.
+        "tests/Support/MockLLM/**/*.swift",
         "tools/migrator/Migration.swift",
         "tools/migrator/Patch.swift",
         "tools/migrator/SQLiteHelpers.swift",

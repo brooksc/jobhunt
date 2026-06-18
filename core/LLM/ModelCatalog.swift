@@ -25,7 +25,8 @@ public enum ModelCatalog {
             try requireKey(apiKey, provider: provider)
             return try await fetchOpenAIStyle(
                 url: "https://api.openai.com/v1/models",
-                headers: bearer(apiKey), session: session, timeout: timeoutSeconds
+                headers: bearer(apiKey), session: session, timeout: timeoutSeconds,
+                filterNonText: true   // OpenAI's list includes tts / dall-e / whisper / embeddings
             )
         case "openrouter":
             // OpenRouter's model list is public — the key is optional.
@@ -65,14 +66,16 @@ public enum ModelCatalog {
         url: String,
         headers: [String: String],
         session: URLSession,
-        timeout: Double
+        timeout: Double,
+        filterNonText: Bool = false
     ) async throws -> [String] {
         guard let endpoint = URL(string: url) else { throw ModelCatalogError.missingBaseURL }
         let data = try await get(endpoint, headers: headers, session: session, timeout: timeout)
         guard let decoded = try? JSONDecoder().decode(OpenAIModelList.self, from: data) else {
             throw ModelCatalogError.decodeFailed
         }
-        return decoded.data.map(\.id).filter { !$0.isEmpty }.sorted()
+        let ids = decoded.data.map(\.id).filter { !$0.isEmpty }
+        return (filterNonText ? textGenerationModels(ids) : ids).sorted()
     }
 
     private static func fetchGoogle(
@@ -90,12 +93,35 @@ public enum ModelCatalog {
         guard let decoded = try? JSONDecoder().decode(GoogleModelList.self, from: data) else {
             throw ModelCatalogError.decodeFailed
         }
-        return decoded.models
+        let ids = decoded.models
             .filter { ($0.supportedGenerationMethods ?? []).contains("generateContent") }
             .map { $0.name.hasPrefix("models/") ? String($0.name.dropFirst("models/".count)) : $0.name }
             .filter { !$0.isEmpty }
-            .sorted()
+        // `generateContent` alone still includes image/TTS/etc. models (they "generate content" too),
+        // so drop the ones whose names mark them as non-text for our extraction/fit use case.
+        return textGenerationModels(ids).sorted()
     }
+
+    /// Keep only models suitable for text in/text out (job extraction + fit scoring), dropping
+    /// image / audio / TTS / video / embedding / robotics / agentic variants by name. A denylist of
+    /// name fragments is pragmatic — provider APIs don't expose a clean "modality" flag — and the
+    /// Model field stays free-text, so a user can always enter a model the filter didn't surface.
+    static func textGenerationModels(_ ids: [String]) -> [String] {
+        ids.filter { id in
+            let lower = id.lowercased()
+            return !nonTextModelFragments.contains { lower.contains($0) }
+        }
+    }
+
+    static let nonTextModelFragments: [String] = [
+        "tts", "speech", "audio", "whisper", "voice",          // audio / speech
+        "image", "imagen", "dall-e", "dalle", "nano-banana",   // image generation
+        "veo", "video",                                        // video
+        "lyria", "music", "-clip",                             // music / audio
+        "embed",                                               // embeddings
+        "rerank", "moderation", "guard",                       // utility, not chat
+        "robotics", "robot", "computer-use", "deep-research", "antigravity", // agentic / specialized
+    ]
 
     private static func get(
         _ url: URL,

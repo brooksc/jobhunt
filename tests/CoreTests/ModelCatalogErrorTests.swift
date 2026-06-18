@@ -43,4 +43,22 @@ final class ModelCatalogErrorTests: XCTestCase {
         XCTAssertEqual(ModelCatalog.keyFingerprint(""), "EMPTY")
         XCTAssertTrue(ModelCatalog.keyFingerprint("AIzaSExample ").contains("ws=true"))
     }
+
+    // MARK: - Text-model filter (drop image/tts/etc. from the model picker)
+
+    func testTextGenerationModels_keepsChatModels_dropsNonText() {
+        let input = [
+            "gemini-2.5-flash", "gemini-2.5-pro", "gemini-3-pro-preview", "gemini-flash-latest",
+            "gemma-4-31b-it",
+            // non-text that should be filtered out:
+            "gemini-2.5-flash-image", "gemini-3-pro-image", "gemini-2.5-flash-preview-tts",
+            "lyria-3-pro-preview", "lyria-3-clip-preview", "nano-banana-pro-preview",
+            "gemini-robotics-er-1.5-preview", "gemini-2.5-computer-use-preview-10-2025",
+            "deep-research-pro-preview-12-2025", "antigravity-preview-05-2026",
+            "text-embedding-004", "veo-3", "whisper-1", "dall-e-3", "tts-1"
+        ]
+        let kept = ModelCatalog.textGenerationModels(input)
+        XCTAssertEqual(Set(kept), ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3-pro-preview",
+                                   "gemini-flash-latest", "gemma-4-31b-it"])
+    }
 }

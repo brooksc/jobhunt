@@ -201,7 +201,17 @@ struct LLMTab: View {
             if needsAPIKey {
                 SecureField("API Key", text: $apiKeyText)
                     .onSubmit { saveAPIKey() }
-                    .onChange(of: apiKeyText) { _, _ in saveAPIKey() }
+                    .onChange(of: apiKeyText) { _, newValue in
+                        // Strip any whitespace/newlines the moment they land in the field — an API key
+                        // never contains them, and a pasted trailing newline silently breaks auth.
+                        // Re-assigning fires onChange again with the cleaned value, which then saves.
+                        let cleaned = newValue.filter { !$0.isWhitespace }
+                        if cleaned != newValue {
+                            apiKeyText = cleaned
+                        } else {
+                            saveAPIKey()
+                        }
+                    }
                 if let err = settings.keychainWriteError {
                     Label(err, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)

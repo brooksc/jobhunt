@@ -47,6 +47,8 @@ public enum SettingsKey {
     public static let llmConsentGoogle = "llm_consent_google"
     public static let llmConsentOpenRouter = "llm_consent_openrouter"
     public static let llmConsentOpenAI = "llm_consent_openai"
+    /// Persisted last-viewed sidebar selection, so relaunch restores the same view (e.g. "Pursuing").
+    public static let lastSidebarSelection = "last_sidebar_selection"
 
     /// API key settings that must live in Keychain, not SwiftData (App Store hygiene).
     public static let keychainKeys: Set<String> = [

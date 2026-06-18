@@ -30,6 +30,9 @@ struct Sidebar: View {
     @State private var renamingSearch: SavedSearch?
     @State private var renameText = ""
     @State private var searchToDelete: SavedSearch?
+    /// Guards one-time restore of the persisted last view, and gates persistence so the pre-restore
+    /// default never overwrites the saved selection.
+    @State private var didRestore = false
 
     var body: some View {
         List(selection: $listSelection) {
@@ -116,7 +119,13 @@ struct Sidebar: View {
         .onChange(of: router.selectedSection) { _, _ in syncSelectionFromRouter() }
         .onChange(of: router.sidebarJobFilter) { _, _ in syncSelectionFromRouter() }
         .onChange(of: router.activeSavedSearchID) { _, _ in syncSelectionFromRouter() }
-        .onAppear { syncSelectionFromRouter() }
+        .onAppear {
+            if !didRestore {
+                didRestore = true
+                restoreSelection()
+            }
+            syncSelectionFromRouter()
+        }
         // Recompute the review-queue count off the main thread whenever jobs/decisions change.
         // SwiftUI restarts this task on each duplicateRefreshID change, giving implicit debouncing.
         .task(id: duplicateRefreshID) { await refreshDuplicateCount() }
@@ -295,6 +304,17 @@ struct Sidebar: View {
         case .help:        item = .help
         }
         if listSelection != item { listSelection = item }
+        // Remember the current view so the next launch restores it. Gated on didRestore so the
+        // initial pre-restore default can't clobber the saved value.
+        if didRestore { appServices.settings.lastSidebarSelection = item.persistedID }
+    }
+
+    /// Restore the last-viewed sidebar selection persisted from a previous session (e.g. "Pursuing").
+    /// Falls back to the default view when nothing is stored or a saved search has since been deleted.
+    private func restoreSelection() {
+        guard let item = SidebarItem(persistedID: appServices.settings.lastSidebarSelection) else { return }
+        if case .savedSearch(let id) = item, !savedSearches.contains(where: { $0.id == id }) { return }
+        applySelection(item)
     }
 
     // MARK: - Rename sheet

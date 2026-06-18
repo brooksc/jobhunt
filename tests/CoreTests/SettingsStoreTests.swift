@@ -74,6 +74,17 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertFalse(store.bool(forKey: SettingsKey.llmQueuePaused))
     }
 
+    // MARK: - Last sidebar selection (view restore)
+
+    func testLastSidebarSelection_defaultsEmpty() {
+        XCTAssertEqual(store.lastSidebarSelection, "")
+    }
+
+    func testLastSidebarSelection_roundTrips() {
+        store.lastSidebarSelection = "jobs:pursuing"
+        XCTAssertEqual(store.lastSidebarSelection, "jobs:pursuing")
+    }
+
     func testSetAndGetInt() {
         store.setInt(600, forKey: SettingsKey.llmTimeout)
         XCTAssertEqual(store.int(forKey: SettingsKey.llmTimeout), 600)

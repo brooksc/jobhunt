@@ -30,7 +30,8 @@ private let settingsDefaults: [String: String] = [
     SettingsKey.llmConsentAnthropic: "0",
     SettingsKey.llmConsentGoogle: "0",
     SettingsKey.llmConsentOpenRouter: "0",
-    SettingsKey.llmConsentOpenAI: "0"
+    SettingsKey.llmConsentOpenAI: "0",
+    SettingsKey.lastSidebarSelection: ""
 ]
 
 @Observable
@@ -137,6 +138,13 @@ public final class SettingsStore {
     public var llmQueuePaused: Bool {
         get { bool(forKey: SettingsKey.llmQueuePaused) }
         set { setBool(newValue, forKey: SettingsKey.llmQueuePaused) }
+    }
+
+    /// The last-viewed sidebar selection, persisted so relaunch restores the same view. Opaque
+    /// token serialized by `SidebarItem.persistedID`; "" means none stored yet (default view).
+    public var lastSidebarSelection: String {
+        get { string(forKey: SettingsKey.lastSidebarSelection) }
+        set { set(newValue, forKey: SettingsKey.lastSidebarSelection) }
     }
 
     /// TASK-462: when on (and provider is OpenRouter), rotate over free structured-output models with

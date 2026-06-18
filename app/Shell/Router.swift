@@ -71,6 +71,47 @@ public enum SidebarItem: Hashable, Sendable {
         case .savedSearch:       return nil  // dynamic name — caller handles
         }
     }
+
+    /// Stable, persistable token for the last-viewed view (round-trips via `init?(persistedID:)`).
+    /// Used to restore the sidebar selection on relaunch.
+    var persistedID: String {
+        switch self {
+        case .dashboard:           return "dashboard"
+        case .needsAction:         return "needsAction"
+        case .jobsAll:             return "jobsAll"
+        case .jobs(let status):    return "jobs:\(status.rawValue)"
+        case .sites:               return "sites"
+        case .duplicates:          return "duplicates"
+        case .llmQueue:            return "llmQueue"
+        case .dataQuality:         return "dataQuality"
+        case .settings:            return "settings"
+        case .help:                return "help"
+        case .savedSearch(let id): return "savedSearch:\(id)"
+        }
+    }
+
+    /// Reconstruct a selection from its `persistedID`. Returns nil for an empty/unknown token.
+    init?(persistedID raw: String) {
+        switch raw {
+        case "dashboard":   self = .dashboard
+        case "needsAction": self = .needsAction
+        case "jobsAll":     self = .jobsAll
+        case "sites":       self = .sites
+        case "duplicates":  self = .duplicates
+        case "llmQueue":    self = .llmQueue
+        case "dataQuality": self = .dataQuality
+        case "settings":    self = .settings
+        case "help":        self = .help
+        default:
+            if raw.hasPrefix("jobs:"), let status = JobStatus(rawValue: String(raw.dropFirst("jobs:".count))) {
+                self = .jobs(status)
+            } else if raw.hasPrefix("savedSearch:") {
+                self = .savedSearch(String(raw.dropFirst("savedSearch:".count)))
+            } else {
+                return nil
+            }
+        }
+    }
 }
 
 @Observable

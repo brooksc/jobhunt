@@ -136,30 +136,37 @@ private struct SiteRowView: View {
     let site: Site
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(displayName)
-                .font(.callout)
-                .fontWeight(.medium)
-                .lineLimit(1)
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(displayName)
+                    .font(.callout)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
 
-            HStack(spacing: 4) {
                 Text(site.origin)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
-
-                if let nextReview = site.nextReviewAt {
-                    Text("·").font(.caption2).foregroundStyle(.quaternary)
-                    nextReviewLabel(nextReview)
-                } else if site.lastReviewedAt == nil {
-                    Text("·").font(.caption2).foregroundStyle(.quaternary)
-                    Text("Never reviewed")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
             }
+
+            Spacer(minLength: 0)
+
+            // Review status, right-justified so the column lines up down the list.
+            statusBadge
+                .fixedSize()
         }
         .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        if let nextReview = site.nextReviewAt {
+            nextReviewLabel(nextReview)
+        } else if site.lastReviewedAt == nil {
+            Text("Never reviewed")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private var displayName: String {

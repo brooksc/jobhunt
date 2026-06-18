@@ -88,8 +88,14 @@ struct JobsView: View {
             cachedFilteredJobs = computeFilteredJobs()
         }
         .onChange(of: filteredJobIDs) { _, newIDs in
-            // Remove stale selections when filter changes
+            // Remove stale selections when the filter changes — and tell the user if their
+            // multi-selection just shrank, so they don't bulk-act on fewer jobs than they think.
+            let before = selectedJobIDs.count
             selectedJobIDs = selectedJobIDs.intersection(newIDs)
+            let dropped = before - selectedJobIDs.count
+            if dropped > 0 && before > 1 {
+                appServices.toastStore.show("\(dropped) selected job\(dropped == 1 ? "" : "s") no longer match the filter — \(selectedJobIDs.count) still selected.")
+            }
         }
         .onChange(of: selectedJobIDs) { _, newIDs in
             // Mark opened when exactly one job is selected
@@ -565,9 +571,13 @@ struct JobsView: View {
             if !q.isEmpty {
                 let qLow = q.lowercased()
                 let matchNum = qLow.hasPrefix("#") ? String(qLow.dropFirst()) : qLow
-                let textMatch = [job.company, job.title, job.location]
-                    .compactMap(\.self).joined(separator: " ").lowercased().contains(qLow)
-                let numMatch = job.jobNumber.map { String($0).contains(matchNum) } ?? false
+                // Cheap fields first; fall through to the (larger) cleaned description only if needed.
+                let cheap = [job.company, job.title, job.location]
+                    .compactMap(\.self).joined(separator: " ").lowercased()
+                let textMatch = cheap.contains(qLow)
+                    || (job.capture?.cleanedDescription?.lowercased().contains(qLow) ?? false)
+                // Job number: exact match for a plain number ("133" → #133), substring otherwise.
+                let numMatch = job.jobNumber.map { String($0) == matchNum || String($0).contains(matchNum) } ?? false
                 if !textMatch && !numMatch { return false }
             }
             return true

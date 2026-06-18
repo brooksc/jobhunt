@@ -116,11 +116,22 @@ struct DashboardView: View {
 
     private var statCardsSection: some View {
         HStack(spacing: 12) {
-            StatCard(label: "Total Jobs", value: summary.total, systemImage: "briefcase")
-            StatCard(label: "Active", value: summary.active, systemImage: "flame", color: .blue)
-            StatCard(label: "Interviews", value: summary.interviews, systemImage: "person.2", color: .purple)
-            StatCard(label: "Offers", value: summary.offers, systemImage: "star.fill", color: .green)
+            StatCard(label: "Total Jobs", value: summary.total, systemImage: "briefcase",
+                     action: { showJobs(nil) })
+            StatCard(label: "Active", value: summary.active, systemImage: "flame", color: .blue,
+                     action: { showJobs(nil) })
+            StatCard(label: "Interviews", value: summary.interviews, systemImage: "person.2", color: .purple,
+                     action: { showJobs(.interview) })
+            StatCard(label: "Offers", value: summary.offers, systemImage: "star.fill", color: .green,
+                     action: { showJobs(.offer) })
         }
+    }
+
+    /// Navigate to the Jobs list, optionally pre-filtered to a status smart folder.
+    private func showJobs(_ status: JobStatus?) {
+        router.activeSavedSearchID = nil
+        router.sidebarJobFilter = status
+        router.navigateToSection(.jobs)
     }
 
     // MARK: - Recommended to Apply
@@ -570,8 +581,10 @@ private struct StatCard: View {
     let value: Int
     let systemImage: String
     var color: Color = .secondary
+    /// When set, the whole card becomes a button that navigates to the matching jobs list.
+    var action: (() -> Void)?
 
-    var body: some View {
+    @ViewBuilder private var card: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
@@ -588,6 +601,16 @@ private struct StatCard: View {
             }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    var body: some View {
+        if let action {
+            Button(action: action) { card }
+                .buttonStyle(.plain)
+                .help("Show \(label)")
+        } else {
+            card
+        }
     }
 }
 

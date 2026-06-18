@@ -914,7 +914,6 @@ struct FitTabView: View {
 
     @State private var openResumeName: String? = nil
     @State private var isBusy = false
-    @State private var tailorAlertShowing = false
 
     private var activeResumes: [Resume] { allResumes.filter(\.active) }
 
@@ -984,16 +983,6 @@ struct FitTabView: View {
                             }
                         }
 
-                        // Tailor resume button
-                        Button {
-                            tailorAlertShowing = true
-                        } label: {
-                            Label("Tailor resume to this role", systemImage: "sparkle")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .padding(.top, 4)
                     } else {
                         // No scores yet — show score button
                         HStack {
@@ -1021,11 +1010,6 @@ struct FitTabView: View {
             if openResumeName == nil, let best = bestScore {
                 openResumeName = best.resume?.name ?? best.model ?? ""
             }
-        }
-        .alert("Not Yet Available", isPresented: $tailorAlertShowing) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Tailored resume generation is coming in a future update.")
         }
     }
 

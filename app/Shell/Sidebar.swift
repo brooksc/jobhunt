@@ -226,8 +226,10 @@ struct Sidebar: View {
 
     @MainActor
     private func refreshDuplicateCount() async {
+        // Match DuplicatesView: only count pairs where both jobs are still un-marked — a job already
+        // marked `.duplicate` is resolved and shouldn't drive the review badge (TASK-497).
         let snapshots = allJobs.compactMap { job -> JobSnapshot? in
-            guard let capture = job.capture else { return nil }
+            guard job.status != .duplicate, let capture = job.capture else { return nil }
             return JobSnapshot(job: job, capture: capture)
         }
         let resolvedHashes = Set(allDecisions.map(\.cleanedHash))

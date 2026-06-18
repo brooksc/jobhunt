@@ -140,7 +140,7 @@ struct DuplicatesView: View {
                 .font(.largeTitle)
                 .foregroundStyle(.tertiary)
             if searchText.isEmpty {
-                Text("No duplicate pairs need review.")
+                Text("No new duplicates to review.")
                     .foregroundStyle(.secondary)
             } else {
                 Text("No pairs match your search.")
@@ -196,8 +196,12 @@ struct DuplicatesView: View {
         var index: [String: Job] = [:]
         for job in allJobs { index[job.id] = job }
 
+        // Only surface pairs where BOTH jobs are still un-marked: a job already marked `.duplicate`
+        // is resolved — keeping that record is what blocks the same URL-variation from re-creating a
+        // job — so it shouldn't reappear in the review queue. Dropping marked-duplicate jobs from the
+        // scan means a pair can only form between two un-marked jobs (TASK-497).
         let snapshots = allJobs.compactMap { job -> JobSnapshot? in
-            guard let capture = job.capture else { return nil }
+            guard job.status != .duplicate, let capture = job.capture else { return nil }
             return JobSnapshot(job: job, capture: capture)
         }
         let resolvedHashes = Set(allDecisions.map(\.cleanedHash))

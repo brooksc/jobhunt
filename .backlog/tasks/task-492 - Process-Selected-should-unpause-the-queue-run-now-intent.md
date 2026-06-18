@@ -4,6 +4,7 @@ title: '"Process Selected" should unpause the queue (run-now intent)'
 status: Done
 assignee: []
 created_date: '2026-06-18 19:17'
+updated_date: '2026-06-18 19:17'
 labels:
   - bug
   - ux
@@ -22,9 +23,11 @@ Fix: in LLMQueueView.processSelected, if the queue is paused, resume it (which u
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Process Selected on a paused queue runs the selected requests without a separate Resume click
-- [ ] #2 The pause toggle reflects the now-resumed state
+- [x] #1 Process Selected on a paused queue runs the selected requests without a separate Resume click
+- [x] #2 The pause toggle reflects the now-resumed state
 <!-- AC:END -->
+
+
 
 ## Final Summary
 

@@ -419,7 +419,9 @@ private struct DetailFooter: View {
                                     try await jobService?.setStatus(.applied, for: job.id)
                                     let days = appServices.settings.followupDefaultDays
                                     let due = Calendar.current.date(byAdding: .day, value: days, to: Date()) ?? Date()
-                                    try await jobService?.createAction(jobID: job.id, text: "Follow up on application", dueAt: due)
+                                    let who = [job.company, job.title].compactMap(\.self).joined(separator: " — ")
+                                    let followText = who.isEmpty ? "Follow up on application" : "Follow up on \(who)"
+                                    try await jobService?.createAction(jobID: job.id, text: followText, dueAt: due)
                                 } catch {
                                     appServices.toastStore.show("Couldn't mark as applied: \(error.localizedDescription)", isError: true)
                                 }
@@ -1491,8 +1493,29 @@ private struct PendingActionRow: View {
     let action: JobAction
     @Environment(\.jobService) private var jobService
 
+    @State private var isEditing = false
+    @State private var draft = ""
+
     private func completeWithUndo(actionID: String) {
         completeFollowUpWithUndo(actionID: actionID, jobService: jobService, toastStore: appServices.toastStore)
+    }
+
+    private func saveEdit() {
+        let id = action.id
+        let text = draft
+        isEditing = false
+        Task {
+            do { try await jobService?.updateAction(actionID: id, text: text) }
+            catch { appServices.toastStore.show("Couldn't save follow-up: \(error.localizedDescription)", isError: true) }
+        }
+    }
+
+    private func deleteAction() {
+        let id = action.id
+        Task {
+            do { try await jobService?.deleteAction(actionID: id) }
+            catch { appServices.toastStore.show("Couldn't delete follow-up: \(error.localizedDescription)", isError: true) }
+        }
     }
 
     private var dueDateLabel: String {
@@ -1533,20 +1556,46 @@ private struct PendingActionRow: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(dueColor)
                 }
-                Text(action.note)
-                    .font(.caption)
-                    .foregroundStyle(.primary)
+                if isEditing {
+                    VStack(alignment: .leading, spacing: 6) {
+                        TextField("Follow-up", text: $draft, axis: .vertical)
+                            .textFieldStyle(.roundedBorder)
+                            .lineLimit(1 ... 4)
+                            .onSubmit { saveEdit() }
+                        HStack(spacing: 8) {
+                            Button("Save") { saveEdit() }
+                                .buttonStyle(.borderedProminent).controlSize(.small)
+                            Button("Cancel") { isEditing = false }
+                                .buttonStyle(.bordered).controlSize(.small)
+                            Spacer()
+                            Text("Clear the text to delete this follow-up.")
+                                .font(.caption2).foregroundStyle(.tertiary)
+                        }
+                    }
+                } else {
+                    Text(action.note)
+                        .font(.caption)
+                        .foregroundStyle(.primary)
+                        .onTapGesture(count: 2) { draft = action.note; isEditing = true }
+                        .contextMenu {
+                            Button("Edit Follow-up", systemImage: "pencil") { draft = action.note; isEditing = true }
+                            Button("Delete Follow-up", systemImage: "trash", role: .destructive, action: deleteAction)
+                        }
+                        .help("Double-click to edit · right-click for more")
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Button {
-                completeWithUndo(actionID: action.id)
-            } label: {
-                Label("Done", systemImage: "checkmark")
-                    .font(.caption2)
+            if !isEditing {
+                Button {
+                    completeWithUndo(actionID: action.id)
+                } label: {
+                    Label("Done", systemImage: "checkmark")
+                        .font(.caption2)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.mini)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -1623,6 +1672,14 @@ private struct TimelineEventRow: View {
     let event: JobEvent
     var isDimmed: Bool = false
 
+    @Environment(\.jobService) private var jobService
+    @Environment(AppServices.self) private var appServices
+    @State private var isEditing = false
+    @State private var draft = ""
+
+    /// Only user notes are editable; system events (capture/extraction/…) are not.
+    private var isEditableNote: Bool { event.eventType == "note" }
+
     private var icon: String {
         switch event.eventType {
         case "capture": return "tray.and.arrow.down"
@@ -1672,7 +1729,24 @@ private struct TimelineEventRow: View {
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
-                if let note = event.note, !note.isEmpty {
+                if isEditing {
+                    VStack(alignment: .leading, spacing: 6) {
+                        TextField("Note", text: $draft, axis: .vertical)
+                            .textFieldStyle(.roundedBorder)
+                            .lineLimit(1 ... 6)
+                            .onSubmit { saveEdit() }
+                        HStack(spacing: 8) {
+                            Button("Save") { saveEdit() }
+                                .buttonStyle(.borderedProminent).controlSize(.small)
+                            Button("Cancel") { isEditing = false }
+                                .buttonStyle(.bordered).controlSize(.small)
+                            Spacer()
+                            Text("Clear the text to delete this note.")
+                                .font(.caption2).foregroundStyle(.tertiary)
+                        }
+                    }
+                    .padding(.top, 4)
+                } else if let note = event.note, !note.isEmpty {
                     Text(note)
                         .font(.caption)
                         .foregroundStyle(.primary)
@@ -1681,12 +1755,54 @@ private struct TimelineEventRow: View {
                         .background(Color.secondary.opacity(0.07))
                         .clipShape(RoundedRectangle(cornerRadius: 7))
                         .textSelection(.enabled)
+                        .modifier(NoteEditMenu(enabled: isEditableNote,
+                                               onEdit: { draft = note; isEditing = true },
+                                               onDelete: { deleteNote() }))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
+    }
+
+    private func saveEdit() {
+        let id = event.id
+        let text = draft
+        isEditing = false
+        Task {
+            do { try await jobService?.updateNote(eventID: id, text: text) }
+            catch { appServices.toastStore.show("Couldn't save note: \(error.localizedDescription)", isError: true) }
+        }
+    }
+
+    private func deleteNote() {
+        let id = event.id
+        Task {
+            do { try await jobService?.updateNote(eventID: id, text: "") }
+            catch { appServices.toastStore.show("Couldn't delete note: \(error.localizedDescription)", isError: true) }
+        }
+    }
+}
+
+/// Right-click + double-click affordances for editing/deleting a user note.
+private struct NoteEditMenu: ViewModifier {
+    let enabled: Bool
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content
+                .onTapGesture(count: 2, perform: onEdit)
+                .contextMenu {
+                    Button("Edit Note", systemImage: "pencil", action: onEdit)
+                    Button("Delete Note", systemImage: "trash", role: .destructive, action: onDelete)
+                }
+                .help("Double-click to edit · right-click for more")
+        } else {
+            content
+        }
     }
 }
 

@@ -268,6 +268,20 @@ public actor JobService {
         try await store.insert(event)
     }
 
+    /// Edit a note event in place. Saving empty/whitespace-only text deletes the note
+    /// (the UI's "delete = edit and save empty" convention, review-2 #2).
+    public func updateNote(eventID: String, text: String) async throws {
+        let id = eventID
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            try await store.deleteOne(JobEvent.self, predicate: #Predicate { $0.id == id }, id: id)
+        } else {
+            try await store.update(JobEvent.self, predicate: #Predicate { $0.id == id }) { event in
+                event.note = trimmed
+            }
+        }
+    }
+
     public func archive(jobID: String) async throws {
         try await setStatus(.archived, for: jobID)
     }
@@ -337,6 +351,26 @@ public actor JobService {
             action.completedAt = nil
             action.updatedAt = Date()
         }
+    }
+
+    /// Edit a follow-up's text in place. Saving empty/whitespace-only text deletes the
+    /// follow-up (the UI's "delete = edit and save empty" convention, review-2 #2).
+    public func updateAction(actionID: String, text: String) async throws {
+        let id = actionID
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            try await store.deleteOne(JobAction.self, predicate: #Predicate { $0.id == id }, id: id)
+        } else {
+            try await store.update(JobAction.self, predicate: #Predicate { $0.id == id }) { action in
+                action.note = trimmed
+                action.updatedAt = Date()
+            }
+        }
+    }
+
+    public func deleteAction(actionID: String) async throws {
+        let id = actionID
+        try await store.deleteOne(JobAction.self, predicate: #Predicate { $0.id == id }, id: id)
     }
 
     public func snoozeAction(actionID: String, until: Date) async throws {

@@ -257,37 +257,13 @@ struct JobhuntApp: App {
                     .keyboardShortcut("k", modifiers: .command)
                 }
 
-                // ⌘⇧E — Export job list fields to CSV (not a full backup; HIG-18)
+                // ⌘⇧E — Export the current filtered Jobs view to CSV (not a full backup; HIG-18).
+                // Single export path: the Jobs screen owns it so the menu and the in-list
+                // command always export exactly what the user is looking at.
                 CommandGroup(after: .importExport) {
-                    Button("Export Job List to CSV…") {
-                        Task { @MainActor in
-                            let ctx = ModelContext(container)
-                            // TASK-377: don't let a fetch failure produce a valid-looking empty CSV —
-                            // surface it and abort instead of falling back to an empty job list.
-                            let jobs: [Job]
-                            do {
-                                jobs = try ctx.fetch(FetchDescriptor<Job>(
-                                    sortBy: [SortDescriptor(\Job.createdAt, order: .reverse)]
-                                ))
-                            } catch {
-                                services.toastStore.show(
-                                    "Couldn't read jobs for export: \(error.localizedDescription)", isError: true
-                                )
-                                return
-                            }
-                            let csv = ExportService.jobsCSV(jobs: jobs)
-                            let panel = NSSavePanel()
-                            panel.allowedContentTypes = [.commaSeparatedText]
-                            panel.nameFieldStringValue = "jobs.csv"
-                            guard panel.runModal() == .OK, let url = panel.url else { return }
-                            do {
-                                try ExportService.write(csv, to: url)
-                            } catch {
-                                services.toastStore.show(
-                                    "Export failed: \(error.localizedDescription)", isError: true
-                                )
-                            }
-                        }
+                    Button("Export Current List to CSV…") {
+                        r.navigateToSection(.jobs)
+                        r.exportJobsRequested = true
                     }
                     .keyboardShortcut("e", modifiers: [.command, .shift])
                 }

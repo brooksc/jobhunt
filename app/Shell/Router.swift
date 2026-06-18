@@ -128,6 +128,8 @@ public final class Router {
     public var showAddJobSheet: Bool = false
     /// Triggers search field focus from app menu / ⌘K
     public var focusSearch: Bool = false
+    /// Triggers CSV export of the current filtered Jobs view from app menu / ⌘⇧E
+    public var exportJobsRequested: Bool = false
 
     public init() {}
 

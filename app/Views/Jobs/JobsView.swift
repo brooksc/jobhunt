@@ -112,6 +112,9 @@ struct JobsView: View {
         .onChange(of: router.showAddJobSheet) { _, show in
             if show { showAddJobSheet = true; router.showAddJobSheet = false }
         }
+        .onChange(of: router.exportJobsRequested) { _, requested in
+            if requested { router.exportJobsRequested = false; exportCSV() }
+        }
         .onChange(of: router.focusSearch) { _, focus in
             if focus {
                 router.focusSearch = false

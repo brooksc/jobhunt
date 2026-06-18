@@ -303,6 +303,9 @@ struct NeedsActionView: View {
         Task {
             do {
                 try await jobService.completeAction(actionID: id)
+                appServices.toastStore.show("Follow-up marked done.", actionLabel: "Undo") {
+                    Task { try? await jobService.reopenAction(actionID: id) }
+                }
             } catch {
                 errorMessage = error.localizedDescription
             }

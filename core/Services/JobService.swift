@@ -330,6 +330,15 @@ public actor JobService {
         }
     }
 
+    /// Reverse `completeAction` — used by the "Undo" toast after marking a follow-up done.
+    public func reopenAction(actionID: String) async throws {
+        let id = actionID
+        try await store.update(JobAction.self, predicate: #Predicate { $0.id == id }) { action in
+            action.completedAt = nil
+            action.updatedAt = Date()
+        }
+    }
+
     public func snoozeAction(actionID: String, until: Date) async throws {
         let id = actionID
         try await store.update(JobAction.self, predicate: #Predicate { $0.id == id }) { action in

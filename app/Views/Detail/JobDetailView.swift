@@ -198,12 +198,11 @@ private struct DetailHeader: View {
 
                 if let urlStr = JobURLPolicy.displayURL(job: job), let url = URL(string: urlStr) {
                     Link(destination: url) {
-                        Label("Source", systemImage: "arrow.up.right.square")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Label("Open Posting", systemImage: "arrow.up.right.square")
                     }
-                    .buttonStyle(.plain)
-                    .help("Open source posting")
+                    .buttonStyle(.bordered)
+                    .tint(.accentColor)
+                    .help("Open the original job posting in your browser")
                 }
 
                 Button {
@@ -382,6 +381,10 @@ private struct DetailFooter: View {
             .first
     }
 
+    private func completeWithUndo(actionID: String) {
+        completeFollowUpWithUndo(actionID: actionID, jobService: jobService, toastStore: appServices.toastStore)
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             // Capture date note
@@ -396,11 +399,7 @@ private struct DetailFooter: View {
                     Image(systemName: "flag.fill").font(.caption2).foregroundStyle(.orange)
                     Text(action.note).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                     Button {
-                        let id = action.id
-                        Task {
-                            do { try await jobService?.completeAction(actionID: id) }
-                            catch { appServices.toastStore.show("Couldn't complete action: \(error.localizedDescription)", isError: true) }
-                        }
+                        completeWithUndo(actionID: action.id)
                     } label: { Image(systemName: "checkmark").font(.caption2) }
                     .buttonStyle(.bordered).controlSize(.mini)
                 }
@@ -729,6 +728,13 @@ struct OverviewTabView: View {
                     Task {
                         do { try await jobService?.updateJobFields(jobID: job.id, location: .some(v.isEmpty ? nil : v)) }
                         catch { appServices.toastStore.show("Couldn't save location: \(error.localizedDescription)", isError: true) }
+                    }
+                }
+                Divider()
+                editableRow("Application URL", job.applicationURL ?? "", placeholder: "Add application link") { v in
+                    Task {
+                        do { try await jobService?.updateJobFields(jobID: job.id, applicationURL: .some(v.isEmpty ? nil : v)) }
+                        catch { appServices.toastStore.show("Couldn't save URL: \(error.localizedDescription)", isError: true) }
                     }
                 }
                 Divider()
@@ -1485,6 +1491,10 @@ private struct PendingActionRow: View {
     let action: JobAction
     @Environment(\.jobService) private var jobService
 
+    private func completeWithUndo(actionID: String) {
+        completeFollowUpWithUndo(actionID: actionID, jobService: jobService, toastStore: appServices.toastStore)
+    }
+
     private var dueDateLabel: String {
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
@@ -1530,11 +1540,7 @@ private struct PendingActionRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
-                let id = action.id
-                Task {
-                    do { try await jobService?.completeAction(actionID: id) }
-                    catch { appServices.toastStore.show("Couldn't complete action: \(error.localizedDescription)", isError: true) }
-                }
+                completeWithUndo(actionID: action.id)
             } label: {
                 Label("Done", systemImage: "checkmark")
                     .font(.caption2)
@@ -2175,6 +2181,22 @@ extension RemoteType {
         case .hybrid: "Hybrid"
         case .onsite: "On-site"
         case .unknown: "Unknown"
+        }
+    }
+}
+
+/// Mark a follow-up done and surface an Undo toast (TASK: review-2 #12). Shared by the
+/// footer's pending-action chip and the timeline's PendingActionRow.
+@MainActor
+private func completeFollowUpWithUndo(actionID: String, jobService: JobService?, toastStore: ToastStore) {
+    Task {
+        do {
+            try await jobService?.completeAction(actionID: actionID)
+            toastStore.show("Follow-up marked done.", actionLabel: "Undo") {
+                Task { try? await jobService?.reopenAction(actionID: actionID) }
+            }
+        } catch {
+            toastStore.show("Couldn't complete action: \(error.localizedDescription)", isError: true)
         }
     }
 }

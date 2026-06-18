@@ -60,6 +60,11 @@ private struct SettingsTabView: View {
 
 // MARK: - Provider model (used by LLMTab)
 
+/// Identifiable wrapper so the consent flow can drive `.sheet(item:)` (the provider id is the id).
+private struct ConsentRequest: Identifiable {
+    let id: String
+}
+
 private struct ProviderOption: Identifiable, Hashable {
     let id: String
     let label: String
@@ -100,8 +105,10 @@ struct LLMTab: View {
     @Query(sort: \Resume.sortOrder) private var resumes: [Resume]
     @Query private var jobs: [Job]
 
-    @State private var pendingProviderID: String?
-    @State private var showingConsentSheet = false
+    /// The provider awaiting a consent decision. Drives the consent sheet via `.sheet(item:)`, which
+    /// only presents when this is non-nil and hands the value to the content — avoiding the empty-sheet
+    /// race a separate `Bool` + optional read (`if let`) caused when both were set in one update.
+    @State private var pendingConsent: ConsentRequest?
     @State private var selectedProviderID: String
     @State private var apiKeyText: String = ""
     @State private var connectionStatus: ConnectionStatus = .idle
@@ -150,21 +157,19 @@ struct LLMTab: View {
             priceInput = String(settings.double(forKey: SettingsKey.llmPriceInput))
             priceOutput = String(settings.double(forKey: SettingsKey.llmPriceOutput))
         }
-        .sheet(isPresented: $showingConsentSheet, onDismiss: { pendingProviderID = nil }) {
-            if let providerID = pendingProviderID {
-                let provider = ProviderOption.find(providerID)
-                LLMConsentSheet(
-                    providerName: provider.label,
-                    providerID: providerID,
-                    privacyURL: provider.privacyURL,
-                    settings: settings,
-                    onAgree: {
-                        applyProviderChange(to: providerID)
-                        pendingProviderID = nil
-                    },
-                    onCancel: { pendingProviderID = nil }
-                )
-            }
+        .sheet(item: $pendingConsent) { request in
+            let provider = ProviderOption.find(request.id)
+            LLMConsentSheet(
+                providerName: provider.label,
+                providerID: request.id,
+                privacyURL: provider.privacyURL,
+                settings: settings,
+                // .sheet(item:) auto-clears pendingConsent on dismiss, so neither closure needs to.
+                // On cancel the Picker stays on the prior provider (selectedProviderID is unchanged
+                // until consent is granted).
+                onAgree: { applyProviderChange(to: request.id) },
+                onCancel: {}
+            )
         }
     }
 
@@ -188,8 +193,7 @@ struct LLMTab: View {
                         settings.llmBaseURL = new
                         if selectedProviderID == "custom",
                            !ConsentHelper.isConsented(provider: "custom", settings: settings) {
-                            pendingProviderID = "custom"
-                            showingConsentSheet = true
+                            pendingConsent = ConsentRequest(id: "custom")
                         }
                     }
             }
@@ -397,8 +401,7 @@ struct LLMTab: View {
 
     private func handleProviderChange(to newID: String) {
         if !ConsentHelper.isConsented(provider: newID, settings: settings) {
-            pendingProviderID = newID
-            showingConsentSheet = true
+            pendingConsent = ConsentRequest(id: newID)
         } else {
             applyProviderChange(to: newID)
         }

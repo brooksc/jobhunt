@@ -4,6 +4,7 @@ title: 'Queue stops processing: capture ingestion doesn''t kick the drain loop'
 status: Done
 assignee: []
 created_date: '2026-06-18 19:16'
+updated_date: '2026-06-18 19:17'
 labels:
   - bug
   - llm
@@ -26,11 +27,13 @@ Files: core/LLM/QueueActor.swift, core/Services/JobService.swift.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A capture ingested while the drain loop is idle (not paused) is processed automatically, with no manual Resume
-- [ ] #2 A re-capture (same URL, changed content) that re-queues extraction is also picked up
-- [ ] #3 A deliberately-paused queue is NOT resumed by a capture
-- [ ] #4 Exact-duplicate captures (which queue nothing) don't needlessly kick the queue
+- [x] #1 A capture ingested while the drain loop is idle (not paused) is processed automatically, with no manual Resume
+- [x] #2 A re-capture (same URL, changed content) that re-queues extraction is also picked up
+- [x] #3 A deliberately-paused queue is NOT resumed by a capture
+- [x] #4 Exact-duplicate captures (which queue nothing) don't needlessly kick the queue
 <!-- AC:END -->
+
+
 
 ## Final Summary
 

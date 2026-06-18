@@ -15,6 +15,9 @@ struct Sidebar: View {
     @Environment(AppServices.self) private var appServices
 
     @Query(filter: #Predicate<JobAction> { $0.completedAt == nil }) private var pendingActions: [JobAction]
+    /// Non-terminal LLM requests (queued or running) — drives the live "outstanding" badge on the
+    /// LLM Queue row, updating as the queue drains (TASK-491).
+    @Query(filter: #Predicate<LLMRequest> { $0.finishedAt == nil }) private var outstandingLLMRequests: [LLMRequest]
     @Query private var allJobs: [Job]
     @Query private var allDecisions: [DuplicateDecision]
     @Query(sort: \SavedSearch.sortOrder) private var savedSearches: [SavedSearch]
@@ -96,6 +99,7 @@ struct Sidebar: View {
             Section("Tools") {
                 sidebarRow(.llmQueue, id: "sidebar.llmQueue",
                            label: Label("LLM Queue", systemImage: "cpu"))
+                    .badge(outstandingLLMRequests.isEmpty ? 0 : outstandingLLMRequests.count)
                     .help("LLM processing queue status")
 
                 sidebarRow(.dataQuality, id: "sidebar.dataQuality",

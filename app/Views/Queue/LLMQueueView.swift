@@ -452,7 +452,14 @@ struct LLMQueueView: View {
         }
         // Don't silently start a drain when none of the selected requests could be requeued.
         guard resetFailures < ids.count else { return }
-        await queueActor.startProcessing()
+        // "Process Selected" is an explicit run-now intent — if the queue is paused, honor that intent
+        // by resuming, otherwise the reset rows just sit there (the drain loop bails while paused).
+        if isPaused {
+            isPaused = false
+            await queueActor.resumeQueue()
+        } else {
+            await queueActor.startProcessing()
+        }
     }
 
     private func cancelSelected(_ ids: [String]) async {

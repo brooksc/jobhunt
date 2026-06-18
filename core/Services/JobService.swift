@@ -157,6 +157,15 @@ public actor JobService {
         )
         let atomic = try await store.insertCaptureAtomically(input)
 
+        // TASK-491: a new job (or a re-capture) queues an extraction request directly inside the
+        // atomic insert — it does NOT go through queue.enqueue, so nothing kicks the drain loop.
+        // Without this, captures sit "Queued" whenever the loop has already drained and exited, and
+        // the user has to hit Resume to get them processed. Kick it here (no-op if paused / already
+        // running). Exact duplicates queue nothing, so skip them.
+        if !atomic.isDuplicate {
+            await queue.kick()
+        }
+
         // 8. Return result
         return IngestResult(
             captureID: atomic.captureID,

@@ -107,6 +107,39 @@ final class MockLLMInferenceTests: XCTestCase {
         XCTAssertEqual(updated.company, "Acme")
     }
 
+    /// TASK-491 regression: a capture must kick the drain loop on its own. Previously the extraction
+    /// request was inserted directly by the atomic ingest without kicking the queue, so a capture
+    /// arriving while the loop was idle sat "Queued" until the user manually hit Resume.
+    func testCapture_kicksQueue_andProcessesWithoutManualResume() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        let provider = mockProvider()
+        let queue = QueueActor(
+            store: store,
+            isPaused: { false },
+            onSetPaused: { _ in },
+            readExtractionSettings: { self.settings() },
+            providerFactory: { provider }
+        )
+        let jobService = JobService(store: store, queue: queue)
+
+        let events = await queue.subscribe()
+        // Ingest a capture — NOT queue.enqueue / resume. Nothing else kicks the queue.
+        _ = try await jobService.ingestCapture(CapturePayload(
+            url: "https://example.com/job",
+            pageTitle: "Senior iOS Engineer - Acme",
+            selectedText: "We are hiring an iOS engineer to build delightful apps."))
+
+        for await event in events {
+            if case .processingComplete = event { break }
+        }
+
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        let job = try XCTUnwrap(jobs.first)
+        XCTAssertEqual(job.extractionStatus, .succeeded, "the capture must process on its own (kick)")
+        XCTAssertEqual(job.title, "Senior iOS Engineer")
+    }
+
     func testModelsEndpoint_servesMockModel() async throws {
         let url = URL(string: "\(server.baseURL)/v1/models")!
         let (data, response) = try await URLSession.shared.data(from: url)

@@ -217,6 +217,14 @@ public actor QueueActor {
         await startProcessing()
     }
 
+    /// Restart the drain loop WITHOUT enqueuing new work — for callers that inserted queued requests
+    /// directly into the store (e.g. atomic capture ingestion) and just need processing to (re)start
+    /// (TASK-491). Fire-and-forget + idempotent: `startProcessing` no-ops if already running and
+    /// respects the paused flag, so this never resumes a deliberately-paused queue.
+    public func kick() {
+        Task { await startProcessing() }
+    }
+
     /// Cancel a specific request by id.
     public func cancelRequest(id: String) async throws {
         try await store.update(

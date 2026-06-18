@@ -4,6 +4,7 @@ title: Restore an outstanding-count badge on the LLM Queue sidebar item
 status: Done
 assignee: []
 created_date: '2026-06-18 19:17'
+updated_date: '2026-06-18 19:17'
 labels:
   - ux
   - queue
@@ -21,9 +22,11 @@ Fix: added a @Query for non-terminal LLMRequests (finishedAt == nil = queued + r
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 LLM Queue sidebar row shows a badge with the count of outstanding (queued+running) requests
-- [ ] #2 The badge updates live as the queue processes and is hidden when zero
+- [x] #1 LLM Queue sidebar row shows a badge with the count of outstanding (queued+running) requests
+- [x] #2 The badge updates live as the queue processes and is hidden when zero
 <!-- AC:END -->
+
+
 
 ## Final Summary
 

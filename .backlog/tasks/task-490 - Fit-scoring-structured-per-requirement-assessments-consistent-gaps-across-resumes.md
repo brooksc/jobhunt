@@ -6,6 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-06-18 19:07'
+updated_date: '2026-06-18 19:07'
 labels:
   - llm
   - fit-scoring
@@ -28,13 +29,15 @@ Touches: StructuredOutputSchemas (fit schema), PromptBuilder (fit prompt), Extra
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Fit schema returns requirement_assessments: [{requirement, status(met/partial/missing), evidence}] instead of free-form met/not-met arrays
-- [ ] #2 The prompt instructs an exhaustive assessment of every extracted required + preferred qualification, so the same requirements are evaluated for every resume
-- [ ] #3 FitScoreProjection parses assessments and derives met/not-met (met vs partial+missing); legacy scores still read the old arrays
-- [ ] #4 The Fit UI shows each requirement with a met/partial/missing status and evidence
-- [ ] #5 The domain-gap penalty still works (not-met derived from 'missing' assessments)
+- [x] #1 Fit schema returns requirement_assessments: [{requirement, status(met/partial/missing), evidence}] instead of free-form met/not-met arrays
+- [x] #2 The prompt instructs an exhaustive assessment of every extracted required + preferred qualification, so the same requirements are evaluated for every resume
+- [x] #3 FitScoreProjection parses assessments and derives met/not-met (met vs partial+missing); legacy scores still read the old arrays
+- [x] #4 The Fit UI shows each requirement with a met/partial/missing status and evidence
+- [x] #5 The domain-gap penalty still works (not-met derived from 'missing' assessments)
 - [ ] #6 Live-verify with a real key that gaps are now consistent across resumes for the same job
 <!-- AC:END -->
+
+
 
 ## Final Summary
 

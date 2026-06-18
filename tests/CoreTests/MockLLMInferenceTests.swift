@@ -1,3 +1,4 @@
+import SwiftData
 import XCTest
 @testable import JobhuntCore
 
@@ -67,6 +68,43 @@ final class MockLLMInferenceTests: XCTestCase {
         XCTAssertGreaterThan(output.score.overall, 0, "fit should parse to a real score")
         // All five required dimensions came back and validated.
         XCTAssertEqual(output.score.scoreWeights.count, 5)
+    }
+
+    /// The full app processing pipeline: QueueActor drains a queued extraction request, calls the
+    /// real provider against the mock server, and writes the parsed result back to the Job in the
+    /// store. Deterministic (waits for processingComplete), no UI/VM needed.
+    func testQueuePipeline_extractsJobViaMockServer() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        let provider = mockProvider()
+        let queue = QueueActor(
+            store: store,
+            isPaused: { false },
+            onSetPaused: { _ in },
+            readExtractionSettings: { self.settings() },
+            providerFactory: { provider }
+        )
+
+        let capture = Capture(
+            url: "https://example.com/job", pageTitle: "Senior iOS Engineer - Acme",
+            selectedText: "We are hiring an iOS engineer to build delightful apps.", rawHash: "mock-pipeline")
+        let job = Job(jobNumber: 1, title: "Original Title")
+        job.capture = capture
+        try await store.insert(job)
+        let jobID = job.id
+
+        let events = await queue.subscribe()
+        try await queue.enqueue(jobIDs: [jobID], mode: .extract)
+        for await event in events {
+            if case .processingComplete = event { break }
+        }
+
+        let fetched = try await store.fetch(
+            FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
+        let updated = try XCTUnwrap(fetched.first)
+        XCTAssertEqual(updated.extractionStatus, .succeeded)
+        XCTAssertEqual(updated.title, "Senior iOS Engineer")
+        XCTAssertEqual(updated.company, "Acme")
     }
 
     func testModelsEndpoint_servesMockModel() async throws {

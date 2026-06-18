@@ -111,7 +111,8 @@ struct SitesView: View {
                 }
             }
         }
-        .listStyle(.sidebar)
+        // Match the Jobs list (inset/plain) rather than the gray source-list background.
+        .listStyle(.inset)
         .navigationTitle("Sites")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

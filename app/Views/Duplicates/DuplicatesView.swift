@@ -106,7 +106,8 @@ struct DuplicatesView: View {
                         }
                     }
                 }
-                .listStyle(.sidebar)
+                // Match the Jobs list (inset/plain) rather than the gray source-list background.
+                .listStyle(.inset)
             }
         }
     }

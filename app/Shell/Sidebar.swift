@@ -18,6 +18,8 @@ struct Sidebar: View {
     /// Non-terminal LLM requests (queued or running) — drives the live "outstanding" badge on the
     /// LLM Queue row, updating as the queue drains (TASK-491).
     @Query(filter: #Predicate<LLMRequest> { $0.finishedAt == nil }) private var outstandingLLMRequests: [LLMRequest]
+    /// How many of those are actively running — drives the activity spinner (TASK-496).
+    private var llmRunningCount: Int { outstandingLLMRequests.count(where: { $0.status == .running }) }
     @Query private var allJobs: [Job]
     @Query private var allDecisions: [DuplicateDecision]
     @Query(sort: \SavedSearch.sortOrder) private var savedSearches: [SavedSearch]
@@ -98,9 +100,17 @@ struct Sidebar: View {
 
             Section("Tools") {
                 sidebarRow(.llmQueue, id: "sidebar.llmQueue",
-                           label: Label("LLM Queue", systemImage: "cpu"))
+                           label: HStack(spacing: 6) {
+                               Label("LLM Queue", systemImage: "cpu")
+                               // Activity spinner while the queue is actively processing — makes
+                               // "it's working" obvious even when the outstanding count is small or
+                               // briefly between the extract → fit phases (TASK-496).
+                               if llmRunningCount > 0 {
+                                   ProgressView().controlSize(.small)
+                               }
+                           })
                     .badge(outstandingLLMRequests.isEmpty ? 0 : outstandingLLMRequests.count)
-                    .help("LLM processing queue status")
+                    .help("LLM processing queue status (badge = queued + running; spinner = processing)")
 
                 sidebarRow(.dataQuality, id: "sidebar.dataQuality",
                            label: Label("Data Quality", systemImage: "checkmark.shield"))

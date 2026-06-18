@@ -1469,6 +1469,34 @@ final class FitScoringStateTests: XCTestCase {
         XCTAssertEqual(scores.first?.fitStatus, .succeeded)
     }
 
+    // TASK-495: re-scoring a resume must not let its stale prior score keep driving the job's fit
+    // mirror — the cause of "overall fit (97) > best resume (92)" drift.
+    func testMarkFitScoreRunning_clearsStaleScore_andRecomputesMirror() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let job = Job(id: "job-mirror", jobNumber: 1)
+        let r1 = Resume(name: "High", text: "x", charCount: 1, active: true, sortOrder: 0)
+        let r2 = Resume(name: "Low", text: "y", charCount: 1, active: true, sortOrder: 1)
+        try await store.insert(job)
+        try await store.insert(r1)
+        try await store.insert(r2)
+
+        try await store.saveFitScore(jobID: "job-mirror", resumeID: r1.id, overall: 97, fitJSON: nil, model: "m", scoredAt: Date())
+        try await store.saveFitScore(jobID: "job-mirror", resumeID: r2.id, overall: 80, fitJSON: nil, model: "m", scoredAt: Date())
+        var jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-mirror" }))
+        XCTAssertEqual(try XCTUnwrap(jobs.first).fitScore, 97, "mirror starts at the best (97)")
+
+        // Begin re-scoring the high resume: its old 97 must drop out of the mirror immediately.
+        try await store.markFitScoreRunning(jobID: "job-mirror", resumeID: r1.id)
+        jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-mirror" }))
+        XCTAssertEqual(try XCTUnwrap(jobs.first).fitScore, 80, "while re-scoring, the mirror reflects the best *settled* score (80), not the stale 97")
+
+        // New score lands lower than the old one — the mirror must follow it, never stay at 97.
+        try await store.saveFitScore(jobID: "job-mirror", resumeID: r1.id, overall: 92, fitJSON: nil, model: "m", scoredAt: Date())
+        jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-mirror" }))
+        XCTAssertEqual(try XCTUnwrap(jobs.first).fitScore, 92, "mirror equals the new best across resumes (92), not the stale 97")
+    }
+
     func testRecomputeAllFitScores_recomputesFromStoredJSONWithoutLLM() async throws {
         // Electron parity (rescore.js): recompute the overall score from stored dimensions using
         // current weights, no LLM. Dimensions 80/50/70/90/60 → 76 with the standard weights.

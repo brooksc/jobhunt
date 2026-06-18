@@ -408,7 +408,13 @@ public actor BackgroundStore {
         guard let job = jobs.first else { return }
         let record = try fitScoreRecord(job: job, resumeID: resumeID)
         record.fitStatus = .running
+        // Clear the prior score: a resume that's being re-scored must not keep driving the job's
+        // denormalized fit mirror with its now-stale value. Otherwise the headline ("overall fit")
+        // can sit above the best *current* resume score until the new score lands — the drift the
+        // user sees as e.g. 97 overall vs. a 92 best match. Recompute the mirror from what's left.
+        record.fitScore = nil
         record.updatedAt = Date()
+        recomputeJobFitSummary(job)
         try modelContext.save()
     }
 

@@ -4,6 +4,7 @@ title: Restore last-viewed sidebar selection on relaunch
 status: Done
 assignee: []
 created_date: '2026-06-18 03:45'
+updated_date: '2026-06-18 03:45'
 labels:
   - ux
   - navigation
@@ -21,10 +22,12 @@ Implemented: persist the current sidebar selection (section + job-status filter 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Relaunching opens on the last-viewed sidebar selection (section + job-status smart folder, e.g. Pursuing)
-- [ ] #2 A saved-search selection that no longer exists falls back to the default view (no broken/empty selection)
-- [ ] #3 First-ever launch (nothing persisted) shows the default view
+- [x] #1 Relaunching opens on the last-viewed sidebar selection (section + job-status smart folder, e.g. Pursuing)
+- [x] #2 A saved-search selection that no longer exists falls back to the default view (no broken/empty selection)
+- [x] #3 First-ever launch (nothing persisted) shows the default view
 <!-- AC:END -->
+
+
 
 ## Final Summary
 

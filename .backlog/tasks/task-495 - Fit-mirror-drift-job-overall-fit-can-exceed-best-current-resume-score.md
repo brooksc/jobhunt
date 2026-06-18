@@ -4,6 +4,7 @@ title: 'Fit-mirror drift: job overall fit can exceed best current resume score'
 status: Done
 assignee: []
 created_date: '2026-06-18 20:42'
+updated_date: '2026-06-18 20:42'
 labels:
   - bug
   - fit-scoring
@@ -26,10 +27,12 @@ Files: core/Services/BackgroundStore.swift.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 When a resume is re-scored, its prior score no longer drives the job mirror while in flight
-- [ ] #2 After a re-score, the job overall fit equals the best current resume score (no stale higher value)
-- [ ] #3 Regression test covers the clear-on-running + recompute behavior
+- [x] #1 When a resume is re-scored, its prior score no longer drives the job mirror while in flight
+- [x] #2 After a re-score, the job overall fit equals the best current resume score (no stale higher value)
+- [x] #3 Regression test covers the clear-on-running + recompute behavior
 <!-- AC:END -->
+
+
 
 ## Final Summary
 

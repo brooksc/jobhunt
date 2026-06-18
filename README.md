@@ -10,6 +10,8 @@ Local-first job tracking. A Chrome extension captures job postings from any site
 
 Jobhunt is a native macOS app for job hunters. Capture postings from any job board via the Chrome extension, let the AI extract structured fields and score your resume fit, and track your pipeline from application to offer — entirely offline.
 
+See **[docs/workflow.md](docs/workflow.md)** for the end-to-end normal workflow (capture → dedup → automatic AI processing → review → resolve).
+
 **Dual distribution:**
 - **DMG** — direct download from GitHub Releases (includes MCP server integration)
 - **MAS** — Mac App Store (sandboxed; MCP not available)

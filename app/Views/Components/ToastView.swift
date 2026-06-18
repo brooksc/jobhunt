@@ -4,6 +4,9 @@ struct ToastMessage: Identifiable {
     let id = UUID()
     let message: String
     let isError: Bool
+    /// Optional inline action (e.g. "Undo"). When set, a button renders in the toast.
+    var actionLabel: String?
+    var action: (() -> Void)?
 }
 
 struct ErrorRecord: Identifiable {
@@ -18,16 +21,22 @@ final class ToastStore {
     /// Last 10 error toasts — survives dismissal for the Debug tab.
     private(set) var recentErrors: [ErrorRecord] = []
 
-    func show(_ message: String, isError: Bool = false) {
-        let toast = ToastMessage(message: message, isError: isError)
+    func show(
+        _ message: String,
+        isError: Bool = false,
+        actionLabel: String? = nil,
+        action: (() -> Void)? = nil
+    ) {
+        let toast = ToastMessage(message: message, isError: isError, actionLabel: actionLabel, action: action)
         messages.append(toast)
         if isError {
             recentErrors.append(ErrorRecord(message: message, timestamp: Date()))
             if recentErrors.count > 10 { recentErrors.removeFirst() }
         }
-        // Auto-dismiss after 3 seconds
+        // Give actionable toasts (e.g. Undo) longer to be clicked.
+        let seconds = action == nil ? 3 : 6
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: .seconds(seconds))
             messages.removeAll { $0.id == toast.id }
         }
     }
@@ -48,6 +57,15 @@ struct ToastView: View {
             Text(toast.message)
                 .font(.callout)
             Spacer()
+            if let label = toast.actionLabel, let action = toast.action {
+                Button(label) {
+                    action()
+                    onDismiss()
+                }
+                .font(.callout.weight(.semibold))
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.accentColor)
+            }
             Button {
                 onDismiss()
             } label: {

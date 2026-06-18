@@ -204,12 +204,24 @@ struct JobsView: View {
                         let ids = Array(selectedJobIDs)
                         let svc = appServices.jobService
                         let toast = appServices.toastStore
+                        let priors: [(String, JobStatus)] = ids.compactMap { id in
+                            allJobs.first(where: { $0.id == id }).map { (id, $0.status) }
+                        }
                         Task {
+                            var failed = 0
                             for id in ids {
-                                do { try await svc.archive(jobID: id) }
-                                catch { toast.show("Archive failed: \(error.localizedDescription)", isError: true) }
+                                do { try await svc.archive(jobID: id) } catch { failed += 1 }
                             }
-                            await MainActor.run { selectedJobIDs = [] }
+                            await MainActor.run {
+                                selectedJobIDs = []
+                                if failed > 0 {
+                                    toast.show("Archive failed for \(failed) job(s)", isError: true)
+                                } else {
+                                    toast.show("Archived \(ids.count) job\(ids.count == 1 ? "" : "s")", actionLabel: "Undo") {
+                                        Task { for (id, status) in priors { try? await svc.setStatus(status, for: id) } }
+                                    }
+                                }
+                            }
                         }
                     } label: {
                         Label("Archive Selected", systemImage: "archivebox")
@@ -588,6 +600,9 @@ struct JobsView: View {
             }
         }
         Button {
+            let priors: [(String, JobStatus)] = targets.compactMap { id in
+                allJobs.first(where: { $0.id == id }).map { (id, $0.status) }
+            }
             Task {
                 var failed = 0
                 for id in targets {
@@ -595,6 +610,10 @@ struct JobsView: View {
                 }
                 if failed > 0 {
                     toast.show("Couldn't archive \(failed) of \(targets.count) job(s)", isError: true)
+                } else {
+                    toast.show("Archived \(targets.count) job\(targets.count == 1 ? "" : "s")", actionLabel: "Undo") {
+                        Task { for (id, status) in priors { try? await svc.setStatus(status, for: id) } }
+                    }
                 }
             }
         }

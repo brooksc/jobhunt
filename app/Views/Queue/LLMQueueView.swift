@@ -130,7 +130,8 @@ struct LLMQueueView: View {
                     title: "Completed",
                     systemImage: "checkmark.circle",
                     requests: completedPaneRequests,
-                    emptyText: "No completed requests yet"
+                    emptyText: "No completed requests yet",
+                    clearAction: { Task { await clearCompleted() } }
                 )
             }
         }
@@ -158,7 +159,8 @@ struct LLMQueueView: View {
         title: String,
         systemImage: String,
         requests: [LLMRequest],
-        emptyText: String
+        emptyText: String,
+        clearAction: (() -> Void)? = nil
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
@@ -168,6 +170,17 @@ struct LLMQueueView: View {
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
                 Spacer()
+                // Discoverable in-pane "Clear" (Completed header). Mirrors the toolbar action; clears
+                // every finished row (Done / Failed / Exhausted / Cancelled), not just the filtered set.
+                if let clearAction {
+                    Button(action: clearAction) {
+                        Label("Clear", systemImage: "trash.slash")
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .disabled(!hasCompletedRequests)
+                    .help("Remove all finished requests from the list")
+                }
             }
             .font(.caption)
             .padding(.horizontal, 12)

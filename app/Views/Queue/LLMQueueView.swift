@@ -33,6 +33,8 @@ struct LLMQueueView: View {
     @Query(sort: \LLMRequest.createdAt, order: .reverse)
     private var allRequests: [LLMRequest]
 
+    @Environment(Router.self) private var router
+
     // MARK: Filter state
 
     @State private var typeFilter: TypeFilter = .all
@@ -344,11 +346,24 @@ struct LLMQueueView: View {
 
     // MARK: - Context menu for table selection
 
+    /// The job a single selected request belongs to (nil for a multi-selection or an orphaned request).
+    private func jobID(forSelection ids: Set<String>) -> String? {
+        guard ids.count == 1, let id = ids.first,
+              let request = allRequests.first(where: { $0.id == id }) else { return nil }
+        return request.job?.id
+    }
+
     @ViewBuilder
     private func selectionContextMenu(for ids: Set<String>) -> some View {
         if ids.isEmpty {
             EmptyView()
         } else {
+            if let jobID = jobID(forSelection: ids) {
+                Button("Open Job") {
+                    router.selectJob(id: jobID)
+                }
+                Divider()
+            }
             Button("Process Selected") {
                 Task { await processSelected(Array(ids)) }
             }

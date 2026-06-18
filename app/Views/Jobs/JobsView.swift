@@ -280,6 +280,23 @@ struct JobsView: View {
                 .accessibilityIdentifier("job.row.\(job.id)")
         }
         .listStyle(.inset)
+        .overlay {
+            if filteredJobs.isEmpty {
+                if allJobs.isEmpty {
+                    ContentUnavailableView(
+                        "No jobs yet",
+                        systemImage: "tray",
+                        description: Text("Capture jobs with the Chrome extension, or press ⌘N to add one manually.")
+                    )
+                } else {
+                    ContentUnavailableView(
+                        "No matching jobs",
+                        systemImage: "line.3.horizontal.decrease.circle",
+                        description: Text("No jobs match the current view, filters, or search.")
+                    )
+                }
+            }
+        }
     }
 
     // MARK: - Filter popover

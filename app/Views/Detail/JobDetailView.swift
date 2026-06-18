@@ -152,6 +152,22 @@ private struct DetailHeader: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
+
+                Spacer(minLength: 8)
+
+                // Overdue follow-up surfaced on the header (otherwise only visible in Needs Action /
+                // the Timeline tab) — click to jump to the timeline where it lives.
+                if overdueActionCount > 0 {
+                    Button {
+                        selectedTab = .timeline
+                    } label: {
+                        Label("\(overdueActionCount) overdue", systemImage: "clock.badge.exclamationmark")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Overdue follow-up — open the Timeline")
+                }
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 4)
@@ -265,6 +281,11 @@ private struct DetailHeader: View {
     }
 
     @Environment(Router.self) private var router
+
+    private var overdueActionCount: Int {
+        let now = Date()
+        return job.actions.count(where: { $0.completedAt == nil && $0.dueDate < now })
+    }
 
     private var captureDomain: String? {
         guard let urlStr = JobURLPolicy.displayURL(job: job),

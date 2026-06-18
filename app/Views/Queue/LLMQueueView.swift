@@ -272,14 +272,17 @@ struct LLMQueueView: View {
                 Button("Process Selected") {
                     Task { await processSelected(Array(selection)) }
                 }
+                .help("Re-queue the selected requests and process them now")
 
                 Button("Cancel Selected", role: .destructive) {
                     Task { await cancelSelected(Array(selection)) }
                 }
+                .help("Stop the selected requests")
 
                 Button("Reset Selected") {
                     Task { await resetSelected(Array(selection)) }
                 }
+                .help("Return the selected requests to the queue to run again")
 
                 Divider()
             }
@@ -288,8 +291,9 @@ struct LLMQueueView: View {
             Button {
                 Task { await processAll() }
             } label: {
-                Label("Resume Queue", systemImage: "sparkles")
+                Label("Resume Queue", systemImage: "play.fill")
             }
+            .help("Resume the queue and start processing queued requests")
 
             // Clear all finished rows (Done / Failed / Exhausted / Cancelled) in one click.
             Button {
@@ -298,6 +302,7 @@ struct LLMQueueView: View {
                 Label("Clear Completed", systemImage: "trash.slash")
             }
             .disabled(!hasCompletedRequests)
+            .help("Remove all finished requests (Done / Failed / Cancelled) from the list")
 
             // Delete selected rows, or cancel all if nothing selected
             if selection.isEmpty {
@@ -306,12 +311,14 @@ struct LLMQueueView: View {
                 } label: {
                     Label("Cancel All", systemImage: "trash")
                 }
+                .help("Cancel every queued and running request")
             } else {
                 Button(role: .destructive) {
                     Task { await deleteSelected(Array(selection)) }
                 } label: {
                     Label("Delete Selected", systemImage: "trash")
                 }
+                .help("Delete the selected requests")
             }
         }
 

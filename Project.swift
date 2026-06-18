@@ -249,7 +249,12 @@ let appUITestsTarget = Target.target(
     product: .uiTests,
     bundleId: "\(bundleId).AppUITests",
     deploymentTargets: deploymentTarget,
-    sources: ["tests/AppUITests/**/*.swift"],
+    sources: [
+        "tests/AppUITests/**/*.swift",
+        // Mock OpenAI server hosted by the test runner so the app (pointed at it via --llm-mock-port)
+        // exercises the AI path with no key.
+        "tests/Support/MockLLM/**/*.swift",
+    ],
     dependencies: [.target(name: "Jobhunt")],
     settings: .settings(
         base: sharedBase,

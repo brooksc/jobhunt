@@ -590,6 +590,7 @@ struct JobsView: View {
             }
         }
             label: { Label("Re-run AI on \(label)", systemImage: "arrow.clockwise") }
+            .accessibilityIdentifier("jobContextMenu.reextract")
         Divider()
         Button(role: .destructive) { jobIDsToDelete = targets }
             label: { Label("Delete \(label)", systemImage: "trash") }

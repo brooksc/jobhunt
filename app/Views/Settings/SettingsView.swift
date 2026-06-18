@@ -355,9 +355,11 @@ struct LLMTab: View {
         case let .success(msg):
             Label(msg, systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green).font(.callout)
+                .accessibilityIdentifier("llm.connection.success")
         case let .failure(msg):
             Label(msg, systemImage: "xmark.circle.fill")
                 .foregroundStyle(.red).font(.callout).lineLimit(2)
+                .accessibilityIdentifier("llm.connection.failure")
         }
     }
 

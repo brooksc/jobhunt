@@ -42,7 +42,7 @@ extension XCTestCase {
 
     // MARK: - Launch
 
-    func launchApp(seedData: Bool = true) -> XCUIApplication {
+    func launchApp(seedData: Bool = true, llmMockPort: Int? = nil) -> XCUIApplication {
         // Terminate any lingering macOS crash reporter dialogs.
         let crashReporter = XCUIApplication(bundleIdentifier: "com.apple.DiagnosticsReporter")
         if crashReporter.state != .notRunning {
@@ -74,6 +74,7 @@ extension XCTestCase {
             "--ui-test-store",
         ]
         if seedData { app.launchArguments.append("--seed-demo-data") }
+        if let llmMockPort { app.launchArguments += ["--llm-mock-port", "\(llmMockPort)"] }
         app.launch()
         app.activate()
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 1.0))

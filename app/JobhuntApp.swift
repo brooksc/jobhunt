@@ -62,6 +62,15 @@ struct JobhuntApp: App {
                 pauseQueue: plan.startsQueuePaused
             )
             appServices = services
+            // TASK-486: in UI tests, point the LLM at a localhost mock server (started by the test
+            // runner) so the AI path runs end-to-end with no API key. Gated to uiTest mode so it can
+            // never reconfigure a real user's provider.
+            if plan.mode == .uiTest, let mockPort = Self.llmMockPort() {
+                services.settings.llmProvider = "lmstudio"   // OpenAI-compatible, no key/consent
+                services.settings.llmBaseURL = "http://127.0.0.1:\(mockPort)"
+                services.settings.llmModel = "mock-model"
+                services.settings.llmQueuePaused = false      // let the queue process against the mock
+            }
             let mgr = OnboardingManager(settings: services.settings)
             if plan.mode == .uiTest { mgr.isPresented = false }  // Never block tests with onboarding
             onboardingManager = mgr
@@ -117,6 +126,14 @@ struct JobhuntApp: App {
                 message: message
             )
         }
+    }
+
+    /// Parse `--llm-mock-port <port>` (TASK-486), used only in UI tests to point the app at a
+    /// localhost mock LLM server. Returns nil when absent/invalid.
+    private static func llmMockPort() -> Int? {
+        let args = CommandLine.arguments
+        guard let index = args.firstIndex(of: "--llm-mock-port"), index + 1 < args.count else { return nil }
+        return Int(args[index + 1])
     }
 
     /// Opens the ModelContainer for the given launch mode. Store-selection policy lives here, one

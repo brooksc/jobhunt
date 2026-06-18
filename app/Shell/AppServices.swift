@@ -43,7 +43,15 @@ final class AppServices: @unchecked Sendable {
             readExtractionSettings: { await MainActor.run { settingsStore.extractionSettings() } },
             // Snapshot SettingsStore on the main actor (it's not Sendable); the built provider is
             // Sendable so it crosses back to queue isolation safely (TASK-381).
-            providerFactory: { await MainActor.run { LLMProviderFactory.makeProvider(settings: settingsStore) } }
+            providerFactory: { await MainActor.run { LLMProviderFactory.makeProvider(settings: settingsStore) } },
+            // TASK-483: a key-requiring provider with an empty key is "not configured".
+            isProviderConfigured: {
+                await MainActor.run {
+                    let provider = settingsStore.llmProvider
+                    return !LLMProviderFactory.requiresAPIKey(provider: provider)
+                        || !settingsStore.apiKey(forProvider: provider).isEmpty
+                }
+            }
         )
         let js = JobService(store: store, queue: queue)
         let ss = SiteService(store: store)

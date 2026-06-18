@@ -14,9 +14,15 @@ public final class PlatformIntegration: NSObject, ObservableObject {
     public private(set) var isStarted = false
     private let focusNotificationName = Notification.Name("JobhuntFocusRequest")
 
-    /// Track whether we're currently in a batch so we can suppress individual
-    /// notifications and summarise at .processingComplete instead.
-    private var processingBatchCount = 0
+    /// Jobs that became ready during the current drain, keyed by job number (TASK-482). `jobReady`
+    /// fires twice per job (after extraction with a nil fit, then after fit with the score), so we
+    /// accumulate and de-dup here, then decide individual-vs-summary at `.processingComplete`.
+    private struct PendingReadyJob { var title: String?; var fitScore: Int? }
+    private var pendingReady: [Int: PendingReadyJob] = [:]
+    /// A single capture (or a handful) notifies per job; a larger drain summarizes instead of firing
+    /// one banner per job. 3 keeps interactive captures individual while taming bulk re-extractions.
+    private let maxIndividualReadyNotifications = 3
+    private let strongMatchThreshold = 75
 
     public init(router: Router, modelContainer: ModelContainer) {
         self.router = router
@@ -109,7 +115,7 @@ public final class PlatformIntegration: NSObject, ObservableObject {
     private func handleEvent(_ event: QueueEvent) async {
         switch event {
         case let .jobReady(jobNumber, title, fitScore):
-            handleJobReady(jobNumber: jobNumber, title: title, fitScore: fitScore)
+            accumulateReady(jobNumber: jobNumber, title: title, fitScore: fitScore)
 
         case let .jobUnavailable(jobNumber):
             let body = "Job #\(jobNumber ?? 0) is no longer available"
@@ -120,26 +126,10 @@ public final class PlatformIntegration: NSObject, ObservableObject {
                 userInfo: jobNumber.map { ["jobNumber": $0] } ?? [:]
             )
 
-        case let .processingComplete(processed, failed):
-            processingBatchCount = 0
-            if failed > 0 {
-                postNotification(
-                    id: "processing-complete",
-                    title: "AI Processing Done",
-                    body: "\(processed) processed, \(failed) failed",
-                    userInfo: [:]
-                )
-            } else if processed > 1 {
-                postNotification(
-                    id: "processing-complete",
-                    title: "AI Processing Done",
-                    body: "\(processed) jobs processed",
-                    userInfo: [:]
-                )
-            }
+        case let .processingComplete(_, failed):
+            flushReady(failed: failed)
 
         case .autoPaused:
-            processingBatchCount = 0
             postNotification(
                 id: "queue-auto-paused",
                 title: "AI Queue Paused",
@@ -150,6 +140,16 @@ public final class PlatformIntegration: NSObject, ObservableObject {
             NSApp.requestUserAttention(.criticalRequest)
             router.navigateToSection(.llmQueue)
 
+        case .providerNotConfigured:
+            // TASK-483: work is queued but no usable AI provider is set up. Tell the user up front and
+            // deep-link to AI Provider settings, rather than waiting for the failure-streak auto-pause.
+            postNotification(
+                id: "provider-not-configured",
+                title: "Set up an AI provider",
+                body: "Job captured — add an AI provider in Settings to enable extraction & fit scoring.",
+                userInfo: ["navigate": "settings"]
+            )
+
         case let .queueError(message):
             // Degraded queue state (e.g. a store read/write failure). The LLM Queue view surfaces
             // this to the user via its error banner; log it here for diagnostics.
@@ -157,21 +157,80 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         }
     }
 
-    private func handleJobReady(jobNumber: Int?, title: String?, fitScore: Int?) {
-        let isStrongMatch = (fitScore ?? 0) >= 75
-        if isStrongMatch, let score = fitScore {
-            let jobTitle = title ?? "Job"
-            let body = "\(jobTitle) — Fit \(score)%"
-            postNotification(
-                id: "job-ready-\(jobNumber ?? 0)",
-                title: "Strong Match!",
-                body: body,
-                userInfo: jobNumber.map { ["jobNumber": $0] } ?? [:]
-            )
-        } else {
-            // Batch mode: suppress individual notification; summarise at processingComplete.
-            processingBatchCount += 1
+    /// Record a ready job for the current drain, de-duping the two `jobReady` emits per job
+    /// (extraction → nil fit, then fit → score). A non-nil score always wins (TASK-482).
+    private func accumulateReady(jobNumber: Int?, title: String?, fitScore: Int?) {
+        guard let number = jobNumber else {
+            // No number to key/de-dup on — post a generic ready notification immediately.
+            postReadyNotification(jobNumber: nil, title: title, fitScore: fitScore)
+            return
         }
+        var entry = pendingReady[number] ?? PendingReadyJob(title: title, fitScore: nil)
+        if let title { entry.title = title }
+        if let fitScore { entry.fitScore = fitScore }
+        pendingReady[number] = entry
+    }
+
+    /// At the end of a drain, notify about the ready jobs: one "ready to review" per job for a small
+    /// batch (strong matches highlighted), or a single summary for a bulk run (TASK-482).
+    private func flushReady(failed: Int) {
+        let ready = pendingReady
+        pendingReady = [:]
+
+        if ready.isEmpty {
+            if failed > 0 {
+                postNotification(
+                    id: "processing-complete",
+                    title: "AI Processing",
+                    body: "\(failed) job\(failed == 1 ? "" : "s") failed",
+                    userInfo: ["navigate": "llmQueue"]
+                )
+            }
+            return
+        }
+
+        if ready.count <= maxIndividualReadyNotifications {
+            for (number, job) in ready {
+                postReadyNotification(jobNumber: number, title: job.title, fitScore: job.fitScore)
+            }
+            if failed > 0 {
+                postNotification(
+                    id: "processing-failed",
+                    title: "AI Processing",
+                    body: "\(failed) job\(failed == 1 ? "" : "s") failed",
+                    userInfo: ["navigate": "llmQueue"]
+                )
+            }
+        } else {
+            let strong = ready.values.filter { ($0.fitScore ?? 0) >= strongMatchThreshold }.count
+            var body = "\(ready.count) jobs ready to review"
+            if strong > 0 { body += " · \(strong) strong match\(strong == 1 ? "" : "es")" }
+            if failed > 0 { body += " · \(failed) failed" }
+            postNotification(
+                id: "processing-complete",
+                title: "AI Processing Done",
+                body: body,
+                userInfo: [:]
+            )
+        }
+    }
+
+    /// One "ready to review" notification for a single job; strong matches (≥75%) are titled
+    /// "Strong Match!". Clicking deep-links to the job via its number (TASK-482).
+    private func postReadyNotification(jobNumber: Int?, title: String?, fitScore: Int?) {
+        let jobTitle = title ?? "Job"
+        let isStrong = (fitScore ?? 0) >= strongMatchThreshold
+        let body: String = if let fitScore {
+            "\(jobTitle) — Fit \(fitScore)%"
+        } else {
+            jobTitle
+        }
+        postNotification(
+            id: "job-ready-\(jobNumber ?? 0)",
+            title: isStrong ? "Strong Match!" : "Ready to Review",
+            body: body,
+            userInfo: jobNumber.map { ["jobNumber": $0] } ?? [:]
+        )
     }
 
     private func postNotification(
@@ -245,6 +304,8 @@ extension PlatformIntegration: UNUserNotificationCenterDelegate {
             NSApp.activate(ignoringOtherApps: true)
             if let navigate = userInfo["navigate"] as? String, navigate == "llmQueue" {
                 router.navigateToSection(.llmQueue)
+            } else if let navigate = userInfo["navigate"] as? String, navigate == "settings" {
+                router.navigateToSection(.settings)
             } else if let jobNumber = userInfo["jobNumber"] as? Int {
                 navigateToJob(number: jobNumber)
             }

@@ -222,6 +222,87 @@ final class ExtractionEngineTests: XCTestCase {
         XCTAssertFalse(queued.isEmpty, "auto-pause should leave remaining batch work queued, not drain it")
     }
 
+    // MARK: - Provider-not-configured notice (TASK-483)
+
+    /// Queued work with no usable provider must emit `.providerNotConfigured` and leave the work
+    /// queued — NOT fail it into an auto-pause. The provider must never be invoked.
+    func testProviderNotConfigured_emitsNoticeAndLeavesWorkQueued() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        // Would fail if ever called — proves the queue bailed before touching the provider.
+        let provider = AlwaysFailProvider(error: LLMProviderError.unavailable(reason: "should not run"))
+        var paused = false
+        let queue = QueueActor(
+            store: store,
+            isPaused: { paused },
+            onSetPaused: { paused = $0 },
+            readExtractionSettings: { makeExtractionSettings() },
+            providerFactory: { provider },
+            isProviderConfigured: { false }
+        )
+
+        let capture = Capture(url: "https://example.com/job", pageTitle: "Job",
+                              selectedText: "Description for the role.", rawHash: "not-configured")
+        let job = Job(jobNumber: 1, title: "Job 1")
+        job.capture = capture
+        try await store.insert(job)
+        // Insert the queued request directly (bypass enqueue's kick) for a deterministic single drain.
+        let req = LLMRequest(requestType: .extract, status: .queued)
+        req.job = job
+        try await store.insert(req)
+
+        let events = await queue.subscribe()
+        await queue.startProcessing()
+
+        var sawNotConfigured = false
+        for await event in events {
+            if case .providerNotConfigured = event { sawNotConfigured = true }
+            if case .processingComplete = event { break }
+        }
+
+        XCTAssertTrue(sawNotConfigured, "must notify that no provider is configured")
+        XCTAssertFalse(paused, "an unconfigured provider must not auto-pause the queue")
+        let reqs = try await store.fetch(FetchDescriptor<LLMRequest>())
+        XCTAssertEqual(reqs.first?.status, .queued, "work must stay queued for when a provider is set up")
+    }
+
+    /// The notice is debounced to one per unconfigured episode: a second drain while still
+    /// unconfigured must NOT re-emit it (AC#4 — no spam as more captures queue up).
+    func testProviderNotConfigured_isDebouncedAcrossDrains() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        let provider = AlwaysFailProvider(error: LLMProviderError.unavailable(reason: "should not run"))
+        let queue = QueueActor(
+            store: store,
+            isPaused: { false },
+            onSetPaused: { _ in },
+            readExtractionSettings: { makeExtractionSettings() },
+            providerFactory: { provider },
+            isProviderConfigured: { false }
+        )
+
+        let capture = Capture(url: "https://example.com/job", pageTitle: "Job",
+                              selectedText: "Description.", rawHash: "debounce")
+        let job = Job(jobNumber: 1, title: "Job 1")
+        job.capture = capture
+        try await store.insert(job)
+        let req = LLMRequest(requestType: .extract, status: .queued)
+        req.job = job
+        try await store.insert(req)
+
+        let events = await queue.subscribe()
+        await queue.startProcessing()   // pass 1 — should emit the notice
+        await queue.startProcessing()   // pass 2 — still unconfigured, must stay silent
+
+        var notConfiguredCount = 0
+        var completes = 0
+        for await event in events {
+            if case .providerNotConfigured = event { notConfiguredCount += 1 }
+            if case .processingComplete = event { completes += 1; if completes == 2 { break } }
+        }
+        XCTAssertEqual(notConfiguredCount, 1, "exactly one notice across two unconfigured drains")
+    }
+
     // MARK: - QueueActor cancellation during retry backoff (TASK-447)
 
     /// A user cancellation that lands while a failed request is sleeping in its retry backoff must

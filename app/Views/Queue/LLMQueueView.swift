@@ -508,7 +508,9 @@ struct LLMQueueView: View {
             isPaused = true
         case .processingComplete:
             break
-        case .jobReady, .jobUnavailable:
+        case .jobReady, .jobUnavailable, .providerNotConfigured:
+            // PlatformIntegration owns the user-facing notice for .providerNotConfigured (TASK-483);
+            // nothing extra to do in this view.
             break
         case let .queueError(message):
             // Keep the in-view banner (AC#2) AND record it in the shared error stream so Copy

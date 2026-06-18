@@ -13,6 +13,10 @@ public enum QueueEvent: Sendable {
     /// The queue could not read its work from the store (a degraded state — NOT an empty queue).
     /// Carries a user-facing message for diagnostics/surfacing.
     case queueError(String)
+    /// Work is queued but no usable AI provider is configured (a key-requiring provider with no key).
+    /// Emitted once per unconfigured episode so the user can be told to set one up, instead of letting
+    /// the requests fail repeatedly into an auto-pause (TASK-483). Pending work is left queued.
+    case providerNotConfigured
 }
 
 // MARK: - QueueActor
@@ -64,12 +68,19 @@ public actor QueueActor {
     private let onSetPaused: @Sendable (Bool) async -> Void
     /// Snapshot extraction-relevant settings. Implementations should dispatch to @MainActor.
     private let readExtractionSettings: @Sendable () async -> ExtractionSettings
+    /// Whether a usable AI provider is configured (TASK-483). Returns false when the selected provider
+    /// requires an API key but none is set; true otherwise (incl. local providers that need no key).
+    /// Defaults to always-configured so existing call sites (tests) are unaffected.
+    private let isProviderConfigured: @Sendable () async -> Bool
 
     // MARK: - State
 
     private var isRunning = false
     /// Consecutive failure count across the whole queue (reset on success).
     private var failureStreak = 0
+    /// Debounces the `.providerNotConfigured` event to one per unconfigured episode (TASK-483):
+    /// set when emitted, cleared once a drain pass sees a configured provider.
+    private var didEmitNotConfigured = false
     /// Active in-flight request count per provider id.
     private var activeCounts: [String: Int] = [:]
     /// Runtime concurrency that backs off on 429 and recovers on success (TASK-463). Re-seeded when
@@ -88,13 +99,15 @@ public actor QueueActor {
         isPaused: @escaping @Sendable () async -> Bool,
         onSetPaused: @escaping @Sendable (Bool) async -> Void,
         readExtractionSettings: @escaping @Sendable () async -> ExtractionSettings,
-        providerFactory: @escaping @Sendable () async -> any LLMProvider
+        providerFactory: @escaping @Sendable () async -> any LLMProvider,
+        isProviderConfigured: @escaping @Sendable () async -> Bool = { true }
     ) {
         self.store = store
         self.isPaused = isPaused
         self.onSetPaused = onSetPaused
         self.readExtractionSettings = readExtractionSettings
         self.providerFactory = providerFactory
+        self.isProviderConfigured = isProviderConfigured
     }
 
     // MARK: - Public API
@@ -291,6 +304,18 @@ public actor QueueActor {
                 return
             }
             guard !requests.isEmpty else { break }
+
+            // TASK-483: there's work but no usable provider (a key-requiring provider with no key).
+            // Don't burn the requests into failures + an auto-pause — emit a one-shot notice telling
+            // the user to set up a provider and leave the work queued for when they do.
+            if await !isProviderConfigured() {
+                if !didEmitNotConfigured {
+                    didEmitNotConfigured = true
+                    emit(.providerNotConfigured)
+                }
+                break
+            }
+            didEmitNotConfigured = false
 
             await withTaskGroup(of: ProcessOutcome.self) { group in
                 for req in requests {

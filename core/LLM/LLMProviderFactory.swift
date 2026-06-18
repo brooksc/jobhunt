@@ -51,6 +51,17 @@ public enum LLMProviderFactory {
         }
     }
 
+    /// Whether the named provider requires an API key to work (TASK-483). The hosted providers do;
+    /// local ones (LM Studio default) and `custom` (often a local/self-hosted endpoint) don't, so we
+    /// don't flag those as "unconfigured" just for lacking a key — their reachability is only knowable
+    /// by trying, and the existing auto-pause-on-failure covers an unreachable local server.
+    public static func requiresAPIKey(provider: String) -> Bool {
+        switch provider {
+        case "openai", "anthropic", "google", "openrouter": true
+        default: false
+        }
+    }
+
     /// Resolves the effective base URL for a given provider name.
     /// Mirrors resolveProviderBaseUrl() from server/extract.js.
     public static func resolveBaseURL(provider: String, customBaseURL: String) -> String {

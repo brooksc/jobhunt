@@ -79,7 +79,7 @@ final class PruneOrphanFitScoresTests: XCTestCase {
         let job = Job(jobNumber: 1, title: "SWE")
         try await store.insert(resume)
         try await store.insert(job)
-        try await store.insertFitBatch(jobs: [job], resume: resume)
+        try await store.insertFitBatch(jobIDs: [job.id], resumeID: resume.id)
 
         let nasty = "HTTP 500: server said \"no\"\n\ttab + \\backslash"
         try await store.markFitScoreFailed(jobID: job.id, resumeID: resume.id, errorMessage: nasty)

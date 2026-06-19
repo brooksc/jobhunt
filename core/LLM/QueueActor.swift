@@ -119,31 +119,10 @@ public actor QueueActor {
     /// Enqueue new LLM extraction requests for a set of job IDs.
     /// Fetches all needed Job objects in a single query and saves all LLMRequest rows at once.
     public func enqueue(jobIDs: [String], mode: LLMRequestType) async throws {
-        guard !jobIDs.isEmpty else { return }
-        let ids = jobIDs
-        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { ids.contains($0.id) }))
-        let jobMap = Dictionary(jobs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        // Skip jobs that already have a queued or running request for this mode.
-        // SwiftData predicates cannot compare enum cases; fetch non-terminal rows and filter in-memory.
-        let existing = try await store.fetch(FetchDescriptor<LLMRequest>(
-            predicate: #Predicate { $0.finishedAt == nil }
-        ))
-        let alreadyActive = Set(
-            existing
-                .filter { ($0.status == .queued || $0.status == .running) && $0.requestType == mode }
-                .compactMap { $0.job?.id }
-                .filter { ids.contains($0) }
-        )
-        let requests = jobIDs.compactMap { jobID -> LLMRequest? in
-            guard let job = jobMap[jobID], !alreadyActive.contains(jobID) else { return nil }
-            let req = LLMRequest(requestType: mode, status: .queued)
-            req.job = job
-            return req
-        }
-        guard !requests.isEmpty else { return }
-        try await store.insertBatch(requests)
-        // Kick the drain loop in case it's not yet running.
-        Task { await startProcessing() }
+        // TASK-526: the fetch + relationship link happens inside the store actor; we pass ids only.
+        let inserted = try await store.insertRequests(jobIDs: jobIDs, mode: mode)
+        // Kick the drain loop in case it's not yet running (only when something new was queued).
+        if inserted { Task { await startProcessing() } }
     }
 
     /// Enqueue fit-scoring requests for a set of job IDs against a specific resume.
@@ -151,17 +130,9 @@ public actor QueueActor {
     /// Batch is inserted atomically — a single save, so partial enqueue is impossible.
     public func enqueueFit(jobIDs: [String], resumeID: String) async throws {
         guard !jobIDs.isEmpty else { return }
-        let ids = jobIDs
-        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { ids.contains($0.id) }))
-        let resumes = try await store.fetch(FetchDescriptor<Resume>(predicate: #Predicate { $0.id == resumeID }))
-        // TASK-452: a missing resume is a real failure (e.g. the resume was deleted between the UI
-        // reading it and this call). Throw a typed error so the caller can surface it instead of the
-        // fit silently doing nothing. Nothing is inserted before this point, so no rows are created.
-        guard let resume = resumes.first else { throw FitEnqueueError.resumeNotFound(resumeID) }
-        let jobMap = Dictionary(jobs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let validJobs = jobIDs.compactMap { jobMap[$0] }
-        guard !validJobs.isEmpty else { return }
-        try await store.insertFitBatch(jobs: validJobs, resume: resume)
+        // TASK-526: the store actor fetches the resume/jobs and links them; a missing resume throws
+        // FitEnqueueError.resumeNotFound from inside insertFitBatch.
+        try await store.insertFitBatch(jobIDs: jobIDs, resumeID: resumeID)
         // Kick the drain loop in case it's not yet running.
         Task { await startProcessing() }
     }
@@ -239,7 +210,7 @@ public actor QueueActor {
             req.finishedAt = Date()
         }
         // TASK-527: a cancelled fit request must not leave its JobFitScore stuck .running/.pending.
-        try? await store.reconcileOrphanedFitScores()
+        _ = try? await store.reconcileOrphanedFitScores()
     }
 
     /// Cancel all queued and running requests.
@@ -250,20 +221,20 @@ public actor QueueActor {
             req.status = .cancelled
             req.finishedAt = Date()
         }
-        try? await store.reconcileOrphanedFitScores()
+        _ = try? await store.reconcileOrphanedFitScores()
     }
 
     /// Permanently delete specific requests by ID.
     public func deleteRequests(ids: [String]) async throws {
         let set = Set(ids)
         try await store.delete(LLMRequest.self, predicate: #Predicate { set.contains($0.id) })
-        try? await store.reconcileOrphanedFitScores()
+        _ = try? await store.reconcileOrphanedFitScores()
     }
 
     /// Permanently delete all requests (all statuses).
     public func deleteAll() async throws {
         try await store.deleteAll(LLMRequest.self)
-        try? await store.reconcileOrphanedFitScores()
+        _ = try? await store.reconcileOrphanedFitScores()
     }
 
     /// Permanently delete all finished (terminal) requests — succeeded/failed/exhausted/cancelled —

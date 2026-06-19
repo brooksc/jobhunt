@@ -454,8 +454,17 @@ public actor BackgroundStore {
 
     /// Atomically insert fit LLMRequests and mark corresponding JobFitScores as pending
     /// for a set of (job, resume) pairs. Single save — partial enqueue is impossible.
-    public func insertFitBatch(jobs: [Job], resume: Resume) throws {
-        for job in jobs {
+    public func insertFitBatch(jobIDs: [String], resumeID: String) throws {
+        let rid = resumeID
+        let resumes = try modelContext.fetch(FetchDescriptor<Resume>(predicate: #Predicate { $0.id == rid }))
+        // TASK-452: a missing resume is a real failure — throw so the caller surfaces it. Nothing is
+        // inserted before this point, so no partial rows are created.
+        guard let resume = resumes.first else { throw FitEnqueueError.resumeNotFound(resumeID) }
+        let ids = jobIDs
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { ids.contains($0.id) }))
+        let jobMap = Dictionary(jobs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        for jobID in jobIDs {
+            guard let job = jobMap[jobID] else { continue }
             let req = LLMRequest(requestType: .fit, status: .queued)
             req.job = job
             req.resume = resume
@@ -652,15 +661,93 @@ public actor BackgroundStore {
         try modelContext.save()
     }
 
-    /// Append a timeline event to a job.
-    public func insertJobEvent(jobID: String, eventType: String, note: String? = nil, occurredAt: Date = Date()) throws {
+    /// Append a timeline event to a job, linked on the store actor (TASK-526). No-op if the job is gone.
+    public func insertJobEvent(
+        jobID: String, eventType: String, note: String? = nil,
+        occurredAt: Date = Date(), createdAt: Date = Date()
+    ) throws {
         let jid = jobID
         let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))
         guard let job = jobs.first else { return }
-        let event = JobEvent(eventType: eventType, note: note, occurredAt: occurredAt)
+        let event = JobEvent(eventType: eventType, note: note, occurredAt: occurredAt, createdAt: createdAt)
         event.job = job
         modelContext.insert(event)
         try modelContext.save()
+    }
+
+    /// Create + link a follow-up action to a job by id (TASK-526). No-op if the job is gone.
+    public func insertJobAction(jobID: String, note: String, dueDate: Date) throws {
+        let jid = jobID
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))
+        guard let job = jobs.first else { return }
+        let action = JobAction(note: note, dueDate: dueDate)
+        action.job = job
+        modelContext.insert(action)
+        try modelContext.save()
+    }
+
+    /// Create + link a contact to a job by id (TASK-526). No-op if the job is gone.
+    public func insertContact(jobID: String, name: String, role: String?, email: String?) throws {
+        let jid = jobID
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))
+        guard let job = jobs.first else { return }
+        let contact = Contact(name: name, role: role, email: email)
+        contact.job = job
+        modelContext.insert(contact)
+        try modelContext.save()
+    }
+
+    /// Create or update a job's data-quality review, on the store actor (TASK-526).
+    public func upsertDataQualityReview(jobID: String, note: String) throws {
+        let jid = jobID
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))
+        guard let job = jobs.first else { return }
+        if let existing = job.qualityReview {
+            existing.reviewedAt = Date()
+            existing.note = note
+        } else {
+            let review = DataQualityReview(reviewedAt: Date(), note: note)
+            review.job = job
+            modelContext.insert(review)
+        }
+        try modelContext.save()
+    }
+
+    /// Delete a job's data-quality review, on the store actor (TASK-526). No-op if absent.
+    public func clearDataQualityReview(jobID: String) throws {
+        let jid = jobID
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))
+        guard let job = jobs.first, let review = job.qualityReview else { return }
+        modelContext.delete(review)
+        try modelContext.save()
+    }
+
+    /// Insert extraction/fit requests for a set of jobs, linked on the store actor (TASK-526). Skips
+    /// jobs that already have a queued/running request for the mode. Returns whether anything was
+    /// inserted (so the caller can decide whether to kick the drain).
+    public func insertRequests(jobIDs: [String], mode: LLMRequestType) throws -> Bool {
+        guard !jobIDs.isEmpty else { return false }
+        let ids = jobIDs
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { ids.contains($0.id) }))
+        let jobMap = Dictionary(jobs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let existing = try modelContext.fetch(
+            FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.finishedAt == nil }))
+        let alreadyActive = Set(
+            existing
+                .filter { ($0.status == .queued || $0.status == .running) && $0.requestType == mode }
+                .compactMap { $0.job?.id }
+                .filter { ids.contains($0) }
+        )
+        var inserted = false
+        for jobID in jobIDs {
+            guard let job = jobMap[jobID], !alreadyActive.contains(jobID) else { continue }
+            let req = LLMRequest(requestType: mode, status: .queued)
+            req.job = job
+            modelContext.insert(req)
+            inserted = true
+        }
+        if inserted { try modelContext.save() }
+        return inserted
     }
 
     /// Recompute every job's fit mirror from the best-scoring resume across resumes.

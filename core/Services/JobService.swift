@@ -245,12 +245,11 @@ public actor JobService {
             }
             job.updatedAt = Date()
         }
-        let event = JobEvent(
-            eventType: "status",
+        // TASK-526: link the event to the job inside the store actor (no live model held here).
+        try await store.insertJobEvent(
+            jobID: jobID, eventType: "status",
             note: "Status changed from \(oldStatus.rawValue) to \(status.rawValue)"
         )
-        event.job = job
-        try await store.insert(event)
     }
 
     public func setStatusBulk(_ status: JobStatus, jobIDs: [String]) async throws {
@@ -260,12 +259,8 @@ public actor JobService {
     }
 
     public func addNote(_ text: String, to jobID: String) async throws {
-        let id = jobID
-        let event = JobEvent(eventType: "note", note: text)
-        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == id }))
-        guard let job = jobs.first else { throw JobServiceError.jobNotFound(jobID) }
-        event.job = job
-        try await store.insert(event)
+        // TASK-526: created + linked inside the store actor (no-op if the job no longer exists).
+        try await store.insertJobEvent(jobID: jobID, eventType: "note", note: text)
     }
 
     /// Edit a note event in place. Saving empty/whitespace-only text deletes the note
@@ -286,12 +281,8 @@ public actor JobService {
     /// toast after a note delete (the deleted event is gone, so this creates an equivalent one
     /// with the same text and timestamps rather than resurrecting the original row).
     public func restoreNote(jobID: String, text: String, occurredAt: Date, createdAt: Date) async throws {
-        let id = jobID
-        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == id }))
-        guard let job = jobs.first else { throw JobServiceError.jobNotFound(jobID) }
-        let event = JobEvent(eventType: "note", note: text, occurredAt: occurredAt, createdAt: createdAt)
-        event.job = job
-        try await store.insert(event)
+        try await store.insertJobEvent(jobID: jobID, eventType: "note", note: text,
+                                       occurredAt: occurredAt, createdAt: createdAt)
     }
 
     public func archive(jobID: String) async throws {
@@ -340,12 +331,8 @@ public actor JobService {
     // MARK: - Actions
 
     public func createAction(jobID: String, text: String, dueAt: Date?) async throws {
-        let id = jobID
-        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == id }))
-        guard let job = jobs.first else { throw JobServiceError.jobNotFound(jobID) }
-        let action = JobAction(note: text, dueDate: dueAt ?? Date())
-        action.job = job
-        try await store.insert(action)
+        // TASK-526: created + linked inside the store actor.
+        try await store.insertJobAction(jobID: jobID, note: text, dueDate: dueAt ?? Date())
     }
 
     public func completeAction(actionID: String) async throws {
@@ -396,12 +383,8 @@ public actor JobService {
     // MARK: - Contacts
 
     public func createContact(jobID: String, name: String, email: String?, role: String?) async throws {
-        let id = jobID
-        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == id }))
-        guard let job = jobs.first else { throw JobServiceError.jobNotFound(jobID) }
-        let contact = Contact(name: name, role: role, email: email)
-        contact.job = job
-        try await store.insert(contact)
+        // TASK-526: created + linked inside the store actor.
+        try await store.insertContact(jobID: jobID, name: name, role: role, email: email)
     }
 
     public func updateContact(contactID: String, name: String, email: String?, role: String?) async throws {
@@ -429,28 +412,12 @@ public actor JobService {
     // MARK: - Data quality
 
     public func markDataQualityReviewed(jobID: String, notes: String?) async throws {
-        let id = jobID
-        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == id }))
-        guard let job = jobs.first else { throw JobServiceError.jobNotFound(jobID) }
-
-        if let existing = job.qualityReview {
-            existing.reviewedAt = Date()
-            existing.note = notes ?? ""
-            try await store.save()
-        } else {
-            let review = DataQualityReview(reviewedAt: Date(), note: notes ?? "")
-            review.job = job
-            try await store.insert(review)
-        }
+        // TASK-526: upsert inside the store actor.
+        try await store.upsertDataQualityReview(jobID: jobID, note: notes ?? "")
     }
 
     public func clearDataQualityReview(jobID: String) async throws {
-        let id = jobID
-        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == id }))
-        guard let job = jobs.first else { throw JobServiceError.jobNotFound(jobID) }
-        if let review = job.qualityReview {
-            try await store.deleteObject(review)
-        }
+        try await store.clearDataQualityReview(jobID: jobID)
     }
 
     // MARK: - Bulk LLM ops

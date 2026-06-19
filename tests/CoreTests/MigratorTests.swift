@@ -137,6 +137,30 @@ final class MigratorTests: XCTestCase {
         """)
     }
 
+    // MARK: - Arg parsing (TASK-523)
+
+    func testParseArgs_singleOperationFlag_parses() {
+        guard case .reclean = parseArgs(["JobhuntMigrator", "--reclean", "--store", "/tmp/s"]) else {
+            return XCTFail("a single operation flag should parse to that mode")
+        }
+    }
+
+    func testParseArgs_twoOperationFlags_rejected() {
+        let mode = parseArgs(["JobhuntMigrator", "--reclean", "--repair-duplicate-job-numbers", "--store", "/tmp/s"])
+        XCTAssertNil(mode, "combining two mutually-exclusive operation flags must be rejected, not silently run one")
+    }
+
+    func testParseArgs_operationFlagPlusMigrate_rejected() {
+        let mode = parseArgs(["JobhuntMigrator", "--reclean", "--output", "/tmp/out.store"])
+        XCTAssertNil(mode, "an operation flag combined with --output (migrate) is ambiguous")
+    }
+
+    func testParseArgs_migrateOnly_parses() {
+        guard case .migrate = parseArgs(["JobhuntMigrator", "--output", "/tmp/out.store"]) else {
+            return XCTFail("--output alone should parse to migrate")
+        }
+    }
+
     // MARK: - Tests
 
     func testOpenReadOnlyNonExistentPath() {

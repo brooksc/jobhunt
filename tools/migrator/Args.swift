@@ -31,7 +31,7 @@ enum Mode {
     }
 }
 
-func parseArgs() -> Mode? {
+func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
     let defaultStorePath = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/Jobhunt/jobhunt.store")
         .path
@@ -55,7 +55,6 @@ func parseArgs() -> Mode? {
     var outputPath: String? = nil
 
     var i = 1
-    let args = CommandLine.arguments
     while i < args.count {
         switch args[i] {
         case "--repair-fit-scores":
@@ -103,6 +102,31 @@ func parseArgs() -> Mode? {
             fputs("Error: unknown argument '\(args[i])'.\n", stderr); return nil
         }
         i += 1
+    }
+
+    // TASK-523: the operation flags are mutually exclusive. Previously several at once silently ran
+    // only the first in priority order; reject the ambiguous invocation instead.
+    let modeFlags: [(name: String, set: Bool)] = [
+        ("--repair-fit-scores", repair),
+        ("--verify", verify),
+        ("--patch", patch),
+        ("--patch-fit-scores", patchFit),
+        ("--reclean", reclean),
+        ("--backfill-models", backfillModels),
+        ("--prune-orphan-fit-scores", pruneOrphanFitScores),
+        ("--prune-orphan-attempts", pruneOrphanAttempts),
+        ("--recompute-fit-mirrors", recomputeFitMirrors),
+        ("--detect-duplicates", detectDuplicates),
+        ("--repair-duplicate-job-numbers", repairDuplicateJobNumbers),
+    ]
+    let setFlags = modeFlags.filter(\.set).map(\.name)
+    // `--output` with no operation flag means migrate; combining it with one is also ambiguous.
+    let migrateRequested = outputPath != nil
+    if setFlags.count > 1 || (!setFlags.isEmpty && migrateRequested) {
+        let names = setFlags + (migrateRequested ? ["--output (migrate)"] : [])
+        fputs("Error: choose exactly one operation — these are mutually exclusive: "
+            + "\(names.joined(separator: ", ")).\n", stderr)
+        return nil
     }
 
     if repair   { return .repairFitScores(storePath: storePath) }

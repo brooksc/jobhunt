@@ -1,9 +1,10 @@
 ---
 id: TASK-543
 title: 'UI: deep-link provider-not-configured notifications to the AI settings tab'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 07:29'
+updated_date: '2026-06-19 23:33'
 labels:
   - audit
   - ux
@@ -38,3 +39,9 @@ Suggested implementation: distinguish generic settings navigation from AI-provid
 - [ ] #4 A focused test/seam verifies the notification userInfo maps to `router.settingsTab = .llm`.
 - [ ] #5 The notification copy still clearly explains queued AI work is blocked by missing provider setup.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Done as part of the TASK-542 auth-error work (commit 7434166). The notification deep-link for AI-related nudges now selects the AI Provider (.llm) tab: PlatformIntegration's didReceive handles a "settings-ai" navigate value by setting router.settingsTab = .llm before opening the Settings window, and both the provider-not-configured notification and the new auth-key-rejected notification use it. Previously provider-not-configured opened Settings on whatever tab was last shown.
+<!-- SECTION:FINAL_SUMMARY:END -->

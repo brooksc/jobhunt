@@ -70,10 +70,11 @@ xcodebuild test -project Jobhunt.xcodeproj -scheme Jobhunt-DMG \
 
 ### What it does
 The `AppUITests` suite drives the full macOS app via the Accessibility API. It covers:
-- **ScreenshotTests**: 19-test visual tour of every view/settings tab
+- **ScreenshotTests**: visual tour of every view and settings tab (General/Jobs/AI/Data/Debug)
 - **BehaviorUITests**: sidebar nav, keyboard shortcuts (⌘K, ⌘,), filter chip state
 - **WorkflowUITests**: seeded data workflows (archive a job, etc.)
 - **JobsScreenUITests**: Jobs filter sidebar, menu bar commands
+- **MockLLMUITests**: end-to-end LLM Test Connection against a localhost mock (currently skipped — see TASK-540)
 
 ### Launch arguments (set in `AppUITests.swift:launchApp`)
 ```
@@ -82,7 +83,7 @@ The `AppUITests` suite drives the full macOS app via the Accessibility API. It c
 --seed-demo-data                Calls DemoSeeder on startup to populate test rows
 ```
 
-The app responds to these in `app/JobhuntApp.swift` (~line 26).
+The app responds to these in `app/JobhuntApp.swift` (`LaunchPlan.parse(...)`, ~line 41).
 
 ### Running locally
 ```bash
@@ -125,9 +126,12 @@ Defined in `.github/workflows/ui-tests.yml`. Runs weekly (Monday 8am UTC) or on 
 - **CoreTests sources** include migrator Swift files directly (commandLineTool can't be linked):
   ```swift
   sources: ["tests/CoreTests/**/*.swift",
+            "tests/Support/MockLLM/**/*.swift",
             "tools/migrator/Migration.swift",
             "tools/migrator/Patch.swift",
-            "tools/migrator/SQLiteHelpers.swift"]
+            "tools/migrator/SQLiteHelpers.swift",
+            "tools/migrator/RepairJobNumbers.swift",
+            "tools/migrator/Args.swift"]
   ```
 - **MCPTests sources** include `mcp/swift/MCPHelpers.swift` directly (same reason)
 - **Jobhunt-DMG scheme** test action includes: CoreTests, ServerTests, MCPTests, AppUITests
@@ -202,12 +206,18 @@ multi-process-safe. A separate program must only touch it while the app is **not
 
 Existing migrator modes (default `--store` = the live store; all idempotent):
 
+Exactly one operation flag per invocation — the migrator rejects combining them (TASK-523).
+
 ```bash
-osascript -e 'quit app "Jobhunt"'          # the store is single-writer — quit first
-JobhuntMigrator --reclean                   # recompute every capture's cleanedDescription
-JobhuntMigrator --backfill-models           # fill LLMRequest.model on old finished rows
-JobhuntMigrator --prune-orphan-fit-scores   # delete resume-less fit scores, recompute job mirrors
-# --migrate / --patch / --verify / --repair-fit-scores: the original SQLite→SwiftData import path
+osascript -e 'quit app "Jobhunt"'             # the store is single-writer — quit first
+JobhuntMigrator --reclean                      # recompute every capture's cleanedDescription
+JobhuntMigrator --backfill-models              # fill LLMRequest.model on old finished rows
+JobhuntMigrator --prune-orphan-fit-scores      # delete resume-less fit scores, recompute job mirrors
+JobhuntMigrator --prune-orphan-attempts        # delete LLMRequestAttempts whose request is gone
+JobhuntMigrator --recompute-fit-mirrors        # recompute every job's denormalized fit mirror
+JobhuntMigrator --detect-duplicates            # flag same-cleaned-hash duplicates across URLs
+JobhuntMigrator --repair-duplicate-job-numbers # renumber duplicate jobNumbers (raw SQLite, pre-open)
+# --migrate / --patch / --patch-fit-scores / --verify / --repair-fit-scores: original SQLite→SwiftData import
 ```
 
 **Before running any of these against prod data: quit the app, then back up the store *with its

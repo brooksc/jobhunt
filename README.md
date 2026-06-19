@@ -209,6 +209,6 @@ git commit -m "chore: bump version to $(grep -o '"[0-9.]*"' Project.swift | head
 - **Resume fit scoring** — ranks each job against your resume with dimension-level explanations
 - **Duplicate detection** — groups identical or near-identical postings across sources
 - **Dashboard** — daily activity view showing pipeline progress
-- **CSV export** — export the job list to CSV via the toolbar or File → Export Job List to CSV… (⌘⇧E). This exports job list fields only and is **not** a full backup. Use **Settings → Back Up Data** to create a complete, restorable backup of your database.
+- **CSV export** — export the job list to CSV via the toolbar or File → Export Current List to CSV… (⌘⇧E). This exports job list fields only and is **not** a full backup. Use **Settings → Back Up Data** to create a complete, restorable backup of your database.
 - **Offline queue** — captures are queued in the extension if the app isn't running
 - **MCP server** — expose your job database as tools for Claude and other AI assistants (DMG only)

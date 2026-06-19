@@ -218,7 +218,7 @@ To keep fixture changes reviewable even though the SQLite binary diff is opaque,
 ## What DemoSeeder Keeps Doing
 
 `DemoSeeder` is NOT replaced. It continues to be used for:
-- In-app demo mode (Help → Load Demo Data)
+- Onboarding / UI-test demo seeding (via the `--seed-demo-data` launch arg and the onboarding flow) — there is no "Load Demo Data" menu item
 - Quick smoke tests where data variety doesn't matter
 - Any test where the simplicity of in-memory seeding is preferable
 

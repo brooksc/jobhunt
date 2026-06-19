@@ -25,6 +25,10 @@ run automatically on app launch; they now live here so the launch path stays cle
 Jobhunt app first** — the store is single-writer (SQLite), and a second process touching it while the
 app runs risks `SQLITE_BUSY` or corruption.
 
+**Exactly one operation flag per run.** The migrator rejects an invocation that combines two operation
+flags (or an operation flag with `--output`/migrate), rather than silently running the first in
+priority order (TASK-523).
+
 | Option | Description | Default store |
 |---|---|---|
 | `--reclean [--store <path>]` | Recompute every capture's `cleanedDescription` with the current cleaner (JSON-LD preference, boilerplate stripping, invisible-char scrubbing). Idempotent. | `~/Library/Application Support/Jobhunt/jobhunt.store` |

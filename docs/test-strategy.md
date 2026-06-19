@@ -42,7 +42,7 @@ Line coverage for `JobhuntCore` + `JobhuntServer` is measured (`-enableCodeCover
 - `ModelRoundTripTests` — SwiftData encode/decode round-trips
 
 **How source files reach the test bundle:**
-`JobhuntCore` framework is linked directly. Migrator sources (`Migration.swift`, `Patch.swift`, `SQLiteHelpers.swift`) are compiled directly into CoreTests because `JobhuntMigrator` is a `commandLineTool` (not linkable).
+`JobhuntCore` framework is linked directly. Migrator sources (`Migration.swift`, `Patch.swift`, `SQLiteHelpers.swift`, `RepairJobNumbers.swift`, `Args.swift`) and the shared MockLLM server are compiled directly into CoreTests because `JobhuntMigrator` is a `commandLineTool` (not linkable).
 
 **Key patterns:**
 - Use `ModelContainerFactory.inMemory()` for a fresh in-memory SwiftData store per test
@@ -78,9 +78,10 @@ All tests share one `JobhuntServer` instance (class-level `static sharedServer`)
 
 | Suite | Tests | Description |
 |---|---|---|
-| `ScreenshotTests` | 19 | Visual tour: Dashboard → every Jobs filter → NeedsAction → Sites → Duplicates → LLM Queue → Data Quality → Settings tabs |
-| `BehaviorUITests` | 5 | Sidebar nav, ⌘K, ⌘, (Settings), Remote filter chip, Data Quality filter chip |
+| `ScreenshotTests` | 18 | Visual tour: Dashboard → every Jobs filter → NeedsAction → Sites → Duplicates → LLM Queue → Data Quality → Settings tabs (General/Jobs/AI/Data/Debug) → Resumes |
+| `BehaviorUITests` | 6 | Sidebar nav, ⌘K, ⌘, (Settings), Remote filter chip, Data Quality filter chip |
 | `WorkflowUITests` | 2 | Archive a job, seeded data health check |
+| `MockLLMUITests` | 1 | LLM Test Connection vs a localhost mock (skipped — TASK-540) |
 | `JobsScreenUITests` | 2 | Pursuing filter, Jobs menu bar commands |
 
 **Launch arguments (set automatically by `launchApp()`):**
@@ -126,7 +127,7 @@ tart clone ghcr.io/cirruslabs/macos-sequoia-xcode:latest jobhunt-uitest-env
 |---|---|
 | Real LLM calls | Cost + non-determinism; covered by `LLMEval` target (opt-in) |
 | Production SwiftData store | Tests always use in-memory or `--ui-test-store` |
-| macOS Keychain | Not used; API keys stored in `SettingsStore` |
+| macOS Keychain | Stores AI-provider API keys (via `KeychainStore`); keys are NOT in the SwiftData store or backups |
 | Push notifications / background fetch | Not implemented |
 | App Store receipt validation | No MAS-specific logic yet |
 

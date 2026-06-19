@@ -23,7 +23,7 @@ and balance it with `stopAccessingSecurityScopedResource()` in a `defer` block.
 
 ### Test procedure
 1. Build and run the MAS-signed build (or enable App Sandbox in the local scheme via Xcode settings)
-2. Open Settings → Resumes → Add Resume → Import PDF…
+2. Open Resumes (sidebar section) → Add Resume → Import PDF…
 3. Select a PDF that lives **outside** the app container (e.g. ~/Desktop/resume.pdf)
 4. Confirm the PDF text appears in the text editor — import must not silently fail
 5. Repeat via Onboarding → Import from file → select the same PDF → same expectation
@@ -35,7 +35,7 @@ and balance it with `stopAccessingSecurityScopedResource()` in a `defer` block.
 ## User-selected file writes: store backup and CSV export (TASK-398)
 
 The app writes to user-chosen paths via `NSSavePanel` in two flows:
-- **Store backup** — Settings → Data → Back Up Now (`SettingsTab.swift` → `BackupService.backup`)
+- **Store backup** — Settings → Data → Back Up Data… (`SettingsTab.swift` → `BackupService.backup`)
 - **CSV export** — Jobs → Export CSV (`JobsView.swift` → `ExportService`)
 
 These require `com.apple.security.files.user-selected.read-write`. The entitlement file
@@ -48,7 +48,7 @@ The `release-mas.yml` "Smoke check MAS artifact" step asserts the signed app exp
 
 ### Manual test procedure (requires a sandboxed build)
 1. Build/run the MAS-signed build (or enable App Sandbox locally).
-2. Settings → Data → Back Up Now → choose `~/Desktop/jobhunt-backup.store` → confirm the file is
+2. Settings → Data → Back Up Data… → choose `~/Desktop/jobhunt-backup.store` → confirm the file is
    written and is a valid backup (non-zero size; reopens).
 3. Jobs → Export CSV → choose `~/Desktop/jobs.csv` → confirm the file is written with rows.
 4. Both must succeed with no silent failure.

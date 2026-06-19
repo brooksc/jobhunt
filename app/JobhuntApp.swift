@@ -280,10 +280,11 @@ struct JobhuntApp: App {
         // HIG-2: Dedicated Settings scene — opened via ⌘, from the app menu.
         // Only available when the store opened successfully.
         Settings {
-            if let services = appServices, let container = modelContainer {
+            if let services = appServices, let container = modelContainer, let r = router {
                 SettingsView()
                     .environment(services)
                     .environment(theme)
+                    .environment(r)
                     .modelContainer(container)
             }
         }

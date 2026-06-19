@@ -6,9 +6,16 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(AppServices.self) private var appServices
+    @Environment(Router.self) private var router
 
     var body: some View {
-        SettingsTabView(settings: appServices.settings)
+        SettingsTabView(
+            settings: appServices.settings,
+            selectedTab: Binding(
+                get: { router.settingsTab.rawValue },
+                set: { router.settingsTab = SettingsPane(rawValue: $0) ?? .general }
+            )
+        )
     }
 }
 
@@ -16,6 +23,7 @@ struct SettingsView: View {
 
 private struct SettingsTabView: View {
     let settings: SettingsStore
+    @Binding var selectedTab: Int
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,7 +43,7 @@ private struct SettingsTabView: View {
     }
 
     private var tabView: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             SettingsTab(settings: settings)
                 .tabItem { Label("Settings", systemImage: "gear") }
                 .tag(0)

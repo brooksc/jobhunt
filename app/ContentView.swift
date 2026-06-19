@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var selectedJobIDs: Set<String> = []
 
     @Environment(AppServices.self) private var appServices
+    @Environment(\.openSettings) private var openSettings
     @Query(filter: #Predicate<Job> { $0.unread == true }) private var unreadJobs: [Job]
     @Query private var allJobs: [Job]
 
@@ -142,10 +143,19 @@ struct ContentView: View {
                     .disabled(isCheckingAvailability)
                 }
                 Section("LLM") {
-                    Label(
-                        "\(appServices.settings.llmProvider) · \(shortModelName)",
-                        systemImage: "cpu"
-                    )
+                    if aiConfigured {
+                        Label(
+                            "\(appServices.settings.llmProvider) · \(shortModelName)",
+                            systemImage: "cpu"
+                        )
+                    } else {
+                        Button {
+                            router.settingsTab = .llm
+                            openSettings()
+                        } label: {
+                            Label("Set Up AI Provider…", systemImage: "exclamationmark.triangle")
+                        }
+                    }
                     Button("Open LLM Queue") { router.navigateToSection(.llmQueue) }
                 }
                 Section("Local Server") {
@@ -175,10 +185,10 @@ struct ContentView: View {
                     Label("Extension: linked", systemImage: "puzzlepiece")
                 }
             } label: {
-                Image(systemName: "circle.grid.2x2")
-                    .foregroundStyle(.secondary)
+                Image(systemName: aiConfigured ? "circle.grid.2x2" : "exclamationmark.circle")
+                    .foregroundStyle(aiConfigured ? Color.secondary : Color.orange)
             }
-            .help("Service status")
+            .help(aiConfigured ? "Service status" : "AI provider not set up — open to configure")
         }
     }
 
@@ -224,6 +234,10 @@ struct ContentView: View {
 
     private var shortModelName: String {
         appServices.settings.llmModel.split(separator: "-").prefix(2).joined(separator: "-")
+    }
+
+    private var aiConfigured: Bool {
+        AIConfig.isConfigured(appServices.settings)
     }
 
     private func applyAppearance(_ pref: Theme.ColorSchemePreference) {

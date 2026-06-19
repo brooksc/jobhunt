@@ -114,6 +114,13 @@ public enum SidebarItem: Hashable, Sendable {
     }
 }
 
+/// Tabs in the ⌘, Settings window (rawValue matches each tab's `.tag`).
+public enum SettingsPane: Int {
+    case general = 0
+    case llm = 1
+    case debug = 2
+}
+
 @Observable
 public final class Router {
     public var selectedSection: SidebarSection = .jobs
@@ -130,6 +137,9 @@ public final class Router {
     public var focusSearch: Bool = false
     /// Triggers CSV export of the current filtered Jobs view from app menu / ⌘⇧E
     public var exportJobsRequested: Bool = false
+    /// Which tab the ⌘, Settings window should show. Set by deep-links (e.g. the
+    /// "AI not configured" nudge) before opening the window.
+    public var settingsTab: SettingsPane = .general
 
     public init() {}
 

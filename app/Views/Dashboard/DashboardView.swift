@@ -7,6 +7,7 @@ import SwiftUI
 
 struct DashboardView: View {
     @Environment(Router.self) private var router
+    @Environment(AppServices.self) private var appServices
 
     /// All jobs — used for stat cards, opportunities, pipeline, quality
     @Query private var jobs: [Job]
@@ -39,6 +40,7 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 20) {
+                AIConfigBanner(settings: appServices.settings)
                 statCardsSection
                 HStack(alignment: .top, spacing: 16) {
                     pipelineFunnelSection

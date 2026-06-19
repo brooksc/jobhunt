@@ -699,7 +699,9 @@ struct JobsView: View {
                 let qLow = q.lowercased()
                 let matchNum = qLow.hasPrefix("#") ? String(qLow.dropFirst()) : qLow
                 // Cheap fields first; fall through to the (larger) cleaned description only if needed.
-                let cheap = [job.company, job.title, job.location]
+                // Display fallbacks so an un-extracted job is still findable by its page title /
+                // capture host (TASK-525).
+                let cheap = [job.displayCompany, job.displayTitle, job.location]
                     .compactMap(\.self).joined(separator: " ").lowercased()
                 let textMatch = cheap.contains(qLow)
                     || (job.capture?.cleanedDescription?.lowercased().contains(qLow) ?? false)

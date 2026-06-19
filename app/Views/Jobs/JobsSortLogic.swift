@@ -20,9 +20,12 @@ enum JobsSortLogic {
         case .jobNumber:
             compareOptionalInt(a.jobNumber, b.jobNumber)
         case .company:
-            compareOptionalString(a.company, b.company)
+            // Fall back to the capture host so un-extracted jobs sort by a real value (TASK-525).
+            compareOptionalString(a.displayCompany, b.displayCompany)
         case .title:
-            compareOptionalString(a.title, b.title)
+            // Fall back to the captured page title rather than collapsing every un-extracted job to
+            // the bottom (TASK-525).
+            compareOptionalString(a.displayTitle, b.displayTitle)
         case .status:
             compareString(a.status.rawValue, b.status.rawValue)
         case .fitScore:

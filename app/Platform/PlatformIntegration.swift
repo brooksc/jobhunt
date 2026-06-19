@@ -157,9 +157,17 @@ public final class PlatformIntegration: NSObject, ObservableObject {
             NSApp.requestUserAttention(.criticalRequest)
 
         case let .queueError(message):
-            // Degraded queue state (e.g. a store read/write failure). The LLM Queue view surfaces
-            // this to the user via its error banner; log it here for diagnostics.
+            // Degraded queue state (e.g. a store read/write failure) — background AI work may be
+            // stuck. The LLM Queue view shows an in-view banner, but the user may be on any other
+            // screen, so also post a notification that deep-links to the Queue (TASK-542). The
+            // message is already sanitized (no secrets / file paths). Log for diagnostics too.
             NSLog("PlatformIntegration: queue error: \(message)")
+            postNotification(
+                id: "queue-error",
+                title: "AI Queue problem",
+                body: message,
+                userInfo: ["navigate": "llmQueue"]
+            )
         }
     }
 

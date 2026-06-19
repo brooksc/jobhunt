@@ -3,9 +3,10 @@ id: TASK-520
 title: >-
   State machine: fail fit score records when fit requests fail before provider
   execution
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 02:00'
+updated_date: '2026-06-19 05:07'
 labels:
   - audit
   - state-machine
@@ -39,3 +40,9 @@ Suggested implementation: for pre-provider fit failures where both job and resum
 - [ ] #4 Retry behavior remains explicit: failed records can be requeued by the existing retry/rescore flow without leaving duplicate active state.
 - [ ] #5 Focused tests cover missing-resume and consent/configuration pre-provider failures.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+processFitRequest's pre-provider failure guards (empty/missing resume text, consent revoked) now call markFitScoreFailed so the JobFitScore moves off .pending instead of leaving the job's fit mirror stuck pending. The missing-job and missing-id guards remain markRequestCancelled (job deleted → fit scores cascade; malformed request). Commit cc71925.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -3,9 +3,10 @@ id: TASK-507
 title: >-
   Command coverage: menu-bar Job actions, ⌘F search, focused-row Delete/Archive
   keys, richer row context menu
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-06-19 01:12'
+updated_date: '2026-06-19 01:19'
 labels:
   - hig
   - keyboard

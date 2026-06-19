@@ -1,0 +1,18 @@
+# gitleaks config — extends the built-in rules. Run: gitleaks detect --no-banner --redact
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Non-secret test/mock/fixture material and generated dirs"
+paths = [
+  '''tests/Support/MockLLM/.*''',
+  '''.*\.xcresult/.*''',
+  '''DerivedData/.*''',
+  '''Derived/.*''',
+]
+# The MCP token in docs/tests is a transient local-loopback token, not a real secret.
+regexes = [
+  '''mock-(model|token|key)''',
+  '''sk-test''',
+  '''127\.0\.0\.1''',
+]

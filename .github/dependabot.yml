@@ -1,0 +1,16 @@
+# Dependabot — keep GitHub Actions and the Chrome extension's npm deps current.
+# (No Swift Package Manager deps yet — add a `swift` ecosystem block when Sparkle/SPM lands.)
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+  - package-ecosystem: "npm"
+    directory: "/extension"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps"

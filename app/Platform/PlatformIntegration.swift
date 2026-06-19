@@ -140,8 +140,21 @@ public final class PlatformIntegration: NSObject, ObservableObject {
                 id: "provider-not-configured",
                 title: "Set up an AI provider",
                 body: "Job captured — add an AI provider in Settings to enable extraction & fit scoring.",
-                userInfo: ["navigate": "settings"]
+                userInfo: ["navigate": "settings-ai"]
             )
+
+        case let .authenticationFailed(statusCode):
+            // TASK-542: the provider rejected the API key (invalid/expired/deleted). The queue has
+            // paused itself; tell the user what's wrong and deep-link to the AI Provider tab to fix it.
+            // Fixed id → one notification even if several requests failed before the pause took effect.
+            postNotification(
+                id: "auth-failed",
+                title: "AI key rejected",
+                body: "Your AI provider rejected the request (HTTP \(statusCode)). Check your API key in Settings → AI Provider.",
+                userInfo: ["navigate": "settings-ai"],
+                isCritical: true
+            )
+            NSApp.requestUserAttention(.criticalRequest)
 
         case let .queueError(message):
             // Degraded queue state (e.g. a store read/write failure). The LLM Queue view surfaces
@@ -332,6 +345,11 @@ extension PlatformIntegration: UNUserNotificationCenterDelegate {
             NSApp.activate(ignoringOtherApps: true)
             if let navigate = userInfo["navigate"] as? String, navigate == "llmQueue" {
                 router.navigateToSection(.llmQueue)
+            } else if let navigate = userInfo["navigate"] as? String, navigate == "settings-ai" {
+                // Deep-link straight to the AI Provider tab so a key/provider fix is one click away
+                // (TASK-542/543). Set the tab before opening so SettingsView lands on it.
+                router.settingsTab = .llm
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
             } else if let navigate = userInfo["navigate"] as? String, navigate == "settings" {
                 // Settings is the standard preferences window now, not an in-window section.
                 NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)

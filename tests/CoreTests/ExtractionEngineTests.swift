@@ -316,6 +316,50 @@ final class ExtractionEngineTests: XCTestCase {
         XCTAssertEqual(notConfiguredCount, 1, "exactly one notice across two unconfigured drains")
     }
 
+    // MARK: - Auth failure (HTTP 401/403) pauses the queue and notifies (TASK-542)
+
+    /// A configured provider that rejects the key (HTTP 401) must pause the queue immediately and
+    /// emit `.authenticationFailed` — not silently exhaust the batch — so the user is told to fix it.
+    func testAuthFailure_pausesQueueAndEmitsAuthenticationFailed() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        let provider = AlwaysFailProvider(error: LLMProviderError.httpError(statusCode: 401, body: ""))
+        var paused = false
+        let queue = QueueActor(
+            store: store,
+            isPaused: { paused },
+            onSetPaused: { paused = $0 },
+            readExtractionSettings: { makeExtractionSettings() },
+            providerFactory: { provider },
+            isProviderConfigured: { true } // a key IS set — it's just been rejected
+        )
+
+        let capture = Capture(
+            url: "https://example.com/job",
+            pageTitle: "Job",
+            selectedText: "Description for the role.",
+            rawHash: "auth-fail"
+        )
+        let job = Job(jobNumber: 1, title: "Job 1")
+        job.capture = capture
+        try await store.insert(job)
+        let req = LLMRequest(requestType: .extract, status: .queued)
+        req.job = job
+        try await store.insert(req)
+
+        let events = await queue.subscribe()
+        await queue.startProcessing()
+
+        var authCode: Int?
+        for await event in events {
+            if case let .authenticationFailed(code) = event { authCode = code }
+            if case .processingComplete = event { break }
+        }
+
+        XCTAssertEqual(authCode, 401, "a 401 must emit .authenticationFailed carrying the status code")
+        XCTAssertTrue(paused, "a rejected key must pause the queue immediately")
+    }
+
     // MARK: - QueueActor cancellation during retry backoff (TASK-447)
 
     /// A user cancellation that lands while a failed request is sleeping in its retry backoff must

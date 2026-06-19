@@ -131,7 +131,12 @@ public enum LLMProviderError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case let .httpError(code, _):
-            "LLM HTTP \(code)"
+            // 401/403 = the key reached the provider but was rejected/forbidden — almost always an
+            // invalid, expired, or deleted API key. Make the queue's error column actionable instead
+            // of showing a bare status code (TASK-542).
+            code == 401 || code == 403
+                ? "API key rejected (HTTP \(code)) — check your AI provider key in Settings"
+                : "LLM HTTP \(code)"
         case let .timeout(seconds):
             "LLM request timed out after \(seconds)s"
         case .noResponse:

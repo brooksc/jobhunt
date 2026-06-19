@@ -686,6 +686,18 @@ final class LLMProviderErrorTests: LLMMockProviderTestCase {
         let description = err.localizedDescription
         XCTAssertFalse(description.isEmpty)
     }
+
+    /// TASK-542: 401/403 must produce an actionable "check your API key" message (not a bare code),
+    /// while other codes keep the terse form. The raw body must still never leak.
+    func testAuthErrorDescriptionsAreActionable() {
+        for code in [401, 403] {
+            let description = LLMProviderError.httpError(statusCode: code, body: "secret-body").localizedDescription
+            XCTAssertTrue(description.localizedCaseInsensitiveContains("key"), "HTTP \(code) should mention the key")
+            XCTAssertTrue(description.contains("\(code)"), "HTTP \(code) should include the code")
+            XCTAssertFalse(description.contains("secret-body"), "must not leak the response body")
+        }
+        XCTAssertEqual(LLMProviderError.httpError(statusCode: 500, body: "x").localizedDescription, "LLM HTTP 500")
+    }
 }
 
 // MARK: - TASK-320/321/322 factory tests

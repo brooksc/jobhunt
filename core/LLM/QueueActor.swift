@@ -16,6 +16,11 @@ public enum QueueEvent: Sendable {
     /// Emitted once per unconfigured episode so the user can be told to set one up, instead of letting
     /// the requests fail repeatedly into an auto-pause (TASK-483). Pending work is left queued.
     case providerNotConfigured
+    /// A request failed with HTTP 401/403 — the provider rejected the API key (invalid/expired/
+    /// deleted). Every request will fail the same way, so the queue pauses immediately and emits this
+    /// so the user is told to fix the key (rather than silently exhausting the batch). Carries the
+    /// status code for the message (TASK-542).
+    case authenticationFailed(statusCode: Int)
 }
 
 // MARK: - QueueActor
@@ -334,6 +339,15 @@ public actor QueueActor {
                             group.cancelAll()
                             break
                         }
+                    case let .authFailure(code):
+                        // TASK-542: the key was rejected — every queued request will fail the same way.
+                        // Pause now (don't burn the whole batch) and emit a distinct event so the user
+                        // is told to fix the key, then cancel the rest of this batch like auto-pause.
+                        totalProcessed += 1
+                        totalFailed += 1
+                        await onSetPaused(true)
+                        emit(.authenticationFailed(statusCode: code))
+                        group.cancelAll()
                     case .rateLimited:
                         // TASK-463: a 429 is transient — collapse concurrency to 1 and let the request
                         // retry (it was requeued with a Retry-After-honoring backoff). Not counted as a
@@ -369,6 +383,7 @@ public actor QueueActor {
         case succeeded
         case providerFailure
         case rateLimited // HTTP 429 — transient; drops adaptive concurrency, retried, not a failure
+        case authFailure(statusCode: Int) // HTTP 401/403 — bad key; pause immediately, tell the user
         case cancelled // user-cancelled in flight, or the row was already cancelled/taken
         case skipped // couldn't claim the row (store error / not queued) — neutral
     }
@@ -466,6 +481,12 @@ public actor QueueActor {
             // already requeued the row with a Retry-After-honoring backoff. Signal it so the drain
             // loop drops adaptive concurrency without counting toward the auto-pause streak.
             if case LLMProviderError.rateLimited = error { return .rateLimited }
+            // TASK-542: 401/403 means the key was rejected — retrying or draining the rest of the
+            // batch is pointless (every request will fail identically). Surface it distinctly so the
+            // drain pauses and tells the user to fix the key.
+            if case let LLMProviderError.httpError(code, _) = error, code == 401 || code == 403 {
+                return .authFailure(statusCode: code)
+            }
             return .providerFailure
         }
     }

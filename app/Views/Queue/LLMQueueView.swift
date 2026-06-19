@@ -559,6 +559,13 @@ struct LLMQueueView: View {
         switch event {
         case .autoPaused:
             isPaused = true
+        case let .authenticationFailed(statusCode):
+            // TASK-542: the queue paused itself on a rejected key. Surface it right here too, not just
+            // via the system notification, with an actionable message.
+            isPaused = true
+            let message = "API key rejected (HTTP \(statusCode)) — check your AI provider key in Settings → AI Provider."
+            errorMessage = message
+            toastStore.show(message, isError: true)
         case .processingComplete:
             break
         case .jobReady, .providerNotConfigured:

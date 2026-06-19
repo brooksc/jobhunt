@@ -560,6 +560,98 @@ public actor BackgroundStore {
         return fixed
     }
 
+    // MARK: - Off-actor LLM work boundary (TASK-526)
+    //
+    // The queue runs provider calls on the QueueActor; it must never read or mutate a live SwiftData
+    // @Model fetched from this @ModelActor (models aren't Sendable, and a lazy relationship faulted
+    // off-actor is a data race). These helpers do all model access ON the store actor and hand back
+    // only Sendable snapshots / scalars, or take ids and do the linking internally.
+
+    /// The (Sendable) status of a request, read on the store actor.
+    public func requestStatus(id: String) throws -> LLMRequestStatus? {
+        let id = id
+        return try modelContext.fetch(
+            FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == id })).first?.status
+    }
+
+    /// Build the extraction snapshot on the store actor (so the live Job/Capture relationship is never
+    /// read off-actor). Returns nil if the job no longer exists.
+    public func extractionSnapshot(forJobID jobID: String) throws -> JobExtractionSnapshot? {
+        let jid = jobID
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))
+        guard let job = jobs.first else { return nil }
+        return JobExtractionSnapshot(
+            captureURL: job.capture?.url ?? "",
+            captureCanonicalURL: job.capture?.canonicalURL,
+            capturePageTitle: job.capture?.pageTitle ?? "",
+            captureCleanedDescription: job.capture?.cleanedDescription,
+            captureVisibleText: job.capture?.visibleText,
+            captureSelectedText: job.capture?.selectedText
+        )
+    }
+
+    /// Sendable inputs for a fit run, built on the store actor.
+    public struct FitInputs: Sendable {
+        public let job: JobFitSnapshot
+        /// Empty when the resume has no usable text.
+        public let resumeText: String
+        /// False when the resume row no longer exists (vs. exists-but-empty).
+        public let resumeExists: Bool
+    }
+
+    /// Build fit inputs on the store actor. Returns nil if the job no longer exists.
+    public func fitInputs(forJobID jobID: String, resumeID: String) throws -> FitInputs? {
+        let jid = jobID
+        let rid = resumeID
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))
+        guard let job = jobs.first else { return nil }
+        let resume = try modelContext.fetch(
+            FetchDescriptor<Resume>(predicate: #Predicate { $0.id == rid })).first
+        return FitInputs(
+            job: JobFitSnapshot(
+                title: job.title, company: job.company, seniority: job.seniority,
+                extractedJSON: job.extractedJSON, extractionModel: job.extractionModel
+            ),
+            resumeText: resume?.text ?? "",
+            resumeExists: resume != nil
+        )
+    }
+
+    /// Create + persist an LLM attempt, linked (by id) to its request and job on the store actor —
+    /// so the queue never assigns a live model into a relationship off-actor.
+    public func recordAttempt(
+        requestID: String,
+        jobID: String?,
+        requestType: LLMRequestType,
+        attempt: Int,
+        status: LLMRequestStatus,
+        modelRequested: String?,
+        modelReturned: String? = nil,
+        responseFormat: String? = nil,
+        startedAt: Date,
+        finishedAt: Date,
+        durationMs: Int? = nil,
+        promptChars: Int? = nil,
+        responseChars: Int? = nil,
+        error: String? = nil
+    ) throws {
+        let rid = requestID
+        let record = LLMRequestAttempt(
+            requestType: requestType, attempt: attempt, status: status,
+            modelRequested: modelRequested, modelReturned: modelReturned, responseFormat: responseFormat,
+            startedAt: startedAt, finishedAt: finishedAt, durationMs: durationMs,
+            error: error, promptChars: promptChars, responseChars: responseChars
+        )
+        record.request = try modelContext.fetch(
+            FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == rid })).first
+        if let jobID {
+            record.job = try modelContext.fetch(
+                FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID })).first
+        }
+        modelContext.insert(record)
+        try modelContext.save()
+    }
+
     /// Append a timeline event to a job.
     public func insertJobEvent(jobID: String, eventType: String, note: String? = nil, occurredAt: Date = Date()) throws {
         let jid = jobID

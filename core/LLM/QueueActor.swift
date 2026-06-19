@@ -481,9 +481,7 @@ public actor QueueActor {
             // The processor returned false without throwing. Classify by the row's final status:
             // a user cancellation (or missing job → markRequestCancelled) leaves it .cancelled;
             // anything else (consent revoked, missing resume → .failed) is a real failure.
-            let finalStatus = try? await store.fetch(
-                FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == itemID })
-            ).first?.status
+            let finalStatus = try? await store.requestStatus(id: itemID)
             return finalStatus == .cancelled ? .cancelled : .providerFailure
         } catch {
             // Auto-pause's `group.cancelAll()` (or app shutdown) can cancel a request mid-provider-call.
@@ -527,24 +525,11 @@ public actor QueueActor {
             return false
         }
 
-        // Fetch the job and snapshot its fields before the async provider call
-        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
-        guard let job = jobs.first else {
+        // TASK-526: build the snapshot on the store actor — never read the live Job/Capture off-actor.
+        guard let extractionSnapshot = try await store.extractionSnapshot(forJobID: jobID) else {
             await markRequestCancelled(id: itemID)
             return false
         }
-        let extractionSnapshot = JobExtractionSnapshot(
-            captureURL: job.capture?.url ?? "",
-            captureCanonicalURL: job.capture?.canonicalURL,
-            capturePageTitle: job.capture?.pageTitle ?? "",
-            captureCleanedDescription: job.capture?.cleanedDescription,
-            captureVisibleText: job.capture?.visibleText,
-            captureSelectedText: job.capture?.selectedText
-        )
-
-        // TASK-314: Fetch the LLMRequest for linking to attempt records
-        let reqRecords = try? await store.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == itemID }))
-        let llmRequest = reqRecords?.first
 
         do {
             let extractSettings = await readExtractionSettings()
@@ -579,8 +564,7 @@ public actor QueueActor {
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
 
             // Guard: skip writing success if the request was cancelled while we were running.
-            let currentReqs = try await store.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == itemID }))
-            guard currentReqs.first?.status == .running else { return false }
+            guard try await store.requestStatus(id: itemID) == .running else { return false }
 
             // Persist extraction result
             try await store.update(
@@ -616,23 +600,15 @@ public actor QueueActor {
                 job.updatedAt = Date()
             }
 
-            // Persist attempt record — linked to request and job (TASK-314)
-            let finishedAttempt = LLMRequestAttempt(
-                requestType: .extract,
-                attempt: item.attempt,
-                status: .succeeded,
-                modelRequested: provider.id,
-                modelReturned: result.extractionModel,
+            // Persist attempt record — linked to request and job on the store actor (TASK-314/526)
+            try await store.recordAttempt(
+                requestID: itemID, jobID: jobID,
+                requestType: .extract, attempt: item.attempt, status: .succeeded,
+                modelRequested: provider.id, modelReturned: result.extractionModel,
                 responseFormat: result.responseFormat.wireValue,
-                startedAt: startedAt,
-                finishedAt: Date(),
-                durationMs: durationMs,
-                promptChars: result.promptChars,
-                responseChars: result.responseChars
+                startedAt: startedAt, finishedAt: Date(), durationMs: durationMs,
+                promptChars: result.promptChars, responseChars: result.responseChars
             )
-            finishedAttempt.request = llmRequest
-            finishedAttempt.job = job
-            try await store.insert(finishedAttempt)
 
             // Mark request succeeded
             try await store.update(
@@ -664,20 +640,13 @@ public actor QueueActor {
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
             let errorStr = error.localizedDescription
 
-            // Record failed attempt — linked to request and job (TASK-314)
-            let failedAttempt = LLMRequestAttempt(
-                requestType: .extract,
-                attempt: item.attempt,
-                status: .failed,
-                modelRequested: provider.id,
-                startedAt: startedAt,
-                finishedAt: Date(),
-                durationMs: durationMs,
-                error: errorStr
+            // Record failed attempt — linked on the store actor (TASK-314/526)
+            try await store.recordAttempt(
+                requestID: itemID, jobID: jobID,
+                requestType: .extract, attempt: item.attempt, status: .failed,
+                modelRequested: provider.id, startedAt: startedAt, finishedAt: Date(),
+                durationMs: durationMs, error: errorStr
             )
-            failedAttempt.request = llmRequest
-            failedAttempt.job = job
-            try await store.insert(failedAttempt)
 
             if item.attempt >= Self.maxRetries {
                 try await store.update(
@@ -739,34 +708,20 @@ public actor QueueActor {
             return false
         }
 
-        // Fetch job and resume, then snapshot fields before the async provider call
-        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
-        guard let job = jobs.first else {
+        // TASK-526: build fit inputs on the store actor — never read the live Job/Resume off-actor.
+        guard let fitInputs = try await store.fitInputs(forJobID: jobID, resumeID: resumeID) else {
             await markRequestCancelled(id: itemID)
             return false
         }
-
-        // TASK-314: Fetch the LLMRequest for linking to attempt records (done before resume guard for TASK-317)
-        let fitReqRecords = try? await store.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == itemID }))
-        let fitLLMRequest = fitReqRecords?.first
-
-        let resumes = try await store.fetch(FetchDescriptor<Resume>(predicate: #Predicate { $0.id == resumeID }))
-        guard let resume = resumes.first,
-              !resume.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            let errMsg = resumes.isEmpty ? "Resume no longer exists." : "Resume has no text to score against."
+        guard fitInputs.resumeExists,
+              !fitInputs.resumeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            let errMsg = fitInputs.resumeExists ? "Resume has no text to score against." : "Resume no longer exists."
             // TASK-317: Record attempt history for pre-provider failures
-            let blockedAttempt = LLMRequestAttempt(
-                requestType: .fit,
-                attempt: item.attempt,
-                status: .failed,
-                modelRequested: provider.id,
-                startedAt: startedAt,
-                finishedAt: Date(),
-                error: errMsg
+            try? await store.recordAttempt(
+                requestID: itemID, jobID: jobID,
+                requestType: .fit, attempt: item.attempt, status: .failed,
+                modelRequested: provider.id, startedAt: startedAt, finishedAt: Date(), error: errMsg
             )
-            blockedAttempt.request = fitLLMRequest
-            blockedAttempt.job = job
-            try? await store.insert(blockedAttempt)
             try await store.update(
                 LLMRequest.self,
                 predicate: #Predicate { $0.id == itemID }
@@ -803,14 +758,8 @@ public actor QueueActor {
         // not only once the request completes. Overwritten with the returned model on success.
         await setRequestModel(itemID: itemID, model: fitModel)
 
-        let jobSnap = JobFitSnapshot(
-            title: job.title,
-            company: job.company,
-            seniority: job.seniority,
-            extractedJSON: job.extractedJSON,
-            extractionModel: job.extractionModel
-        )
-        let resumeSnap = ResumeSnapshot(text: resume.text)
+        let jobSnap = fitInputs.job
+        let resumeSnap = ResumeSnapshot(text: fitInputs.resumeText)
 
         try? await store.markFitScoreRunning(jobID: jobID, resumeID: resumeID)
 
@@ -820,8 +769,7 @@ public actor QueueActor {
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
 
             // Guard: skip writing success if the request was cancelled while we were running.
-            let currentReqs = try await store.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == itemID }))
-            guard currentReqs.first?.status == .running else { return false }
+            guard try await store.requestStatus(id: itemID) == .running else { return false }
 
             let fitJSON = fitOutput.fitScoreJSON ?? FitScorer.encode(fitResult)
             let scoredAt = Date()
@@ -834,23 +782,15 @@ public actor QueueActor {
                 scoredAt: scoredAt
             )
 
-            // Persist attempt record — linked to request and job (TASK-314)
-            let finishedAttempt = LLMRequestAttempt(
-                requestType: .fit,
-                attempt: item.attempt,
-                status: .succeeded,
-                modelRequested: provider.id,
-                modelReturned: fitOutput.modelReturned,
+            // Persist attempt record — linked on the store actor (TASK-314/526)
+            try await store.recordAttempt(
+                requestID: itemID, jobID: jobID,
+                requestType: .fit, attempt: item.attempt, status: .succeeded,
+                modelRequested: provider.id, modelReturned: fitOutput.modelReturned,
                 responseFormat: fitOutput.responseFormat.wireValue,
-                startedAt: startedAt,
-                finishedAt: Date(),
-                durationMs: durationMs,
-                promptChars: fitOutput.promptChars,
-                responseChars: fitOutput.responseChars
+                startedAt: startedAt, finishedAt: Date(), durationMs: durationMs,
+                promptChars: fitOutput.promptChars, responseChars: fitOutput.responseChars
             )
-            finishedAttempt.request = fitLLMRequest
-            finishedAttempt.job = job
-            try await store.insert(finishedAttempt)
 
             try await store.update(
                 LLMRequest.self,
@@ -877,20 +817,13 @@ public actor QueueActor {
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
             let errorStr = error.localizedDescription
 
-            // Persist attempt record — linked to request and job (TASK-314)
-            let failedAttempt = LLMRequestAttempt(
-                requestType: .fit,
-                attempt: item.attempt,
-                status: .failed,
-                modelRequested: provider.id,
-                startedAt: startedAt,
-                finishedAt: Date(),
-                durationMs: durationMs,
-                error: errorStr
+            // Persist attempt record — linked on the store actor (TASK-314/526)
+            try await store.recordAttempt(
+                requestID: itemID, jobID: jobID,
+                requestType: .fit, attempt: item.attempt, status: .failed,
+                modelRequested: provider.id, startedAt: startedAt, finishedAt: Date(),
+                durationMs: durationMs, error: errorStr
             )
-            failedAttempt.request = fitLLMRequest
-            failedAttempt.job = job
-            try await store.insert(failedAttempt)
 
             if item.attempt >= Self.maxRetries {
                 try await store.update(

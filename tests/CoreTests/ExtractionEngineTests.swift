@@ -447,6 +447,7 @@ final class ExtractionEngineTests: XCTestCase {
         XCTAssertFalse(paused, "Cancellation must not trigger auto-pause")
     }
 
+
     // MARK: - QueueActor auto-pause
 
     func testQueueActorAutoPause() async throws {
@@ -465,9 +466,9 @@ final class ExtractionEngineTests: XCTestCase {
             providerFactory: { failProvider }
         )
 
-        // Create 3 jobs with captures and enqueue extraction requests
+        // Enough failing jobs to exceed the auto-pause threshold (one per consecutive failure).
         var jobIDs: [String] = []
-        for idx in 0 ..< 3 {
+        for idx in 0 ..< (QueueActor.autoPauseThreshold + 1) {
             let capture = Capture(
                 url: "https://example.com/job\(idx)",
                 pageTitle: "Job \(idx)",

@@ -88,7 +88,11 @@ public actor QueueActor {
     private var adaptive: AdaptiveConcurrency?
 
     static let maxRetries = 3
-    static let autoPauseThreshold = 2
+    /// Consecutive *provider* failures before the queue auto-pauses. A single flaky response (e.g. a
+    /// fast model occasionally returning unparseable JSON) shouldn't pause the whole queue and cancel
+    /// unrelated in-flight work, so this is deliberately forgiving. Cancellations and rate-limits
+    /// don't count toward it (see ProcessOutcome).
+    static let autoPauseThreshold = 4
     /// Clamp for honoring a server Retry-After (seconds) so a hostile/huge value can't stall the queue.
     static let maxRetryAfterSeconds: Double = 60
 
@@ -290,6 +294,10 @@ public actor QueueActor {
         var totalFailed = 0
 
         while true {
+            // External cancellation (app shutdown) — exit cleanly instead of busy-looping over rows
+            // that processRequest keeps requeuing while the task stays cancelled. (Auto-pause cancels
+            // only the in-batch child tasks, not this loop, so it still exits via the isPaused check.)
+            if Task.isCancelled { break }
             guard await !isPaused() else { break }
 
             let provider = await providerFactory()
@@ -473,12 +481,33 @@ public actor QueueActor {
             ).first?.status
             return finalStatus == .cancelled ? .cancelled : .providerFailure
         } catch {
+            // Auto-pause's `group.cancelAll()` (or app shutdown) can cancel a request mid-provider-call.
+            // That is NOT a provider failure: requeue the row so it resumes when the queue does, and
+            // don't record a "Swift.CancellationError" failure or count it toward the auto-pause streak.
+            if error is CancellationError || Task.isCancelled {
+                await requeueAfterCancellation(id: itemID)
+                return .cancelled
+            }
             await markRequestFailed(item: item, error: error, startedAt: startedAt)
             // TASK-463: a 429 is a transient rate limit, not a provider failure — the inner processor
             // already requeued the row with a Retry-After-honoring backoff. Signal it so the drain
             // loop drops adaptive concurrency without counting toward the auto-pause streak.
             if case LLMProviderError.rateLimited = error { return .rateLimited }
             return .providerFailure
+        }
+    }
+
+    /// A request cancelled in flight (auto-pause `cancelAll()`) returns to `.queued` so it resumes
+    /// with the queue — not `.failed`. Only a still-`.running` row is touched, so an inner cancellation
+    /// that already set `.cancelled`/`.retryExhausted` stays authoritative. (On app shutdown the parent
+    /// loop is cancelled and exits before reaching here; any row left `.running` is recovered by
+    /// `requeueRunningOnLaunch`.)
+    private func requeueAfterCancellation(id: String) async {
+        try? await store.update(LLMRequest.self, predicate: #Predicate { $0.id == id }) { req in
+            guard req.status == .running else { return }
+            req.status = .queued
+            req.startedAt = nil
+            req.error = nil
         }
     }
 
@@ -614,6 +643,9 @@ public actor QueueActor {
             emit(.jobReady(jobNumber: item.jobNumber, title: item.jobTitle, fitScore: nil))
             return true
         } catch {
+            // A cancellation in flight (auto-pause cancelAll / shutdown) isn't a real attempt — don't
+            // record a failed attempt, fail the job, or back off; rethrow so processRequest requeues.
+            if error is CancellationError || Task.isCancelled { throw error }
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
             let errorStr = error.localizedDescription
 
@@ -818,6 +850,9 @@ public actor QueueActor {
             ))
             return true
         } catch {
+            // A cancellation in flight (auto-pause cancelAll / shutdown) isn't a real attempt — don't
+            // record a failed attempt, fail the fit score, or back off; rethrow so processRequest requeues.
+            if error is CancellationError || Task.isCancelled { throw error }
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
             let errorStr = error.localizedDescription
 

@@ -3,9 +3,10 @@ id: TASK-527
 title: >-
   Queue lifecycle: reconcile JobFitScore state when running fit requests are
   cancelled, reset, or deleted
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 04:45'
+updated_date: '2026-06-19 05:07'
 labels:
   - audit
   - concurrency
@@ -40,3 +41,9 @@ Suggested implementation: make fit request state transitions update both the `LL
 - [ ] #4 Extraction request cancellation behavior remains unchanged except where shared queue helpers require tests.
 - [ ] #5 Focused tests cover cancel-running-fit, reset-fit-request, and delete-fit-request lifecycle reconciliation.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added BackgroundStore.reconcileOrphanedFitScores(): fit records left .running/.pending with no queued/running fit request backing them are reset to .none and the affected job mirrors recomputed. Wired into cancelRequest/cancelAll/deleteRequests/deleteAll so a cancelled or deleted fit no longer pins the job at "Scoring…". Backed (e.g. reset-requeued) records are left to re-run. Covered by testReconcileOrphanedFitScores_clearsRunningWithNoBackingRequest and _leavesBackedPendingAlone. Commit efbe9fc.
+<!-- SECTION:FINAL_SUMMARY:END -->

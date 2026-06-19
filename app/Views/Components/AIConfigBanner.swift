@@ -1,20 +1,12 @@
 import JobhuntCore
 import SwiftUI
 
-/// Whether the AI provider is usable for extraction/fit scoring: a model is selected, and (for
-/// cloud providers) an API key is present. Local providers (LM Studio / loopback custom) need no key.
+/// Whether the AI provider is usable for extraction/fit scoring. Thin app-side alias over the core
+/// `AIReadiness` rule (TASK-512) so the banner/service-status UI and the queue's provider gate can't
+/// drift: a model is selected, and (for key-requiring providers) an API key is present.
 enum AIConfig {
-    private static let cloudProviders: Set<String> = ["openai", "anthropic", "google", "openrouter"]
-
     static func isConfigured(_ settings: SettingsStore) -> Bool {
-        let model = settings.llmModel.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !model.isEmpty else { return false }
-        if cloudProviders.contains(settings.llmProvider) {
-            let key = settings.apiKey(forProvider: settings.llmProvider)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            if key.isEmpty { return false }
-        }
-        return true
+        AIReadiness.isConfigured(settings)
     }
 }
 

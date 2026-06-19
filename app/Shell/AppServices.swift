@@ -44,13 +44,12 @@ final class AppServices: @unchecked Sendable {
             // Snapshot SettingsStore on the main actor (it's not Sendable); the built provider is
             // Sendable so it crosses back to queue isolation safely (TASK-381).
             providerFactory: { await MainActor.run { LLMProviderFactory.makeProvider(settings: settingsStore) } },
-            // TASK-483: a key-requiring provider with an empty key is "not configured".
+            // TASK-483/512: "configured" = a model is selected AND (for key-requiring providers) a
+            // key is present. Shared with the UI's AIConfig via AIReadiness so the queue gate and the
+            // setup nudge agree — an empty model now keeps work queued behind the "set up AI" notice
+            // instead of running and failing with noModelSelected.
             isProviderConfigured: {
-                await MainActor.run {
-                    let provider = settingsStore.llmProvider
-                    return !LLMProviderFactory.requiresAPIKey(provider: provider)
-                        || !settingsStore.apiKey(forProvider: provider).isEmpty
-                }
+                await MainActor.run { AIReadiness.isConfigured(settingsStore) }
             }
         )
         let js = JobService(store: store, queue: queue)

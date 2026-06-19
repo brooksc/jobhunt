@@ -153,11 +153,16 @@ final class ScreenshotTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Open the standard macOS Settings window via ⌘, and wait for it to appear.
+    /// Open the standard macOS Settings window via ⌘,. The window's a11y title isn't reliably
+    /// "Settings", so key off a tab radio button (only present once Settings is open) and retry the
+    /// chord — UI tests occasionally drop the first ⌘, before the app is key.
     private func openSettingsWindow() {
         app.activate()
-        app.typeKey(",", modifierFlags: .command)
-        _ = app.windows["Settings"].waitForExistence(timeout: 5)
+        let firstTab = app.radioButtons.matching(NSPredicate(format: "label CONTAINS[c] %@", "General")).firstMatch
+        for _ in 0 ..< 3 where !firstTab.exists {
+            app.typeKey(",", modifierFlags: .command)
+            _ = firstTab.waitForExistence(timeout: 5)
+        }
     }
 
     /// Click a settings tab by label. The TabView tabs are radio buttons in the Settings window.

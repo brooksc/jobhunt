@@ -86,8 +86,8 @@ struct NeedsActionView: View {
             // Search filter
             let query = searchText.trimmingCharacters(in: .whitespaces).lowercased()
             if !query.isEmpty {
-                let company = (job.company ?? "").lowercased()
-                let title = (job.title ?? "").lowercased()
+                let company = (job.displayCompany ?? "").lowercased()
+                let title = job.displayTitle.lowercased()
                 let note = action.note.lowercased()
                 if !company.contains(query) && !title.contains(query) && !note.contains(query) {
                     return false
@@ -428,13 +428,13 @@ private struct NeedsActionRow: View {
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     HStack(spacing: 3) {
-                        Text(job?.company ?? "—")
+                        Text(job?.displayCompany ?? "—")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                         Text("·")
                             .font(.caption2)
                             .foregroundStyle(.quaternary)
-                        Text(job?.title ?? "—")
+                        Text(job?.displayTitle ?? "—")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)

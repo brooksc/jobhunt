@@ -1,9 +1,10 @@
 ---
 id: TASK-505
 title: 'Undo for reversible workflow mutations (status change, archive, delete-note)'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-06-19 01:12'
+updated_date: '2026-06-19 01:19'
 labels:
   - hig
   - ux

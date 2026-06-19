@@ -1325,7 +1325,6 @@ struct TimelineTabView: View {
     @Environment(AppServices.self) private var appServices
     @State private var noteText = ""
     @State private var showSetAction = false
-    @State private var showSystemEvents = false
     @State private var saveNoteError: String?
 
     // Pending actions
@@ -1386,41 +1385,14 @@ struct TimelineTabView: View {
                         Divider().padding(.leading, 44)
                     }
 
-                    // System events toggle
-                    if !systemEvents.isEmpty {
-                        Button {
-                            withAnimation { showSystemEvents.toggle() }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: showSystemEvents ? "chevron.down" : "chevron.right")
-                                    .font(.system(size: 9, weight: .semibold))
-                                    .foregroundStyle(.tertiary)
-                                Image(systemName: "gear")
-                                    .font(.caption2)
-                                    .foregroundStyle(.quaternary)
-                                Text("\(systemEvents.count) system event\(systemEvents.count == 1 ? "" : "s")")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                if !showSystemEvents {
-                                    Text("· show")
-                                        .font(.caption2)
-                                        .foregroundStyle(Color.accentColor)
-                                }
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                        }
-                        .buttonStyle(.plain)
-
-                        if showSystemEvents {
-                            ForEach(systemEvents, id: \.id) { event in
-                                TimelineEventRow(event: event, isDimmed: true)
-                                Divider().padding(.leading, 44)
-                            }
-                        }
+                    // System events (capture / extraction / …) — shown inline, dimmed to keep them
+                    // visually subordinate to user notes and actions.
+                    ForEach(systemEvents, id: \.id) { event in
+                        TimelineEventRow(event: event, isDimmed: true)
+                        Divider().padding(.leading, 44)
                     }
 
-                    if userEvents.isEmpty && pendingActions.isEmpty {
+                    if sortedEvents.isEmpty && pendingActions.isEmpty && completedActions.isEmpty {
                         ContentUnavailableView("No events yet", systemImage: "clock")
                             .padding()
                     }

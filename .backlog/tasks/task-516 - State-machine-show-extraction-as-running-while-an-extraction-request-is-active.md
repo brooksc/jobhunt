@@ -3,9 +3,10 @@ id: TASK-516
 title: >-
   State machine: show extraction as running while an extraction request is
   active
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 01:59'
+updated_date: '2026-06-19 05:06'
 labels:
   - audit
   - state-machine
@@ -39,3 +40,9 @@ Suggested implementation: when an extract request is claimed for processing, upd
 - [ ] #5 Retryable extraction failures transition the job back to the chosen non-terminal waiting state consistently.
 - [ ] #6 Focused tests cover request claim, success, failure, and retry/waiting behavior.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+processExtractRequest now sets Job.extractionStatus=.running (clearing extractionError) right before the provider call, after consent + model stamp, so the job mirrors the in-flight extraction (UI shows Extracting, Run AI disabled) instead of staying .pending. Terminal success/failure remain authoritative. Commit cc71925.
+<!-- SECTION:FINAL_SUMMARY:END -->

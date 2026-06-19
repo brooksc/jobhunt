@@ -1,9 +1,10 @@
 ---
 id: TASK-519
 title: 'State machine: clear stale fit scores when a rescore is queued or pending'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 02:00'
+updated_date: '2026-06-19 05:07'
 labels:
   - audit
   - state-machine
@@ -35,3 +36,9 @@ Suggested implementation: whenever an existing fit record is moved back to pendi
 - [ ] #4 Successful fit processing still restores the mirror with the new score.
 - [ ] #5 Focused tests cover stale-score pending transitions for single and batch enqueue paths.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+markFitScorePending, insertFitBatch, and enqueueFitForActiveResumes now clear a reused record's stale fitScore and recompute the job fit mirror (matching markFitScoreRunning), so a queued rescore no longer leaves the old score showing as a current .succeeded. Covered by testEnqueueFitForActiveResumes_pending_clearsStaleScoreFromMirror and testMarkFitScorePending_clearsStaleScoreFromMirror. Commit cc71925.
+<!-- SECTION:FINAL_SUMMARY:END -->

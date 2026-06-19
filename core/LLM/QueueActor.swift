@@ -238,6 +238,8 @@ public actor QueueActor {
             req.status = .cancelled
             req.finishedAt = Date()
         }
+        // TASK-527: a cancelled fit request must not leave its JobFitScore stuck .running/.pending.
+        try? await store.reconcileOrphanedFitScores()
     }
 
     /// Cancel all queued and running requests.
@@ -248,17 +250,20 @@ public actor QueueActor {
             req.status = .cancelled
             req.finishedAt = Date()
         }
+        try? await store.reconcileOrphanedFitScores()
     }
 
     /// Permanently delete specific requests by ID.
     public func deleteRequests(ids: [String]) async throws {
         let set = Set(ids)
         try await store.delete(LLMRequest.self, predicate: #Predicate { set.contains($0.id) })
+        try? await store.reconcileOrphanedFitScores()
     }
 
     /// Permanently delete all requests (all statuses).
     public func deleteAll() async throws {
         try await store.deleteAll(LLMRequest.self)
+        try? await store.reconcileOrphanedFitScores()
     }
 
     /// Permanently delete all finished (terminal) requests — succeeded/failed/exhausted/cancelled —

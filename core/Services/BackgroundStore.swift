@@ -522,6 +522,44 @@ public actor BackgroundStore {
         return queued
     }
 
+    /// Reconcile fit records stuck `.running`/`.pending` with no in-flight (queued/running) fit
+    /// request backing them — the state left behind when a fit request is cancelled or deleted
+    /// (TASK-527). Without this the job's fit mirror is pinned at "Scoring…" forever. Resets the
+    /// orphans to `.none` (no settled score, no live request) and recomputes affected job mirrors.
+    /// Returns the number reconciled. Backed records (a queued/running request still exists, e.g.
+    /// after a reset) are left alone so they re-run.
+    @discardableResult
+    public func reconcileOrphanedFitScores() throws -> Int {
+        let inflight = try modelContext.fetch(
+            FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.finishedAt == nil }))
+        let backed = Set(
+            inflight
+                .filter { $0.requestType == .fit && ($0.status == .queued || $0.status == .running) }
+                .compactMap { req -> String? in
+                    guard let jid = req.job?.id, let rid = req.resume?.id else { return nil }
+                    return "\(jid)|\(rid)"
+                })
+
+        let scores = try modelContext.fetch(FetchDescriptor<JobFitScore>())
+        var affectedJobIDs = Set<String>()
+        var fixed = 0
+        for score in scores where score.fitStatus == .running || score.fitStatus == .pending {
+            guard let jid = score.job?.id, let rid = score.resume?.id else { continue }
+            if backed.contains("\(jid)|\(rid)") { continue } // a live request still backs it
+            score.fitStatus = FitStatus.none
+            score.fitScore = nil
+            score.updatedAt = Date()
+            affectedJobIDs.insert(jid)
+            fixed += 1
+        }
+        guard fixed > 0 else { return 0 }
+        for job in try modelContext.fetch(FetchDescriptor<Job>()) where affectedJobIDs.contains(job.id) {
+            recomputeJobFitSummary(job)
+        }
+        try modelContext.save()
+        return fixed
+    }
+
     /// Append a timeline event to a job.
     public func insertJobEvent(jobID: String, eventType: String, note: String? = nil, occurredAt: Date = Date()) throws {
         let jid = jobID

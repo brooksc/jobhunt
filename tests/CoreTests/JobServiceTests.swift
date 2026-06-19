@@ -1534,6 +1534,43 @@ final class FitScoringStateTests: XCTestCase {
         XCTAssertEqual(after.fitStatus, .pending)
     }
 
+    // TASK-527: a fit record left .running with no backing request (cancelled/deleted) must not pin
+    // the job's fit mirror at "Scoring…" — reconcile resets it to .none and recomputes the mirror.
+    func testReconcileOrphanedFitScores_clearsRunningWithNoBackingRequest() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let job = Job(id: "job-orphan", jobNumber: 1)
+        let resume = Resume(name: "R", text: "x", charCount: 1, active: true, sortOrder: 0)
+        try await store.insert(job)
+        try await store.insert(resume)
+        try await store.markFitScoreRunning(jobID: "job-orphan", resumeID: resume.id)
+        var jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-orphan" }))
+        XCTAssertEqual(try XCTUnwrap(jobs.first).fitStatus, .running)
+
+        let n = try await store.reconcileOrphanedFitScores()
+        XCTAssertEqual(n, 1)
+        jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-orphan" }))
+        let after = try XCTUnwrap(jobs.first)
+        XCTAssertEqual(after.fitStatus, FitStatus.none, "orphaned running fit reconciles to none")
+        XCTAssertNil(after.fitScore)
+    }
+
+    // A fit still backed by a queued/running request (e.g. after a reset) must be left alone.
+    func testReconcileOrphanedFitScores_leavesBackedPendingAlone() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let job = Job(id: "job-backed", jobNumber: 1)
+        let resume = Resume(name: "R", text: "x", charCount: 1, active: true, sortOrder: 0)
+        try await store.insert(job)
+        try await store.insert(resume)
+        _ = try await store.enqueueFitForActiveResumes(jobID: "job-backed") // queued request + pending fit
+
+        let n = try await store.reconcileOrphanedFitScores()
+        XCTAssertEqual(n, 0, "a fit backed by a queued request must not be reconciled")
+        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-backed" }))
+        XCTAssertEqual(try XCTUnwrap(jobs.first).fitStatus, .pending)
+    }
+
     func testRecomputeAllFitScores_recomputesFromStoredJSONWithoutLLM() async throws {
         // Electron parity (rescore.js): recompute the overall score from stored dimensions using
         // current weights, no LLM. Dimensions 80/50/70/90/60 → 76 with the standard weights.

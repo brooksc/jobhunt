@@ -130,6 +130,7 @@ extension XCTestCase {
     private static let sidebarIDs: [String: String] = [
         "Dashboard":    "sidebar.dashboard",
         "Needs Action": "sidebar.needsAction",
+        "Resumes":      "sidebar.resumes",
         "All Jobs":     "sidebar.jobs.all",
         "New":          "sidebar.jobs.new",
         "Pursuing":     "sidebar.jobs.pursuing",
@@ -144,7 +145,6 @@ extension XCTestCase {
         "Duplicates":   "sidebar.duplicates",
         "LLM Queue":    "sidebar.llmQueue",
         "Data Quality": "sidebar.dataQuality",
-        "Settings":     "sidebar.settings",
     ]
 
     /// Section labels → the Go menu's ⌃⌘<n> shortcut digit. Keyboard shortcuts fire reliably
@@ -153,13 +153,14 @@ extension XCTestCase {
     /// fall back to the sidebar mechanism below.
     private static let sectionShortcut: [String: String] = [
         "Dashboard": "1", "Needs Action": "2", "All Jobs": "3", "Sites": "4",
-        "Duplicates": "5", "LLM Queue": "6", "Data Quality": "7", "Settings": "8",
+        "Duplicates": "5", "LLM Queue": "6", "Data Quality": "7", "Resumes": "8",
     ]
 
     /// Content-column identifiers that prove a section is showing (used to verify navigation).
     private static let contentIDs: [String: String] = [
         "Dashboard": "content.dashboard", "Data Quality": "content.dataQuality",
         "LLM Queue": "content.llmQueue", "All Jobs": "content.jobs",
+        "Resumes": "content.resumes",
     ]
 
     /// Ordered sidebar items (mirrors Sidebar.swift, section headers excluded —
@@ -167,11 +168,11 @@ extension XCTestCase {
     /// Index 0 = Dashboard. Going Down from Dashboard, each subsequent item is
     /// reached by exactly one more Down press (section headers are skipped).
     private static let sidebarOrder: [String] = [
-        "Dashboard", "Needs Action",
+        "Dashboard", "Needs Action", "Resumes",
         "All Jobs", "New", "Pursuing", "Applied", "Interview", "Offer",
         "Rejected", "Passed", "Archived", "Closed", "Expired",
         "Sites", "Duplicates",
-        "LLM Queue", "Data Quality", "Settings",
+        "LLM Queue", "Data Quality",
     ]
 
     /// Navigate the macOS sidebar to the item with the given display label.

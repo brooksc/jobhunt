@@ -24,7 +24,11 @@ final class MockLLMUITests: XCTestCase {
     }
 
     func testLLMTestConnection_succeedsAgainstMockServer() {
-        navigate(app, label: "Settings")
+        // Settings is the standard macOS ⌘, preferences window now, not an in-window section.
+        app.activate()
+        app.typeKey(",", modifierFlags: .command)
+        XCTAssertTrue(app.windows["Settings"].waitForExistence(timeout: 5),
+                      "⌘, should open the Settings window")
 
         // The Settings sub-tabs are a TabView; match the "LLM" tab item by label regardless of the
         // concrete element type the macOS tab bar exposes.

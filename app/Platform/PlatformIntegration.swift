@@ -305,7 +305,8 @@ extension PlatformIntegration: UNUserNotificationCenterDelegate {
             if let navigate = userInfo["navigate"] as? String, navigate == "llmQueue" {
                 router.navigateToSection(.llmQueue)
             } else if let navigate = userInfo["navigate"] as? String, navigate == "settings" {
-                router.navigateToSection(.settings)
+                // Settings is the standard preferences window now, not an in-window section.
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
             } else if let jobNumber = userInfo["jobNumber"] as? Int {
                 navigateToJob(number: jobNumber)
             }

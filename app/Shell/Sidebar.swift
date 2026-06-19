@@ -23,6 +23,10 @@ struct Sidebar: View {
     @Query private var allJobs: [Job]
     @Query private var allDecisions: [DuplicateDecision]
     @Query(sort: \SavedSearch.sortOrder) private var savedSearches: [SavedSearch]
+    @Query private var resumes: [Resume]
+
+    /// Opens the standard macOS Settings (⌘,) window — Settings is no longer an in-window section.
+    @Environment(\.openSettings) private var openSettings
 
     @State private var listSelection: SidebarItem? = .jobsAll
     /// Unresolved duplicate pairs awaiting review — same set the Duplicates screen shows,
@@ -49,6 +53,11 @@ struct Sidebar: View {
                        label: Label("Needs Action", systemImage: "bell"))
                 .badge(pendingActions.isEmpty ? 0 : pendingActions.count)
                 .help("Jobs with pending follow-up")
+
+            sidebarRow(.resumes, id: "sidebar.resumes",
+                       label: Label("Resumes", systemImage: "doc.text"))
+                .badge(resumes.isEmpty ? 0 : resumes.count)
+                .help("Manage résumés used for AI fit scoring")
 
             Section("Jobs") {
                 sidebarRow(.jobsAll, id: "sidebar.jobs.all",
@@ -116,9 +125,9 @@ struct Sidebar: View {
                            label: Label("Data Quality", systemImage: "checkmark.shield"))
                     .help("Data quality issues")
 
-                sidebarRow(.settings, id: "sidebar.settings",
-                           label: Label("Settings", systemImage: "gear"))
-                    .help("App settings")
+                // Settings is the standard macOS preferences window (⌘,), not an in-window
+                // section — this row just opens it.
+                settingsRow
 
                 sidebarRow(.help, id: "sidebar.help",
                            label: Label("Help", systemImage: "questionmark.circle"))
@@ -209,6 +218,23 @@ struct Sidebar: View {
         .accessibilityIdentifier(id ?? "")
     }
 
+    /// A non-selectable sidebar row that opens the standard Settings (⌘,) window. Mirrors the
+    /// unselected appearance of `sidebarRow` so it sits naturally among the navigation rows.
+    private var settingsRow: some View {
+        Button {
+            openSettings()
+        } label: {
+            Label("Settings", systemImage: "gear")
+                .foregroundStyle(Color.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 5)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("sidebar.settings")
+        .help("App settings (⌘,)")
+    }
+
     // MARK: - Duplicate review-queue count
 
     /// Changes whenever jobs (count/status/extraction) or decisions change in a way that
@@ -290,11 +316,11 @@ struct Sidebar: View {
         case .needsAction:       router.navigateToSection(.needsAction)
         case .jobsAll:           router.sidebarJobFilter = nil; router.navigateToSection(.jobs)
         case .jobs(let status):  router.sidebarJobFilter = status; router.navigateToSection(.jobs)
+        case .resumes:           router.navigateToSection(.resumes)
         case .sites:             router.navigateToSection(.sites)
         case .duplicates:        router.navigateToSection(.duplicates)
         case .llmQueue:          router.navigateToSection(.llmQueue)
         case .dataQuality:       router.navigateToSection(.dataQuality)
-        case .settings:          router.navigateToSection(.settings)
         case .help:              router.navigateToSection(.help)
         case .savedSearch(let id):
             router.activeSavedSearchID = id
@@ -312,11 +338,11 @@ struct Sidebar: View {
             if let id = router.activeSavedSearchID { item = .savedSearch(id) }
             else if let status = router.sidebarJobFilter { item = .jobs(status) }
             else { item = .jobsAll }
+        case .resumes:     item = .resumes
         case .sites:       item = .sites
         case .duplicates:  item = .duplicates
         case .llmQueue:    item = .llmQueue
         case .dataQuality: item = .dataQuality
-        case .settings:    item = .settings
         case .help:        item = .help
         }
         if listSelection != item { listSelection = item }

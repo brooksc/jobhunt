@@ -234,8 +234,7 @@ struct JobhuntApp: App {
                         .keyboardShortcut("6", modifiers: [.command, .control])
                     Button("Data Quality") { r.navigateToSection(.dataQuality) }
                         .keyboardShortcut("7", modifiers: [.command, .control])
-                    Divider()
-                    Button("Settings") { r.navigateToSection(.settings) }
+                    Button("Resumes") { r.navigateToSection(.resumes) }
                         .keyboardShortcut("8", modifiers: [.command, .control])
                 }
 

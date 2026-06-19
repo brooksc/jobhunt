@@ -112,35 +112,43 @@ final class ScreenshotTests: XCTestCase {
         snap(app, "15-data-quality")
     }
 
-    // MARK: - 16-19 Settings (now in the main window's detail pane via sidebar)
+    // MARK: - 16-18 Settings (now the standard macOS ⌘, preferences window)
 
     func test16_SettingsGeneral() {
-        navigate(app, label: "Settings")
+        openSettingsWindow()
         clickSettingsTab(label: "Settings")
         snap(app, "16-settings-general")
     }
 
     func test17_SettingsLLM() {
-        navigate(app, label: "Settings")
+        openSettingsWindow()
         clickSettingsTab(label: "LLM")
         snap(app, "17-settings-llm")
     }
 
-    func test18_SettingsResumes() {
-        navigate(app, label: "Settings")
-        clickSettingsTab(label: "Resumes")
-        snap(app, "18-settings-resumes")
+    func test18_SettingsDebug() {
+        openSettingsWindow()
+        clickSettingsTab(label: "Debug")
+        snap(app, "18-settings-debug")
     }
 
-    func test19_SettingsDebug() {
-        navigate(app, label: "Settings")
-        clickSettingsTab(label: "Debug")
-        snap(app, "19-settings-debug")
+    // MARK: - 19 Resumes (promoted to a top-level sidebar section)
+
+    func test19_Resumes() {
+        navigate(app, label: "Resumes")
+        snap(app, "19-resumes")
     }
 
     // MARK: - Helpers
 
-    /// Click a settings tab by label. TabView tabs are radio buttons inside the main window.
+    /// Open the standard macOS Settings window via ⌘, and wait for it to appear.
+    private func openSettingsWindow() {
+        app.activate()
+        app.typeKey(",", modifierFlags: .command)
+        _ = app.windows["Settings"].waitForExistence(timeout: 5)
+    }
+
+    /// Click a settings tab by label. The TabView tabs are radio buttons in the Settings window.
     private func clickSettingsTab(label: String) {
         let pred = NSPredicate(format: "label CONTAINS[c] %@", label)
         let btn = app.radioButtons.matching(pred).firstMatch

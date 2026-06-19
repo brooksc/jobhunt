@@ -44,13 +44,9 @@ private struct SettingsTabView: View {
                 .tabItem { Label("LLM", systemImage: "cpu") }
                 .tag(1)
 
-            ResumesTab(settings: settings)
-                .tabItem { Label("Resumes", systemImage: "doc.text") }
-                .tag(2)
-
             DebugTab()
                 .tabItem { Label("Debug", systemImage: "ant") }
-                .tag(3)
+                .tag(2)
         }
         .padding()
         .frame(minWidth: 480, minHeight: 400)

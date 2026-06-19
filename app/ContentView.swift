@@ -97,8 +97,10 @@ struct ContentView: View {
         case .help:
             HelpView()
                 .navigationSplitViewColumnWidth(min: 600, ideal: 900)
-        case .settings:
-            SettingsView()
+        case .resumes:
+            ResumesTab(settings: appServices.settings)
+                .navigationTitle("Resumes")
+                .accessibilityIdentifier("content.resumes")
                 .navigationSplitViewColumnWidth(min: 600, ideal: 900)
         }
     }

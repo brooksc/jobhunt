@@ -105,6 +105,8 @@ final class MockLLMInferenceTests: XCTestCase {
         XCTAssertEqual(updated.extractionStatus, .succeeded)
         XCTAssertEqual(updated.title, "Senior iOS Engineer")
         XCTAssertEqual(updated.company, "Acme")
+        // Fresh AI results mark the job unread so it counts toward the Dock badge until opened.
+        XCTAssertTrue(updated.unread, "a successful extraction should mark the job unread")
     }
 
     /// TASK-491 regression: a capture must kick the drain loop on its own. Previously the extraction

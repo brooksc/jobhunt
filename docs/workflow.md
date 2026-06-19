@@ -49,8 +49,10 @@ You find a job description on any page and send it to Jobhunt with the **Chrome 
 The extension POSTs the captured content to the app's **local HTTP server**, which probes
 `127.0.0.1:8765`–`8769` to find the running instance. If the app isn't running, the capture is stored
 in the extension's **offline queue** and synced automatically the next time you capture while the app
-is reachable (or on demand from the capture-queue page). Nothing is sent to any remote server — only to
-your local app.
+is reachable (or on demand from the capture-queue page). **During capture, nothing is sent to any
+remote server** — only to your local app. (AI extraction and fit scoring run *later* and can send job
+text to a cloud AI provider, but only the one you configure and consent to — see step 3 and
+Prerequisites.)
 
 ## 2. Ingest & dedup → a new Job
 
@@ -61,11 +63,13 @@ The server hands the capture to `JobService.ingestCapture`, which:
 2. **Cleans** the page text (strips boilerplate/serialized app blobs) into the job description.
 3. **Hashes** the raw and cleaned content and **deduplicates** — by raw hash, cleaned hash, and URL.
 4. For a **new** posting, atomically creates a **Job** (status `new`), its **Capture**, and a **pending
-   extraction request**. (A content duplicate is recorded as such and creates no second job; the
-   capture returns `isDuplicate`.)
+   extraction request**. An **exact re-capture** of the same posting returns the existing job and
+   creates no second job (the capture returns `isDuplicate`). A **semantic duplicate** — the same role
+   captured from a *different* URL, matched by cleaned-content hash — *does* create a job, but flagged
+   `duplicate` and held in the **Duplicates** view for you to merge or dismiss rather than auto-extracted.
 
-So step 2 of your workflow ("added if it's new") is dedup-by-construction — re-capturing the same
-posting won't create duplicate jobs.
+So re-capturing the **same URL** won't create duplicate jobs; a same-role posting from a *different*
+URL is captured but flagged as a duplicate for review.
 
 ## 3. Automatic AI processing
 
@@ -92,7 +96,9 @@ Keychain) **and, for fit scoring, at least one active resume.**
 
 ## 4. "Ready to review" notification
 
-When a job finishes extraction + fit, Jobhunt notifies you (TASK-482):
+When a job finishes processing — extraction, plus fit scoring when an active resume exists — Jobhunt
+notifies you (TASK-482). With no active resume (or if fit scoring fails), the notification still fires
+after extraction, just without a fit score:
 
 - A single capture (or a handful — up to 3 in one processing run) posts one **"ready to review"**
   notification per job, **regardless of fit score**, with **strong matches (fit ≥ 75%)** highlighted as
@@ -101,7 +107,8 @@ When a job finishes extraction + fit, Jobhunt notifies you (TASK-482):
   ready to review · K strong matches") instead of one banner per job.
 
 Supporting cues, regardless of the above:
-- The **Dock badge** shows the unread-job count.
+- The **Dock badge** shows the count of jobs that have finished extraction but you haven't opened yet
+  (a job is marked unread when its AI results land, and cleared the moment you open it).
 - **Clicking** a notification activates the app and deep-links straight to that job
   (`jobhunt://jobs/<number>` under the hood).
 - If the **availability checker** later finds a posting is gone, it posts a **"Job Unavailable"**
@@ -126,9 +133,11 @@ Eventually each job reaches a terminal state. Set its status to one of:
 - **`rejected`** / **`passed`** — you were turned down, or you decided to pass.
 - **`archived`** — done with it, keep it for the record. (Archived jobs stay visible in **All Jobs**;
   their chip just reads "Archived".)
-- **`expired`** — the posting is no longer live. The **availability checker** periodically re-checks
-  open jobs' URLs; postings it detects as gone (expired/filled/closed) are surfaced for confirmation
-  and marked **`expired`**, with a "Job Unavailable" notification.
+- **`expired`** — the posting is no longer live. The **availability checker** re-checks pursuing jobs'
+  URLs two ways: the **periodic background check** *automatically* marks postings it detects as gone
+  (expired/filled/closed) as **`expired`** and posts a "Job Unavailable" notification; a **manual check**
+  (toolbar service menu or Settings → Availability) instead **lists the gone postings for your
+  confirmation** before expiring them.
 - **`closed`** — the role closed generally.
 
 Then you move on to the next posting and the loop repeats.
@@ -142,8 +151,9 @@ Then you move on to the next posting and the loop repeats.
    extraction and fit scoring can't run (see step 3).
 3. **Add a resume** and mark it active — required for fit scoring (step 3); without one, jobs still
    extract but get no fit score.
-4. **Install the Chrome extension** — it connects to the app over `localhost`; the MCP/capture token is
-   generated automatically by the app.
+4. **Install the Chrome extension** — it connects to the app over `localhost` (extension-origin CORS;
+   no token needed for capture). The separate **MCP token** (for the MCP helper/routes) is generated
+   automatically by the app.
 
 ## Related docs
 

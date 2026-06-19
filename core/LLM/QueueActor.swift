@@ -565,6 +565,10 @@ public actor QueueActor {
                 job.extractionStatus = .succeeded
                 job.extractionError = nil
                 job.extractedAt = Date()
+                // The job now has fresh AI results to review — mark it unread so it counts toward
+                // the Dock badge until the user opens it (markOpened clears it). A re-extraction
+                // re-marks it unread, since the content changed (workflow.md step 4).
+                job.unread = true
                 job.updatedAt = Date()
             }
 

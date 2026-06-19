@@ -333,8 +333,12 @@ struct JobsView: View {
     }
 
     private var jobListInner: some View {
-        List(filteredJobs, selection: $selectedJobIDs) { job in
-            JobListRow(job: job, isSelected: selectedJobIDs.contains(job.id), fitScoringAvailable: fitScoringAvailable)
+        // Compute once per render — NOT inside the row closure. `fitScoringAvailable` reads the
+        // Keychain (API-key presence) via AIConfig.isConfigured, so evaluating it per row meant one
+        // Keychain hit per visible job (~hundreds of ms when switching filters on a full list).
+        let canScore = fitScoringAvailable
+        return List(filteredJobs, selection: $selectedJobIDs) { job in
+            JobListRow(job: job, isSelected: selectedJobIDs.contains(job.id), fitScoringAvailable: canScore)
                 .tag(job.id)
                 .contextMenu { jobContextMenu(job) }
                 .accessibilityIdentifier("job.row.\(job.id)")
@@ -349,11 +353,17 @@ struct JobsView: View {
         .overlay {
             if filteredJobs.isEmpty {
                 if allJobs.isEmpty {
-                    ContentUnavailableView(
-                        "No jobs yet",
-                        systemImage: "tray",
-                        description: Text("Capture jobs with the Chrome extension, or press ⌘N to add one manually.")
-                    )
+                    VStack(spacing: 20) {
+                        ContentUnavailableView(
+                            "No jobs yet",
+                            systemImage: "tray",
+                            description: Text("Capture jobs with the Chrome extension, or press ⌘N to add one manually.")
+                        )
+                        // First-run setup checklist — hides itself once AI + résumé are configured.
+                        SetupChecklistCard(settings: appServices.settings)
+                            .frame(maxWidth: 440)
+                            .padding(.horizontal)
+                    }
                 } else {
                     ContentUnavailableView(
                         "No matching jobs",

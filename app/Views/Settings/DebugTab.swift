@@ -166,11 +166,19 @@ struct DebugTab: View {
                     "(file paths, URL query strings, API keys/tokens) are redacted on a best-effort " +
                     "basis. Does not include job descriptions or resume content. Review before sharing."
             )
-            // TASK-464: re-present the onboarding flow.
+            // TASK-464: re-present the onboarding flow (preview — leaves the completion flag set).
             Button("Reopen Onboarding") {
                 NotificationCenter.default.post(name: .reopenOnboarding, object: nil)
             }
-            .help("Show the first-run setup flow again.")
+            .help("Show the first-run setup flow again. Dismissing keeps your setup; this is just a preview.")
+
+            // Clear the first-run flag so the wizard behaves exactly as it does on a brand-new
+            // install (re-presents now, and again on next launch until completed).
+            Button("Reset First-Run Setup") {
+                appServices.settings.set("", forKey: "onboarding_complete")
+                NotificationCenter.default.post(name: .reopenOnboarding, object: nil)
+            }
+            .help("Clears the onboarding-complete flag and re-presents the first-run wizard, as on a fresh install.")
         }
     }
 

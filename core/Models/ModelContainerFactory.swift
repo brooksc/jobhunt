@@ -16,9 +16,16 @@ import SwiftData
 // open). Do NOT auto-dedup on launch: per project convention one-time fixups live in the CLI, and a
 // launch-path repair would add risk and a "have we done this yet?" flag to the critical open path.
 //
-// `jobNumber` is the only unique field today; app-created data can't collide (atomic ingest assigns
-// numbers under the single-writer store), so duplicates would only arise from an externally-modified
-// or pre-constraint legacy store — exactly what the migrator repair recovers.
+// Unique fields today: `Job.jobNumber`, `Capture.rawHash`, `Site.origin`, `Setting.key`,
+// `DuplicateDecision.cleanedHash`, `SavedSearch.id` (TASK-522). Only `jobNumber` has — and needs — a
+// repair: app-created numbers can't collide (atomic ingest under the single-writer store), but the
+// Electron import CAN carry duplicate `job_number`s, which `--repair-duplicate-job-numbers` recovers.
+// The rest are unique at their source or by construction: `rawHash`/`cleanedHash` are the content-dedup
+// keys the source already enforces (so import can't produce collisions — and blind dedup would orphan
+// jobs referencing a dropped capture); `origin`/`key` are natural identities; `SavedSearch.id` is a
+// UUID. A duplicate on any of those could only come from an externally-modified store and fails
+// *closed* (recovery UI). If that ever happens for a real store, add a targeted RepairJobNumbers-style
+// raw-SQLite repair for that one field then — don't pre-build speculative repairs.
 public enum ModelContainerFactory {
     /// Production container stored in the app's Application Support directory.
     public static func production() throws -> ModelContainer {

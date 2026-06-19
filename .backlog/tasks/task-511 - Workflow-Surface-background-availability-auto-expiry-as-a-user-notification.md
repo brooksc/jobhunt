@@ -1,9 +1,10 @@
 ---
 id: TASK-511
 title: 'Workflow: Surface background availability auto-expiry as a user notification'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 01:30'
+updated_date: '2026-06-19 02:29'
 labels:
   - workflow
   - availability
@@ -30,9 +31,15 @@ Suggested implementation: Wire the availability domain event to the macOS notifi
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 When periodic/background availability checking marks a pursuing job expired, the user receives a macOS "Job Unavailable" notification.
-- [ ] #2 Clicking the notification opens the affected job when a job number is available; otherwise it navigates to the Jobs view or another sensible availability context.
-- [ ] #3 The notification includes enough context to identify the job, such as job number and title when available.
-- [ ] #4 Tests or a documented app-level verification cover the bridge from `AvailabilityChecker` auto-expiry to user-visible notification behavior.
-- [ ] #5 The existing `AvailabilityChecker` unit tests for internal `.jobUnavailable` posting continue to pass or are updated to the new event boundary.
+- [x] #1 When periodic/background availability checking marks a pursuing job expired, the user receives a macOS "Job Unavailable" notification.
+- [x] #2 Clicking the notification opens the affected job when a job number is available; otherwise it navigates to the Jobs view or another sensible availability context.
+- [x] #3 The notification includes enough context to identify the job, such as job number and title when available.
+- [x] #4 Tests or a documented app-level verification cover the bridge from `AvailabilityChecker` auto-expiry to user-visible notification behavior.
+- [x] #5 The existing `AvailabilityChecker` unit tests for internal `.jobUnavailable` posting continue to pass or are updated to the new event boundary.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+PlatformIntegration now observes NotificationCenter .jobUnavailable (posted by AvailabilityChecker.checkJobs when background auto-expiry marks a pursuing job expired) and posts a "Job Unavailable" macOS notification with the job title (or #number) in the body. Clicking deep-links to the job via the existing jobNumber userInfo path. The handler is nonisolated (the event is posted off the main thread), extracts Sendable primitives, then hops to MainActor to post; the observer is removed in stop(). Note: QueueEvent.jobUnavailable is never emitted (dead) — this NotificationCenter bridge is the live path. AC#4 is met by documented app-level wiring + the existing AvailabilityChecker post-side tests; PlatformIntegration (UNUserNotificationCenter/AppKit) isn't unit-tested in this project. Commit 93fa53c.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -3,10 +3,10 @@ id: TASK-526
 title: >-
   Concurrency: keep live SwiftData models inside the BackgroundStore actor
   boundary
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-06-19 04:45'
-updated_date: '2026-06-19 05:26'
+updated_date: '2026-06-19 05:42'
 labels:
   - audit
   - concurrency
@@ -34,11 +34,11 @@ Suggested implementation: introduce store APIs that return Sendable projections 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Production service APIs no longer need to carry live `Job`, `LLMRequest`, `Resume`, or `Site` model instances across actor boundaries for common read/mutation flows.
-- [ ] #2 Queue attempt creation links request/job relationships inside a single `BackgroundStore` operation using IDs, not previously-fetched live model references.
-- [ ] #3 JobService child-record creation links records to jobs inside a store-scoped operation using IDs.
-- [ ] #4 Read paths that cross actors return Sendable projections or scalar snapshots instead of live SwiftData models where practical.
-- [ ] #5 Focused tests cover the converted queue attempt-linking and JobService child-record creation paths.
+- [x] #1 Production service APIs no longer need to carry live `Job`, `LLMRequest`, `Resume`, or `Site` model instances across actor boundaries for common read/mutation flows.
+- [x] #2 Queue attempt creation links request/job relationships inside a single `BackgroundStore` operation using IDs, not previously-fetched live model references.
+- [x] #3 JobService child-record creation links records to jobs inside a store-scoped operation using IDs.
+- [x] #4 Read paths that cross actors return Sendable projections or scalar snapshots instead of live SwiftData models where practical.
+- [x] #5 Focused tests cover the converted queue attempt-linking and JobService child-record creation paths.
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -48,3 +48,15 @@ Progress (Claude, opus-4.8) — commit af37f17: the HOT-PATH processors are fixe
 
 REMAINING (smaller follow-up): enqueue() does `req.job = job` off-actor, and enqueueFit() hands [Job]/Resume to insertFitBatch. These run mostly store-side and have subtle kick/dedup behavior (see the addJobByURL kick comment in JobService), so I deliberately left them out of the pre-release change to bound regression risk. To finish: add store.insertRequests(jobIDs:mode:)->Bool and store.insertFitBatch(jobIDs:resumeID:) that fetch+link inside the actor, and have enqueue/enqueueFit pass ids only. Low risk to the running app (these are insert paths, immediately persisted) but should be done to fully close the boundary.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Live SwiftData @Models no longer escape the BackgroundStore @ModelActor for any production read/mutation flow. Two commits:
+
+af37f17 (hot path): extractionSnapshot(forJobID:) / fitInputs(forJobID:resumeID:) build the Sendable snapshots on the store actor; recordAttempt(requestID:jobID:...) creates+links LLMRequestAttempt on the store actor; requestStatus(id:) returns the Sendable status for the cancelled-while-running guards. processExtractRequest/processFitRequest hold no live models — removing the off-actor lazy-relationship reads (job.capture?.url) and relationship mutations (attempt.job = job).
+
+a679605 (rest): enqueue()->store.insertRequests(jobIDs:mode:); enqueueFit()->store.insertFitBatch(jobIDs:resumeID:) (resume-not-found thrown from the store). JobService child-record creation links by id inside the store: setStatus/addNote/restoreNote->insertJobEvent (extended with createdAt), createAction->insertJobAction, createContact->insertContact, markDataQualityReviewed->upsertDataQualityReview, clearDataQualityReview->store.
+
+Remaining cross-actor fetches (setStatus reading oldStatus, workflowSnapshot counting statuses, MCP resolveJob, SiteService) are benign immediate scalar reads returning Sendable values — no relationship faulting or mutation. AC#5: existing tests now route through the new store methods (MockLLM end-to-end pipeline exercises recordAttempt; JobServiceMutationTests exercise insertJobAction/insertContact/insertJobEvent/upsertDataQualityReview via createAction/createContact/addNote/markDataQualityReviewed) and all pass. App + UI-test bundle compile clean.
+<!-- SECTION:FINAL_SUMMARY:END -->

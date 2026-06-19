@@ -1,9 +1,10 @@
 ---
 id: TASK-542
 title: 'UI: surface degraded LLM queue errors outside the Queue screen'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 07:29'
+updated_date: '2026-06-19 23:32'
 labels:
   - audit
   - ux
@@ -40,3 +41,20 @@ Suggested implementation: route queue errors through an app-level user-facing ch
 - [ ] #5 Provider-not-configured and auto-pause notifications continue to behave as before.
 - [ ] #6 Tests or a UI-level seam verify a queue error is surfaced globally, not only to `LLMQueueView`.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Auth (401/403) queue failures are now surfaced and actionable instead of a silent "LLM HTTP 401" in the Queue column.
+
+1. **Actionable error text** — LLMProviderError.httpError(401/403).errorDescription → "API key rejected (HTTP 401) — check your AI provider key in Settings"; other codes keep "LLM HTTP <n>". Propagates to the stored req.error via localizedDescription.
+2. **Distinct event + notification** — QueueActor classifies 401/403 as ProcessOutcome.authFailure and emits the new QueueEvent.authenticationFailed(statusCode:). PlatformIntegration posts a critical "AI key rejected — check Settings → AI Provider" notification with a fixed id (one alert, not one per job) deep-linking to the AI Provider tab.
+3. **Immediate pause** — the drain pauses on the first auth failure and cancels the rest of the batch (a bad key fails every request), rather than exhausting the whole queue.
+4. **In-Queue banner** — LLMQueueView shows the same actionable message + toast and reflects the paused state.
+
+Also upgraded the notification settings deep-link to select the AI (.llm) tab (navigate "settings-ai"), which closes TASK-543 for the provider-not-configured nudge too.
+
+Tests: testAuthFailure_pausesQueueAndEmitsAuthenticationFailed (401 → pause + event, integration) and testAuthErrorDescriptionsAreActionable (401/403 actionable, 500 terse, body never leaks). Build + fast gate green. Commit 7434166.
+
+Note on the user's "no notification" report: the app already posts a generic "N jobs failed" notification on processingComplete, but it's easy to miss and says nothing about the key; the unified log showed nothing in the prior 6h. This dedicated auth path doesn't depend on that fragile generic-failure counting.
+<!-- SECTION:FINAL_SUMMARY:END -->

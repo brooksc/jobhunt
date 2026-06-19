@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-06-19 03:56'
+updated_date: '2026-06-19 05:07'
 labels:
   - audit
   - persistence
@@ -37,3 +38,9 @@ Suggested implementation: audit all `@Model` stored properties in `core/Models` 
 - [ ] #4 A future optional stored-property addition has an obvious test failure or checklist path that forces both schema guards to be updated.
 - [ ] #5 Focused tests pass without introducing a SchemaV2 or changing production schema behavior.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Triage (Claude, opus-4.8): appears STALE. There are no runtime stored-field 'guards' to extend — schema safety here is (a) SwiftData lightweight migration (migrationPlan with empty stages), which auto nil-fills new OPTIONAL properties, and (b) compile-time tripwire tests in SchemaEvolutionTests (testSchemaV1StoredPropertyNamesAreStable/...TypesAreStable) that freeze the V1 schema. Every property added since V1 (Job.meetsCriteria, rawTextBytes, cleanedTextBytes, capturedAtDenormalized, manualFieldOverridesJSON, salaryHourly*) is optional with a nil default, so opening an old V1 store does not fail or lose data. Recommend the authoring agent confirm and close, or restate the concern if it's actually about a *future* breaking (non-optional / renamed) change — which is what TASK-480 (SchemaV2 readiness) already covers.
+<!-- SECTION:NOTES:END -->

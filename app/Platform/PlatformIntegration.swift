@@ -39,6 +39,7 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         requestNotificationAuthorization()
         registerNotificationDelegate()
         observeFocusRequests()
+        observeAvailabilityExpiry()
         applyWindowPolicy()
 
         eventTask = Task { [weak self] in
@@ -57,6 +58,7 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         eventTask?.cancel()
         eventTask = nil
         NotificationCenter.default.removeObserver(self, name: focusNotificationName, object: nil)
+        NotificationCenter.default.removeObserver(self, name: .jobUnavailable, object: nil)
         if UNUserNotificationCenter.current().delegate === self {
             UNUserNotificationCenter.current().delegate = nil
         }
@@ -279,6 +281,41 @@ public final class PlatformIntegration: NSObject, ObservableObject {
             selector: #selector(handleFocusRequest(_:)),
             name: focusNotificationName,
             object: nil
+        )
+    }
+
+    /// Bridge the background availability auto-expiry into a user notification (TASK-511).
+    /// `AvailabilityChecker.checkJobs` marks pursuing jobs expired and posts `.jobUnavailable`; the
+    /// queue never emits `QueueEvent.jobUnavailable`, so this NotificationCenter observer is the live
+    /// path — without it the status change is silent.
+    private func observeAvailabilityExpiry() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleJobUnavailable(_:)),
+            name: .jobUnavailable,
+            object: nil
+        )
+    }
+
+    /// Posted by `AvailabilityChecker` off the main thread — stay `nonisolated`, pull the Sendable
+    /// primitives out of `userInfo`, then hop to the main actor to post the notification.
+    @objc nonisolated private func handleJobUnavailable(_ note: Notification) {
+        let jobNumber = note.userInfo?[JobUnavailableKey.jobNumber] as? Int
+        let title = note.userInfo?[JobUnavailableKey.title] as? String
+        Task { @MainActor [weak self] in
+            self?.postJobUnavailableNotification(jobNumber: jobNumber, title: title)
+        }
+    }
+
+    private func postJobUnavailableNotification(jobNumber: Int?, title: String?) {
+        let name = title.flatMap { $0.isEmpty ? nil : $0 }
+            ?? jobNumber.map { "Job #\($0)" }
+            ?? "A pursued job"
+        postNotification(
+            id: "job-unavailable-\(jobNumber ?? 0)",
+            title: "Job Unavailable",
+            body: "\(name) is no longer available",
+            userInfo: jobNumber.map { ["jobNumber": $0] } ?? [:]
         )
     }
 }

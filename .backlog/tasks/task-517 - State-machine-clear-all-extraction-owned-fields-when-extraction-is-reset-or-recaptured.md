@@ -3,9 +3,10 @@ id: TASK-517
 title: >-
   State machine: clear all extraction-owned fields when extraction is reset or
   recaptured
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 02:00'
+updated_date: '2026-06-19 05:07'
 labels:
   - audit
   - state-machine
@@ -38,3 +39,9 @@ Suggested implementation: centralize the list of extraction-owned fields in one 
 - [ ] #4 Existing extraction success behavior repopulates fields normally after reset or recapture.
 - [ ] #5 Focused tests cover both `JobService.resetExtraction` and the recapture path in `BackgroundStore.insertCaptureAtomically`.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added a shared, override-aware clearExtractionOwnedFields(Job) helper (core/Models/Job.swift) used by both JobService.resetExtraction and the same-URL recapture path in BackgroundStore.insertCaptureAtomically. It now clears the previously-missed salaryHourlyMin/Max, applicationURL, and meetsCriteria (plus the existing fields), and — importantly — preserves manually-overridden fields (re-extraction also skips overrides, so clearing them unconditionally as the old code did would silently lose the user's edit). Covered by testResetExtraction_clearsExtractionFields_preservesManualOverrides. Commit cc71925.
+<!-- SECTION:FINAL_SUMMARY:END -->

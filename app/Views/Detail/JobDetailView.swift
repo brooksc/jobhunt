@@ -587,6 +587,12 @@ struct OverviewTabView: View {
         AIConfig.isConfigured(appServices.settings) && resumes.contains(where: \.active)
     }
 
+    /// Show the "add details manually" hint only when extraction won't fill the job in for them —
+    /// no AI provider configured — and the job is still empty. Disappears once either changes.
+    private var manualEntryHintVisible: Bool {
+        !AIConfig.isConfigured(appServices.settings) && job.company == nil && job.title == nil
+    }
+
     private var decisionStrip: some View {
         HStack(spacing: 16) {
             // Fit ring + quality
@@ -785,6 +791,24 @@ struct OverviewTabView: View {
                 .textCase(.uppercase)
                 .tracking(0.4)
                 .padding(.bottom, 8)
+
+            // No AI configured and nothing filled in yet — point the user at manual entry so the job
+            // doesn't look broken. Non-nagging: disappears once a provider is set up or a field is
+            // filled (TASK-525).
+            if manualEntryHintVisible {
+                HStack(spacing: 8) {
+                    Image(systemName: "square.and.pencil")
+                        .foregroundStyle(.secondary)
+                    Text("No AI provider configured — add details manually below, or set up AI extraction.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    SettingsLink { Text("Set Up AI").font(.caption) }
+                }
+                .padding(8)
+                .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+                .padding(.bottom, 8)
+            }
 
             VStack(alignment: .leading, spacing: 0) {
                 editableRow("Company", job.company ?? "", placeholder: "Add company") { v in

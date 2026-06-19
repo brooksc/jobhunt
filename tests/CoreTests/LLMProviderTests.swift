@@ -110,7 +110,6 @@ class LLMMockProviderTestCase: XCTestCase {
 // MARK: - OpenAI provider tests
 
 final class OpenAIProviderTests: LLMMockProviderTestCase {
-
     func testRequestURLAndHeaders() async throws {
         LLMMockURLProtocol.requestHandler = { req in
             let response = mockHTTPResponse(url: req.url!)
@@ -215,7 +214,6 @@ final class OpenAIProviderTests: LLMMockProviderTestCase {
 // MARK: - Anthropic provider tests
 
 final class AnthropicProviderTests: LLMMockProviderTestCase {
-
     private func anthropicResponse(text: String, model: String = "claude-sonnet-4-6") -> Data {
         let json = """
         {
@@ -295,7 +293,6 @@ final class AnthropicProviderTests: LLMMockProviderTestCase {
 // MARK: - Google provider tests
 
 final class GoogleProviderTests: LLMMockProviderTestCase {
-
     private func googleResponse(text: String) -> Data {
         let json = """
         {
@@ -339,8 +336,11 @@ final class GoogleProviderTests: LLMMockProviderTestCase {
         let urlStr = captured.url?.absoluteString ?? ""
         XCTAssertTrue(urlStr.contains("gemini-2.5-flash:generateContent"), "URL must contain model name")
         XCTAssertFalse(urlStr.contains("key="), "API key must NOT appear in URL query (TASK-128)")
-        XCTAssertEqual(captured.value(forHTTPHeaderField: "x-goog-api-key"), "gkey",
-                       "API key must be sent via x-goog-api-key header")
+        XCTAssertEqual(
+            captured.value(forHTTPHeaderField: "x-goog-api-key"),
+            "gkey",
+            "API key must be sent via x-goog-api-key header"
+        )
     }
 
     func testSystemInstructionInjected() async throws {
@@ -496,7 +496,7 @@ final class GoogleProviderTests: LLMMockProviderTestCase {
         do {
             _ = try await provider.complete(req)
             XCTFail("expected httpError")
-        } catch LLMProviderError.httpError(let code, _) {
+        } catch let LLMProviderError.httpError(code, _) {
             XCTAssertEqual(code, 400)
             XCTAssertEqual(callCount, 1, "no schema was sent, so there must be no fallback retry")
         } catch {
@@ -508,7 +508,6 @@ final class GoogleProviderTests: LLMMockProviderTestCase {
 // MARK: - LMStudio provider tests
 
 final class LMStudioProviderTests: LLMMockProviderTestCase {
-
     func testRequestURLUsesLocalhost() async throws {
         LLMMockURLProtocol.requestHandler = { req in
             (mockHTTPResponse(url: req.url!), openAIResponse(content: "local"))
@@ -550,7 +549,6 @@ final class LMStudioProviderTests: LLMMockProviderTestCase {
 // MARK: - OpenRouter provider tests
 
 final class OpenRouterProviderTests: LLMMockProviderTestCase {
-
     func testRequestURLAndExtraHeaders() async throws {
         LLMMockURLProtocol.requestHandler = { req in
             (mockHTTPResponse(url: req.url!), openAIResponse(content: "ok"))
@@ -573,7 +571,6 @@ final class OpenRouterProviderTests: LLMMockProviderTestCase {
 // MARK: - Custom provider tests
 
 final class CustomProviderTests: LLMMockProviderTestCase {
-
     func testRequestURLUsesCustomBaseURL() async throws {
         LLMMockURLProtocol.requestHandler = { req in
             (mockHTTPResponse(url: req.url!), openAIResponse(content: "custom"))
@@ -653,7 +650,6 @@ final class LLMProviderFactoryTests: XCTestCase {
 // MARK: - HTTP error tests
 
 final class LLMProviderErrorTests: LLMMockProviderTestCase {
-
     func testHTTP500ThrowsError() async {
         LLMMockURLProtocol.requestHandler = { req in
             (mockHTTPResponse(url: req.url!, statusCode: 500), Data("Internal error".utf8))
@@ -675,7 +671,7 @@ final class LLMProviderErrorTests: LLMMockProviderTestCase {
         }
     }
 
-    // TASK-127 regression: persisted error descriptions must not include raw provider response bodies.
+    /// TASK-127 regression: persisted error descriptions must not include raw provider response bodies.
     func testHTTPErrorDescriptionOmitsResponseBody() {
         let sensitiveBody = "Bearer token: sk-secret123, user data: john@example.com"
         let err = LLMProviderError.httpError(statusCode: 429, body: sensitiveBody)

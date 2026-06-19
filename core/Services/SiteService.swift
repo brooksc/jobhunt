@@ -59,12 +59,29 @@ public actor SiteService {
     /// Upsert a SiteReview from the extension payload (legacy format: interval_days).
     /// Also upserts the corresponding Site record.
     /// Returns the site_review_id.
-    public func upsertSiteReview(url: String, title: String?, intervalDays: Int, note: String? = nil) async throws -> String {
+    public func upsertSiteReview(
+        url: String,
+        title: String?,
+        intervalDays: Int,
+        note: String? = nil
+    ) async throws -> String {
         guard let parsedURL = URL(string: url), let origin = parsedURL.origin else {
             // Fall back to using the full URL as origin
-            return try await upsertSiteReviewInternal(url: url, origin: url, title: title, intervalDays: intervalDays, note: note)
+            return try await upsertSiteReviewInternal(
+                url: url,
+                origin: url,
+                title: title,
+                intervalDays: intervalDays,
+                note: note
+            )
         }
-        return try await upsertSiteReviewInternal(url: url, origin: origin, title: title, intervalDays: intervalDays, note: note)
+        return try await upsertSiteReviewInternal(
+            url: url,
+            origin: origin,
+            title: title,
+            intervalDays: intervalDays,
+            note: note
+        )
     }
 
     private func upsertSiteReviewInternal(

@@ -1,6 +1,7 @@
 import Foundation
 
 // MARK: - JobDetailProjection
+
 //
 // Typed read model derived from a Job's raw extracted JSON and manual overrides.
 // Centralizes all JSON parsing so SwiftUI views never touch extractedJSON directly.
@@ -38,6 +39,7 @@ public struct JobDetailProjection {
 }
 
 // MARK: - FitScoreProjection
+
 //
 // Typed read model derived from a JobFitScore's raw fitScoreJSON.
 
@@ -54,7 +56,9 @@ public struct RequirementAssessment: Sendable, Hashable {
     public let requirement: String
     public let status: String
     public let evidence: String
-    public var isMet: Bool { status == "met" }
+    public var isMet: Bool {
+        status == "met"
+    }
 }
 
 public struct FitScoreProjection {
@@ -67,10 +71,16 @@ public struct FitScoreProjection {
     public init(fitScore: JobFitScore) {
         let dict = Self.parseJSON(fitScore.fitScoreJSON)
 
-        let assessments = (dict?["requirement_assessments"] as? [[String: Any]])?.compactMap { a -> RequirementAssessment? in
-            guard let requirement = a["requirement"] as? String, let status = a["status"] as? String else { return nil }
-            return RequirementAssessment(requirement: requirement, status: status, evidence: a["evidence"] as? String ?? "")
-        } ?? []
+        let assessments = (dict?["requirement_assessments"] as? [[String: Any]])?
+            .compactMap { a -> RequirementAssessment? in
+                guard let requirement = a["requirement"] as? String,
+                      let status = a["status"] as? String else { return nil }
+                return RequirementAssessment(
+                    requirement: requirement,
+                    status: status,
+                    evidence: a["evidence"] as? String ?? ""
+                )
+            } ?? []
         requirementAssessments = assessments
 
         if assessments.isEmpty {
@@ -115,7 +125,7 @@ public enum SalaryDisplay {
         switch currency ?? "USD" {
         case "GBP": sym = "£"
         case "EUR": sym = "€"
-        default:    sym = "$"
+        default: sym = "$"
         }
         let k: (Int) -> String = { v in v >= 1000 ? "\(v / 1000)k" : "\(v)" }
         if let lo = min, let hi = max { return "\(sym)\(k(lo))–\(sym)\(k(hi))" }
@@ -126,6 +136,7 @@ public enum SalaryDisplay {
 }
 
 // MARK: - MCP Read Models
+
 //
 // Plain Sendable structs used by Core service query methods so route handlers
 // only perform auth, request decoding, and response encoding — no FetchDescriptors.

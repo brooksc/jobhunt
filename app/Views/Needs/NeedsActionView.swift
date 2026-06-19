@@ -146,7 +146,12 @@ struct NeedsActionView: View {
                             needsGroup(label: "Today", icon: "scope", color: .orange, actions: todayActions)
                         }
                         if !thisWeekActions.isEmpty {
-                            needsGroup(label: "This week", icon: "calendar", color: .accentColor, actions: thisWeekActions)
+                            needsGroup(
+                                label: "This week",
+                                icon: "calendar",
+                                color: .accentColor,
+                                actions: thisWeekActions
+                            )
                         }
                         if !laterActions.isEmpty {
                             needsGroup(label: "Later", icon: "flag", color: .secondary, actions: laterActions)
@@ -157,7 +162,10 @@ struct NeedsActionView: View {
             }
         }
         .navigationTitle("Needs Action")
-        .alert("Action Failed", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+        .alert(
+            "Action Failed",
+            isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+        ) {
             Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
@@ -225,7 +233,9 @@ struct NeedsActionView: View {
                     Button("Cancel", role: .cancel) {}
                 } message: {
                     let filterNote = (statusFilter != .all || !searchText.isEmpty) ? " matching the current filter" : ""
-                    Text("Snooze all \(overdueActions.count) overdue follow-up\(overdueActions.count == 1 ? "" : "s")\(filterNote) for 7 days?")
+                    Text(
+                        "Snooze all \(overdueActions.count) overdue follow-up\(overdueActions.count == 1 ? "" : "s")\(filterNote) for 7 days?"
+                    )
                 }
             }
         }
@@ -371,7 +381,9 @@ private struct NeedsActionRow: View {
     @State private var showNotePopover = false
     @State private var noteText = ""
 
-    private var job: Job? { action.job }
+    private var job: Job? {
+        action.job
+    }
 
     private var dueDateLabel: String {
         let cal = Calendar.current

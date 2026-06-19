@@ -183,7 +183,13 @@ final class QualityCheckerTests: XCTestCase {
         let job = Job(extractionStatus: .pending) // no company/title/location/work mode/salary
         let kinds = QualityChecker.issues(for: job)
         XCTAssertTrue(kinds.contains(.extractionPending))
-        for missing in [QualityIssueKind.missingCompany, .missingTitle, .missingLocation, .missingWorkMode, .missingSalary] {
+        for missing in [
+            QualityIssueKind.missingCompany,
+            .missingTitle,
+            .missingLocation,
+            .missingWorkMode,
+            .missingSalary
+        ] {
             XCTAssertFalse(kinds.contains(missing), "\(missing) must be suppressed while extraction is pending")
         }
     }

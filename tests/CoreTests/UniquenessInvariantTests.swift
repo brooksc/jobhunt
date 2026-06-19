@@ -12,7 +12,6 @@ import XCTest
 /// merge/upsert rows rather than throwing during ctx.save(). The observable result
 /// is that only ONE row survives with the duplicate key — not two distinct rows.
 final class UniquenessInvariantTests: XCTestCase {
-
     // MARK: - Helpers
 
     private func makeFileContainer() throws -> (ModelContainer, URL) {
@@ -46,8 +45,11 @@ final class UniquenessInvariantTests: XCTestCase {
 
         let fetched = try ctx.fetch(FetchDescriptor<Job>())
         let matching = fetched.filter { $0.jobNumber == 42 }
-        XCTAssertLessThanOrEqual(matching.count, 1,
-            "At most one Job row may have jobNumber == 42 after save")
+        XCTAssertLessThanOrEqual(
+            matching.count,
+            1,
+            "At most one Job row may have jobNumber == 42 after save"
+        )
     }
 
     func testJobNumberDistinctValuesAreKept() throws {
@@ -92,8 +94,11 @@ final class UniquenessInvariantTests: XCTestCase {
 
         let fetched = try ctx.fetch(FetchDescriptor<Capture>())
         let matching = fetched.filter { $0.rawHash == "dup_hash" }
-        XCTAssertLessThanOrEqual(matching.count, 1,
-            "At most one Capture row may have rawHash == 'dup_hash' after save")
+        XCTAssertLessThanOrEqual(
+            matching.count,
+            1,
+            "At most one Capture row may have rawHash == 'dup_hash' after save"
+        )
     }
 
     func testCaptureRawHashDistinctValuesAreKept() throws {
@@ -124,8 +129,11 @@ final class UniquenessInvariantTests: XCTestCase {
 
         let fetched = try ctx.fetch(FetchDescriptor<Site>())
         let matching = fetched.filter { $0.origin == "example.com" }
-        XCTAssertLessThanOrEqual(matching.count, 1,
-            "At most one Site row may have origin == 'example.com' after save")
+        XCTAssertLessThanOrEqual(
+            matching.count,
+            1,
+            "At most one Site row may have origin == 'example.com' after save"
+        )
     }
 
     func testSiteOriginDistinctValuesAreKept() throws {
@@ -156,8 +164,11 @@ final class UniquenessInvariantTests: XCTestCase {
 
         let fetched = try ctx.fetch(FetchDescriptor<DuplicateDecision>())
         let matching = fetched.filter { $0.cleanedHash == "dup_cleaned" }
-        XCTAssertLessThanOrEqual(matching.count, 1,
-            "At most one DuplicateDecision row may have cleanedHash == 'dup_cleaned' after save")
+        XCTAssertLessThanOrEqual(
+            matching.count,
+            1,
+            "At most one DuplicateDecision row may have cleanedHash == 'dup_cleaned' after save"
+        )
     }
 
     func testDuplicateDecisionCleanedHashDistinctValuesAreKept() throws {
@@ -170,8 +181,11 @@ final class UniquenessInvariantTests: XCTestCase {
         try ctx.save()
 
         let fetched = try ctx.fetch(FetchDescriptor<DuplicateDecision>())
-        XCTAssertEqual(fetched.count, 2,
-            "Two DuplicateDecisions with distinct cleanedHashes must both persist")
+        XCTAssertEqual(
+            fetched.count,
+            2,
+            "Two DuplicateDecisions with distinct cleanedHashes must both persist"
+        )
     }
 
     // MARK: - TASK-310: updateOne/deleteOne service-level uniqueness path
@@ -185,7 +199,8 @@ final class UniquenessInvariantTests: XCTestCase {
         let store = BackgroundStore(modelContainer: container)
         let resume = Resume(name: "Test", text: "text", charCount: 4, active: false, sortOrder: 0)
         try await store.insert(resume)
-        let fetchedID = try await store.fetch(FetchDescriptor<Resume>()).first!.id
+        let resumes = try await store.fetch(FetchDescriptor<Resume>())
+        let fetchedID = try XCTUnwrap(resumes.first?.id)
 
         // updateOne should succeed — no throw means single-match path works
         var didMutate = false
@@ -195,7 +210,8 @@ final class UniquenessInvariantTests: XCTestCase {
         }
         XCTAssertTrue(didMutate, "Mutation closure must be called for a single-match updateOne")
 
-        let after = try await store.fetch(FetchDescriptor<Resume>()).first!
+        let afterRows = try await store.fetch(FetchDescriptor<Resume>())
+        let after = try XCTUnwrap(afterRows.first)
         XCTAssertEqual(after.name, "Updated")
     }
 }

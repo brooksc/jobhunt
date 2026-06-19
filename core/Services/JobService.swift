@@ -281,8 +281,13 @@ public actor JobService {
     /// toast after a note delete (the deleted event is gone, so this creates an equivalent one
     /// with the same text and timestamps rather than resurrecting the original row).
     public func restoreNote(jobID: String, text: String, occurredAt: Date, createdAt: Date) async throws {
-        try await store.insertJobEvent(jobID: jobID, eventType: "note", note: text,
-                                       occurredAt: occurredAt, createdAt: createdAt)
+        try await store.insertJobEvent(
+            jobID: jobID,
+            eventType: "note",
+            note: text,
+            occurredAt: occurredAt,
+            createdAt: createdAt
+        )
     }
 
     public func archive(jobID: String) async throws {
@@ -477,7 +482,7 @@ public actor JobService {
             if let v = remoteType { job.remoteType = v; overrides.insert("remoteType") }
             if let v = applicationURL { job.applicationURL = v; overrides.insert("applicationURL") }
             if let v = duplicateOfJobID {
-                job.duplicateOfJobID = v  // not an extraction field
+                job.duplicateOfJobID = v // not an extraction field
                 // Invariant repair (TASK-370): keep status consistent with the duplicate link.
                 if v != nil {
                     job.status = .duplicate
@@ -595,7 +600,7 @@ public actor JobService {
             extractionCounts[job.extractionStatus.rawValue, default: 0] += 1
         }
         let now = Date()
-        let sitesDue = sites.filter { $0.state != .exclude && ($0.nextReviewAt.map { $0 <= now } ?? true) }.count
+        let sitesDue = sites.count(where: { $0.state != .exclude && ($0.nextReviewAt.map { $0 <= now } ?? true) })
         return WorkflowSnapshot(
             jobsTotal: jobs.count,
             sitesTotal: sites.count,

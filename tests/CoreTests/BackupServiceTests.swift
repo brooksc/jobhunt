@@ -4,7 +4,6 @@ import XCTest
 @testable import JobhuntCore
 
 final class BackupServiceTests: XCTestCase {
-
     // MARK: - Helpers
 
     private func makeTempStoreURL() -> URL {
@@ -16,7 +15,11 @@ final class BackupServiceTests: XCTestCase {
         let url = makeTempStoreURL()
         let schema = Schema(SchemaV1.models)
         let config = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
-        let container = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
+        let container = try ModelContainer(
+            for: schema,
+            migrationPlan: JobhuntMigrationPlan.self,
+            configurations: config
+        )
         return (container, url)
     }
 
@@ -45,7 +48,11 @@ final class BackupServiceTests: XCTestCase {
         // Restore: open a new container from the backup and verify all records are present
         let schema = Schema(SchemaV1.models)
         let restoreConfig = ModelConfiguration(schema: schema, url: destURL, cloudKitDatabase: .none)
-        let restored = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: restoreConfig)
+        let restored = try ModelContainer(
+            for: schema,
+            migrationPlan: JobhuntMigrationPlan.self,
+            configurations: restoreConfig
+        )
         let rCtx = ModelContext(restored)
 
         let jobs = try rCtx.fetch(FetchDescriptor<Job>())
@@ -115,7 +122,11 @@ final class BackupServiceTests: XCTestCase {
 
         let schema = Schema(SchemaV1.models)
         let restoreConfig = ModelConfiguration(schema: schema, url: destURL, cloudKitDatabase: .none)
-        let restored = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: restoreConfig)
+        let restored = try ModelContainer(
+            for: schema,
+            migrationPlan: JobhuntMigrationPlan.self,
+            configurations: restoreConfig
+        )
         let rCtx = ModelContext(restored)
 
         let jobs = try rCtx.fetch(FetchDescriptor<Job>())
@@ -162,8 +173,14 @@ final class BackupServiceTests: XCTestCase {
 
         try BackupService.restore(from: backupURL, to: storeURL)
 
-        XCTAssertFalse(FileManager.default.fileExists(atPath: walURL.path), "WAL companion must be removed after restore")
-        XCTAssertFalse(FileManager.default.fileExists(atPath: shmURL.path), "SHM companion must be removed after restore")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: walURL.path),
+            "WAL companion must be removed after restore"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: shmURL.path),
+            "SHM companion must be removed after restore"
+        )
     }
 
     /// TASK-328: If copy from backup fails (non-existent source), original store must survive intact
@@ -186,11 +203,14 @@ final class BackupServiceTests: XCTestCase {
         }
 
         // Original store must still exist and be intact
-        XCTAssertTrue(FileManager.default.fileExists(atPath: storeURL.path), "Original store must survive a failed restore")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: storeURL.path),
+            "Original store must survive a failed restore"
+        )
     }
 
     /// TASK-331: isValidSQLite must reject a valid SQLite file that has no Jobhunt tables
-    func testIsValidSQLite_rejectsArbitrarySQLite() throws {
+    func testIsValidSQLite_rejectsArbitrarySQLite() {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("arbitrary_\(UUID().uuidString).sqlite")
         defer { try? FileManager.default.removeItem(at: url) }
@@ -248,11 +268,17 @@ final class BackupServiceTests: XCTestCase {
         }
 
         // The original store must still be present, openable, and hold its original rows.
-        XCTAssertTrue(FileManager.default.fileExists(atPath: storeURL.path),
-                      "Original store must survive a rejected restore")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: storeURL.path),
+            "Original store must survive a rejected restore"
+        )
         let schema = Schema(SchemaV1.models)
         let reopenConfig = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
-        let reopened = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: reopenConfig)
+        let reopened = try ModelContainer(
+            for: schema,
+            migrationPlan: JobhuntMigrationPlan.self,
+            configurations: reopenConfig
+        )
         let rCtx = ModelContext(reopened)
         let jobs = try rCtx.fetch(FetchDescriptor<Job>())
         XCTAssertEqual(jobs.count, 1, "Original data must be intact after a rejected restore")
@@ -283,7 +309,11 @@ final class BackupServiceTests: XCTestCase {
         // Reopen and verify only the backed-up state is present.
         let schema = Schema(SchemaV1.models)
         let reopenConfig = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
-        let reopened = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: reopenConfig)
+        let reopened = try ModelContainer(
+            for: schema,
+            migrationPlan: JobhuntMigrationPlan.self,
+            configurations: reopenConfig
+        )
         let rCtx = ModelContext(reopened)
         let jobs = try rCtx.fetch(FetchDescriptor<Job>()).sorted { ($0.jobNumber ?? 0) < ($1.jobNumber ?? 0) }
         XCTAssertEqual(jobs.map(\.jobNumber), [1], "Restore must yield exactly the backed-up state")
@@ -292,8 +322,10 @@ final class BackupServiceTests: XCTestCase {
         for suffix in [".incoming", ".old", ".old-wal", ".old-shm"] {
             let leftover = storeURL.deletingLastPathComponent()
                 .appendingPathComponent(storeURL.lastPathComponent + suffix)
-            XCTAssertFalse(FileManager.default.fileExists(atPath: leftover.path),
-                           "Restore must not leave \(suffix) behind")
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: leftover.path),
+                "Restore must not leave \(suffix) behind"
+            )
         }
     }
 

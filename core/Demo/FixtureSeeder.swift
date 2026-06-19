@@ -37,8 +37,12 @@ extension BackgroundStore {
         // (no wall-clock drift). All fixture timestamps derive from this. 1_750_000_000 =
         // 2025-06-15T07:46:40Z — see docs/test-db-spec.md.
         let now = Date(timeIntervalSince1970: 1_750_000_000)
-        func daysAgo(_ n: Double) -> Date { now.addingTimeInterval(-n * 86400) }
-        func daysFromNow(_ n: Double) -> Date { now.addingTimeInterval(n * 86400) }
+        func daysAgo(_ n: Double) -> Date {
+            now.addingTimeInterval(-n * 86400)
+        }
+        func daysFromNow(_ n: Double) -> Date {
+            now.addingTimeInterval(n * 86400)
+        }
 
         // MARK: - SeedJob struct (same shape as DemoSeeder)
 
@@ -77,7 +81,6 @@ extension BackgroundStore {
         // MARK: - Job fixtures
 
         let jobs: [SeedJob] = [
-
             // ── .new — remote ────────────────────────────────────────────────────────
             SeedJob(
                 capId: "fixture_cap_001", jobId: "fixture_job_001", jobNum: 1001,
@@ -1288,45 +1291,36 @@ extension BackgroundStore {
         // MARK: - SavedSearches
 
         let savedSearches: [SavedSearch] = [
-            {
-                let s = SavedSearch(
-                    name: "Active Pipeline",
-                    sortOrder: 0,
-                    statusFilterRaw: [
-                        JobStatus.new.rawValue,
-                        JobStatus.pursuing.rawValue,
-                        JobStatus.applied.rawValue,
-                        JobStatus.interview.rawValue,
-                        JobStatus.offer.rawValue
-                    ],
-                    sortKeyRaw: "capturedAt",
-                    sortAscending: false
-                )
-                return s
-            }(),
-            {
-                let s = SavedSearch(
-                    name: "Remote Only — High Fit",
-                    sortOrder: 1,
-                    statusFilterRaw: [],
-                    remoteFilterRaw: [RemoteType.remote.rawValue],
-                    searchText: "",
-                    minFitScore: 80,
-                    sortKeyRaw: "fitScore",
-                    sortAscending: false
-                )
-                return s
-            }(),
-            {
-                let s = SavedSearch(
-                    name: "Needs Action — Applied",
-                    sortOrder: 2,
-                    statusFilterRaw: [JobStatus.applied.rawValue],
-                    sortKeyRaw: "capturedAt",
-                    sortAscending: true
-                )
-                return s
-            }()
+            SavedSearch(
+                name: "Active Pipeline",
+                sortOrder: 0,
+                statusFilterRaw: [
+                    JobStatus.new.rawValue,
+                    JobStatus.pursuing.rawValue,
+                    JobStatus.applied.rawValue,
+                    JobStatus.interview.rawValue,
+                    JobStatus.offer.rawValue
+                ],
+                sortKeyRaw: "capturedAt",
+                sortAscending: false
+            ),
+            SavedSearch(
+                name: "Remote Only — High Fit",
+                sortOrder: 1,
+                statusFilterRaw: [],
+                remoteFilterRaw: [RemoteType.remote.rawValue],
+                searchText: "",
+                minFitScore: 80,
+                sortKeyRaw: "fitScore",
+                sortAscending: false
+            ),
+            SavedSearch(
+                name: "Needs Action — Applied",
+                sortOrder: 2,
+                statusFilterRaw: [JobStatus.applied.rawValue],
+                sortKeyRaw: "capturedAt",
+                sortAscending: true
+            )
         ]
 
         for search in savedSearches {

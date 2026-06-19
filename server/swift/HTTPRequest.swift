@@ -41,7 +41,10 @@ func peekRequestHeaders(_ data: Data) -> (path: String, contentLength: Int)? {
         if let colonIdx = line.firstIndex(of: ":") {
             let key = String(line[line.startIndex ..< colonIdx]).trimmingCharacters(in: .whitespaces).lowercased()
             if key == "content-length" {
-                contentLength = Int(String(line[line.index(after: colonIdx)...]).trimmingCharacters(in: .whitespaces)) ?? 0
+                contentLength = Int(
+                    String(line[line.index(after: colonIdx)...]).trimmingCharacters(in: .whitespaces)
+                ) ??
+                    0
             }
         }
     }

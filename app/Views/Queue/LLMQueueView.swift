@@ -156,7 +156,6 @@ struct LLMQueueView: View {
 
     /// One labeled section of the split: a header with a count, then either the request table or
     /// an empty-state caption.
-    @ViewBuilder
     private func queuePane(
         title: String,
         systemImage: String,
@@ -262,6 +261,7 @@ struct LLMQueueView: View {
             selectionContextMenu(for: ids)
         }
     }
+
     // swiftlint:enable function_body_length
 
     // MARK: - Toolbar

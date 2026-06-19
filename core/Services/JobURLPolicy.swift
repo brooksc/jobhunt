@@ -36,9 +36,11 @@ public enum JobURLPolicy {
     }
 
     public static func applicationURL(job: Job) -> String? {
-        applicationURL(applicationURL: job.applicationURL,
-                       canonicalURL: job.capture?.canonicalURL,
-                       captureURL: job.capture?.url)
+        applicationURL(
+            applicationURL: job.applicationURL,
+            canonicalURL: job.capture?.canonicalURL,
+            captureURL: job.capture?.url
+        )
     }
 
     /// URL to verify the posting is still live — same precedence as `applicationURL`.
@@ -47,9 +49,11 @@ public enum JobURLPolicy {
     }
 
     public static func displayURL(job: Job) -> String? {
-        displayURL(applicationURL: job.applicationURL,
-                   canonicalURL: job.capture?.canonicalURL,
-                   captureURL: job.capture?.url)
+        displayURL(
+            applicationURL: job.applicationURL,
+            canonicalURL: job.capture?.canonicalURL,
+            captureURL: job.capture?.url
+        )
     }
 
     // MARK: - Helper

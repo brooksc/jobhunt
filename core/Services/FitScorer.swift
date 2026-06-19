@@ -77,9 +77,9 @@ public enum FitScorer {
 
     public enum FitDimensionError: Error, Equatable {
         case notAnArray
-        case missing([String])      // expected dimensions absent from the response
-        case unknown(String)        // a dimension name not in the expected contract
-        case duplicate(String)      // the same dimension appeared twice
+        case missing([String]) // expected dimensions absent from the response
+        case unknown(String) // a dimension name not in the expected contract
+        case duplicate(String) // the same dimension appeared twice
         case nonNumericScore(String) // a dimension's score wasn't a number
     }
 

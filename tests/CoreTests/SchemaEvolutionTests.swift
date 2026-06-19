@@ -17,7 +17,6 @@ import XCTest
 ///   4. Re-open the same file with JobhuntMigrationPlan and the new SchemaVN.
 ///   5. Assert all rows are present and new optional fields are nil (or expected default).
 final class SchemaEvolutionTests: XCTestCase {
-
     // MARK: - Baseline: V1 store survives container re-open
 
     /// Regression guard: a Job with every current field set survives a container close/reopen.
@@ -32,7 +31,11 @@ final class SchemaEvolutionTests: XCTestCase {
         let config = ModelConfiguration(url: storeURL)
 
         // --- Phase 1: write a Job with every stored field populated ---
-        let container1 = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
+        let container1 = try ModelContainer(
+            for: schema,
+            migrationPlan: JobhuntMigrationPlan.self,
+            configurations: config
+        )
         let ctx1 = ModelContext(container1)
 
         let capture = Capture(
@@ -79,7 +82,11 @@ final class SchemaEvolutionTests: XCTestCase {
         let jobID = job.id
 
         // --- Phase 2: reopen with the same migration plan and verify every field ---
-        let container2 = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
+        let container2 = try ModelContainer(
+            for: schema,
+            migrationPlan: JobhuntMigrationPlan.self,
+            configurations: config
+        )
         let ctx2 = ModelContext(container2)
 
         let jobs = try ctx2.fetch(FetchDescriptor<Job>())
@@ -128,7 +135,11 @@ final class SchemaEvolutionTests: XCTestCase {
         let config = ModelConfiguration(url: storeURL)
 
         // --- Phase 1: write data with current schema ---
-        let container1 = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
+        let container1 = try ModelContainer(
+            for: schema,
+            migrationPlan: JobhuntMigrationPlan.self,
+            configurations: config
+        )
         let ctx1 = ModelContext(container1)
 
         let job = Job(jobNumber: 42, title: "Schema Test Job")
@@ -146,7 +157,11 @@ final class SchemaEvolutionTests: XCTestCase {
         // (container1 goes out of scope at end of block)
 
         // --- Phase 2: re-open with the same migration plan ---
-        let container2 = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
+        let container2 = try ModelContainer(
+            for: schema,
+            migrationPlan: JobhuntMigrationPlan.self,
+            configurations: config
+        )
         let ctx2 = ModelContext(container2)
 
         let jobs = try ctx2.fetch(FetchDescriptor<Job>())

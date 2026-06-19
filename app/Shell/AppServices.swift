@@ -131,7 +131,9 @@ final class AppServices: @unchecked Sendable {
     /// reclaims the port, so it's best-effort on hard termination.
     @MainActor
     func shutdown() async {
-        for task in runtimeTasks { task.cancel() }
+        for task in runtimeTasks {
+            task.cancel()
+        }
         runtimeTasks.removeAll()
         await server.stop()
         serverRunning = false

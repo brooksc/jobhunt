@@ -3,10 +3,22 @@ import SwiftData
 import SwiftUI
 
 // MARK: - Sidebar statuses shown as smart folders
-private let sidebarStatuses: [JobStatus] = [.new, .pursuing, .applied, .interview, .offer, .rejected, .passed, .archived, .closed, .expired]
 
-// Selected-row highlight (drawn manually because macOS 26's List(.sidebar) selection
-// highlight doesn't render — see sidebarRow).
+private let sidebarStatuses: [JobStatus] = [
+    .new,
+    .pursuing,
+    .applied,
+    .interview,
+    .offer,
+    .rejected,
+    .passed,
+    .archived,
+    .closed,
+    .expired
+]
+
+/// Selected-row highlight (drawn manually because macOS 26's List(.sidebar) selection
+/// highlight doesn't render — see sidebarRow).
 private let sidebarSelectionColor = Color(red: 0.0, green: 0.32, blue: 0.75)
 
 struct Sidebar: View {
@@ -19,7 +31,10 @@ struct Sidebar: View {
     /// LLM Queue row, updating as the queue drains (TASK-491).
     @Query(filter: #Predicate<LLMRequest> { $0.finishedAt == nil }) private var outstandingLLMRequests: [LLMRequest]
     /// How many of those are actively running — drives the activity spinner (TASK-496).
-    private var llmRunningCount: Int { outstandingLLMRequests.count(where: { $0.status == .running }) }
+    private var llmRunningCount: Int {
+        outstandingLLMRequests.count(where: { $0.status == .running })
+    }
+
     @Query private var allJobs: [Job]
     @Query private var allDecisions: [DuplicateDecision]
     @Query(sort: \SavedSearch.sortOrder) private var savedSearches: [SavedSearch]
@@ -45,32 +60,47 @@ struct Sidebar: View {
 
     var body: some View {
         List(selection: $listSelection) {
-            sidebarRow(.dashboard, id: "sidebar.dashboard",
-                       label: Label("Dashboard", systemImage: "chart.bar"))
-                .help("Overview and stats")
+            sidebarRow(
+                .dashboard,
+                id: "sidebar.dashboard",
+                label: Label("Dashboard", systemImage: "chart.bar")
+            )
+            .help("Overview and stats")
 
-            sidebarRow(.needsAction, id: "sidebar.needsAction",
-                       label: Label("Needs Action", systemImage: "bell"))
-                .badge(pendingActions.isEmpty ? 0 : pendingActions.count)
-                .help("Jobs with pending follow-up")
+            sidebarRow(
+                .needsAction,
+                id: "sidebar.needsAction",
+                label: Label("Needs Action", systemImage: "bell")
+            )
+            .badge(pendingActions.isEmpty ? 0 : pendingActions.count)
+            .help("Jobs with pending follow-up")
 
-            sidebarRow(.resumes, id: "sidebar.resumes",
-                       label: Label("Resumes", systemImage: "doc.text"))
-                .badge(resumes.isEmpty ? 0 : resumes.count)
-                .help("Manage résumés used for AI fit scoring")
+            sidebarRow(
+                .resumes,
+                id: "sidebar.resumes",
+                label: Label("Resumes", systemImage: "doc.text")
+            )
+            .badge(resumes.isEmpty ? 0 : resumes.count)
+            .help("Manage résumés used for AI fit scoring")
 
             Section("Jobs") {
-                sidebarRow(.jobsAll, id: "sidebar.jobs.all",
-                           label: Label("All Jobs", systemImage: "tray.2"))
-                    .badge(allJobs.count)
-                    .help("All captured jobs")
+                sidebarRow(
+                    .jobsAll,
+                    id: "sidebar.jobs.all",
+                    label: Label("All Jobs", systemImage: "tray.2")
+                )
+                .badge(allJobs.count)
+                .help("All captured jobs")
 
                 ForEach(sidebarStatuses, id: \.self) { status in
                     let count = statusCounts[status] ?? 0
-                    sidebarRow(.jobs(status), id: "sidebar.jobs.\(status.rawValue)",
-                               label: Label(status.displayName, systemImage: Theme.statusSymbol(status)))
-                        .badge(count)
-                        .help("Jobs with status: \(status.displayName)")
+                    sidebarRow(
+                        .jobs(status),
+                        id: "sidebar.jobs.\(status.rawValue)",
+                        label: Label(status.displayName, systemImage: Theme.statusSymbol(status))
+                    )
+                    .badge(count)
+                    .help("Jobs with status: \(status.displayName)")
                 }
             }
 
@@ -78,60 +108,78 @@ struct Sidebar: View {
                 Section("Saved Searches") {
                     ForEach(savedSearches) { search in
                         let count = savedSearchCounts[search.id] ?? 0
-                        sidebarRow(.savedSearch(search.id), id: nil,
-                                   label: Label(search.name, systemImage: "pin"))
-                            .badge(count)
-                            .help("Saved search: \(search.name)")
-                            .contextMenu {
-                                Button("Rename…") {
-                                    renamingSearch = search
-                                    renameText = search.name
-                                }
-                                Divider()
-                                Button("Delete", role: .destructive) {
-                                    searchToDelete = search
-                                }
+                        sidebarRow(
+                            .savedSearch(search.id),
+                            id: nil,
+                            label: Label(search.name, systemImage: "pin")
+                        )
+                        .badge(count)
+                        .help("Saved search: \(search.name)")
+                        .contextMenu {
+                            Button("Rename…") {
+                                renamingSearch = search
+                                renameText = search.name
                             }
+                            Divider()
+                            Button("Delete", role: .destructive) {
+                                searchToDelete = search
+                            }
+                        }
                     }
                 }
             }
 
             Section("Sources") {
-                sidebarRow(.sites, id: "sidebar.sites",
-                           label: Label("Sites", systemImage: "globe"))
-                    .help("Job listing sources")
+                sidebarRow(
+                    .sites,
+                    id: "sidebar.sites",
+                    label: Label("Sites", systemImage: "globe")
+                )
+                .help("Job listing sources")
 
-                sidebarRow(.duplicates, id: "sidebar.duplicates",
-                           label: Label("Duplicates", systemImage: "doc.on.doc"))
-                    .badge(duplicatePairCount)
-                    .help("Duplicate job postings awaiting review")
+                sidebarRow(
+                    .duplicates,
+                    id: "sidebar.duplicates",
+                    label: Label("Duplicates", systemImage: "doc.on.doc")
+                )
+                .badge(duplicatePairCount)
+                .help("Duplicate job postings awaiting review")
             }
 
             Section("Tools") {
-                sidebarRow(.llmQueue, id: "sidebar.llmQueue",
-                           label: HStack(spacing: 6) {
-                               Label("LLM Queue", systemImage: "cpu")
-                               // Activity spinner while the queue is actively processing — makes
-                               // "it's working" obvious even when the outstanding count is small or
-                               // briefly between the extract → fit phases (TASK-496).
-                               if llmRunningCount > 0 {
-                                   ProgressView().controlSize(.small)
-                               }
-                           })
-                    .badge(outstandingLLMRequests.isEmpty ? 0 : outstandingLLMRequests.count)
-                    .help("LLM processing queue status (badge = queued + running; spinner = processing)")
+                sidebarRow(
+                    .llmQueue,
+                    id: "sidebar.llmQueue",
+                    label: HStack(spacing: 6) {
+                        Label("LLM Queue", systemImage: "cpu")
+                        // Activity spinner while the queue is actively processing — makes
+                        // "it's working" obvious even when the outstanding count is small or
+                        // briefly between the extract → fit phases (TASK-496).
+                        if llmRunningCount > 0 {
+                            ProgressView().controlSize(.small)
+                        }
+                    }
+                )
+                .badge(outstandingLLMRequests.isEmpty ? 0 : outstandingLLMRequests.count)
+                .help("LLM processing queue status (badge = queued + running; spinner = processing)")
 
-                sidebarRow(.dataQuality, id: "sidebar.dataQuality",
-                           label: Label("Data Quality", systemImage: "checkmark.shield"))
-                    .help("Data quality issues")
+                sidebarRow(
+                    .dataQuality,
+                    id: "sidebar.dataQuality",
+                    label: Label("Data Quality", systemImage: "checkmark.shield")
+                )
+                .help("Data quality issues")
 
                 // Settings is the standard macOS preferences window (⌘,), not an in-window
                 // section — this row just opens it.
                 settingsRow
 
-                sidebarRow(.help, id: "sidebar.help",
-                           label: Label("Help", systemImage: "questionmark.circle"))
-                    .help("Help and documentation")
+                sidebarRow(
+                    .help,
+                    id: "sidebar.help",
+                    label: Label("Help", systemImage: "questionmark.circle")
+                )
+                .help("Help and documentation")
             }
         }
         .listStyle(.sidebar)
@@ -176,7 +224,10 @@ struct Sidebar: View {
                             try await appServices.jobService.deleteSavedSearch(id: id)
                             if wasSelected { listSelection = .jobsAll }
                         } catch {
-                            appServices.toastStore.show("Couldn't delete saved search: \(error.localizedDescription)", isError: true)
+                            appServices.toastStore.show(
+                                "Couldn't delete saved search: \(error.localizedDescription)",
+                                isError: true
+                            )
                         }
                     }
                 }
@@ -272,7 +323,9 @@ struct Sidebar: View {
     /// changed. O(N+S) per body, versus the old O(N×S) match work that ran in `body` directly.
     private var countsRefreshID: Int {
         var hasher = Hasher()
-        for job in allJobs { hasher.combine(JobMatchFields(job: job)) }
+        for job in allJobs {
+            hasher.combine(JobMatchFields(job: job))
+        }
         for search in savedSearches {
             hasher.combine(search.id)
             hasher.combine(SavedSearchCriteria(search))
@@ -288,7 +341,9 @@ struct Sidebar: View {
         let now = Date()
         let result = await Task.detached(priority: .utility) {
             var statusByRaw: [String: Int] = [:]
-            for field in fields { statusByRaw[field.statusRaw, default: 0] += 1 }
+            for field in fields {
+                statusByRaw[field.statusRaw, default: 0] += 1
+            }
             var searchCounts: [String: Int] = [:]
             for entry in criteria {
                 searchCounts[entry.id] = fields.count(where: { entry.criteria.matches($0, now: now) })
@@ -312,17 +367,17 @@ struct Sidebar: View {
     private func applySelection(_ item: SidebarItem) {
         router.activeSavedSearchID = nil
         switch item {
-        case .dashboard:         router.navigateToSection(.dashboard)
-        case .needsAction:       router.navigateToSection(.needsAction)
-        case .jobsAll:           router.sidebarJobFilter = nil; router.navigateToSection(.jobs)
-        case .jobs(let status):  router.sidebarJobFilter = status; router.navigateToSection(.jobs)
-        case .resumes:           router.navigateToSection(.resumes)
-        case .sites:             router.navigateToSection(.sites)
-        case .duplicates:        router.navigateToSection(.duplicates)
-        case .llmQueue:          router.navigateToSection(.llmQueue)
-        case .dataQuality:       router.navigateToSection(.dataQuality)
-        case .help:              router.navigateToSection(.help)
-        case .savedSearch(let id):
+        case .dashboard: router.navigateToSection(.dashboard)
+        case .needsAction: router.navigateToSection(.needsAction)
+        case .jobsAll: router.sidebarJobFilter = nil; router.navigateToSection(.jobs)
+        case let .jobs(status): router.sidebarJobFilter = status; router.navigateToSection(.jobs)
+        case .resumes: router.navigateToSection(.resumes)
+        case .sites: router.navigateToSection(.sites)
+        case .duplicates: router.navigateToSection(.duplicates)
+        case .llmQueue: router.navigateToSection(.llmQueue)
+        case .dataQuality: router.navigateToSection(.dataQuality)
+        case .help: router.navigateToSection(.help)
+        case let .savedSearch(id):
             router.activeSavedSearchID = id
             router.sidebarJobFilter = nil
             router.navigateToSection(.jobs)
@@ -332,18 +387,17 @@ struct Sidebar: View {
     private func syncSelectionFromRouter() {
         let item: SidebarItem
         switch router.selectedSection {
-        case .dashboard:   item = .dashboard
+        case .dashboard: item = .dashboard
         case .needsAction: item = .needsAction
         case .jobs:
             if let id = router.activeSavedSearchID { item = .savedSearch(id) }
-            else if let status = router.sidebarJobFilter { item = .jobs(status) }
-            else { item = .jobsAll }
-        case .resumes:     item = .resumes
-        case .sites:       item = .sites
-        case .duplicates:  item = .duplicates
-        case .llmQueue:    item = .llmQueue
+            else if let status = router.sidebarJobFilter { item = .jobs(status) } else { item = .jobsAll }
+        case .resumes: item = .resumes
+        case .sites: item = .sites
+        case .duplicates: item = .duplicates
+        case .llmQueue: item = .llmQueue
         case .dataQuality: item = .dataQuality
-        case .help:        item = .help
+        case .help: item = .help
         }
         if listSelection != item { listSelection = item }
         // Remember the current view so the next launch restores it. Gated on didRestore so the
@@ -355,13 +409,12 @@ struct Sidebar: View {
     /// Falls back to the default view when nothing is stored or a saved search has since been deleted.
     private func restoreSelection() {
         guard let item = SidebarItem(persistedID: appServices.settings.lastSidebarSelection) else { return }
-        if case .savedSearch(let id) = item, !savedSearches.contains(where: { $0.id == id }) { return }
+        if case let .savedSearch(id) = item, !savedSearches.contains(where: { $0.id == id }) { return }
         applySelection(item)
     }
 
     // MARK: - Rename sheet
 
-    @ViewBuilder
     private func renameSheet(_ search: SavedSearch) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Rename Search").font(.headline)

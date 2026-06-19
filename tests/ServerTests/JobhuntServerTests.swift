@@ -174,7 +174,7 @@ final class JobhuntServerTests: XCTestCase {
 
     // TASK-434: MCP routes only accept POST; other methods get 405.
     func testMCPRoute_getMethodRejectedWith405() async throws {
-        for path in ["/mcp/jobs/list", "/mcp/jobs/update"] {  // a read route and a write route
+        for path in ["/mcp/jobs/list", "/mcp/jobs/update"] { // a read route and a write route
             let url = await URL(string: baseURL() + path)!
             var req = URLRequest(url: url)
             req.httpMethod = "GET"
@@ -224,7 +224,7 @@ final class JobhuntServerTests: XCTestCase {
             "page_title": "Structured Engineer",
             "visible_text": "We are hiring an engineer.",
             "structured_data": [
-                ["@type": "JobPosting", "title": "Structured Engineer", "baseSalary": 200000]
+                ["@type": "JobPosting", "title": "Structured Engineer", "baseSalary": 200_000]
             ]
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payloadObj)
@@ -246,13 +246,16 @@ final class JobhuntServerTests: XCTestCase {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("chrome-extension://testextension", forHTTPHeaderField: "Origin")
-        let jsonLd: [[String: Any]] = [["@type": "JobPosting", "title": "Dual Engineer", "baseSalary": 210000]]
-        let payloadObj: [String: Any] = [
+        let jsonLd: [[String: Any]] = [["@type": "JobPosting", "title": "Dual Engineer", "baseSalary": 210_000]]
+        let payloadObj: [String: Any] = try [
             "url": "https://example.com/jobs/dual-1",
             "page_title": "Dual Engineer",
             "visible_text": "We are hiring.",
             "structured_data": jsonLd,
-            "structured_data_json": String(data: try JSONSerialization.data(withJSONObject: jsonLd), encoding: .utf8)!,
+            "structured_data_json": XCTUnwrap(try String(
+                data: JSONSerialization.data(withJSONObject: jsonLd),
+                encoding: .utf8
+            ))
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payloadObj)
 
@@ -274,7 +277,7 @@ final class JobhuntServerTests: XCTestCase {
 
     func testResolveStructuredData_fallsBackToRawArray() throws {
         let body = try JSONSerialization.data(withJSONObject: [
-            "structured_data": [["@type": "JobPosting", "title": "Eng"]],
+            "structured_data": [["@type": "JobPosting", "title": "Eng"]]
         ])
         let resolved = try XCTUnwrap(CaptureRequestParsing.resolveStructuredDataJSON(typed: nil, rawBody: body))
         let parsed = try JSONSerialization.jsonObject(with: Data(resolved.utf8)) as? [[String: Any]]
@@ -425,8 +428,10 @@ final class JobhuntServerTests: XCTestCase {
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         // With empty allowlist (dev mode) this passes. With a populated allowlist, this would be 403.
         // Update this assertion to XCTAssertEqual(http.statusCode, 403) once CWS_ID is added.
-        XCTAssertTrue(http.statusCode == 200 || http.statusCode == 403,
-                      "Must either permit (dev mode, empty allowlist) or block (CWS ID set)")
+        XCTAssertTrue(
+            http.statusCode == 200 || http.statusCode == 403,
+            "Must either permit (dev mode, empty allowlist) or block (CWS ID set)"
+        )
     }
 
     func testCorsBlocksNonExtension() async throws {
@@ -601,14 +606,30 @@ final class JobhuntServerOriginTests: XCTestCase {
     }
 
     func testIsApprovedExtensionOrigin_decisionLogic() {
-        let allow: Set<String> = ["chrome-extension://approved"]
+        let allow: Set = ["chrome-extension://approved"]
         // Non-extension origins are never approved, even with allowArbitrary.
-        XCTAssertFalse(JobhuntServer.isApprovedExtensionOrigin("https://evil.com", allowlist: allow, allowArbitrary: true))
+        XCTAssertFalse(JobhuntServer.isApprovedExtensionOrigin(
+            "https://evil.com",
+            allowlist: allow,
+            allowArbitrary: true
+        ))
         // Allowlisted origin is approved regardless of allowArbitrary.
-        XCTAssertTrue(JobhuntServer.isApprovedExtensionOrigin("chrome-extension://approved", allowlist: allow, allowArbitrary: false))
+        XCTAssertTrue(JobhuntServer.isApprovedExtensionOrigin(
+            "chrome-extension://approved",
+            allowlist: allow,
+            allowArbitrary: false
+        ))
         // Unlisted extension origin: approved only when allowArbitrary (debug).
-        XCTAssertFalse(JobhuntServer.isApprovedExtensionOrigin("chrome-extension://other", allowlist: allow, allowArbitrary: false))
-        XCTAssertTrue(JobhuntServer.isApprovedExtensionOrigin("chrome-extension://other", allowlist: allow, allowArbitrary: true))
+        XCTAssertFalse(JobhuntServer.isApprovedExtensionOrigin(
+            "chrome-extension://other",
+            allowlist: allow,
+            allowArbitrary: false
+        ))
+        XCTAssertTrue(JobhuntServer.isApprovedExtensionOrigin(
+            "chrome-extension://other",
+            allowlist: allow,
+            allowArbitrary: true
+        ))
     }
 
     func testReleaseDefault_failsClosed() {

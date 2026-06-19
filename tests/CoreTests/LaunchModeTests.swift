@@ -49,7 +49,7 @@ final class LaunchModeTests: XCTestCase {
     func testConflictingModesThrows() {
         XCTAssertThrowsError(try LaunchPlan.parse(["app", "--ui-test-store", "--fixture-db", "/tmp/x"])) { error in
             switch error {
-            case LaunchArgumentError.conflictingModes(_):
+            case LaunchArgumentError.conflictingModes:
                 break
             default:
                 XCTFail("expected conflictingModes, got \(error)")
@@ -67,10 +67,10 @@ final class LaunchModeTests: XCTestCase {
     }
 
     func testInteractiveModesRunRuntimeServices() throws {
-        for plan in [
-            try LaunchPlan.parse(["app"]),
-            try LaunchPlan.parse(["app", "--ui-test-store"]),
-            try LaunchPlan.parse(["app", "--fixture-db", "/tmp/x.store"]),
+        for plan in try [
+            LaunchPlan.parse(["app"]),
+            LaunchPlan.parse(["app", "--ui-test-store"]),
+            LaunchPlan.parse(["app", "--fixture-db", "/tmp/x.store"])
         ] {
             XCTAssertTrue(plan.runsRuntimeServices)
             XCTAssertTrue(plan.needsMCPToken)

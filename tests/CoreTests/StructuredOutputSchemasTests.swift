@@ -32,9 +32,22 @@ final class StructuredOutputSchemasTests: XCTestCase {
     func testExtractionSchemaExposesFieldsTheNormalizerReads() throws {
         let props = try XCTUnwrap(parse(.jobExtraction)["properties"] as? [String: Any])
         // JobFieldNormalizer / projections read these snake_case keys.
-        for key in ["company", "title", "location", "remote_type", "salary_min", "salary_max",
-                    "salary_currency", "salary_note", "employment_type", "seniority", "skills",
-                    "requirements", "nice_to_haves", "application_url"] {
+        for key in [
+            "company",
+            "title",
+            "location",
+            "remote_type",
+            "salary_min",
+            "salary_max",
+            "salary_currency",
+            "salary_note",
+            "employment_type",
+            "seniority",
+            "skills",
+            "requirements",
+            "nice_to_haves",
+            "application_url"
+        ] {
             XCTAssertNotNil(props[key], "extraction schema must expose '\(key)'")
         }
     }

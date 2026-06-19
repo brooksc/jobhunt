@@ -369,8 +369,8 @@ public actor QueueActor {
         case succeeded
         case providerFailure
         case rateLimited // HTTP 429 — transient; drops adaptive concurrency, retried, not a failure
-        case cancelled   // user-cancelled in flight, or the row was already cancelled/taken
-        case skipped     // couldn't claim the row (store error / not queued) — neutral
+        case cancelled // user-cancelled in flight, or the row was already cancelled/taken
+        case skipped // couldn't claim the row (store error / not queued) — neutral
     }
 
     /// Throws on a store-read failure so the drain loop can distinguish "queue couldn't be read"
@@ -530,7 +530,11 @@ public actor QueueActor {
                 job.updatedAt = Date()
             }
 
-            let result = try await ExtractionEngine.extract(snapshot: extractionSnapshot, provider: provider, settings: extractSettings)
+            let result = try await ExtractionEngine.extract(
+                snapshot: extractionSnapshot,
+                provider: provider,
+                settings: extractSettings
+            )
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
 
             // Guard: skip writing success if the request was cancelled while we were running.
@@ -717,8 +721,11 @@ public actor QueueActor {
         guard consented else {
             await markRequestFailed(item: item, error: ConsentError.notConsented, startedAt: startedAt)
             // TASK-520: keep the fit record's state consistent with the failed request.
-            try? await store.markFitScoreFailed(jobID: jobID, resumeID: resumeID,
-                                                errorMessage: ConsentError.notConsented.localizedDescription)
+            try? await store.markFitScoreFailed(
+                jobID: jobID,
+                resumeID: resumeID,
+                errorMessage: ConsentError.notConsented.localizedDescription
+            )
             return false
         }
 
@@ -734,7 +741,12 @@ public actor QueueActor {
         try? await store.markFitScoreRunning(jobID: jobID, resumeID: resumeID)
 
         do {
-            let fitOutput = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, model: fitModel, provider: provider)
+            let fitOutput = try await ExtractionEngine.scoreFit(
+                job: jobSnap,
+                resume: resumeSnap,
+                model: fitModel,
+                provider: provider
+            )
             let fitResult = fitOutput.score
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
 

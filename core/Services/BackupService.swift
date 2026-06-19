@@ -33,13 +33,13 @@ public enum BackupService {
 
         public var errorDescription: String? {
             switch self {
-            case .storeNotFound(let url):
+            case let .storeNotFound(url):
                 return "Store not found at \(url.path)"
-            case .sqliteOpenFailed(let code):
+            case let .sqliteOpenFailed(code):
                 return "Could not open store database (SQLite error \(code))"
-            case .vacuumFailed(let msg):
+            case let .vacuumFailed(msg):
                 return "Backup failed: \(msg)"
-            case .notValidSQLite(let url):
+            case let .notValidSQLite(url):
                 return "Not a valid SQLite database: \(url.lastPathComponent)"
             case .incompatibleStore:
                 return "This backup isn't compatible with this version of Jobhunt and can't be restored. "
@@ -198,7 +198,9 @@ public enum BackupService {
         let walAside = companion(of: storeURL, suffix: ".old-wal")
         let shmAside = companion(of: storeURL, suffix: ".old-shm")
         // Clear any leftovers from a previously interrupted restore.
-        for url in [storeAside, walAside, shmAside] { try? fm.removeItem(at: url) }
+        for url in [storeAside, walAside, shmAside] {
+            try? fm.removeItem(at: url)
+        }
 
         var undo: [(restoreTo: URL, from: URL)] = []
         func moveAside(_ from: URL, to aside: URL) throws {
@@ -225,6 +227,8 @@ public enum BackupService {
 
         // Stage 5: success — discard the set-aside originals. The restored store is a self-contained
         // VACUUM INTO file, so it has no companions (clean checkpoint).
-        for url in [storeAside, walAside, shmAside] { try? fm.removeItem(at: url) }
+        for url in [storeAside, walAside, shmAside] {
+            try? fm.removeItem(at: url)
+        }
     }
 }

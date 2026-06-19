@@ -2,7 +2,6 @@ import XCTest
 @testable import JobhuntCore
 
 final class ConsentHelperTests: XCTestCase {
-
     // MARK: - isLoopbackURL
 
     func testLoopback_localhost_isTrue() {

@@ -19,8 +19,8 @@ public final class AnthropicProvider: LLMProvider, @unchecked Sendable {
     private let timeoutSeconds: Int
     private let session: URLSession
 
-    // `model` is informational only — the model actually sent is `ChatRequest.model`. It carries
-    // no hardcoded default; the empty default keeps test/init sites that don't care concise.
+    /// `model` is informational only — the model actually sent is `ChatRequest.model`. It carries
+    /// no hardcoded default; the empty default keeps test/init sites that don't care concise.
     public init(
         apiKey: String,
         model: String = "",

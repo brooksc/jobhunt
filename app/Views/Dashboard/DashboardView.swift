@@ -77,8 +77,8 @@ struct DashboardView: View {
     private var housekeepingSection: some View {
         let now = Date()
         let dupCount = derived.duplicateCount
-        let sitesDue = sites.filter { $0.state != .exclude && ($0.nextReviewAt.map { $0 <= now } ?? true) }.count
-        let activeQueueCount = llmRequests.filter { $0.status == .queued || $0.status == .running }.count
+        let sitesDue = sites.count(where: { $0.state != .exclude && ($0.nextReviewAt.map { $0 <= now } ?? true) })
+        let activeQueueCount = llmRequests.count(where: { $0.status == .queued || $0.status == .running })
         return VStack(alignment: .leading, spacing: 10) {
             Text("Housekeeping").font(.headline)
             HStack(spacing: 12) {
@@ -95,8 +95,12 @@ struct DashboardView: View {
         }
     }
 
-    private func housekeepingCard(_ label: String, count: Int, systemImage: String,
-                                  action: @escaping () -> Void) -> some View {
+    private func housekeepingCard(
+        _ label: String,
+        count: Int,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: systemImage)
@@ -118,14 +122,33 @@ struct DashboardView: View {
 
     private var statCardsSection: some View {
         HStack(spacing: 12) {
-            StatCard(label: "Total Jobs", value: summary.total, systemImage: "briefcase",
-                     action: { showJobs(nil) })
-            StatCard(label: "Active", value: summary.active, systemImage: "flame", color: .blue,
-                     action: { showJobs(nil) })
-            StatCard(label: "Interviews", value: summary.interviews, systemImage: "person.2", color: .purple,
-                     action: { showJobs(.interview) })
-            StatCard(label: "Offers", value: summary.offers, systemImage: "star.fill", color: .green,
-                     action: { showJobs(.offer) })
+            StatCard(
+                label: "Total Jobs",
+                value: summary.total,
+                systemImage: "briefcase",
+                action: { showJobs(nil) }
+            )
+            StatCard(
+                label: "Active",
+                value: summary.active,
+                systemImage: "flame",
+                color: .blue,
+                action: { showJobs(nil) }
+            )
+            StatCard(
+                label: "Interviews",
+                value: summary.interviews,
+                systemImage: "person.2",
+                color: .purple,
+                action: { showJobs(.interview) }
+            )
+            StatCard(
+                label: "Offers",
+                value: summary.offers,
+                systemImage: "star.fill",
+                color: .green,
+                action: { showJobs(.offer) }
+            )
         }
     }
 
@@ -295,7 +318,11 @@ struct DashboardView: View {
                                 router.selectedJobID = job.id
                                 router.selectedSection = .jobs
                             } label: {
-                                let action = job.actions.filter { $0.completedAt == nil && ($0.snoozedUntil == nil || $0.snoozedUntil! <= now) }.sorted { $0.dueDate < $1.dueDate }.first
+                                let action = job.actions
+                                    .filter {
+                                        $0.completedAt == nil && ($0.snoozedUntil == nil || $0.snoozedUntil! <= now)
+                                    }
+                                    .sorted { $0.dueDate < $1.dueDate }.first
                                 HStack(spacing: 8) {
                                     if let action {
                                         DueBadge(date: action.dueDate)
@@ -357,7 +384,10 @@ struct DashboardView: View {
                                         .fill(Color.secondary.opacity(0.1))
                                     RoundedRectangle(cornerRadius: 6)
                                         .fill(funnelColor(idx))
-                                        .frame(width: max(28, geo.size.width * CGFloat(item.count) / CGFloat(max(1, maxCount))))
+                                        .frame(width: max(
+                                            28,
+                                            geo.size.width * CGFloat(item.count) / CGFloat(max(1, maxCount))
+                                        ))
                                         .overlay(
                                             Text("\(item.count)")
                                                 .font(.caption.weight(.bold).monospacedDigit())
@@ -586,7 +616,7 @@ private struct StatCard: View {
     /// When set, the whole card becomes a button that navigates to the matching jobs list.
     var action: (() -> Void)?
 
-    @ViewBuilder private var card: some View {
+    private var card: some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {

@@ -21,8 +21,8 @@ final class ExtractionDTOTests: XCTestCase {
         """)
         let dto = try ExtractionDTO(raw: raw)
         XCTAssertEqual(dto.title, "Staff Engineer")
-        XCTAssertEqual(dto.salaryMin, 120000)
-        XCTAssertEqual(dto.salaryMax, 180000)
+        XCTAssertEqual(dto.salaryMin, 120_000)
+        XCTAssertEqual(dto.salaryMax, 180_000)
         XCTAssertEqual(dto.skills, ["Swift", "Go"])
         XCTAssertEqual(dto.requirements, ["5y"])
         XCTAssertNil(dto.salaryHourlyMin)
@@ -55,15 +55,15 @@ final class ExtractionDTOTests: XCTestCase {
     func testNumericStringSalaryCoercesToInt() throws {
         let raw = try parse(#"{"salary_min":"120000","salary_max":"180000"}"#)
         let dto = try ExtractionDTO(raw: raw)
-        XCTAssertEqual(dto.salaryMin, 120000)
-        XCTAssertEqual(dto.salaryMax, 180000)
+        XCTAssertEqual(dto.salaryMin, 120_000)
+        XCTAssertEqual(dto.salaryMax, 180_000)
     }
 
     func testFloatSalaryRoundsToInt() throws {
         let raw = try parse(#"{"salary_min":120000.0,"salary_max":180499.6}"#)
         let dto = try ExtractionDTO(raw: raw)
-        XCTAssertEqual(dto.salaryMin, 120000)
-        XCTAssertEqual(dto.salaryMax, 180500)
+        XCTAssertEqual(dto.salaryMin, 120_000)
+        XCTAssertEqual(dto.salaryMax, 180_500)
     }
 
     func testHourlyAcceptsNumberAndNumericString() throws {
@@ -84,7 +84,7 @@ final class ExtractionDTOTests: XCTestCase {
     func testStringFieldGivenObjectThrows() throws {
         let raw = try parse(#"{"title":{"nested":"x"}}"#)
         XCTAssertThrowsError(try ExtractionDTO(raw: raw)) {
-            guard case ExtractionEngineError.malformedField(let field, _) = $0 else {
+            guard case let ExtractionEngineError.malformedField(field, _) = $0 else {
                 return XCTFail("expected malformedField, got \($0)")
             }
             XCTAssertEqual(field, "title")
@@ -94,7 +94,7 @@ final class ExtractionDTOTests: XCTestCase {
     func testNonNumericStringSalaryThrows() throws {
         let raw = try parse(#"{"salary_min":"competitive"}"#)
         XCTAssertThrowsError(try ExtractionDTO(raw: raw)) {
-            guard case ExtractionEngineError.malformedField(let field, _) = $0 else {
+            guard case let ExtractionEngineError.malformedField(field, _) = $0 else {
                 return XCTFail("expected malformedField, got \($0)")
             }
             XCTAssertEqual(field, "salary_min")
@@ -104,7 +104,7 @@ final class ExtractionDTOTests: XCTestCase {
     func testArrayFieldGivenStringThrows() throws {
         let raw = try parse(#"{"skills":"Swift, Go"}"#)
         XCTAssertThrowsError(try ExtractionDTO(raw: raw)) {
-            guard case ExtractionEngineError.malformedField(let field, _) = $0 else {
+            guard case let ExtractionEngineError.malformedField(field, _) = $0 else {
                 return XCTFail("expected malformedField, got \($0)")
             }
             XCTAssertEqual(field, "skills")
@@ -126,7 +126,7 @@ final class ExtractionDTOTests: XCTestCase {
         let raw = try parse(#"{"remote_type":"hybrid","salary_min":100000,"nice_to_haves":["x"]}"#)
         let dict = try ExtractionDTO(raw: raw).asDict()
         XCTAssertEqual(dict["remote_type"] as? String, "hybrid")
-        XCTAssertEqual(dict["salary_min"] as? Int, 100000)
+        XCTAssertEqual(dict["salary_min"] as? Int, 100_000)
         XCTAssertEqual(dict["nice_to_haves"] as? [String], ["x"])
     }
 }

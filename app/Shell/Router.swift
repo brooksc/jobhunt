@@ -14,29 +14,29 @@ public enum SidebarSection: String, CaseIterable, Hashable {
 
     var title: String {
         switch self {
-        case .dashboard:   "Dashboard"
-        case .jobs:        "Jobs"
-        case .resumes:     "Resumes"
+        case .dashboard: "Dashboard"
+        case .jobs: "Jobs"
+        case .resumes: "Resumes"
         case .dataQuality: "Data Quality"
         case .needsAction: "Needs Action"
-        case .llmQueue:    "LLM Queue"
-        case .sites:       "Sites"
-        case .duplicates:  "Duplicates"
-        case .help:        "Help"
+        case .llmQueue: "LLM Queue"
+        case .sites: "Sites"
+        case .duplicates: "Duplicates"
+        case .help: "Help"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .dashboard:   "chart.bar"
-        case .jobs:        "briefcase"
-        case .resumes:     "doc.text"
+        case .dashboard: "chart.bar"
+        case .jobs: "briefcase"
+        case .resumes: "doc.text"
         case .dataQuality: "checkmark.shield"
         case .needsAction: "bell"
-        case .llmQueue:    "cpu"
-        case .sites:       "globe"
-        case .duplicates:  "doc.on.doc"
-        case .help:        "questionmark.circle"
+        case .llmQueue: "cpu"
+        case .sites: "globe"
+        case .duplicates: "doc.on.doc"
+        case .help: "questionmark.circle"
         }
     }
 }
@@ -58,17 +58,17 @@ public enum SidebarItem: Hashable, Sendable {
     /// The display label shown in the sidebar row (matches NSTextField text for AppKit selection).
     var sidebarLabel: String? {
         switch self {
-        case .dashboard:         return "Dashboard"
-        case .needsAction:       return "Needs Action"
-        case .jobsAll:           return "All Jobs"
-        case .jobs(let status):  return status.displayName
-        case .resumes:           return "Resumes"
-        case .sites:             return "Sites"
-        case .duplicates:        return "Duplicates"
-        case .llmQueue:          return "LLM Queue"
-        case .dataQuality:       return "Data Quality"
-        case .help:              return "Help"
-        case .savedSearch:       return nil  // dynamic name — caller handles
+        case .dashboard: return "Dashboard"
+        case .needsAction: return "Needs Action"
+        case .jobsAll: return "All Jobs"
+        case let .jobs(status): return status.displayName
+        case .resumes: return "Resumes"
+        case .sites: return "Sites"
+        case .duplicates: return "Duplicates"
+        case .llmQueue: return "LLM Queue"
+        case .dataQuality: return "Data Quality"
+        case .help: return "Help"
+        case .savedSearch: return nil // dynamic name — caller handles
         }
     }
 
@@ -76,32 +76,32 @@ public enum SidebarItem: Hashable, Sendable {
     /// Used to restore the sidebar selection on relaunch.
     var persistedID: String {
         switch self {
-        case .dashboard:           return "dashboard"
-        case .needsAction:         return "needsAction"
-        case .jobsAll:             return "jobsAll"
-        case .jobs(let status):    return "jobs:\(status.rawValue)"
-        case .resumes:             return "resumes"
-        case .sites:               return "sites"
-        case .duplicates:          return "duplicates"
-        case .llmQueue:            return "llmQueue"
-        case .dataQuality:         return "dataQuality"
-        case .help:                return "help"
-        case .savedSearch(let id): return "savedSearch:\(id)"
+        case .dashboard: return "dashboard"
+        case .needsAction: return "needsAction"
+        case .jobsAll: return "jobsAll"
+        case let .jobs(status): return "jobs:\(status.rawValue)"
+        case .resumes: return "resumes"
+        case .sites: return "sites"
+        case .duplicates: return "duplicates"
+        case .llmQueue: return "llmQueue"
+        case .dataQuality: return "dataQuality"
+        case .help: return "help"
+        case let .savedSearch(id): return "savedSearch:\(id)"
         }
     }
 
     /// Reconstruct a selection from its `persistedID`. Returns nil for an empty/unknown token.
     init?(persistedID raw: String) {
         switch raw {
-        case "dashboard":   self = .dashboard
+        case "dashboard": self = .dashboard
         case "needsAction": self = .needsAction
-        case "jobsAll":     self = .jobsAll
-        case "resumes":     self = .resumes
-        case "sites":       self = .sites
-        case "duplicates":  self = .duplicates
-        case "llmQueue":    self = .llmQueue
+        case "jobsAll": self = .jobsAll
+        case "resumes": self = .resumes
+        case "sites": self = .sites
+        case "duplicates": self = .duplicates
+        case "llmQueue": self = .llmQueue
         case "dataQuality": self = .dataQuality
-        case "help":        self = .help
+        case "help": self = .help
         default:
             if raw.hasPrefix("jobs:"), let status = JobStatus(rawValue: String(raw.dropFirst("jobs:".count))) {
                 self = .jobs(status)
@@ -130,7 +130,7 @@ public final class Router {
     public var selectedSiteID: String?
     /// Smart-folder status filter set by sidebar item clicks (nil = All Jobs)
     public var sidebarJobFilter: JobStatus?
-    public var statusFilter: String?  // legacy; kept for non-sidebar callers
+    public var statusFilter: String? // legacy; kept for non-sidebar callers
     public var searchText: String = ""
     public var activeSavedSearchID: String?
     /// Triggers AddJobSheet from app menu / ⌘N

@@ -1,8 +1,8 @@
 import XCTest
 @testable import JobhuntCore
 
-// Local mock helpers (the ones in LLMProviderTests.swift are file-private). LLMMockURLProtocol is
-// module-internal and shared.
+/// Local mock helpers (the ones in LLMProviderTests.swift are file-private). LLMMockURLProtocol is
+/// module-internal and shared.
 private func orMakeMockSession() -> URLSession {
     let config = URLSessionConfiguration.ephemeral
     config.protocolClasses = [LLMMockURLProtocol.self]
@@ -139,8 +139,11 @@ final class OpenRouterRotationTests: XCTestCase {
         let result = try await provider.complete(req)
 
         XCTAssertEqual(result.content, "{}")
-        XCTAssertEqual(chatModels, ["meta-llama/llama-3.1-8b-instruct:free", "google/gemini-flash-1.5-8b:free"],
-                       "failover tried the first model, then the second")
+        XCTAssertEqual(
+            chatModels,
+            ["meta-llama/llama-3.1-8b-instruct:free", "google/gemini-flash-1.5-8b:free"],
+            "failover tried the first model, then the second"
+        )
     }
 
     func testRotationExhaustedThrowsOnce() async throws {

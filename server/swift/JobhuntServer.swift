@@ -304,10 +304,10 @@ public actor JobhuntServer {
     /// everything else is small. Oversized requests are rejected with 413 before the body is read.
     static func maxBodySize(forPath path: String) -> Int {
         switch path {
-        case "/captures":            return 4 * 1_048_576   // 4 MB — full page text
-        case "/site-reviews":        return 256 * 1024      // 256 KB
-        case _ where path.hasPrefix("/mcp/"): return 1_048_576  // 1 MB
-        default:                     return 64 * 1024       // 64 KB (health/ping/by-url/focus)
+        case "/captures": return 4 * 1_048_576 // 4 MB — full page text
+        case "/site-reviews": return 256 * 1024 // 256 KB
+        case _ where path.hasPrefix("/mcp/"): return 1_048_576 // 1 MB
+        default: return 64 * 1024 // 64 KB (health/ping/by-url/focus)
         }
     }
 
@@ -326,7 +326,8 @@ public actor JobhuntServer {
                 let limit = Self.maxBodySize(forPath: peek.path)
                 if peek.contentLength > limit {
                     let response = HTTPResponse.error(
-                        "Request body too large (\(peek.contentLength) bytes; limit \(limit))", code: 413)
+                        "Request body too large (\(peek.contentLength) bytes; limit \(limit))", code: 413
+                    )
                     Task { await self.sendResponse(response, on: connection) }
                     return
                 }
@@ -341,7 +342,7 @@ public actor JobhuntServer {
 
             if !isComplete, buffer.count < 2 * 1_048_576 {
                 // Need more data
-                self.receiveRequest(on: connection, accumulated: buffer)
+                receiveRequest(on: connection, accumulated: buffer)
             } else {
                 // Connection closed or buffer too large without a parseable request
                 let response = HTTPResponse.error("Bad request", code: 400)
@@ -528,7 +529,8 @@ public actor JobhuntServer {
         // Resolve structured data from either the typed `structured_data_json` field or the
         // extension's raw `structured_data` array — one shared policy (TASK-442).
         let structuredJSON = CaptureRequestParsing.resolveStructuredDataJSON(
-            typed: captureReq.structuredDataJSON, rawBody: request.body)
+            typed: captureReq.structuredDataJSON, rawBody: request.body
+        )
 
         let payload = CapturePayload(
             url: url,

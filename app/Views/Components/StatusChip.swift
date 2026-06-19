@@ -19,17 +19,17 @@ struct StatusChip: View {
 extension JobStatus {
     var displayName: String {
         switch self {
-        case .new:       "New"
-        case .pursuing:  "Interested"  // display only — stored rawValue stays "pursuing" (no migration)
-        case .applied:   "Applied"
+        case .new: "New"
+        case .pursuing: "Interested" // display only — stored rawValue stays "pursuing" (no migration)
+        case .applied: "Applied"
         case .interview: "Interview"
-        case .offer:     "Offer"
-        case .rejected:  "Rejected"
-        case .passed:    "Passed"
-        case .archived:  "Archived"
-        case .closed:    "Closed"
+        case .offer: "Offer"
+        case .rejected: "Rejected"
+        case .passed: "Passed"
+        case .archived: "Archived"
+        case .closed: "Closed"
         case .duplicate: "Duplicate"
-        case .expired:   "Expired"
+        case .expired: "Expired"
         }
     }
 }

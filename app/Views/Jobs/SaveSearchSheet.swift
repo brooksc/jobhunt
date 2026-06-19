@@ -59,17 +59,17 @@ struct SaveSearchSheet: View {
         state.searchText = searchText
         for token in searchTokens {
             switch token {
-            case .status(let s):
+            case let .status(s):
                 state.statusFilter = (state.statusFilter ?? []).union([s])
-            case .remoteType(let rt):
+            case let .remoteType(rt):
                 state.remoteFilter = (state.remoteFilter ?? []).union([rt])
-            case .minFitScore(let n):
+            case let .minFitScore(n):
                 state.minFitScore = max(state.minFitScore ?? 0, n)
-            case .minSalary(let n):
+            case let .minSalary(n):
                 state.minSalary = max(state.minSalary ?? 0, n)
-            case .minRating(let n):
+            case let .minRating(n):
                 state.minRating = max(state.minRating ?? 0, n)
-            case .recentDays(let d):
+            case let .recentDays(d):
                 state.recentDays = min(state.recentDays ?? Int.max, d)
             }
         }

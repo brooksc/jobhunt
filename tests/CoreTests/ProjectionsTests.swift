@@ -2,10 +2,9 @@ import XCTest
 @testable import JobhuntCore
 
 final class ProjectionsTests: XCTestCase {
-
     // MARK: - JobDetailProjection: extracted JSON parsing
 
-    func testProjection_populatedJSON() throws {
+    func testProjection_populatedJSON() {
         let json = """
         {
             "summary": "Great role",
@@ -14,8 +13,14 @@ final class ProjectionsTests: XCTestCase {
             "skills": ["iOS"]
         }
         """
-        let job = Job(id: "j1", jobNumber: 1, company: "Acme", title: "iOS Dev",
-                      manualOverridesJSON: "[]", extractedJSON: json)
+        let job = Job(
+            id: "j1",
+            jobNumber: 1,
+            company: "Acme",
+            title: "iOS Dev",
+            manualOverridesJSON: "[]",
+            extractedJSON: json
+        )
         let p = JobDetailProjection(job: job)
         XCTAssertEqual(p.summary, "Great role")
         XCTAssertEqual(p.requirements, ["Swift", "SwiftUI"])
@@ -25,15 +30,27 @@ final class ProjectionsTests: XCTestCase {
 
     func testProjection_niceToHavesAlternateKey() {
         let json = "{\"nice_to_haves\": [\"Docker\"]}"
-        let job = Job(id: "j2", jobNumber: 2, company: "X", title: "T",
-                      manualOverridesJSON: "[]", extractedJSON: json)
+        let job = Job(
+            id: "j2",
+            jobNumber: 2,
+            company: "X",
+            title: "T",
+            manualOverridesJSON: "[]",
+            extractedJSON: json
+        )
         let p = JobDetailProjection(job: job)
         XCTAssertEqual(p.niceToHaves, ["Docker"])
     }
 
     func testProjection_missingJSON_returnsEmptyDefaults() {
-        let job = Job(id: "j3", jobNumber: 3, company: "X", title: "T",
-                      manualOverridesJSON: "[]", extractedJSON: nil)
+        let job = Job(
+            id: "j3",
+            jobNumber: 3,
+            company: "X",
+            title: "T",
+            manualOverridesJSON: "[]",
+            extractedJSON: nil
+        )
         let p = JobDetailProjection(job: job)
         XCTAssertNil(p.summary)
         XCTAssertTrue(p.requirements.isEmpty)
@@ -42,8 +59,14 @@ final class ProjectionsTests: XCTestCase {
     }
 
     func testProjection_malformedJSON_returnsEmptyDefaults() {
-        let job = Job(id: "j4", jobNumber: 4, company: "X", title: "T",
-                      manualOverridesJSON: "[]", extractedJSON: "not json at all")
+        let job = Job(
+            id: "j4",
+            jobNumber: 4,
+            company: "X",
+            title: "T",
+            manualOverridesJSON: "[]",
+            extractedJSON: "not json at all"
+        )
         let p = JobDetailProjection(job: job)
         XCTAssertNil(p.summary)
         XCTAssertTrue(p.requirements.isEmpty)
@@ -51,16 +74,28 @@ final class ProjectionsTests: XCTestCase {
 
     func testProjection_manualOverrides_takePrecedenceOverExtractedSkills() {
         let json = "{\"skills\": [\"Swift\"]}"
-        let job = Job(id: "j5", jobNumber: 5, company: "X", title: "T",
-                      manualOverridesJSON: "[\"Kotlin\"]", extractedJSON: json)
+        let job = Job(
+            id: "j5",
+            jobNumber: 5,
+            company: "X",
+            title: "T",
+            manualOverridesJSON: "[\"Kotlin\"]",
+            extractedJSON: json
+        )
         let p = JobDetailProjection(job: job)
         XCTAssertEqual(p.skills, ["Kotlin"])
     }
 
     func testProjection_malformedManualOverrides_fallsBackToExtracted() {
         let json = "{\"skills\": [\"Swift\"]}"
-        let job = Job(id: "j6", jobNumber: 6, company: "X", title: "T",
-                      manualOverridesJSON: "not-json", extractedJSON: json)
+        let job = Job(
+            id: "j6",
+            jobNumber: 6,
+            company: "X",
+            title: "T",
+            manualOverridesJSON: "not-json",
+            extractedJSON: json
+        )
         let p = JobDetailProjection(job: job)
         XCTAssertEqual(p.skills, ["Swift"])
     }
@@ -175,11 +210,11 @@ final class ProjectionsTests: XCTestCase {
     // MARK: - SalaryDisplay
 
     func testSalaryDisplay_bothMinMax_USD() {
-        XCTAssertEqual(SalaryDisplay.text(min: 120000, max: 160000, currency: "USD"), "$120k–$160k")
+        XCTAssertEqual(SalaryDisplay.text(min: 120_000, max: 160_000, currency: "USD"), "$120k–$160k")
     }
 
     func testSalaryDisplay_minOnly() {
-        XCTAssertEqual(SalaryDisplay.text(min: 100000, max: nil, currency: nil), "$100k+")
+        XCTAssertEqual(SalaryDisplay.text(min: 100_000, max: nil, currency: nil), "$100k+")
     }
 
     func testSalaryDisplay_maxOnly() {
@@ -205,8 +240,13 @@ final class ProjectionsTests: XCTestCase {
     // MARK: - TASK-464: MCP payload fields re-added to JobDetailRecord/JobListRecord
 
     func testJobRecords_exposeEmploymentSeniorityAndDuplicate() {
-        let job = Job(jobNumber: 1, title: "Eng", employmentType: "full_time",
-                      seniority: "staff", duplicateOfJobID: "orig-1")
+        let job = Job(
+            jobNumber: 1,
+            title: "Eng",
+            employmentType: "full_time",
+            seniority: "staff",
+            duplicateOfJobID: "orig-1"
+        )
         job.status = .duplicate
 
         let detail = JobDetailRecord(job: job)

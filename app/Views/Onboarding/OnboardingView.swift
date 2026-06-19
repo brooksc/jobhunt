@@ -405,7 +405,7 @@ private struct AIProviderStep: View {
             "openai": "https://platform.openai.com/api-keys",
             "anthropic": "https://console.anthropic.com/settings/keys",
             "google": "https://aistudio.google.com/app/apikey",
-            "openrouter": "https://openrouter.ai/keys",
+            "openrouter": "https://openrouter.ai/keys"
         ]
         return urls[providerID].flatMap(URL.init(string:))
     }

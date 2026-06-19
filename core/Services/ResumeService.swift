@@ -64,7 +64,7 @@ public actor ResumeService {
         try await store.deleteOne(Resume.self, predicate: #Predicate { $0.id == id }, id: id)
 
         let remaining = all.filter { $0.id != id }
-        if !remaining.isEmpty, !remaining.contains(where: { $0.active }) {
+        if !remaining.isEmpty, !remaining.contains(where: \.active) {
             let nextID = remaining[0].id
             try await store.update(Resume.self, predicate: #Predicate { $0.id == nextID }) { $0.active = true }
         }

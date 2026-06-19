@@ -303,10 +303,10 @@ struct DataSettingsTab: View {
         } message: {
             Text(
                 "All current jobs, captures, settings, and resumes will be replaced with the backup. " +
-                "A pre-restore backup will be saved automatically. " +
-                "API keys are not part of the backup (they live in the Keychain) — you may need to " +
-                "re-enter them in AI Provider settings afterward. " +
-                "The app must relaunch to apply the restored data."
+                    "A pre-restore backup will be saved automatically. " +
+                    "API keys are not part of the backup (they live in the Keychain) — you may need to " +
+                    "re-enter them in AI Provider settings afterward. " +
+                    "The app must relaunch to apply the restored data."
             )
         }
     }
@@ -432,7 +432,7 @@ struct DataSettingsTab: View {
 
 // MARK: - ExpiredConfirmationSheet
 
-// Internal (not private) so the main-window availability check (ContentView) can present it too.
+/// Internal (not private) so the main-window availability check (ContentView) can present it too.
 struct ExpiredConfirmationSheet: View {
     let goneJobs: [GoneJobResult]
     let onConfirm: ([GoneJobResult]) -> Void

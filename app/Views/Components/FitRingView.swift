@@ -31,7 +31,9 @@ struct FitRingView: View {
         .animation(.easeInOut(duration: 0.3), value: score)
     }
 
-    private var ringWidth: CGFloat { size * 0.088 }
+    private var ringWidth: CGFloat {
+        size * 0.088
+    }
 }
 
 // MARK: - FitPillView

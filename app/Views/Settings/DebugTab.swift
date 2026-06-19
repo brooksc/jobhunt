@@ -68,9 +68,11 @@ struct DebugTab: View {
                     }
                 }
             }
-            Text("Re-applies the current scoring weights and penalties to already-scored jobs, without calling the LLM.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text(
+                "Re-applies the current scoring weights and penalties to already-scored jobs, without calling the LLM."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 
@@ -79,7 +81,7 @@ struct DebugTab: View {
     private var jobStatsSection: some View {
         Section("Jobs by Status") {
             ForEach(JobStatus.allCases, id: \.self) { status in
-                let count = jobs.filter { $0.status == status }.count
+                let count = jobs.count(where: { $0.status == status })
                 LabeledContent(status.rawValue.capitalized) {
                     Text("\(count)")
                         .foregroundStyle(count > 0 ? .primary : .tertiary)
@@ -108,11 +110,11 @@ struct DebugTab: View {
                 Text("\(sites.count)").foregroundStyle(.secondary).monospacedDigit()
             }
             LabeledContent("Extraction pending") {
-                let pending = jobs.filter { $0.extractionStatus == .pending }.count
+                let pending = jobs.count(where: { $0.extractionStatus == .pending })
                 Text("\(pending)").foregroundStyle(.secondary).monospacedDigit()
             }
             LabeledContent("Extraction failed") {
-                let failed = jobs.filter { $0.extractionStatus == .failed }.count
+                let failed = jobs.count(where: { $0.extractionStatus == .failed })
                 Text("\(failed)")
                     .foregroundStyle(failed > 0 ? .red : .secondary)
                     .monospacedDigit()
@@ -238,5 +240,4 @@ struct DebugTab: View {
         \(errorLines)
         """
     }
-
 }

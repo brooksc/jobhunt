@@ -47,10 +47,10 @@ final class ResumeServiceTests: XCTestCase {
         try await service.addResume(name: "Original", text: "Old text")
 
         let ctx = ModelContext(container)
-        let id = try ctx.fetch(FetchDescriptor<Resume>()).first!.id
+        let id = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Resume>()).first?.id)
         try await service.updateResume(id: id, name: "Updated", text: "New text content")
 
-        let updated = try ctx.fetch(FetchDescriptor<Resume>()).first!
+        let updated = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Resume>()).first)
         XCTAssertEqual(updated.name, "Updated")
         XCTAssertEqual(updated.text, "New text content")
         XCTAssertEqual(updated.charCount, "New text content".count)
@@ -60,7 +60,7 @@ final class ResumeServiceTests: XCTestCase {
         try await service.addResume(name: "R", text: "Original resume text")
 
         let ctx = ModelContext(container)
-        let resume = try ctx.fetch(FetchDescriptor<Resume>()).first!
+        let resume = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Resume>()).first)
 
         // Seed a job with a fit score linked to this resume
         let job = Job(jobNumber: 42, title: "SWE")
@@ -87,7 +87,7 @@ final class ResumeServiceTests: XCTestCase {
         try await service.addResume(name: "R", text: "Same resume text")
 
         let ctx = ModelContext(container)
-        let resume = try ctx.fetch(FetchDescriptor<Resume>()).first!
+        let resume = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Resume>()).first)
 
         let job = Job(jobNumber: 43, title: "PM")
         job.fitScore = 75
@@ -113,7 +113,7 @@ final class ResumeServiceTests: XCTestCase {
 
         let ctx = ModelContext(container)
         let all = try ctx.fetch(FetchDescriptor<Resume>(sortBy: [SortDescriptor(\.sortOrder)]))
-        let inactiveID = all.first(where: { !$0.active })!.id
+        let inactiveID = try XCTUnwrap(all.first(where: { !$0.active })?.id)
         try await service.deleteResume(id: inactiveID)
 
         let remaining = try ctx.fetch(FetchDescriptor<Resume>())
@@ -127,7 +127,7 @@ final class ResumeServiceTests: XCTestCase {
 
         let ctx = ModelContext(container)
         let all = try ctx.fetch(FetchDescriptor<Resume>(sortBy: [SortDescriptor(\.sortOrder)]))
-        let activeID = all.first(where: { $0.active })!.id
+        let activeID = try XCTUnwrap(all.first(where: { $0.active })?.id)
         try await service.deleteResume(id: activeID)
 
         let remaining = try ctx.fetch(FetchDescriptor<Resume>())
@@ -157,7 +157,7 @@ final class ResumeServiceTests: XCTestCase {
         try await service.addResume(name: "Only", text: "Active resume")
 
         let ctx = ModelContext(container)
-        let activeID = try ctx.fetch(FetchDescriptor<Resume>()).first!.id
+        let activeID = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Resume>()).first?.id)
 
         do {
             try await service.setActiveResume(id: "nonexistent-id")
@@ -215,13 +215,17 @@ final class ResumeServiceTests: XCTestCase {
 
         // Mirror is the best (80) whether r1 or r2 is the active resume.
         try await service.setActiveResume(id: r1.id)
-        let afterR1 = try ctx.fetch(FetchDescriptor<Job>()).first!
+        let afterR1 = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Job>()).first)
         XCTAssertEqual(afterR1.fitScore, 80, "Mirror should reflect the best resume score")
         XCTAssertEqual(afterR1.fitStatus, .succeeded)
 
         try await service.setActiveResume(id: r2.id)
-        let afterR2 = try ctx.fetch(FetchDescriptor<Job>()).first!
-        XCTAssertEqual(afterR2.fitScore, 80, "Mirror stays at the best score even when a lower-scoring resume is active")
+        let afterR2 = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Job>()).first)
+        XCTAssertEqual(
+            afterR2.fitScore,
+            80,
+            "Mirror stays at the best score even when a lower-scoring resume is active"
+        )
     }
 
     func testJobFitMirror_usesBestAvailableScoreIgnoringActive() async throws {
@@ -243,12 +247,12 @@ final class ResumeServiceTests: XCTestCase {
         try ctx.save()
 
         try await service.setActiveResume(id: r1.id)
-        let afterR1 = try ctx.fetch(FetchDescriptor<Job>()).first!
+        let afterR1 = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Job>()).first)
         XCTAssertEqual(afterR1.fitScore, 75)
 
         // Activating the unscored r2 does NOT clear the mirror — best-across keeps r1's 75.
         try await service.setActiveResume(id: r2.id)
-        let afterR2 = try ctx.fetch(FetchDescriptor<Job>()).first!
+        let afterR2 = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Job>()).first)
         XCTAssertEqual(afterR2.fitScore, 75, "Best-across mirror retains the only available score")
         XCTAssertEqual(afterR2.fitStatus, .succeeded)
     }
@@ -281,7 +285,7 @@ final class ResumeServiceTests: XCTestCase {
 
         let ctx = ModelContext(container)
         let resumes = try ctx.fetch(FetchDescriptor<Resume>(sortBy: [SortDescriptor(\.sortOrder)]))
-        let r1 = resumes[0]  // active
+        let r1 = resumes[0] // active
         let r2 = resumes[1]
 
         let job = Job(jobNumber: 3, title: "Dev")
@@ -302,7 +306,7 @@ final class ResumeServiceTests: XCTestCase {
         // Delete r1 — r2 gets promoted
         try await service.deleteResume(id: r1.id)
 
-        let afterDelete = try ctx.fetch(FetchDescriptor<Job>()).first!
+        let afterDelete = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Job>()).first)
         XCTAssertEqual(afterDelete.fitScore, 60, "Mirror should reflect promoted resume-2 score")
     }
 
@@ -310,7 +314,7 @@ final class ResumeServiceTests: XCTestCase {
         try await service.addResume(name: "Only", text: "Only resume")
 
         let ctx = ModelContext(container)
-        let resume = try ctx.fetch(FetchDescriptor<Resume>()).first!
+        let resume = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Resume>()).first)
 
         let job = Job(jobNumber: 4, title: "Lead")
         ctx.insert(job)
@@ -326,7 +330,7 @@ final class ResumeServiceTests: XCTestCase {
         // Delete the only resume
         try await service.deleteResume(id: resume.id)
 
-        let afterDelete = try ctx.fetch(FetchDescriptor<Job>()).first!
+        let afterDelete = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Job>()).first)
         XCTAssertNil(afterDelete.fitScore, "Mirror should be nil when no resume remains")
         XCTAssertEqual(afterDelete.fitStatus, .none)
     }
@@ -337,8 +341,8 @@ final class ResumeServiceTests: XCTestCase {
 
         let ctx = ModelContext(container)
         let resumes = try ctx.fetch(FetchDescriptor<Resume>(sortBy: [SortDescriptor(\.sortOrder)]))
-        let r1 = resumes[0]  // active
-        let r2 = resumes[1]  // inactive
+        let r1 = resumes[0] // active
+        let r2 = resumes[1] // inactive
 
         let job = Job(jobNumber: 5, title: "Engineer")
         ctx.insert(job)
@@ -358,7 +362,7 @@ final class ResumeServiceTests: XCTestCase {
         // Delete inactive r2 — should not affect mirror
         try await service.deleteResume(id: r2.id)
 
-        let afterDelete = try ctx.fetch(FetchDescriptor<Job>()).first!
+        let afterDelete = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Job>()).first)
         XCTAssertEqual(afterDelete.fitScore, 80, "Mirror should be unchanged after deleting inactive resume")
     }
 
@@ -388,7 +392,14 @@ final class SavedSearchServiceTests: XCTestCase {
             store: store,
             isPaused: { false },
             onSetPaused: { _ in },
-            readExtractionSettings: { ExtractionSettings(llmModel: "", preferredLocations: "", locationFilterEnabled: false, locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true) },
+            readExtractionSettings: { ExtractionSettings(
+                llmModel: "",
+                preferredLocations: "",
+                locationFilterEnabled: false,
+                locationAllowRemote: true,
+                locationAllowHybrid: true,
+                locationAllowOnsite: true
+            ) },
             providerFactory: { NoOpProvider() }
         )
         jobService = JobService(store: store, queue: queue)
@@ -409,7 +420,7 @@ final class SavedSearchServiceTests: XCTestCase {
         try await jobService.insertSavedSearch(search)
 
         let ctx = ModelContext(container)
-        let id = try ctx.fetch(FetchDescriptor<SavedSearch>()).first!.id
+        let id = try XCTUnwrap(try ctx.fetch(FetchDescriptor<SavedSearch>()).first?.id)
         try await jobService.deleteSavedSearch(id: id)
 
         let remaining = try ctx.fetch(FetchDescriptor<SavedSearch>())
@@ -431,7 +442,14 @@ final class DuplicateUnmarkTests: XCTestCase {
             store: store,
             isPaused: { false },
             onSetPaused: { _ in },
-            readExtractionSettings: { ExtractionSettings(llmModel: "", preferredLocations: "", locationFilterEnabled: false, locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true) },
+            readExtractionSettings: { ExtractionSettings(
+                llmModel: "",
+                preferredLocations: "",
+                locationFilterEnabled: false,
+                locationAllowRemote: true,
+                locationAllowHybrid: true,
+                locationAllowOnsite: true
+            ) },
             providerFactory: { NoOpProvider() }
         )
         jobService = JobService(store: store, queue: queue)
@@ -448,7 +466,7 @@ final class DuplicateUnmarkTests: XCTestCase {
 
         let ctx = ModelContext(container)
         let all = try ctx.fetch(FetchDescriptor<Job>())
-        let c = all.first(where: { $0.id == candidate.id })!
+        let c = try XCTUnwrap(all.first(where: { $0.id == candidate.id }))
         XCTAssertNil(c.duplicateOfJobID, "duplicateOfJobID should be cleared after unmark")
     }
 

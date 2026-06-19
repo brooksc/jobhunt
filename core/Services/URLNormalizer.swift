@@ -34,7 +34,7 @@ public enum URLNormalizer {
     /// make two otherwise-identical URLs look different.
     private static let trackingParams: Set<String> = [
         "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-        "gclid", "fbclid", "msclkid", "mc_cid", "mc_eid", "ref", "ref_src", "src", "trk",
+        "gclid", "fbclid", "msclkid", "mc_cid", "mc_eid", "ref", "ref_src", "src", "trk"
     ]
 
     /// A canonical comparison form: lowercased scheme+host, no fragment, tracking params dropped and
@@ -55,7 +55,9 @@ public enum URLNormalizer {
             components.queryItems = kept.isEmpty ? nil : kept
         }
         var path = components.path
-        while path.count > 1, path.hasSuffix("/") { path = String(path.dropLast()) }
+        while path.count > 1, path.hasSuffix("/") {
+            path = String(path.dropLast())
+        }
         components.path = path
         return components.url?.absoluteString
     }

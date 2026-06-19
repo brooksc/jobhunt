@@ -13,8 +13,10 @@ final class HTTPResponseSerializationTests: XCTestCase {
         let response = HTTPResponse.ok(ThrowingEncodable())
         XCTAssertEqual(response.statusCode, 500, "Encode failure must be a 500, not a 200")
         XCTAssertFalse(response.body.isEmpty)
-        XCTAssertFalse(String(decoding: response.body, as: UTF8.self).contains("{}"),
-                       "must not masquerade as an empty successful body")
+        XCTAssertFalse(
+            String(decoding: response.body, as: UTF8.self).contains("{}"),
+            "must not masquerade as an empty successful body"
+        )
     }
 
     func testOk_validValueReturns200() {
@@ -30,11 +32,18 @@ final class ServerErrorTests: XCTestCase {
         // remain distinguishable in logs and aren't accidentally collapsed.
         let noPort = ServerError.noPortAvailable as NSError
         let cancelled = ServerError.listenerCancelled as NSError
-        XCTAssertFalse(noPort.localizedDescription.isEmpty,
-                       "noPortAvailable must have a non-empty description")
-        XCTAssertFalse(cancelled.localizedDescription.isEmpty,
-                       "listenerCancelled must have a non-empty description")
-        XCTAssertNotEqual(noPort.localizedDescription, cancelled.localizedDescription,
-                          "Error cases must be distinguishable by description")
+        XCTAssertFalse(
+            noPort.localizedDescription.isEmpty,
+            "noPortAvailable must have a non-empty description"
+        )
+        XCTAssertFalse(
+            cancelled.localizedDescription.isEmpty,
+            "listenerCancelled must have a non-empty description"
+        )
+        XCTAssertNotEqual(
+            noPort.localizedDescription,
+            cancelled.localizedDescription,
+            "Error cases must be distinguishable by description"
+        )
     }
 }

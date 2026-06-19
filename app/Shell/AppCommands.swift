@@ -1,6 +1,7 @@
 import SwiftUI
 
 // MARK: - Queue Commands
+
 // Published by LLMQueueView via .focusedSceneValue(\.queueCommands, ...) when Queue section is active.
 
 struct QueueCommandHandlers {
@@ -33,6 +34,7 @@ struct QueueMenuCommands: Commands {
 }
 
 // MARK: - Quality Commands
+
 // Published by DataQualityView via .focusedSceneValue(\.qualityCommands, ...) when Quality section is active.
 
 struct QualityCommandHandlers {
@@ -72,6 +74,7 @@ struct QualityMenuCommands: Commands {
 }
 
 // MARK: - Job Commands
+
 // Published by JobsView via .focusedSceneValue(\.jobCommands, ...) — present whenever the Jobs
 // section is in the scene. Acts on the current Jobs selection (TASK-507).
 
@@ -99,7 +102,9 @@ extension FocusedValues {
 struct JobMenuCommands: Commands {
     @FocusedValue(\.jobCommands) var handlers: JobCommandHandlers?
 
-    private var enabled: Bool { handlers?.hasSelection == true }
+    private var enabled: Bool {
+        handlers?.hasSelection == true
+    }
 
     var body: some Commands {
         CommandMenu("Job") {

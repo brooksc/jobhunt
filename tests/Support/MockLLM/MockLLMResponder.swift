@@ -8,7 +8,6 @@ import Foundation
 ///
 /// Test-support only: compiled into the test targets (CoreTests, AppUITests), never shipped in the app.
 enum MockLLMResponder {
-
     enum Kind { case extraction, fit }
 
     /// The full `/v1/chat/completions` JSON response string for a request body. The request is
@@ -19,7 +18,7 @@ enum MockLLMResponder {
         let model = (body?["model"] as? String) ?? "mock-model"
         let content: String
         switch classify(body: body) {
-        case .fit:        content = fitContentJSON()
+        case .fit: content = fitContentJSON()
         case .extraction: content = extractionContentJSON(pageTitle: pageTitle(in: body))
         }
         return jsonString([

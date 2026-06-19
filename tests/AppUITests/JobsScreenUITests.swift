@@ -1,7 +1,6 @@
 import XCTest
 
 final class JobsScreenUITests: XCTestCase {
-
     private var app: XCUIApplication!
 
     override func setUp() {

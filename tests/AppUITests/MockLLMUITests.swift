@@ -4,7 +4,6 @@ import XCTest
 /// (hosted by this test runner via `--llm-mock-port`) and confirm the LLM settings "Test Connection"
 /// succeeds against it — exercising the app's real provider config → HTTP → parse path with no key.
 final class MockLLMUITests: XCTestCase {
-
     private var server: MockLLMServer!
     private var app: XCUIApplication!
 
@@ -55,7 +54,9 @@ final class MockLLMUITests: XCTestCase {
         // The app launched with provider=lmstudio pointed at the mock, so the connection must succeed.
         let success = app.descendants(matching: .any)
             .matching(identifier: "llm.connection.success").firstMatch
-        XCTAssertTrue(success.waitForExistence(timeout: 15),
-                      "Test Connection should succeed against the localhost mock LLM server")
+        XCTAssertTrue(
+            success.waitForExistence(timeout: 15),
+            "Test Connection should succeed against the localhost mock LLM server"
+        )
     }
 }

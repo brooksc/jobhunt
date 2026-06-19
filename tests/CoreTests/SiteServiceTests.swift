@@ -3,7 +3,6 @@ import XCTest
 @testable import JobhuntCore
 
 final class SiteServiceTests: XCTestCase {
-
     private func makeStore(_ container: ModelContainer) -> BackgroundStore {
         BackgroundStore(modelContainer: container)
     }
@@ -69,7 +68,7 @@ final class SiteServiceTests: XCTestCase {
         let store = makeStore(container)
         let svc = SiteService(store: store)
 
-        let lastReviewed = Calendar.current.date(byAdding: .day, value: -5, to: Date())!
+        let lastReviewed = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: -5, to: Date()))
         let siteID = UUID().uuidString
         let site = Site(
             id: siteID,
@@ -83,9 +82,9 @@ final class SiteServiceTests: XCTestCase {
         try await svc.updateSite(id: siteID, name: nil, excludeState: nil, intervalDays: 7)
 
         let ctx = ModelContext(container)
-        let updated = try ctx.fetch(FetchDescriptor<Site>()).first!
+        let updated = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Site>()).first)
         XCTAssertEqual(updated.intervalDays, 7)
-        let expected = Calendar.current.date(byAdding: .day, value: 7, to: lastReviewed)!
+        let expected = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: 7, to: lastReviewed))
         let diff = updated.nextReviewAt.map { abs($0.timeIntervalSince(expected)) } ?? 9999
         XCTAssertLessThan(diff, 2, "nextReviewAt must be lastReviewedAt + newIntervalDays")
     }

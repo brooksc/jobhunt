@@ -26,9 +26,9 @@ final class LLMEvalHarness: XCTestCase {
         // `cleanDescription` first (raw → clean → extract), exercising the cleaning pipeline too.
         // The explicit `= nil` defaults are required so the memberwise init can omit them.
         // swiftlint:disable implicit_optional_initialization
-        var rawSelectedText: String? = nil
-        var rawVisibleText: String? = nil
-        var rawStructuredDataJSON: String? = nil
+        var rawSelectedText: String?
+        var rawVisibleText: String?
+        var rawStructuredDataJSON: String?
         // swiftlint:enable implicit_optional_initialization
         let url: String
         let pageTitle: String
@@ -387,28 +387,52 @@ final class LLMEvalHarness: XCTestCase {
         }
 
         if let exp = fixture.expectedCompany {
-            check("company", (result.company ?? "").lowercased().contains(exp.lowercased()),
-                  got: result.company ?? "", expected: exp)
+            check(
+                "company",
+                (result.company ?? "").lowercased().contains(exp.lowercased()),
+                got: result.company ?? "",
+                expected: exp
+            )
         }
         if let exp = fixture.expectedTitleContains {
-            check("title", (result.title ?? "").lowercased().contains(exp.lowercased()),
-                  got: result.title ?? "", expected: "contains '\(exp)'")
+            check(
+                "title",
+                (result.title ?? "").lowercased().contains(exp.lowercased()),
+                got: result.title ?? "",
+                expected: "contains '\(exp)'"
+            )
         }
         if let exp = fixture.expectedRemoteType {
-            check("remote_type", result.remoteType == exp,
-                  got: result.remoteType?.rawValue ?? "nil", expected: exp.rawValue)
+            check(
+                "remote_type",
+                result.remoteType == exp,
+                got: result.remoteType?.rawValue ?? "nil",
+                expected: exp.rawValue
+            )
         }
         if let exp = fixture.expectedSalaryMin {
-            check("salary_min", result.salaryMin == exp,
-                  got: result.salaryMin.map(String.init) ?? "nil", expected: "\(exp)")
+            check(
+                "salary_min",
+                result.salaryMin == exp,
+                got: result.salaryMin.map(String.init) ?? "nil",
+                expected: "\(exp)"
+            )
         }
         if let exp = fixture.expectedSalaryMax {
-            check("salary_max", result.salaryMax == exp,
-                  got: result.salaryMax.map(String.init) ?? "nil", expected: "\(exp)")
+            check(
+                "salary_max",
+                result.salaryMax == exp,
+                got: result.salaryMax.map(String.init) ?? "nil",
+                expected: "\(exp)"
+            )
         }
         if let exp = fixture.expectedSalaryCurrency {
-            check("salary_currency", (result.salaryCurrency ?? "").lowercased() == exp.lowercased(),
-                  got: result.salaryCurrency ?? "", expected: exp)
+            check(
+                "salary_currency",
+                (result.salaryCurrency ?? "").lowercased() == exp.lowercased(),
+                got: result.salaryCurrency ?? "",
+                expected: exp
+            )
         }
 
         // Skills and requirements come from extractedJSON since ExtractionResult doesn't expose them directly
@@ -420,16 +444,22 @@ final class LLMEvalHarness: XCTestCase {
             if !fixture.expectedSkillsAny.isEmpty {
                 let text = skills.joined(separator: " ").lowercased()
                 let hit = fixture.expectedSkillsAny.contains { text.contains($0.lowercased()) }
-                check("skills (any-of)", hit,
-                      got: skills.prefix(3).joined(separator: ", "),
-                      expected: "any of: \(fixture.expectedSkillsAny.prefix(3).joined(separator: ", "))")
+                check(
+                    "skills (any-of)",
+                    hit,
+                    got: skills.prefix(3).joined(separator: ", "),
+                    expected: "any of: \(fixture.expectedSkillsAny.prefix(3).joined(separator: ", "))"
+                )
             }
             if !fixture.expectedRequirementsAny.isEmpty {
                 let text = reqs.joined(separator: " ").lowercased()
                 let hit = fixture.expectedRequirementsAny.contains { text.contains($0.lowercased()) }
-                check("requirements (any-of)", hit,
-                      got: reqs.prefix(2).joined(separator: "; "),
-                      expected: "any of: \(fixture.expectedRequirementsAny.prefix(3).joined(separator: ", "))")
+                check(
+                    "requirements (any-of)",
+                    hit,
+                    got: reqs.prefix(2).joined(separator: "; "),
+                    expected: "any of: \(fixture.expectedRequirementsAny.prefix(3).joined(separator: ", "))"
+                )
             }
         }
 

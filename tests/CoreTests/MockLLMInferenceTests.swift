@@ -6,7 +6,6 @@ import XCTest
 /// `MockLLMServer` over a TCP socket, and the engine parses the canned-but-input-aware responses.
 /// Proves the provider → OpenAICompatibleTransport → ExtractionEngine path works with no API key.
 final class MockLLMInferenceTests: XCTestCase {
-
     private var server: MockLLMServer!
 
     override func setUpWithError() throws {
@@ -47,7 +46,8 @@ final class MockLLMInferenceTests: XCTestCase {
         )
 
         let result = try await ExtractionEngine.extract(
-            snapshot: snapshot, provider: mockProvider(), settings: settings())
+            snapshot: snapshot, provider: mockProvider(), settings: settings()
+        )
 
         // Input-aware: the mock echoed the page title it saw in the prompt.
         XCTAssertEqual(result.title, "Senior iOS Engineer")
@@ -59,11 +59,13 @@ final class MockLLMInferenceTests: XCTestCase {
     func testFitScoring_overLocalhostMock_parsesDimensions() async throws {
         let job = JobFitSnapshot(
             title: "iOS Engineer", company: "Acme",
-            seniority: "senior", extractedJSON: nil, extractionModel: nil)
+            seniority: "senior", extractedJSON: nil, extractionModel: nil
+        )
         let resume = ResumeSnapshot(text: "Swift / SwiftUI iOS developer with 6 years of experience.")
 
         let output = try await ExtractionEngine.scoreFit(
-            job: job, resume: resume, model: "mock-model", provider: mockProvider())
+            job: job, resume: resume, model: "mock-model", provider: mockProvider()
+        )
 
         XCTAssertGreaterThan(output.score.overall, 0, "fit should parse to a real score")
         // All five required dimensions came back and validated.
@@ -87,7 +89,8 @@ final class MockLLMInferenceTests: XCTestCase {
 
         let capture = Capture(
             url: "https://example.com/job", pageTitle: "Senior iOS Engineer - Acme",
-            selectedText: "We are hiring an iOS engineer to build delightful apps.", rawHash: "mock-pipeline")
+            selectedText: "We are hiring an iOS engineer to build delightful apps.", rawHash: "mock-pipeline"
+        )
         let job = Job(jobNumber: 1, title: "Original Title")
         job.capture = capture
         try await store.insert(job)
@@ -100,7 +103,8 @@ final class MockLLMInferenceTests: XCTestCase {
         }
 
         let fetched = try await store.fetch(
-            FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
+            FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID })
+        )
         let updated = try XCTUnwrap(fetched.first)
         XCTAssertEqual(updated.extractionStatus, .succeeded)
         XCTAssertEqual(updated.title, "Senior iOS Engineer")
@@ -130,7 +134,8 @@ final class MockLLMInferenceTests: XCTestCase {
         _ = try await jobService.ingestCapture(CapturePayload(
             url: "https://example.com/job",
             pageTitle: "Senior iOS Engineer - Acme",
-            selectedText: "We are hiring an iOS engineer to build delightful apps."))
+            selectedText: "We are hiring an iOS engineer to build delightful apps."
+        ))
 
         for await event in events {
             if case .processingComplete = event { break }
@@ -143,7 +148,7 @@ final class MockLLMInferenceTests: XCTestCase {
     }
 
     func testModelsEndpoint_servesMockModel() async throws {
-        let url = URL(string: "\(server.baseURL)/v1/models")!
+        let url = try XCTUnwrap(URL(string: "\(server.baseURL)/v1/models"))
         let (data, response) = try await URLSession.shared.data(from: url)
         XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
         let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]

@@ -48,7 +48,11 @@ struct DuplicatesView: View {
                     pair: pair,
                     originalJob: jobIndex[pair.original.id],
                     candidateJob: jobIndex[pair.candidate.id],
-                    onUnmark: { handleUnmark(candidateID: pair.candidate.id, cleanedHash: pair.candidate.cleanedHash, keepJobID: pair.original.id) },
+                    onUnmark: { handleUnmark(
+                        candidateID: pair.candidate.id,
+                        cleanedHash: pair.candidate.cleanedHash,
+                        keepJobID: pair.original.id
+                    ) },
                     onDelete: { handleDelete(candidateID: pair.candidate.id) }
                 )
                 .frame(minWidth: 480)
@@ -194,7 +198,9 @@ struct DuplicatesView: View {
         // Hold the index locally and publish it together with the pairs, so a stale scan can't leave
         // jobIndex updated while pairs reverts to an older value (TASK-384).
         var index: [String: Job] = [:]
-        for job in allJobs { index[job.id] = job }
+        for job in allJobs {
+            index[job.id] = job
+        }
 
         // Only surface pairs where BOTH jobs are still un-marked: a job already marked `.duplicate`
         // is resolved — keeping that record is what blocks the same URL-variation from re-creating a
@@ -228,7 +234,8 @@ struct DuplicatesView: View {
                 // Record a "not a duplicate" decision so automatic detection won't re-flag it.
                 if let hash = cleanedHash, !hash.isEmpty {
                     try await appServices.jobService.decideDuplicate(
-                        cleanedHash: hash, decision: "not_duplicate", keepJobID: keepJobID)
+                        cleanedHash: hash, decision: "not_duplicate", keepJobID: keepJobID
+                    )
                 }
                 selectedPairID = nil
                 actionError = nil
@@ -409,7 +416,7 @@ private struct JobCompareColumn: View {
     let job: Job?
     let other: JobSnapshot
     var isNewer: Bool = false
-    var onDiscard: (() -> Void)? = nil
+    var onDiscard: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

@@ -12,34 +12,34 @@ enum JobSearchToken: Identifiable, Hashable {
 
     var id: String {
         switch self {
-        case .status(let s):      "status:\(s.rawValue)"
-        case .minFitScore(let n): "fitScore:\(n)"
-        case .minSalary(let n):   "salary:\(n)"
-        case .remoteType(let rt): "remote:\(rt.rawValue)"
-        case .minRating(let n):   "rating:\(n)"
-        case .recentDays(let d):  "recent:\(d)"
+        case let .status(s): "status:\(s.rawValue)"
+        case let .minFitScore(n): "fitScore:\(n)"
+        case let .minSalary(n): "salary:\(n)"
+        case let .remoteType(rt): "remote:\(rt.rawValue)"
+        case let .minRating(n): "rating:\(n)"
+        case let .recentDays(d): "recent:\(d)"
         }
     }
 
     var label: String {
         switch self {
-        case .status(let s):      s.displayName
-        case .minFitScore(let n): "Fit ≥ \(n)"
-        case .minSalary(let n):   "Salary ≥ $\(n / 1000)k"
-        case .remoteType(let rt): rt.displayName
-        case .minRating(let n):   "Rating ≥ \(n)★"
-        case .recentDays(let d):  "Last \(d)d"
+        case let .status(s): s.displayName
+        case let .minFitScore(n): "Fit ≥ \(n)"
+        case let .minSalary(n): "Salary ≥ $\(n / 1000)k"
+        case let .remoteType(rt): rt.displayName
+        case let .minRating(n): "Rating ≥ \(n)★"
+        case let .recentDays(d): "Last \(d)d"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .status:      "tag"
+        case .status: "tag"
         case .minFitScore: "chart.bar"
-        case .minSalary:   "dollarsign"
-        case .remoteType:  "network"
-        case .minRating:   "star"
-        case .recentDays:  "calendar"
+        case .minSalary: "dollarsign"
+        case .remoteType: "network"
+        case .minRating: "star"
+        case .recentDays: "calendar"
         }
     }
 }

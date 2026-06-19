@@ -1,8 +1,8 @@
 import XCTest
 @testable import JobhuntCore
 
-// Raw values are stored in SwiftData and exported via CSV/MCP/extension.
-// Changing them is a breaking migration. Pin them here so a rename becomes a test failure.
+/// Raw values are stored in SwiftData and exported via CSV/MCP/extension.
+/// Changing them is a breaking migration. Pin them here so a rename becomes a test failure.
 final class CoreEnumRawValueTests: XCTestCase {
     func testJobStatusRawValues() {
         XCTAssertEqual(JobStatus.new.rawValue, "new")

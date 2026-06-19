@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 
 // MARK: - Schema Evolution Policy
+
 //
 // Schema policy: SchemaV1 is frozen — do NOT add, remove, or rename
 // @Attribute-annotated stored properties in SchemaV1 model classes.
@@ -47,6 +48,7 @@ import SwiftData
 // once per developer machine.
 
 // MARK: - How V1 is frozen without snapshot types (TASK-368 / TASK-369)
+
 //
 // SchemaV1.models points at the live model classes. We deliberately do NOT duplicate all models
 // into an immutable `SchemaV1Snapshot` namespace today: there is no V2 yet, so a snapshot would be
@@ -63,6 +65,7 @@ import SwiftData
 // old-store migration test (TASK-369) that opens a real pre-change store with the new plan.
 //
 // MARK: - Schema policy checklist
+
 //
 // Changes that DO need a new VersionedSchema + MigrationStage:
 //   [x] Rename a stored property

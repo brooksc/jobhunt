@@ -2,11 +2,14 @@ import XCTest
 @testable import JobhuntCore
 
 final class JobStatusSummaryTests: XCTestCase {
-
-    private func makeJob(status: JobStatus = .pursuing, fitScore: Int? = nil,
-                         company: String? = "Acme", title: String? = "Engineer",
-                         extractionStatus: ExtractionStatus = .pending) -> Job {
-        let j = Job(jobNumber: Int.random(in: 1...10000), status: status)
+    private func makeJob(
+        status: JobStatus = .pursuing,
+        fitScore: Int? = nil,
+        company: String? = "Acme",
+        title: String? = "Engineer",
+        extractionStatus: ExtractionStatus = .pending
+    ) -> Job {
+        let j = Job(jobNumber: Int.random(in: 1 ... 10000), status: status)
         j.fitScore = fitScore
         if fitScore != nil { j.fitStatus = .succeeded }
         j.company = company
@@ -17,12 +20,12 @@ final class JobStatusSummaryTests: XCTestCase {
 
     /// Returns a job with no QualityChecker issues.
     private func makeCleanJob() -> Job {
-        let j = Job(jobNumber: Int.random(in: 1...10000), status: .pursuing)
+        let j = Job(jobNumber: Int.random(in: 1 ... 10000), status: .pursuing)
         j.company = "Acme"
         j.title = "Engineer"
         j.location = "Remote"
         j.remoteType = .remote
-        j.salaryMin = 100000
+        j.salaryMin = 100_000
         j.extractionStatus = .succeeded
         j.rawTextBytes = 2000
         j.cleanedTextBytes = 1500
@@ -50,7 +53,7 @@ final class JobStatusSummaryTests: XCTestCase {
             makeJob(status: .offer),
             makeJob(status: .rejected),
             makeJob(status: .passed),
-            makeJob(status: .archived),
+            makeJob(status: .archived)
         ]
         let s = JobStatusSummary(jobs: jobs)
         XCTAssertEqual(s.total, 8)
@@ -66,7 +69,7 @@ final class JobStatusSummaryTests: XCTestCase {
             makeJob(status: .pursuing),
             makeJob(status: .applied),
             makeJob(status: .interview),
-            makeJob(status: .offer),
+            makeJob(status: .offer)
         ]
         let s = JobStatusSummary(jobs: jobs)
         XCTAssertEqual(s.funnelCounts[0].label, "Tracked")
@@ -93,10 +96,10 @@ final class JobStatusSummaryTests: XCTestCase {
 
     func testIssueCount_countsJobsWithAnyIssue() {
         let jobs: [Job] = [
-            makeJob(extractionStatus: .failed),  // has issues
-            makeJob(company: nil),               // has issues
-            makeJob(title: nil),                 // has issues
-            makeCleanJob(),                      // no issues — not counted
+            makeJob(extractionStatus: .failed), // has issues
+            makeJob(company: nil), // has issues
+            makeJob(title: nil), // has issues
+            makeCleanJob() // no issues — not counted
         ]
         let s = JobStatusSummary(jobs: jobs)
         XCTAssertEqual(s.issueCount, 3)
@@ -104,10 +107,18 @@ final class JobStatusSummaryTests: XCTestCase {
 
     func testSinglePassEquivalence_multipleJobTypes() {
         var jobs = [Job]()
-        for _ in 0..<50 { jobs.append(makeJob(status: .pursuing, fitScore: 80)) }
-        for _ in 0..<20 { jobs.append(makeJob(status: .applied)) }
-        for _ in 0..<10 { jobs.append(makeJob(status: .rejected)) }
-        for _ in 0..<5  { jobs.append(makeJob(status: .archived)) }
+        for _ in 0 ..< 50 {
+            jobs.append(makeJob(status: .pursuing, fitScore: 80))
+        }
+        for _ in 0 ..< 20 {
+            jobs.append(makeJob(status: .applied))
+        }
+        for _ in 0 ..< 10 {
+            jobs.append(makeJob(status: .rejected))
+        }
+        for _ in 0 ..< 5 {
+            jobs.append(makeJob(status: .archived))
+        }
 
         let s = JobStatusSummary(jobs: jobs)
         XCTAssertEqual(s.total, 85)

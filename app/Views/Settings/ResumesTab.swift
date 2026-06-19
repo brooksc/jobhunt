@@ -31,10 +31,12 @@ struct ResumesTab: View {
             .padding(.bottom, 8)
 
             if !resumes.isEmpty {
-                Text("Active resumes (✓) are auto-scored against new jobs; a job's fit shows the best match across resumes.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.bottom, 8)
+                Text(
+                    "Active resumes (✓) are auto-scored against new jobs; a job's fit shows the best match across resumes."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 8)
             }
 
             if resumes.isEmpty {
@@ -78,7 +80,8 @@ struct ResumesTab: View {
                 let cleared = try await appServices.resumeService.updateResume(id: id, name: name, text: text)
                 if cleared > 0 {
                     appServices.toastStore.show(
-                        "Résumé updated — cleared \(cleared) fit score\(cleared == 1 ? "" : "s"). Re-score jobs to update.")
+                        "Résumé updated — cleared \(cleared) fit score\(cleared == 1 ? "" : "s"). Re-score jobs to update."
+                    )
                 }
             })
         }
@@ -124,8 +127,12 @@ private struct ResumeRow: View {
                 // The checkmark reflects resume.active (store-backed), so a failed write leaves the
                 // displayed state correct; just surface the error rather than swallow it.
                 Task {
-                    do { try await resumeService.setResumeActive(id: id, active: newActive) }
-                    catch { appServices.toastStore.show("Couldn't change active resume: \(error.localizedDescription)", isError: true) }
+                    do { try await resumeService.setResumeActive(id: id, active: newActive) } catch {
+                        appServices.toastStore.show(
+                            "Couldn't change active resume: \(error.localizedDescription)",
+                            isError: true
+                        )
+                    }
                 }
             } label: {
                 Image(systemName: resume.active ? "checkmark.circle.fill" : "circle")
@@ -133,7 +140,9 @@ private struct ResumeRow: View {
                     .font(.title3)
             }
             .buttonStyle(.plain)
-            .help(resume.active ? "Active — auto-scored against new jobs. Click to deactivate." : "Inactive. Click to activate (auto-scored against new jobs).")
+            .help(resume
+                .active ? "Active — auto-scored against new jobs. Click to deactivate." :
+                "Inactive. Click to activate (auto-scored against new jobs).")
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(resume.name)

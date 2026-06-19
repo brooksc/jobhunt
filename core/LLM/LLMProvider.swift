@@ -163,7 +163,7 @@ public enum RetryAfterParser {
     private static func secondsFromBody(_ body: String) -> TimeInterval? {
         let patterns = [
             #""retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s""#,
-            #"(?:retry|try again)[^0-9]{0,20}?(\d+(?:\.\d+)?)\s*(?:s\b|sec|second)"#,
+            #"(?:retry|try again)[^0-9]{0,20}?(\d+(?:\.\d+)?)\s*(?:s\b|sec|second)"#
         ]
         for pattern in patterns {
             guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { continue }

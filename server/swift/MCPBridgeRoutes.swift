@@ -352,7 +352,7 @@
         let statusFilter = req?.status
 
         if let statusRaw = statusFilter, JobStatus(rawValue: statusRaw) == nil {
-            let valid = JobStatus.allCases.map { $0.rawValue }.joined(separator: ", ")
+            let valid = JobStatus.allCases.map(\.rawValue).joined(separator: ", ")
             return HTTPResponse.error("invalid status '\(statusRaw)'; valid values: \(valid)", code: 400)
         }
 
@@ -431,7 +431,8 @@
                 duplicateOfJobID: r.duplicateOfJobID,
                 events: r.events.map {
                     MCPJobDetail.MCPJobEvent(
-                        eventType: $0.eventType, note: $0.note, occurredAt: formatDate($0.occurredAt))
+                        eventType: $0.eventType, note: $0.note, occurredAt: formatDate($0.occurredAt)
+                    )
                 }
             )
             return HTTPResponse.ok(detail)
@@ -619,7 +620,8 @@
         do {
             let interval = req.intervalDays.map { max(1, min(365, $0)) }
             let siteID = try await siteService.createSite(
-                url: req.url, name: req.name, intervalDays: interval ?? 14)
+                url: req.url, name: req.name, intervalDays: interval ?? 14
+            )
             // Apply the richer fields (state/note/company_website/jobs_url/company_description) via
             // the same update path update_site uses — TASK-464.
             let state = req.state.flatMap { SiteState(rawValue: $0) }

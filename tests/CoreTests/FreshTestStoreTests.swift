@@ -20,8 +20,8 @@ final class FreshTestStoreTests: XCTestCase {
         let names = ModelContainerFactory.storeAndSidecars(of: url).map(\.lastPathComponent)
         XCTAssertEqual(names, [
             "jobhunt-ui-test.store",
-            "jobhunt-ui-test.store-wal",   // CoreData/SQLite sidecar form, NOT .wal
-            "jobhunt-ui-test.store-shm",
+            "jobhunt-ui-test.store-wal", // CoreData/SQLite sidecar form, NOT .wal
+            "jobhunt-ui-test.store-shm"
         ])
     }
 
@@ -47,8 +47,10 @@ final class FreshTestStoreTests: XCTestCase {
         let blocker = dir.appendingPathComponent("blocker")
         try Data("x".utf8).write(to: blocker)
         let url = blocker.appendingPathComponent("sub/jobhunt-ui-test.store")
-        XCTAssertThrowsError(try ModelContainerFactory.freshTestStore(at: url),
-                             "cleanup that can't create the directory must fail closed")
+        XCTAssertThrowsError(
+            try ModelContainerFactory.freshTestStore(at: url),
+            "cleanup that can't create the directory must fail closed"
+        )
     }
 
     func testFreshTestStore_succeedsOnCleanSlate() throws {

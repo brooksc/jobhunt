@@ -38,7 +38,11 @@ final class MigratorTests: XCTestCase {
         let outputURL = URL(fileURLWithPath: outputPath)
         let schema = Schema(SchemaV1.models)
         let config = ModelConfiguration(schema: schema, url: outputURL, cloudKitDatabase: .none)
-        let container = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
+        let container = try ModelContainer(
+            for: schema,
+            migrationPlan: JobhuntMigrationPlan.self,
+            configurations: config
+        )
         return (ModelContext(container), outputPath)
     }
 
@@ -294,11 +298,17 @@ final class MigratorTests: XCTestCase {
         try context.save()
 
         // Orphan event must not appear in the store.
-        XCTAssertEqual(try context.fetch(FetchDescriptor<JobEvent>()).count, 0,
-                       "Orphan event should be skipped, not imported")
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<JobEvent>()).count,
+            0,
+            "Orphan event should be skipped, not imported"
+        )
         // Summary must report it.
-        XCTAssertGreaterThan(summary.skippedOrphans, 0,
-                             "summary.skippedOrphans should count the skipped event")
+        XCTAssertGreaterThan(
+            summary.skippedOrphans,
+            0,
+            "summary.skippedOrphans should count the skipped event"
+        )
     }
 
     /// Orphan job_action (job_id points to no job) must be skipped and reported in summary.
@@ -325,12 +335,21 @@ final class MigratorTests: XCTestCase {
         let summary = migrate(src: srcDB, context: context)
         try context.save()
 
-        XCTAssertEqual(try context.fetch(FetchDescriptor<JobAction>()).count, 0,
-                       "Orphan job_action should be skipped, not imported")
-        XCTAssertEqual(summary.skippedOrphanActions, 1,
-                       "summary.skippedOrphanActions should be 1")
-        XCTAssertGreaterThan(summary.skippedOrphans, 0,
-                             "summary.skippedOrphans should count the skipped job_action")
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<JobAction>()).count,
+            0,
+            "Orphan job_action should be skipped, not imported"
+        )
+        XCTAssertEqual(
+            summary.skippedOrphanActions,
+            1,
+            "summary.skippedOrphanActions should be 1"
+        )
+        XCTAssertGreaterThan(
+            summary.skippedOrphans,
+            0,
+            "summary.skippedOrphans should count the skipped job_action"
+        )
     }
 
     /// Orphan job_fit_score (job_id points to no job) must be skipped and reported in summary.
@@ -361,12 +380,21 @@ final class MigratorTests: XCTestCase {
         let summary = migrate(src: srcDB, context: context)
         try context.save()
 
-        XCTAssertEqual(try context.fetch(FetchDescriptor<JobFitScore>()).count, 0,
-                       "Orphan job_fit_score should be skipped, not imported")
-        XCTAssertEqual(summary.skippedOrphanFitScores, 1,
-                       "summary.skippedOrphanFitScores should be 1")
-        XCTAssertGreaterThan(summary.skippedOrphans, 0,
-                             "summary.skippedOrphans should count the skipped job_fit_score")
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<JobFitScore>()).count,
+            0,
+            "Orphan job_fit_score should be skipped, not imported"
+        )
+        XCTAssertEqual(
+            summary.skippedOrphanFitScores,
+            1,
+            "summary.skippedOrphanFitScores should be 1"
+        )
+        XCTAssertGreaterThan(
+            summary.skippedOrphans,
+            0,
+            "summary.skippedOrphans should count the skipped job_fit_score"
+        )
     }
 
     /// migrate() is a run-once operation. Calling it on a non-empty store returns early
@@ -407,8 +435,11 @@ final class MigratorTests: XCTestCase {
         XCTAssertEqual(s2.captures, 0, "No records should be imported on the second run")
 
         // Store must still contain exactly the rows from the first run.
-        XCTAssertEqual(try context.fetch(FetchDescriptor<Capture>()).count, 1,
-                       "Store should not grow after a skipped second run")
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<Capture>()).count,
+            1,
+            "Store should not grow after a skipped second run"
+        )
         XCTAssertEqual(try context.fetch(FetchDescriptor<Job>()).count, 1)
     }
 
@@ -417,7 +448,7 @@ final class MigratorTests: XCTestCase {
     func testMigration_setsCapturedAtDenormalized() throws {
         // Use distinct dates so we can verify the right field is used.
         let capturedAt = "2024-03-15T10:00:00Z"
-        let createdAt  = "2024-01-01T00:00:00Z"
+        let createdAt = "2024-01-01T00:00:00Z"
 
         let dbPath = try makeTempDB { db in
             createMinimalSchema(db)
@@ -450,25 +481,33 @@ final class MigratorTests: XCTestCase {
         let job = try XCTUnwrap(context.fetch(FetchDescriptor<Job>()).first)
 
         // capturedAtDenormalized must be set to the capture's capturedAt date.
-        let denormalized = try XCTUnwrap(job.capturedAtDenormalized,
-                                         "capturedAtDenormalized must not be nil after migration")
+        let denormalized = try XCTUnwrap(
+            job.capturedAtDenormalized,
+            "capturedAtDenormalized must not be nil after migration"
+        )
 
         // Parse the expected dates using the same ISO-8601 UTC formatter the migrator uses.
         let fmt = ISO8601DateFormatter()
         let expectedCapturedAt = try XCTUnwrap(fmt.date(from: capturedAt))
-        let expectedCreatedAt  = try XCTUnwrap(fmt.date(from: createdAt))
+        let expectedCreatedAt = try XCTUnwrap(fmt.date(from: createdAt))
 
-        XCTAssertEqual(denormalized, expectedCapturedAt,
-                       "capturedAtDenormalized should equal capture.capturedAt")
-        XCTAssertNotEqual(denormalized, expectedCreatedAt,
-                          "capturedAtDenormalized must not equal job.createdAt (different dates)")
+        XCTAssertEqual(
+            denormalized,
+            expectedCapturedAt,
+            "capturedAtDenormalized should equal capture.capturedAt"
+        )
+        XCTAssertNotEqual(
+            denormalized,
+            expectedCreatedAt,
+            "capturedAtDenormalized must not equal job.createdAt (different dates)"
+        )
     }
 
     /// patch() must also set capturedAtDenormalized from the capture's capturedAt.
     func testPatch_setsCapturedAtDenormalized() throws {
         // Use distinct dates so we can verify the right field is used.
         let capturedAt = "2024-03-15T10:00:00Z"
-        let createdAt  = "2024-01-01T00:00:00Z"
+        let createdAt = "2024-01-01T00:00:00Z"
 
         let dbPath = try makeTempDB { db in
             createMinimalSchema(db)
@@ -497,7 +536,7 @@ final class MigratorTests: XCTestCase {
         // Pre-populate the capture (patch() expects captures to already be in SwiftData).
         let fmt = ISO8601DateFormatter()
         let capturedAtDate = try XCTUnwrap(fmt.date(from: capturedAt))
-        let createdAtDate  = try XCTUnwrap(fmt.date(from: createdAt))
+        let createdAtDate = try XCTUnwrap(fmt.date(from: createdAt))
         let cap = Capture(
             id: "cap1",
             url: "https://example.com/jobs/1",
@@ -521,12 +560,20 @@ final class MigratorTests: XCTestCase {
 
         let job = try XCTUnwrap(context.fetch(FetchDescriptor<Job>()).first)
 
-        let denormalized = try XCTUnwrap(job.capturedAtDenormalized,
-                                         "capturedAtDenormalized must not be nil after patch")
-        XCTAssertEqual(denormalized, capturedAtDate,
-                       "capturedAtDenormalized should equal capture.capturedAt")
-        XCTAssertNotEqual(denormalized, createdAtDate,
-                          "capturedAtDenormalized must not equal job.createdAt (different dates)")
+        let denormalized = try XCTUnwrap(
+            job.capturedAtDenormalized,
+            "capturedAtDenormalized must not be nil after patch"
+        )
+        XCTAssertEqual(
+            denormalized,
+            capturedAtDate,
+            "capturedAtDenormalized should equal capture.capturedAt"
+        )
+        XCTAssertNotEqual(
+            denormalized,
+            createdAtDate,
+            "capturedAtDenormalized must not equal job.createdAt (different dates)"
+        )
     }
 }
 

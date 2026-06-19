@@ -3,12 +3,11 @@ import XCTest
 /// Behavior-focused UI tests that assert desktop interaction correctness,
 /// not just visual screenshots. Complements ScreenshotTests.swift.
 final class BehaviorUITests: XCTestCase {
-
-    // Shared across all tests in this class to avoid the accessibility re-registration
-    // overhead of fresh app launches. Re-launching after terminate() on headless VMs
-    // can take 200+ seconds per test for the accessibility service to register the new
-    // process. By reusing the same process, tests 2-6 skip this wait entirely.
-    nonisolated(unsafe) private static var sharedApp: XCUIApplication?
+    /// Shared across all tests in this class to avoid the accessibility re-registration
+    /// overhead of fresh app launches. Re-launching after terminate() on headless VMs
+    /// can take 200+ seconds per test for the accessibility service to register the new
+    /// process. By reusing the same process, tests 2-6 skip this wait entirely.
+    private nonisolated(unsafe) static var sharedApp: XCUIApplication?
 
     private var app: XCUIApplication!
 
@@ -83,7 +82,8 @@ final class BehaviorUITests: XCTestCase {
         // Switch to Data Quality — verify by extractionPending filter chip (always present with seeded data).
         navigate(app, label: "Data Quality")
         XCTAssertTrue(
-            app.descendants(matching: .any).matching(identifier: "chip.kind.extractionPending").firstMatch.waitForExistence(timeout: 10),
+            app.descendants(matching: .any).matching(identifier: "chip.kind.extractionPending").firstMatch
+                .waitForExistence(timeout: 10),
             "DataQualityView filter chips should appear after navigation (seeded data guarantees extractionPending)"
         )
     }
@@ -118,7 +118,8 @@ final class BehaviorUITests: XCTestCase {
 
         // Jobs section should now be active — content.jobs Outline is accessible in the element tree.
         XCTAssertTrue(
-            app.descendants(matching: .any).matching(identifier: "content.jobs").firstMatch.waitForExistence(timeout: 5),
+            app.descendants(matching: .any).matching(identifier: "content.jobs").firstMatch
+                .waitForExistence(timeout: 5),
             "⌘K should navigate to All Jobs"
         )
     }
@@ -144,14 +145,17 @@ final class BehaviorUITests: XCTestCase {
         // the sidebar NSOutlineView when a content-area list previously held keyboard focus.
         app.typeKey("k", modifierFlags: .command)
         XCTAssertTrue(
-            app.descendants(matching: .any).matching(identifier: "content.jobs").firstMatch.waitForExistence(timeout: 10),
+            app.descendants(matching: .any).matching(identifier: "content.jobs").firstMatch
+                .waitForExistence(timeout: 10),
             "Jobs content should appear after ⌘K navigation"
         )
 
         // Open the filter popover (the "Remote" chip lives inside it)
         let filterBtn = app.buttons["Advanced filters"].firstMatch
-        XCTAssertTrue(filterBtn.waitForExistence(timeout: 5),
-                      "Advanced filters button not found in Jobs toolbar")
+        XCTAssertTrue(
+            filterBtn.waitForExistence(timeout: 5),
+            "Advanced filters button not found in Jobs toolbar"
+        )
         filterBtn.click()
 
         let remoteChip = app.descendants(matching: .any).matching(identifier: "filter.remote.remote").firstMatch
@@ -174,7 +178,7 @@ final class BehaviorUITests: XCTestCase {
         // accessibility event processing that produces "Failed to get matching snapshot" when
         // the popover window disappears mid-poll.
         Thread.sleep(forTimeInterval: 0.5)
-        guard remoteChip.exists else { return }  // Popover closed — skip remaining assertions
+        guard remoteChip.exists else { return } // Popover closed — skip remaining assertions
         XCTAssertEqual(remoteChip.value as? String, "on", "Remote chip should report 'on' after activation")
 
         // Deactivate
@@ -197,17 +201,23 @@ final class BehaviorUITests: XCTestCase {
         // so the extractionPending chip is guaranteed to appear for active jobs.
         // We use accessibilityIdentifier for reliable lookup (label-based queries are fragile for plain-style buttons).
         let chip = app.descendants(matching: .any).matching(identifier: "chip.kind.extractionPending").firstMatch
-        XCTAssertTrue(chip.waitForExistence(timeout: 10),
-                      "Data Quality 'Extraction pending' filter chip not found — chip is missing or view did not load")
+        XCTAssertTrue(
+            chip.waitForExistence(timeout: 10),
+            "Data Quality 'Extraction pending' filter chip not found — chip is missing or view did not load"
+        )
 
         XCTAssertEqual(chip.value as? String, "off", "Extraction pending chip should start as 'off'")
 
         chip.click()
-        XCTAssertTrue(waitUntil(timeout: 2) { chip.value as? String == "on" },
-                      "Extraction pending chip should report 'on' after activation")
+        XCTAssertTrue(
+            waitUntil(timeout: 2) { chip.value as? String == "on" },
+            "Extraction pending chip should report 'on' after activation"
+        )
 
         chip.click()
-        XCTAssertTrue(waitUntil(timeout: 5) { chip.value as? String == "off" },
-                      "Extraction pending chip should report 'off' after deactivation")
+        XCTAssertTrue(
+            waitUntil(timeout: 5) { chip.value as? String == "off" },
+            "Extraction pending chip should report 'off' after deactivation"
+        )
     }
 }

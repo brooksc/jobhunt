@@ -5,12 +5,12 @@ import XCTest
 // Run on a macOS CI runner (e.g. GitHub Actions macos-latest):
 //   same command; requires a graphical display session (use macos-latest runner, not Linux)
 
-// One timestamped folder shared across all tests in a process run.
-// Written to /tmp (always writable from the test runner) at a FIXED, well-known path so the VM
-// runner can retrieve it — run-ui-tests-in-vm.sh scp's GUEST_SCREENSHOTS=/tmp/jobhunt-screenshots
-// back to the host (TASK-402). Do NOT use NSTemporaryDirectory(): on macOS that resolves to a
-// per-process $TMPDIR under /var/folders/…, which the retrieval can't predict, so the PNGs would be
-// silently left behind in the VM.
+/// One timestamped folder shared across all tests in a process run.
+/// Written to /tmp (always writable from the test runner) at a FIXED, well-known path so the VM
+/// runner can retrieve it — run-ui-tests-in-vm.sh scp's GUEST_SCREENSHOTS=/tmp/jobhunt-screenshots
+/// back to the host (TASK-402). Do NOT use NSTemporaryDirectory(): on macOS that resolves to a
+/// per-process $TMPDIR under /var/folders/…, which the retrieval can't predict, so the PNGs would be
+/// silently left behind in the VM.
 let screenshotDir: URL = {
     let fmt = DateFormatter()
     fmt.dateFormat = "yyyy-MM-dd_HH-mm-ss"
@@ -26,7 +26,6 @@ let screenshotDir: URL = {
 }()
 
 extension XCTestCase {
-
     // MARK: - State-based wait
 
     /// Poll until `check()` returns true or `timeout` elapses. Returns whether the condition was met.
@@ -71,7 +70,7 @@ extension XCTestCase {
         app.launchArguments += [
             "-UIAnimationDragCoefficient", "0",
             "-ApplePersistenceIgnoreState", "YES",
-            "--ui-test-store",
+            "--ui-test-store"
         ]
         if seedData { app.launchArguments.append("--seed-demo-data") }
         if let llmMockPort { app.launchArguments += ["--llm-mock-port", "\(llmMockPort)"] }
@@ -128,23 +127,23 @@ extension XCTestCase {
 
     /// Map from display label → accessibilityIdentifier set in Sidebar.swift.
     private static let sidebarIDs: [String: String] = [
-        "Dashboard":    "sidebar.dashboard",
+        "Dashboard": "sidebar.dashboard",
         "Needs Action": "sidebar.needsAction",
-        "Resumes":      "sidebar.resumes",
-        "All Jobs":     "sidebar.jobs.all",
-        "New":          "sidebar.jobs.new",
-        "Pursuing":     "sidebar.jobs.pursuing",
-        "Applied":      "sidebar.jobs.applied",
-        "Interview":    "sidebar.jobs.interview",
-        "Offer":        "sidebar.jobs.offer",
-        "Rejected":     "sidebar.jobs.rejected",
-        "Passed":       "sidebar.jobs.passed",
-        "Closed":       "sidebar.jobs.closed",
-        "Expired":      "sidebar.jobs.expired",
-        "Sites":        "sidebar.sites",
-        "Duplicates":   "sidebar.duplicates",
-        "LLM Queue":    "sidebar.llmQueue",
-        "Data Quality": "sidebar.dataQuality",
+        "Resumes": "sidebar.resumes",
+        "All Jobs": "sidebar.jobs.all",
+        "New": "sidebar.jobs.new",
+        "Pursuing": "sidebar.jobs.pursuing",
+        "Applied": "sidebar.jobs.applied",
+        "Interview": "sidebar.jobs.interview",
+        "Offer": "sidebar.jobs.offer",
+        "Rejected": "sidebar.jobs.rejected",
+        "Passed": "sidebar.jobs.passed",
+        "Closed": "sidebar.jobs.closed",
+        "Expired": "sidebar.jobs.expired",
+        "Sites": "sidebar.sites",
+        "Duplicates": "sidebar.duplicates",
+        "LLM Queue": "sidebar.llmQueue",
+        "Data Quality": "sidebar.dataQuality"
     ]
 
     /// Section labels → the Go menu's ⌃⌘<n> shortcut digit. Keyboard shortcuts fire reliably
@@ -153,14 +152,14 @@ extension XCTestCase {
     /// fall back to the sidebar mechanism below.
     private static let sectionShortcut: [String: String] = [
         "Dashboard": "1", "Needs Action": "2", "All Jobs": "3", "Sites": "4",
-        "Duplicates": "5", "LLM Queue": "6", "Data Quality": "7", "Resumes": "8",
+        "Duplicates": "5", "LLM Queue": "6", "Data Quality": "7", "Resumes": "8"
     ]
 
     /// Content-column identifiers that prove a section is showing (used to verify navigation).
     private static let contentIDs: [String: String] = [
         "Dashboard": "content.dashboard", "Data Quality": "content.dataQuality",
         "LLM Queue": "content.llmQueue", "All Jobs": "content.jobs",
-        "Resumes": "content.resumes",
+        "Resumes": "content.resumes"
     ]
 
     /// Ordered sidebar items (mirrors Sidebar.swift, section headers excluded —
@@ -172,7 +171,7 @@ extension XCTestCase {
         "All Jobs", "New", "Pursuing", "Applied", "Interview", "Offer",
         "Rejected", "Passed", "Archived", "Closed", "Expired",
         "Sites", "Duplicates",
-        "LLM Queue", "Data Quality",
+        "LLM Queue", "Data Quality"
     ]
 
     /// Navigate the macOS sidebar to the item with the given display label.
@@ -265,10 +264,10 @@ extension XCTestCase {
             }
         }
 
-        if targetIdx == 0 { return }  // Already at Dashboard
+        if targetIdx == 0 { return } // Already at Dashboard
 
         // Navigate from Dashboard to the target by pressing Down targetIdx times.
-        for i in 0..<targetIdx {
+        for i in 0 ..< targetIdx {
             app.typeKey(.downArrow, modifierFlags: [])
             Thread.sleep(forTimeInterval: i == targetIdx - 1 ? 0.3 : 0.05)
         }

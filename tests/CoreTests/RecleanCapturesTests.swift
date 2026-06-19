@@ -6,7 +6,7 @@ import XCTest
 /// cleanedDescription/cleanedHash for existing captures with the improved cleaner.
 final class RecleanCapturesTests: XCTestCase {
     func testRecleanUpdatesDescriptionHashAndBytes() async throws {
-        let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
         let capture = Capture(
             url: "https://example.com/job",
             pageTitle: "Engineer",
@@ -40,7 +40,7 @@ final class RecleanCapturesTests: XCTestCase {
     }
 
     func testRecleanIsIdempotent() async throws {
-        let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
         let capture = Capture(
             url: "https://example.com/job2",
             pageTitle: "PM",

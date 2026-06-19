@@ -128,7 +128,10 @@ let tools: [[String: Any]] = [
             "required": [],
             "properties": [
                 "job_number": ["type": "integer"],
-                "job_id": ["type": "string", "description": "Internal job id (back-compat alternative to job_number)."] as [String: Any],
+                "job_id": [
+                    "type": "string",
+                    "description": "Internal job id (back-compat alternative to job_number)."
+                ] as [String: Any],
                 "include_raw_text": [
                     "type": "boolean",
                     "description": "Set to true to include raw captured page text (selected_text, visible_text). Omitted by default for privacy."

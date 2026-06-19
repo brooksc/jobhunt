@@ -268,7 +268,9 @@ public enum AvailabilityChecker {
                     return nil
                 }
             }
-            for await r in group { if let r { results.append(r) } }
+            for await r in group {
+                if let r { results.append(r) }
+            }
         }
         return results
     }
@@ -356,7 +358,8 @@ public enum AvailabilityChecker {
                     }
                     markedCount += 1
                     // Record audit event for the auto-expiry.
-                    let matchedJobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == idToMatch }))
+                    let matchedJobs = try await store
+                        .fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == idToMatch }))
                     if let job = matchedJobs.first {
                         let event = JobEvent(
                             eventType: "availability",
@@ -409,7 +412,7 @@ public enum AvailabilityChecker {
             predicate: #Predicate { $0.capturedAtDenormalized != nil },
             sortBy: [SortDescriptor(\Job.capturedAtDenormalized, order: .forward)]
         )
-        descriptor.fetchLimit = limit * 4  // over-fetch to allow for in-memory status filter
+        descriptor.fetchLimit = limit * 4 // over-fetch to allow for in-memory status filter
         let newStyleRows = try await store.fetch(descriptor)
 
         // Legacy rows with nil capturedAtDenormalized: fetch separately, filter via relationship
@@ -486,6 +489,5 @@ public enum AvailabilityChecker {
         )
     }
 }
-
 
 // swiftlint:enable line_length cyclomatic_complexity function_body_length large_tuple type_body_length

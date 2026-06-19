@@ -48,7 +48,7 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
         let responseSchema: [String: Any]?
         let wantsJSON: Bool
         switch request.responseFormat {
-        case .jsonSchema(_, let schema):
+        case let .jsonSchema(_, schema):
             responseSchema = Self.geminiResponseSchema(fromJSONSchema: schema)
             wantsJSON = true
         case .jsonObject:
@@ -133,7 +133,8 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
             if http.statusCode == 429 {
                 let bodyStr = String(data: data, encoding: .utf8) ?? ""
                 let retryAfter = RetryAfterParser.parse(
-                    header: http.value(forHTTPHeaderField: "Retry-After"), body: bodyStr, now: Date())
+                    header: http.value(forHTTPHeaderField: "Retry-After"), body: bodyStr, now: Date()
+                )
                 guard rlAttempt < Self.maxRateLimitRetries else {
                     throw LLMProviderError.rateLimited(retryAfter: retryAfter)
                 }
@@ -166,7 +167,7 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
         for (key, value) in dict {
             switch key {
             case "additionalProperties", "$schema":
-                continue  // unsupported in / irrelevant to Gemini's dialect
+                continue // unsupported in / irrelevant to Gemini's dialect
             case "type":
                 if let types = value as? [String] {
                     let nonNull = types.first { $0 != "null" } ?? "string"
@@ -186,7 +187,7 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
             case "items":
                 out["items"] = convertSchemaNode(value)
             default:
-                out[key] = value  // required, etc. — passes through unchanged
+                out[key] = value // required, etc. — passes through unchanged
             }
         }
         return out

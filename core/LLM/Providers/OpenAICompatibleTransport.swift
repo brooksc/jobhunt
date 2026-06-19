@@ -81,7 +81,8 @@ enum OpenAICompatibleTransport {
                 // queue can honor Retry-After instead of generic exponential backoff.
                 let body = String(data: data, encoding: .utf8) ?? ""
                 let retryAfter = RetryAfterParser.parse(
-                    header: http.value(forHTTPHeaderField: "Retry-After"), body: body, now: Date())
+                    header: http.value(forHTTPHeaderField: "Retry-After"), body: body, now: Date()
+                )
                 throw LLMProviderError.rateLimited(retryAfter: retryAfter)
             }
             guard (200 ..< 300).contains(http.statusCode) else {

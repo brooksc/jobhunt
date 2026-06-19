@@ -17,8 +17,8 @@ enum JobsSortKey: String, CaseIterable {
 }
 
 struct JobsFilterState: Equatable {
-    var statusFilter: Set<JobStatus>?   // nil = all
-    var remoteFilter: Set<RemoteType>?  // nil = all
+    var statusFilter: Set<JobStatus>? // nil = all
+    var remoteFilter: Set<RemoteType>? // nil = all
     var searchText: String = ""
     var sortKey: JobsSortKey = .capturedAt
     var sortAscending: Bool = false
@@ -38,10 +38,18 @@ struct JobsFilterState: Equatable {
     }
 
     var activeFilterCount: Int {
-        [statusFilter != nil, remoteFilter != nil, !searchText.isEmpty,
-         minFitScore != nil, minRating != nil, minSalary != nil, recentDays != nil,
-         extractionFilter != nil, meetsCriteriaOnly]
-            .filter { $0 }.count
+        [
+            statusFilter != nil,
+            remoteFilter != nil,
+            !searchText.isEmpty,
+            minFitScore != nil,
+            minRating != nil,
+            minSalary != nil,
+            recentDays != nil,
+            extractionFilter != nil,
+            meetsCriteriaOnly
+        ]
+        .count(where: { $0 })
     }
 
     // MARK: SavedSearch interop

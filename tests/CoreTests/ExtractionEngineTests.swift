@@ -192,7 +192,8 @@ final class ExtractionEngineTests: XCTestCase {
         let store = BackgroundStore(modelContainer: container)
         let failProvider = AlwaysFailProvider(
             concurrencyLimit: 3,
-            error: LLMProviderError.unavailable(reason: "stub failure"))
+            error: LLMProviderError.unavailable(reason: "stub failure")
+        )
         var paused = false
         let queue = QueueActor(
             store: store,
@@ -204,8 +205,12 @@ final class ExtractionEngineTests: XCTestCase {
 
         var jobIDs: [String] = []
         for idx in 0 ..< 5 {
-            let capture = Capture(url: "https://example.com/job\(idx)", pageTitle: "Job \(idx)",
-                                  selectedText: "Description \(idx).", rawHash: "ap-\(idx)")
+            let capture = Capture(
+                url: "https://example.com/job\(idx)",
+                pageTitle: "Job \(idx)",
+                selectedText: "Description \(idx).",
+                rawHash: "ap-\(idx)"
+            )
             let job = Job(jobNumber: idx + 1, title: "Job \(idx + 1)")
             job.capture = capture
             try await store.insert(job)
@@ -241,8 +246,12 @@ final class ExtractionEngineTests: XCTestCase {
             isProviderConfigured: { false }
         )
 
-        let capture = Capture(url: "https://example.com/job", pageTitle: "Job",
-                              selectedText: "Description for the role.", rawHash: "not-configured")
+        let capture = Capture(
+            url: "https://example.com/job",
+            pageTitle: "Job",
+            selectedText: "Description for the role.",
+            rawHash: "not-configured"
+        )
         let job = Job(jobNumber: 1, title: "Job 1")
         job.capture = capture
         try await store.insert(job)
@@ -281,8 +290,12 @@ final class ExtractionEngineTests: XCTestCase {
             isProviderConfigured: { false }
         )
 
-        let capture = Capture(url: "https://example.com/job", pageTitle: "Job",
-                              selectedText: "Description.", rawHash: "debounce")
+        let capture = Capture(
+            url: "https://example.com/job",
+            pageTitle: "Job",
+            selectedText: "Description.",
+            rawHash: "debounce"
+        )
         let job = Job(jobNumber: 1, title: "Job 1")
         job.capture = capture
         try await store.insert(job)
@@ -291,8 +304,8 @@ final class ExtractionEngineTests: XCTestCase {
         try await store.insert(req)
 
         let events = await queue.subscribe()
-        await queue.startProcessing()   // pass 1 — should emit the notice
-        await queue.startProcessing()   // pass 2 — still unconfigured, must stay silent
+        await queue.startProcessing() // pass 1 — should emit the notice
+        await queue.startProcessing() // pass 2 — still unconfigured, must stay silent
 
         var notConfiguredCount = 0
         var completes = 0
@@ -346,12 +359,15 @@ final class ExtractionEngineTests: XCTestCase {
         }
 
         let after = try await store.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == reqID }))
-        XCTAssertEqual(after.first?.status, .cancelled,
-                       "Cancellation during backoff must survive the post-sleep requeue")
+        XCTAssertEqual(
+            after.first?.status,
+            .cancelled,
+            "Cancellation during backoff must survive the post-sleep requeue"
+        )
     }
 
-    // TASK-387 AC#5: a genuinely empty queue (no fetch error) still emits the normal
-    // processingComplete event — only a store-read *failure* takes the degraded path.
+    /// TASK-387 AC#5: a genuinely empty queue (no fetch error) still emits the normal
+    /// processingComplete event — only a store-read *failure* takes the degraded path.
     func testStartProcessing_fetchFailure_emitsQueueErrorNotComplete() async throws {
         // TASK-479/387 AC#4: a store-read failure during the drain must surface as a queueError and
         // NOT a (false) processingComplete that would look like all work finished.
@@ -372,7 +388,9 @@ final class ExtractionEngineTests: XCTestCase {
         await queue.startProcessing()
 
         var received: QueueEvent?
-        for await event in events { received = event; break }
+        for await event in events {
+            received = event; break
+        }
         guard case let .queueError(message) = received else {
             return XCTFail("Expected queueError, got \(String(describing: received))")
         }
@@ -422,8 +440,12 @@ final class ExtractionEngineTests: XCTestCase {
             providerFactory: { provider }
         )
 
-        let capture = Capture(url: "https://example.com/job", pageTitle: "Job",
-                              selectedText: "Description.", rawHash: "cancel-inflight")
+        let capture = Capture(
+            url: "https://example.com/job",
+            pageTitle: "Job",
+            selectedText: "Description.",
+            rawHash: "cancel-inflight"
+        )
         let job = Job(jobNumber: 1, title: "Job 1")
         job.capture = capture
         try await store.insert(job)
@@ -446,7 +468,6 @@ final class ExtractionEngineTests: XCTestCase {
         XCTAssertEqual(after.first?.status, .cancelled)
         XCTAssertFalse(paused, "Cancellation must not trigger auto-pause")
     }
-
 
     // MARK: - QueueActor auto-pause
 
@@ -507,7 +528,11 @@ final class ExtractionEngineTests: XCTestCase {
         )
         let provider = AlwaysFailProvider(error: LLMProviderError.unavailable(reason: "should not reach"))
         do {
-            _ = try await ExtractionEngine.extract(snapshot: snapshot, provider: provider, settings: makeExtractionSettings())
+            _ = try await ExtractionEngine.extract(
+                snapshot: snapshot,
+                provider: provider,
+                settings: makeExtractionSettings()
+            )
             XCTFail("Expected noCaptureText error")
         } catch ExtractionEngineError.noCaptureText {
             // expected
@@ -532,7 +557,11 @@ final class ExtractionEngineTests: XCTestCase {
             captureSelectedText: nil
         )
         let provider = CountingProvider(succeedOnAttempt: 1, successResponse: successJSON)
-        let result = try await ExtractionEngine.extract(snapshot: snapshot, provider: provider, settings: makeExtractionSettings())
+        let result = try await ExtractionEngine.extract(
+            snapshot: snapshot,
+            provider: provider,
+            settings: makeExtractionSettings()
+        )
         XCTAssertEqual(result.title, "Engineer")
     }
 
@@ -555,10 +584,21 @@ final class ExtractionEngineTests: XCTestCase {
         }
         """
         let capturing = CapturingProvider(response: fitResponseJSON)
-        let jobSnap = JobFitSnapshot(title: "iOS Dev", company: "Acme", seniority: nil, extractedJSON: nil, extractionModel: nil)
+        let jobSnap = JobFitSnapshot(
+            title: "iOS Dev",
+            company: "Acme",
+            seniority: nil,
+            extractedJSON: nil,
+            extractionModel: nil
+        )
         let resumeSnap = ResumeSnapshot(text: "Swift UIKit developer")
 
-        let output = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, model: "gpt-4o", provider: capturing)
+        let output = try await ExtractionEngine.scoreFit(
+            job: jobSnap,
+            resume: resumeSnap,
+            model: "gpt-4o",
+            provider: capturing
+        )
 
         XCTAssertNotNil(output.fitScoreJSON)
         guard let jsonStr = output.fitScoreJSON,
@@ -594,13 +634,27 @@ final class ExtractionEngineTests: XCTestCase {
          "requirements_not_met":[]}
         """
         let capturing = CapturingProvider(response: fitResponseJSON)
-        let jobSnap = JobFitSnapshot(title: "iOS Dev", company: "Acme", seniority: nil, extractedJSON: nil, extractionModel: "old-extraction-model")
+        let jobSnap = JobFitSnapshot(
+            title: "iOS Dev",
+            company: "Acme",
+            seniority: nil,
+            extractedJSON: nil,
+            extractionModel: "old-extraction-model"
+        )
         let resumeSnap = ResumeSnapshot(text: "Swift iOS developer with 5 years experience")
 
-        let output = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, model: "configured-fit-model", provider: capturing)
+        let output = try await ExtractionEngine.scoreFit(
+            job: jobSnap,
+            resume: resumeSnap,
+            model: "configured-fit-model",
+            provider: capturing
+        )
 
-        XCTAssertEqual(capturing.lastRequestedModel, "configured-fit-model",
-                       "scoreFit must use the model parameter, not job.extractionModel")
+        XCTAssertEqual(
+            capturing.lastRequestedModel,
+            "configured-fit-model",
+            "scoreFit must use the model parameter, not job.extractionModel"
+        )
         XCTAssertNotNil(output.fitScoreJSON, "scoreFit must return merged JSON")
     }
 
@@ -624,9 +678,15 @@ final class ExtractionEngineTests: XCTestCase {
             captureVisibleText: nil,
             captureSelectedText: nil
         )
-        _ = try await ExtractionEngine.extract(snapshot: snapshot, provider: capturing, settings: makeExtractionSettings())
-        XCTAssertNotNil(capturing.lastRequest?.responseFormat,
-                        "Extraction ChatRequest must include a non-nil responseFormat")
+        _ = try await ExtractionEngine.extract(
+            snapshot: snapshot,
+            provider: capturing,
+            settings: makeExtractionSettings()
+        )
+        XCTAssertNotNil(
+            capturing.lastRequest?.responseFormat,
+            "Extraction ChatRequest must include a non-nil responseFormat"
+        )
     }
 
     func testScoreFit_chatRequest_hasResponseFormat() async throws {
@@ -637,11 +697,24 @@ final class ExtractionEngineTests: XCTestCase {
          "requirements_not_met":[]}
         """
         let capturing = CapturingProvider(response: fitResponseJSON)
-        let jobSnap = JobFitSnapshot(title: "Engineer", company: "Acme", seniority: nil, extractedJSON: nil, extractionModel: nil)
+        let jobSnap = JobFitSnapshot(
+            title: "Engineer",
+            company: "Acme",
+            seniority: nil,
+            extractedJSON: nil,
+            extractionModel: nil
+        )
         let resumeSnap = ResumeSnapshot(text: "Swift developer with 5 years experience")
-        _ = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, model: "test-model", provider: capturing)
-        XCTAssertNotNil(capturing.lastRequest?.responseFormat,
-                        "Fit scoring ChatRequest must include a non-nil responseFormat")
+        _ = try await ExtractionEngine.scoreFit(
+            job: jobSnap,
+            resume: resumeSnap,
+            model: "test-model",
+            provider: capturing
+        )
+        XCTAssertNotNil(
+            capturing.lastRequest?.responseFormat,
+            "Fit scoring ChatRequest must include a non-nil responseFormat"
+        )
     }
 
     // MARK: - TASK-454: engine outputs surface the actual provider response format
@@ -677,7 +750,8 @@ final class ExtractionEngineTests: XCTestCase {
     func testExtract_outputReflectsProviderJSONObjectFormat() async throws {
         let provider = CapturingProvider(response: extractionJSON(), usedFormat: .jsonObject)
         let result = try await ExtractionEngine.extract(
-            snapshot: makeExtractSnapshot(), provider: provider, settings: makeExtractionSettings())
+            snapshot: makeExtractSnapshot(), provider: provider, settings: makeExtractionSettings()
+        )
         XCTAssertEqual(result.responseFormat, .jsonObject)
         XCTAssertEqual(result.responseFormat.wireValue, "json_object")
     }
@@ -686,25 +760,48 @@ final class ExtractionEngineTests: XCTestCase {
         // Provider downgraded to free text even though JSON was requested — attempt history must show it.
         let provider = CapturingProvider(response: extractionJSON(), usedFormat: .text)
         let result = try await ExtractionEngine.extract(
-            snapshot: makeExtractSnapshot(), provider: provider, settings: makeExtractionSettings())
+            snapshot: makeExtractSnapshot(), provider: provider, settings: makeExtractionSettings()
+        )
         XCTAssertEqual(result.responseFormat, .text)
         XCTAssertEqual(result.responseFormat.wireValue, "text")
     }
 
     func testScoreFit_outputReflectsProviderJSONObjectFormat() async throws {
         let provider = CapturingProvider(response: valid5DimFitJSON(), usedFormat: .jsonObject)
-        let jobSnap = JobFitSnapshot(title: "Engineer", company: "Acme", seniority: nil, extractedJSON: nil, extractionModel: nil)
+        let jobSnap = JobFitSnapshot(
+            title: "Engineer",
+            company: "Acme",
+            seniority: nil,
+            extractedJSON: nil,
+            extractionModel: nil
+        )
         let resumeSnap = ResumeSnapshot(text: "Swift developer with 5 years experience")
-        let output = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, model: "m", provider: provider)
+        let output = try await ExtractionEngine.scoreFit(
+            job: jobSnap,
+            resume: resumeSnap,
+            model: "m",
+            provider: provider
+        )
         XCTAssertEqual(output.responseFormat, .jsonObject)
         XCTAssertEqual(output.responseFormat.wireValue, "json_object")
     }
 
     func testScoreFit_outputReflectsAlwaysTextProvider() async throws {
         let provider = CapturingProvider(response: valid5DimFitJSON(), usedFormat: .text)
-        let jobSnap = JobFitSnapshot(title: "Engineer", company: "Acme", seniority: nil, extractedJSON: nil, extractionModel: nil)
+        let jobSnap = JobFitSnapshot(
+            title: "Engineer",
+            company: "Acme",
+            seniority: nil,
+            extractedJSON: nil,
+            extractionModel: nil
+        )
         let resumeSnap = ResumeSnapshot(text: "Swift developer with 5 years experience")
-        let output = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, model: "m", provider: provider)
+        let output = try await ExtractionEngine.scoreFit(
+            job: jobSnap,
+            resume: resumeSnap,
+            model: "m",
+            provider: provider
+        )
         XCTAssertEqual(output.responseFormat, .text)
         XCTAssertEqual(output.responseFormat.wireValue, "text")
     }
@@ -721,18 +818,22 @@ final class ExtractionEngineTests: XCTestCase {
         let provider = CapturingProvider(response: json, usedFormat: .jsonObject)
         let settings = ExtractionSettings(
             llmModel: "m", preferredLocations: "", locationFilterEnabled: true,
-            locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: false)
+            locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: false
+        )
         let result = try await ExtractionEngine.extract(
-            snapshot: makeExtractSnapshot(), provider: provider, settings: settings)
+            snapshot: makeExtractSnapshot(), provider: provider, settings: settings
+        )
         XCTAssertFalse(result.meetsCriteria, "onsite job must fail when onsite is disallowed")
 
         // Filter disabled → always meets.
         let settings2 = ExtractionSettings(
             llmModel: "m", preferredLocations: "", locationFilterEnabled: false,
-            locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true)
+            locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true
+        )
         let result2 = try await ExtractionEngine.extract(
             snapshot: makeExtractSnapshot(), provider: CapturingProvider(response: json, usedFormat: .jsonObject),
-            settings: settings2)
+            settings: settings2
+        )
         XCTAssertTrue(result2.meetsCriteria)
     }
 
@@ -745,9 +846,10 @@ final class ExtractionEngineTests: XCTestCase {
         let provider = CapturingProvider(response: badJSON, usedFormat: .jsonObject)
         do {
             _ = try await ExtractionEngine.extract(
-                snapshot: makeExtractSnapshot(), provider: provider, settings: makeExtractionSettings())
+                snapshot: makeExtractSnapshot(), provider: provider, settings: makeExtractionSettings()
+            )
             XCTFail("Expected malformedField error")
-        } catch ExtractionEngineError.malformedField(let field, _) {
+        } catch let ExtractionEngineError.malformedField(field, _) {
             XCTAssertEqual(field, "salary_min")
         }
     }
@@ -765,18 +867,31 @@ final class ExtractionEngineTests: XCTestCase {
         let snapshot = JobExtractionSnapshot(
             captureURL: "https://example.com/job", captureCanonicalURL: nil,
             capturePageTitle: "Engineer", captureCleanedDescription: "Fully Remote position.",
-            captureVisibleText: nil, captureSelectedText: nil)
+            captureVisibleText: nil, captureSelectedText: nil
+        )
         let result = try await ExtractionEngine.extract(
-            snapshot: snapshot, provider: provider, settings: makeExtractionSettings())
+            snapshot: snapshot, provider: provider, settings: makeExtractionSettings()
+        )
         XCTAssertEqual(result.remoteType, .remote, "RemoteTypeInferer must still infer remote from source text")
     }
 
     func testScoreFit_snapshot_emptyResumeThrows() async throws {
-        let jobSnap = JobFitSnapshot(title: "Eng", company: "Acme", seniority: nil, extractedJSON: nil, extractionModel: nil)
+        let jobSnap = JobFitSnapshot(
+            title: "Eng",
+            company: "Acme",
+            seniority: nil,
+            extractedJSON: nil,
+            extractionModel: nil
+        )
         let resumeSnap = ResumeSnapshot(text: "   ")
         let provider = AlwaysFailProvider(error: LLMProviderError.unavailable(reason: "should not reach"))
         do {
-            _ = try await ExtractionEngine.scoreFit(job: jobSnap, resume: resumeSnap, model: "test-model", provider: provider)
+            _ = try await ExtractionEngine.scoreFit(
+                job: jobSnap,
+                resume: resumeSnap,
+                model: "test-model",
+                provider: provider
+            )
             XCTFail("Expected emptyResumeText error")
         } catch ExtractionEngineError.emptyResumeText {
             // expected
@@ -815,7 +930,13 @@ final class ExtractionEngineTests: XCTestCase {
         let job = Job(jobNumber: 1, title: "Engineer")
         job.capture = capture
         job.extractedJSON = "{\"title\":\"Engineer\"}"
-        let resume = Resume(name: "My Resume", text: "Swift developer with 5 years experience.", charCount: 40, active: true, sortOrder: 0)
+        let resume = Resume(
+            name: "My Resume",
+            text: "Swift developer with 5 years experience.",
+            charCount: 40,
+            active: true,
+            sortOrder: 0
+        )
         try await store.insert(job)
         try await store.insert(resume)
 
@@ -862,7 +983,13 @@ final class ExtractionEngineTests: XCTestCase {
         let job = Job(jobNumber: 2, title: "Engineer")
         job.capture = capture
         job.extractedJSON = "{\"title\":\"Engineer\"}"
-        let resume = Resume(name: "My Resume", text: "Swift developer with 5 years experience.", charCount: 40, active: true, sortOrder: 0)
+        let resume = Resume(
+            name: "My Resume",
+            text: "Swift developer with 5 years experience.",
+            charCount: 40,
+            active: true,
+            sortOrder: 0
+        )
         try await store.insert(job)
         try await store.insert(resume)
 
@@ -911,7 +1038,13 @@ final class ExtractionEngineTests: XCTestCase {
         let job = Job(jobNumber: 3, title: "Engineer")
         job.capture = capture
         job.extractedJSON = "{\"title\":\"Engineer\"}"
-        let resume = Resume(name: "My Resume", text: "Swift developer with 5 years experience.", charCount: 40, active: true, sortOrder: 0)
+        let resume = Resume(
+            name: "My Resume",
+            text: "Swift developer with 5 years experience.",
+            charCount: 40,
+            active: true,
+            sortOrder: 0
+        )
         try await store.insert(job)
         try await store.insert(resume)
 
@@ -967,7 +1100,13 @@ final class ExtractionEngineTests: XCTestCase {
         let job = Job(jobNumber: 3, title: "Engineer")
         job.capture = capture
         job.extractedJSON = "{\"title\":\"Engineer\"}"
-        let resume = Resume(name: "My Resume", text: "Swift developer with 5 years experience.", charCount: 40, active: true, sortOrder: 0)
+        let resume = Resume(
+            name: "My Resume",
+            text: "Swift developer with 5 years experience.",
+            charCount: 40,
+            active: true,
+            sortOrder: 0
+        )
         try await store.insert(job)
         try await store.insert(resume)
 
@@ -1093,8 +1232,11 @@ final class ExtractionEngineTests: XCTestCase {
         // The request must end as .cancelled, not .succeeded
         let final = try await store.fetch(FetchDescriptor<LLMRequest>())
         let finalReq = try XCTUnwrap(final.first)
-        XCTAssertEqual(finalReq.status, .cancelled,
-                       "Cancelling during in-flight execution must leave status as .cancelled")
+        XCTAssertEqual(
+            finalReq.status,
+            .cancelled,
+            "Cancelling during in-flight execution must leave status as .cancelled"
+        )
     }
 
     // MARK: - TASK-245: Fan-out event stream delivers to multiple subscribers
@@ -1265,7 +1407,7 @@ final class ExtractionEngineTests: XCTestCase {
         )
         let job = Job(jobNumber: 1, title: "Engineer")
         job.capture = capture
-        job.company = "OldCo"  // pre-existing value from a prior extraction
+        job.company = "OldCo" // pre-existing value from a prior extraction
         try await store.insert(job)
 
         try await queue.enqueue(jobIDs: [job.id], mode: .extract)
@@ -1273,7 +1415,10 @@ final class ExtractionEngineTests: XCTestCase {
 
         let jobs = try await store.fetch(FetchDescriptor<Job>())
         let updated = try XCTUnwrap(jobs.first)
-        XCTAssertNil(updated.company, "Re-extraction returning nil must overwrite the old company value, not preserve it")
+        XCTAssertNil(
+            updated.company,
+            "Re-extraction returning nil must overwrite the old company value, not preserve it"
+        )
     }
 
     // MARK: - TASK-272: Fit attempt records promptChars and responseChars
@@ -1313,7 +1458,13 @@ final class ExtractionEngineTests: XCTestCase {
         let job = Job(jobNumber: 1, title: "Engineer")
         job.capture = capture
         job.extractedJSON = "{\"title\":\"Engineer\"}"
-        let resume = Resume(name: "My Resume", text: "Swift developer with 5 years experience.", charCount: 40, active: true, sortOrder: 0)
+        let resume = Resume(
+            name: "My Resume",
+            text: "Swift developer with 5 years experience.",
+            charCount: 40,
+            active: true,
+            sortOrder: 0
+        )
         try await store.insert(job)
         try await store.insert(resume)
 
@@ -1446,7 +1597,11 @@ final class ExtractionEngineTests: XCTestCase {
             captureVisibleText: nil,
             captureSelectedText: nil
         )
-        let result = try await ExtractionEngine.extract(snapshot: snapshot, provider: provider, settings: makeExtractionSettings())
+        let result = try await ExtractionEngine.extract(
+            snapshot: snapshot,
+            provider: provider,
+            settings: makeExtractionSettings()
+        )
         XCTAssertNotNil(result.salaryHourlyMin, "hourlyMin must be non-nil for hourly salary postings")
         XCTAssertNotNil(result.salaryHourlyMax, "hourlyMax must be non-nil for hourly salary postings")
         XCTAssertEqual(result.salaryHourlyMin, 85.0)
@@ -1476,7 +1631,11 @@ final class ExtractionEngineTests: XCTestCase {
             captureVisibleText: nil,
             captureSelectedText: nil
         )
-        let result = try await ExtractionEngine.extract(snapshot: snapshot, provider: provider, settings: makeExtractionSettings())
+        let result = try await ExtractionEngine.extract(
+            snapshot: snapshot,
+            provider: provider,
+            settings: makeExtractionSettings()
+        )
         XCTAssertNil(result.salaryHourlyMin, "hourlyMin must be nil for annual salary postings")
         XCTAssertNil(result.salaryHourlyMax, "hourlyMax must be nil for annual salary postings")
         XCTAssertNotNil(result.salaryMin)
@@ -1513,7 +1672,11 @@ final class ExtractionEngineTests: XCTestCase {
         // to simulate a scenario where many old finished rows exist before the queued item.
         let earlyDate = Date(timeIntervalSinceNow: -3600)
         for idx in 0 ..< 50 {
-            let oldCapture = Capture(url: "https://old.example.com/job\(idx)", pageTitle: "Old Job \(idx)", rawHash: "oldhash\(idx)")
+            let oldCapture = Capture(
+                url: "https://old.example.com/job\(idx)",
+                pageTitle: "Old Job \(idx)",
+                rawHash: "oldhash\(idx)"
+            )
             let oldJob = Job(jobNumber: 1000 + idx, title: "Old Job \(idx)")
             oldJob.capture = oldCapture
             try await store.insert(oldJob)
@@ -1542,7 +1705,10 @@ final class ExtractionEngineTests: XCTestCase {
         let all = try await store.fetch(FetchDescriptor<LLMRequest>())
         let liveReqs = all.filter { $0.job?.jobNumber == 9999 }
         XCTAssertEqual(liveReqs.count, 1, "Live job must have exactly one LLMRequest")
-        XCTAssertEqual(liveReqs.first?.status, .succeeded,
-                       "Live job must be processed despite 50 older terminal rows")
+        XCTAssertEqual(
+            liveReqs.first?.status,
+            .succeeded,
+            "Live job must be processed despite 50 older terminal rows"
+        )
     }
 }

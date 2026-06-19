@@ -87,8 +87,12 @@ struct ContentView: View {
             NeedsActionView()
                 .navigationSplitViewColumnWidth(min: 600, ideal: 900)
         case .llmQueue:
-            LLMQueueView(queueActor: appServices.queueActor, settings: appServices.settings, toastStore: appServices.toastStore)
-                .navigationSplitViewColumnWidth(min: 600, ideal: 900)
+            LLMQueueView(
+                queueActor: appServices.queueActor,
+                settings: appServices.settings,
+                toastStore: appServices.toastStore
+            )
+            .navigationSplitViewColumnWidth(min: 600, ideal: 900)
         case .sites:
             SitesView(siteService: appServices.siteService)
                 .navigationSplitViewColumnWidth(min: 280, ideal: 340)
@@ -243,12 +247,10 @@ struct ContentView: View {
     private func applyAppearance(_ pref: Theme.ColorSchemePreference) {
         switch pref {
         case .light: NSApp.appearance = NSAppearance(named: .aqua)
-        case .dark:  NSApp.appearance = NSAppearance(named: .darkAqua)
-        case .auto:  NSApp.appearance = nil
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        case .auto: NSApp.appearance = nil
         }
     }
-
-
 }
 
 // MARK: - Job Inspector wrapper
@@ -313,11 +315,13 @@ struct JobInspectorView: View {
                     Task {
                         var failed = 0
                         for id in ids {
-                            do { try await jobService?.archive(jobID: id) }
-                            catch { failed += 1 }
+                            do { try await jobService?.archive(jobID: id) } catch { failed += 1 }
                         }
                         if failed > 0 {
-                            appServices.toastStore.show("Couldn't archive \(failed) of \(ids.count) job(s)", isError: true)
+                            appServices.toastStore.show(
+                                "Couldn't archive \(failed) of \(ids.count) job(s)",
+                                isError: true
+                            )
                         }
                     }
                 } label: {
@@ -328,8 +332,12 @@ struct JobInspectorView: View {
                 Button {
                     let ids = Array(selectedJobIDs)
                     Task {
-                        do { try await jobService?.resetExtractionBulk(jobIDs: ids) }
-                        catch { appServices.toastStore.show("Couldn't re-run AI: \(error.localizedDescription)", isError: true) }
+                        do { try await jobService?.resetExtractionBulk(jobIDs: ids) } catch {
+                            appServices.toastStore.show(
+                                "Couldn't re-run AI: \(error.localizedDescription)",
+                                isError: true
+                            )
+                        }
                     }
                 } label: {
                     Label("Re-run AI on All", systemImage: "arrow.clockwise").frame(minWidth: 160)
@@ -374,4 +382,3 @@ private struct SiteInspectorView: View {
         }
     }
 }
-

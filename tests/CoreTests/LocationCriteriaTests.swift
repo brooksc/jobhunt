@@ -11,7 +11,8 @@ final class LocationCriteriaTests: XCTestCase {
         LocationCriteria.meets(
             remoteType: remote, location: location, preferredLocations: preferred,
             allowRemote: allowRemote, allowHybrid: allowHybrid, allowOnsite: allowOnsite,
-            filterEnabled: enabled)
+            filterEnabled: enabled
+        )
     }
 
     func testFilterDisabled_alwaysMeets() {

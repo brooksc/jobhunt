@@ -143,7 +143,9 @@ struct LLMTab: View {
         case idle, testing, success(String), failure(String)
     }
 
-    private var activeResume: Resume? { resumes.first { $0.active } }
+    private var activeResume: Resume? {
+        resumes.first { $0.active }
+    }
 
     private var costEstimate: CostEstimate? {
         let inputPrice = Double(priceInput) ?? settings.double(forKey: SettingsKey.llmPriceInput)
@@ -235,7 +237,10 @@ struct LLMTab: View {
                 if fetchedModels.isEmpty {
                     TextField("Model", text: $modelText)
                         .onSubmit { settings.setModelForProvider(modelText, provider: selectedProviderID) }
-                        .onChange(of: modelText) { _, new in settings.setModelForProvider(new, provider: selectedProviderID) }
+                        .onChange(of: modelText) { _, new in settings.setModelForProvider(
+                            new,
+                            provider: selectedProviderID
+                        ) }
                 } else {
                     Picker("Model", selection: $modelText) {
                         // No silent default — the user must pick. The placeholder represents
@@ -366,7 +371,6 @@ struct LLMTab: View {
         }
     }
 
-
     // MARK: - Helpers
 
     @ViewBuilder
@@ -452,7 +456,7 @@ struct LLMTab: View {
         if let v = Double(priceOutput) { settings.setDouble(v, forKey: SettingsKey.llmPriceOutput) }
     }
 
-    private func testConnection() async {
+    func testConnection() async {
         // A request with no model hits e.g. Google's `models/:generateContent` and returns a baffling
         // 404. Fail fast with a clear instruction instead.
         let model = settings.llmModel.trimmingCharacters(in: .whitespacesAndNewlines)

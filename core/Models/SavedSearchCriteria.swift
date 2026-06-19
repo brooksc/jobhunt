@@ -77,7 +77,7 @@ public struct SavedSearchCriteria: Sendable, Hashable {
         if !searchText.isEmpty {
             let q = searchText.lowercased().trimmingCharacters(in: .whitespaces)
             let matchNum = q.hasPrefix("#") ? String(q.dropFirst()) : q
-            let textFields = [f.company, f.title, f.location].compactMap { $0 }.joined(separator: " ").lowercased()
+            let textFields = [f.company, f.title, f.location].compactMap(\.self).joined(separator: " ").lowercased()
             let textMatch = textFields.contains(q)
             let numMatch = f.jobNumber.map { String($0).contains(matchNum) } ?? false
             if !textMatch && !numMatch { return false }

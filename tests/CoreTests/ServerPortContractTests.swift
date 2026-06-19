@@ -19,8 +19,11 @@ final class ServerPortContractTests: XCTestCase {
         let url = repoRoot.appendingPathComponent("extension/service_worker.js")
         let source = try String(contentsOf: url, encoding: .utf8)
         let ports = try portsFromArrayLiteral(named: "CANDIDATE_PORTS", in: source)
-        XCTAssertEqual(ports, ServerPortContract.discoveryPorts,
-                       "extension CANDIDATE_PORTS drifted from ServerPortContract")
+        XCTAssertEqual(
+            ports,
+            ServerPortContract.discoveryPorts,
+            "extension CANDIDATE_PORTS drifted from ServerPortContract"
+        )
     }
 
     func testExtensionManifestHostPermissionsMatch() throws {
@@ -32,8 +35,11 @@ final class ServerPortContractTests: XCTestCase {
         let ports = regex.matches(in: source, range: NSRange(location: 0, length: ns.length))
             .compactMap { UInt16(ns.substring(with: $0.range(at: 1))) }
             .sorted()
-        XCTAssertEqual(ports, ServerPortContract.discoveryPorts,
-                       "manifest host_permissions drifted from ServerPortContract")
+        XCTAssertEqual(
+            ports,
+            ServerPortContract.discoveryPorts,
+            "manifest host_permissions drifted from ServerPortContract"
+        )
     }
 
     // MARK: - Helper

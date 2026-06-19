@@ -9,8 +9,8 @@ public final class SavedSearch {
     public var createdAt: Date
 
     // Filter fields — stored as raw strings/values for SwiftData compatibility
-    public var statusFilterRaw: [String]  // JobStatus raw values; empty = all
-    public var remoteFilterRaw: [String]  // RemoteType raw values; empty = all
+    public var statusFilterRaw: [String] // JobStatus raw values; empty = all
+    public var remoteFilterRaw: [String] // RemoteType raw values; empty = all
     public var searchText: String
     public var minFitScore: Int?
     public var minRating: Int?
@@ -34,10 +34,10 @@ public final class SavedSearch {
         sortKeyRaw: String = "capturedAt",
         sortAscending: Bool = false
     ) {
-        self.id = UUID().uuidString
+        id = UUID().uuidString
         self.name = name
         self.sortOrder = sortOrder
-        self.createdAt = Date()
+        createdAt = Date()
         self.statusFilterRaw = statusFilterRaw
         self.remoteFilterRaw = remoteFilterRaw
         self.searchText = searchText

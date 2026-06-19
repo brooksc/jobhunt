@@ -20,7 +20,9 @@ final class MockLLMServer {
         listener = try NWListener(using: params, on: .any)
     }
 
-    var baseURL: String { "http://127.0.0.1:\(port)" }
+    var baseURL: String {
+        "http://127.0.0.1:\(port)"
+    }
 
     /// Start listening and block until the OS has assigned a port (so `baseURL` is usable on return).
     func start(timeout: TimeInterval = 5) throws {
@@ -56,20 +58,21 @@ final class MockLLMServer {
     }
 
     private func receive(_ connection: NWConnection, buffer: Data) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 1 << 20) { [weak self] data, _, isComplete, error in
-            guard let self else { connection.cancel(); return }
-            var accumulated = buffer
-            if let data { accumulated.append(data) }
+        connection
+            .receive(minimumIncompleteLength: 1, maximumLength: 1 << 20) { [weak self] data, _, isComplete, error in
+                guard let self else { connection.cancel(); return }
+                var accumulated = buffer
+                if let data { accumulated.append(data) }
 
-            if let request = Self.parse(accumulated) {
-                let response = self.httpResponse(for: request)
-                connection.send(content: response, completion: .contentProcessed { _ in connection.cancel() })
-            } else if isComplete || error != nil {
-                connection.cancel()
-            } else {
-                self.receive(connection, buffer: accumulated)  // headers/body not complete yet
+                if let request = Self.parse(accumulated) {
+                    let response = httpResponse(for: request)
+                    connection.send(content: response, completion: .contentProcessed { _ in connection.cancel() })
+                } else if isComplete || error != nil {
+                    connection.cancel()
+                } else {
+                    receive(connection, buffer: accumulated) // headers/body not complete yet
+                }
             }
-        }
     }
 
     // MARK: - Routing
@@ -125,7 +128,7 @@ final class MockLLMServer {
 
         let bodyStart = headerEnd.upperBound
         let available = buffer.distance(from: bodyStart, to: buffer.endIndex)
-        guard available >= contentLength else { return nil }  // body not fully arrived
+        guard available >= contentLength else { return nil } // body not fully arrived
         let body = Data(buffer[bodyStart ..< buffer.index(bodyStart, offsetBy: contentLength)])
         return ParsedRequest(method: method, path: path, body: body)
     }

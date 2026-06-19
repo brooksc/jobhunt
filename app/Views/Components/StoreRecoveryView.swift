@@ -42,11 +42,13 @@ struct StoreRecoveryView: View {
             .padding(10)
             .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
 
-            Text("The database file may be corrupt. Restore it from a backup, or delete it and relaunch to start fresh.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 400)
+            Text(
+                "The database file may be corrupt. Restore it from a backup, or delete it and relaunch to start fresh."
+            )
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 400)
 
             VStack(spacing: 8) {
                 HStack(spacing: 12) {
@@ -92,7 +94,9 @@ struct StoreRecoveryView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will delete all current data. The corrupt store will be moved aside (not permanently deleted) before the app relaunches.")
+            Text(
+                "This will delete all current data. The corrupt store will be moved aside (not permanently deleted) before the app relaunches."
+            )
         }
     }
 
@@ -104,7 +108,7 @@ struct StoreRecoveryView: View {
         panel.message = "Select a Jobhunt SQLite backup (.store or .sqlite)"
         panel.allowedContentTypes = [
             UTType(filenameExtension: "store") ?? .data,
-            UTType(filenameExtension: "sqlite") ?? .database,
+            UTType(filenameExtension: "sqlite") ?? .database
         ]
         panel.allowsOtherFileTypes = false
         panel.canChooseDirectories = false

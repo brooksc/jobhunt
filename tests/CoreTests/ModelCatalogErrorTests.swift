@@ -4,7 +4,6 @@ import XCTest
 /// The model-fetch error must be actionable — a bare status code (e.g. the Google 403 a restricted
 /// key returns) left users stuck. It now explains 401/403 and surfaces the provider's own message.
 final class ModelCatalogErrorTests: XCTestCase {
-
     func test403_explainsRestrictedKey() {
         let message = ModelCatalogError.httpError(statusCode: 403, serverMessage: nil).errorDescription ?? ""
         XCTAssertTrue(message.contains("403"))
@@ -32,11 +31,11 @@ final class ModelCatalogErrorTests: XCTestCase {
 
     func testKeyFingerprint_safeShape() {
         let fp = ModelCatalog.keyFingerprint("AQ.AReplacedFakeTestKeyNeverRealRedactedgXZg")
-        XCTAssertTrue(fp.contains("AQ.A"))      // first 4
-        XCTAssertTrue(fp.contains("gXZg"))      // last 4
+        XCTAssertTrue(fp.contains("AQ.A")) // first 4
+        XCTAssertTrue(fp.contains("gXZg")) // last 4
         XCTAssertTrue(fp.contains("ws=false"))
         XCTAssertTrue(fp.contains("ascii=true"))
-        XCTAssertFalse(fp.contains("Ab8RN6"))   // middle of the key is NOT logged
+        XCTAssertFalse(fp.contains("Ab8RN6")) // middle of the key is NOT logged
     }
 
     func testKeyFingerprint_flagsWhitespaceAndEmpty() {
@@ -58,7 +57,12 @@ final class ModelCatalogErrorTests: XCTestCase {
             "text-embedding-004", "veo-3", "whisper-1", "dall-e-3", "tts-1"
         ]
         let kept = ModelCatalog.textGenerationModels(input)
-        XCTAssertEqual(Set(kept), ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3-pro-preview",
-                                   "gemini-flash-latest", "gemma-4-31b-it"])
+        XCTAssertEqual(Set(kept), [
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-3-pro-preview",
+            "gemini-flash-latest",
+            "gemma-4-31b-it"
+        ])
     }
 }

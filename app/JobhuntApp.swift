@@ -10,7 +10,7 @@ enum FixtureOutputError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .refusedProductionPath(let path):
+        case let .refusedProductionPath(path):
             return "Refusing to seed a fixture to \(path): it resolves to the production store. "
                 + "Choose a different --seed-fixture-output path."
         }
@@ -19,7 +19,7 @@ enum FixtureOutputError: LocalizedError {
 
 @main
 struct JobhuntApp: App {
-    // Non-nil when ModelContainer failed to open — shows recovery UI instead of main window.
+    /// Non-nil when ModelContainer failed to open — shows recovery UI instead of main window.
     let storeFailure: StoreFailure?
 
     let modelContainer: ModelContainer?
@@ -47,11 +47,11 @@ struct JobhuntApp: App {
             var mcpToken = ""
             if plan.needsMCPToken {
                 #if !MAS_BUILD
-                do {
-                    mcpToken = try MCPTokenManager.generateAndWrite()
-                } catch {
-                    NSLog("JobhuntApp: MCP token setup failed — MCP will be unavailable: \(error)")
-                }
+                    do {
+                        mcpToken = try MCPTokenManager.generateAndWrite()
+                    } catch {
+                        NSLog("JobhuntApp: MCP token setup failed — MCP will be unavailable: \(error)")
+                    }
                 #endif
             }
 
@@ -66,13 +66,13 @@ struct JobhuntApp: App {
             // runner) so the AI path runs end-to-end with no API key. Gated to uiTest mode so it can
             // never reconfigure a real user's provider.
             if plan.mode == .uiTest, let mockPort = Self.llmMockPort() {
-                services.settings.llmProvider = "lmstudio"   // OpenAI-compatible, no key/consent
+                services.settings.llmProvider = "lmstudio" // OpenAI-compatible, no key/consent
                 services.settings.llmBaseURL = "http://127.0.0.1:\(mockPort)"
                 services.settings.llmModel = "mock-model"
-                services.settings.llmQueuePaused = false      // let the queue process against the mock
+                services.settings.llmQueuePaused = false // let the queue process against the mock
             }
             let mgr = OnboardingManager(settings: services.settings)
-            if plan.mode == .uiTest { mgr.isPresented = false }  // Never block tests with onboarding
+            if plan.mode == .uiTest { mgr.isPresented = false } // Never block tests with onboarding
             onboardingManager = mgr
             let sharedRouter = Router()
             router = sharedRouter
@@ -92,8 +92,11 @@ struct JobhuntApp: App {
                     try? await DemoSeeder.seedDemo(into: services.backgroundStore)
                 } else if plan.seedDemoDataRequested {
                     // TASK-427: a seed flag outside UI-test mode must not touch the selected store.
-                    fputs("Refusing --seed-demo-data without --ui-test-store: demo seeding is only "
-                        + "allowed into the isolated UI-test store, not the selected store.\n", stderr)
+                    fputs(
+                        "Refusing --seed-demo-data without --ui-test-store: demo seeding is only "
+                            + "allowed into the isolated UI-test store, not the selected store.\n",
+                        stderr
+                    )
                 }
                 if case .fixtureGenerate = plan.mode {
                     do {
@@ -101,8 +104,11 @@ struct JobhuntApp: App {
                         // fixture seeded on top of existing rows would be stale/incomplete.
                         let existing = try await services.backgroundStore.fetch(FetchDescriptor<Job>())
                         guard existing.isEmpty else {
-                            fputs("Fixture output target already contains \(existing.count) job(s) — "
-                                + "refusing to seed onto a non-empty store. Remove it first.\n", stderr)
+                            fputs(
+                                "Fixture output target already contains \(existing.count) job(s) — "
+                                    + "refusing to seed onto a non-empty store. Remove it first.\n",
+                                stderr
+                            )
                             exit(1)
                         }
                         try await FixtureSeeder.seed(into: services.backgroundStore, skipIfPopulated: false)
@@ -146,10 +152,10 @@ struct JobhuntApp: App {
             let storeURL = URL(fileURLWithPath: NSTemporaryDirectory())
                 .appendingPathComponent("JobhuntUITest/jobhunt-ui-test.store")
             return try ModelContainerFactory.freshTestStore(at: storeURL)
-        case .fixtureRead(let path):
+        case let .fixtureRead(path):
             // Open an isolated copy of a committed fixture database.
             return try ModelContainerFactory.fixture(copying: URL(fileURLWithPath: path))
-        case .fixtureGenerate(let outputPath):
+        case let .fixtureGenerate(outputPath):
             // Seed a fresh fixture and write it to the given path (used by build-fixture-db.sh).
             // TASK-423: never let fixture generation overwrite the user's production store.
             guard LaunchPolicy.isSafeFixtureOutputPath(
@@ -161,7 +167,8 @@ struct JobhuntApp: App {
             let outputURL = URL(fileURLWithPath: outputPath)
             // Fail closed if the output directory can't be created (TASK-424).
             try FileManager.default.createDirectory(
-                at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true
+            )
             return try ModelContainerFactory.test(at: outputURL)
         case .production:
             return try ModelContainerFactory.production()
@@ -195,9 +202,10 @@ struct JobhuntApp: App {
                     }
                     // App-owned shutdown on termination (TASK-430): stop the local HTTP server and
                     // cancel runtime tasks. Best-effort — the process exit also releases the port.
-                    .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
-                        integration.stop()
-                        Task { await services.shutdown() }
+                    .onReceive(NotificationCenter.default
+                        .publisher(for: NSApplication.willTerminateNotification)) { _ in
+                            integration.stop()
+                            Task { await services.shutdown() }
                     }
                     // TASK-464: Settings → Debug "Reopen Onboarding".
                     .onReceive(NotificationCenter.default.publisher(for: .reopenOnboarding)) { _ in

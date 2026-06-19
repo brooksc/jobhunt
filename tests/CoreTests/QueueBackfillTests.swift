@@ -25,7 +25,7 @@ final class QueueBackfillTests: XCTestCase {
     }
 
     func testBackfill_usesReturnedModelFromLatestAttempt() async throws {
-        let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
         let req = LLMRequest(requestType: .fit, status: .succeeded)
         req.finishedAt = Date()
         req.attempts = [
@@ -45,7 +45,7 @@ final class QueueBackfillTests: XCTestCase {
     }
 
     func testBackfill_fallsBackToRequestedModel() async throws {
-        let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
         let req = LLMRequest(requestType: .fit, status: .succeeded)
         req.finishedAt = Date()
         // Historical fit attempts recorded only modelRequested (the provider id).
@@ -62,7 +62,7 @@ final class QueueBackfillTests: XCTestCase {
     }
 
     func testBackfill_doesNotOverwriteExistingModel() async throws {
-        let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
         let req = LLMRequest(requestType: .extract, status: .succeeded)
         req.finishedAt = Date()
         req.model = "already-set"
@@ -82,7 +82,7 @@ final class QueueBackfillTests: XCTestCase {
     }
 
     func testClearCompleted_removesTerminalKeepsActive() async throws {
-        let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
         let queued = LLMRequest(requestType: .extract, status: .queued)
         let running = LLMRequest(requestType: .fit, status: .running)
         running.startedAt = Date()
@@ -92,7 +92,9 @@ final class QueueBackfillTests: XCTestCase {
         cancelled.finishedAt = Date()
         let exhausted = LLMRequest(requestType: .extract, status: .retryExhausted)
         exhausted.finishedAt = Date()
-        for req in [queued, running, done, cancelled, exhausted] { try await store.insert(req) }
+        for req in [queued, running, done, cancelled, exhausted] {
+            try await store.insert(req)
+        }
 
         try await makeQueue(store).clearCompleted()
 

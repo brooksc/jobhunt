@@ -137,19 +137,25 @@ final class SettingsStoreTests: XCTestCase {
         try keychain.set("v1", forKey: "migrateTest")
         XCTAssertEqual(keychain.get("migrateTest"), "v1")
         try keychain.set("v2", forKey: "migrateTest")
-        XCTAssertEqual(keychain.get("migrateTest"), "v2",
-                       "delete+add migration must preserve the latest value")
+        XCTAssertEqual(
+            keychain.get("migrateTest"),
+            "v2",
+            "delete+add migration must preserve the latest value"
+        )
     }
 
-    // kSecAttrSynchronizable=false is set on every add. Verify indirectly: re-reading the item
-    // without specifying kSecAttrSynchronizable should still find it (the default search
-    // excludes synced items, so a non-synced item is found by default queries).
+    /// kSecAttrSynchronizable=false is set on every add. Verify indirectly: re-reading the item
+    /// without specifying kSecAttrSynchronizable should still find it (the default search
+    /// excludes synced items, so a non-synced item is found by default queries).
     func testKeychainStore_nonSyncedItem_foundByDefaultQuery() throws {
         let keychain = KeychainStore(service: "com.jobhunt-app.test.\(UUID().uuidString)")
         defer { try? keychain.delete("syncTest") }
         try keychain.set("mysecret", forKey: "syncTest")
-        XCTAssertEqual(keychain.get("syncTest"), "mysecret",
-                       "Non-synced item must be readable by the default (non-synced) search")
+        XCTAssertEqual(
+            keychain.get("syncTest"),
+            "mysecret",
+            "Non-synced item must be readable by the default (non-synced) search"
+        )
     }
 
     // MARK: - Consent logic
@@ -200,7 +206,7 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(snapAfter.llmModel, "model-v2")
     }
 
-    func testQueuePausedMutationVisibleViaClosures() async throws {
+    func testQueuePausedMutationVisibleViaClosures() async {
         var paused = store.llmQueuePaused
 
         let queue = QueueActor(
@@ -229,11 +235,11 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertTrue(fetched.contains { $0.jobNumber == 9001 })
     }
 
-    // TASK-144 regression: fetchLimit on LLMRequest returns a bounded slice even with large history.
+    /// TASK-144 regression: fetchLimit on LLMRequest returns a bounded slice even with large history.
     func testBoundedLLMRequestFetchReturnsAtMostLimit() async throws {
         let bgStore = BackgroundStore(modelContainer: container)
         // Insert 20 LLMRequests
-        let requests = (1...20).map { i -> LLMRequest in
+        let requests = (1 ... 20).map { i -> LLMRequest in
             let r = LLMRequest(requestType: .extract, status: .succeeded)
             r.createdAt = Date(timeIntervalSinceNow: Double(i))
             return r
@@ -247,7 +253,7 @@ final class SettingsStoreTests: XCTestCase {
         let fetched = try context.fetch(descriptor)
         XCTAssertEqual(fetched.count, 10, "fetchLimit must bound the result to 10 even with 20 total")
         // Newest 10 should come first (descending order)
-        let times = fetched.compactMap { $0.createdAt }
+        let times = fetched.compactMap(\.createdAt)
         XCTAssertTrue(zip(times, times.dropFirst()).allSatisfy { $0 >= $1 }, "Results must be sorted newest first")
     }
 
@@ -261,6 +267,7 @@ final class SettingsStoreTests: XCTestCase {
     }
 
     // MARK: - TASK-388: load-failure recovery state
+
     //
     // NOTE: the actual load-FAILURE path (loadError set, writes blocked) can't be unit-tested —
     // SwiftData's fetch doesn't throw on demand and BackgroundStore/ModelContext has no
@@ -269,7 +276,7 @@ final class SettingsStoreTests: XCTestCase {
 
     /// Baseline / recovered behavior: a readable store loads cleanly, persists, and reload keeps
     /// values and the cleared recovery state.
-    func testNormalLoad_persistsAndSurvivesReloadAndReopen() throws {
+    func testNormalLoad_persistsAndSurvivesReloadAndReopen() {
         XCTAssertNil(store.loadError)
         store.llmBaseURL = "https://saved.example.com"
 
@@ -284,6 +291,7 @@ final class SettingsStoreTests: XCTestCase {
 }
 
 // MARK: - ConsentHelper snapshot-based tests (QueueActor path)
+
 // TASK-124 / TASK-131 regression: cloud providers blocked without consent; local always allowed.
 
 final class ConsentHelperSnapshotTests: XCTestCase {
@@ -292,39 +300,51 @@ final class ConsentHelperSnapshotTests: XCTestCase {
 
     func testAlwaysLocalProvidersIgnoreConsentFlag() {
         for provider in ["lmstudio"] {
-            XCTAssertTrue(ConsentHelper.isConsented(provider: provider, baseURL: "", consentGranted: false),
-                          "\(provider) must be allowed without consent (always local)")
+            XCTAssertTrue(
+                ConsentHelper.isConsented(provider: provider, baseURL: "", consentGranted: false),
+                "\(provider) must be allowed without consent (always local)"
+            )
             XCTAssertTrue(ConsentHelper.isConsented(provider: provider, baseURL: "", consentGranted: true))
         }
     }
 
     func testCloudProviderBlockedWithoutConsent() {
         for provider in ["openai", "anthropic", "google", "openrouter"] {
-            XCTAssertFalse(ConsentHelper.isConsented(provider: provider, baseURL: "", consentGranted: false),
-                           "\(provider) must be blocked when consentGranted=false")
+            XCTAssertFalse(
+                ConsentHelper.isConsented(provider: provider, baseURL: "", consentGranted: false),
+                "\(provider) must be blocked when consentGranted=false"
+            )
         }
     }
 
     func testCloudProviderAllowedWithConsent() {
         for provider in ["openai", "anthropic", "google", "openrouter"] {
-            XCTAssertTrue(ConsentHelper.isConsented(provider: provider, baseURL: "", consentGranted: true),
-                          "\(provider) must be allowed when consentGranted=true")
+            XCTAssertTrue(
+                ConsentHelper.isConsented(provider: provider, baseURL: "", consentGranted: true),
+                "\(provider) must be allowed when consentGranted=true"
+            )
         }
     }
 
     func testCustomProviderWithLoopbackURLAllowedWithoutConsent() {
         for url in ["http://127.0.0.1:1234", "http://localhost:8080", "http://[::1]:5000"] {
-            XCTAssertTrue(ConsentHelper.isConsented(provider: "custom", baseURL: url, consentGranted: false),
-                          "custom provider on loopback URL \(url) must be allowed without consent")
+            XCTAssertTrue(
+                ConsentHelper.isConsented(provider: "custom", baseURL: url, consentGranted: false),
+                "custom provider on loopback URL \(url) must be allowed without consent"
+            )
         }
     }
 
     func testCustomProviderWithRemoteURLRequiresConsent() {
         let remoteURL = "https://api.example.com"
-        XCTAssertFalse(ConsentHelper.isConsented(provider: "custom", baseURL: remoteURL, consentGranted: false),
-                       "custom provider on remote URL must require consent")
-        XCTAssertTrue(ConsentHelper.isConsented(provider: "custom", baseURL: remoteURL, consentGranted: true),
-                      "custom provider on remote URL must be allowed when consent is granted")
+        XCTAssertFalse(
+            ConsentHelper.isConsented(provider: "custom", baseURL: remoteURL, consentGranted: false),
+            "custom provider on remote URL must require consent"
+        )
+        XCTAssertTrue(
+            ConsentHelper.isConsented(provider: "custom", baseURL: remoteURL, consentGranted: true),
+            "custom provider on remote URL must be allowed when consent is granted"
+        )
     }
 }
 
@@ -402,7 +422,7 @@ final class MCPTokenManagerTests: XCTestCase {
         XCTAssertNotNil(MCPTokenManager.read(), "Token written with correct permissions should be readable")
     }
 
-    // TASK-479/388 AC#4: a settings load failure sets loadError and gates persistence.
+    /// TASK-479/388 AC#4: a settings load failure sets loadError and gates persistence.
     func testLoadFailure_setsLoadErrorAndSkipsPersistence() throws {
         let container = try ModelContainerFactory.inMemory()
         let context = ModelContext(container)
@@ -417,8 +437,11 @@ final class MCPTokenManagerTests: XCTestCase {
         settings.set("should-not-persist", forKey: SettingsKey.preferredLocations)
         let fresh = ModelContext(container)
         let rows = try fresh.fetch(FetchDescriptor<Setting>(
-            predicate: #Predicate { $0.key == "preferred_locations" }))
-        XCTAssertTrue(rows.allSatisfy { $0.value != "should-not-persist" },
-                      "write must not persist while in load-failure recovery state")
+            predicate: #Predicate { $0.key == "preferred_locations" }
+        ))
+        XCTAssertTrue(
+            rows.allSatisfy { $0.value != "should-not-persist" },
+            "write must not persist while in load-failure recovery state"
+        )
     }
 }

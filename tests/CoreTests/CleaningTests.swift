@@ -14,18 +14,18 @@ final class CleaningTests: XCTestCase {
         XCTAssertEqual(result, "Full page text")
     }
 
-    func testBothPresentCombinesSelectedFirstThenVisible() {
+    func testBothPresentCombinesSelectedFirstThenVisible() throws {
         let result = cleanDescription(selectedText: "Selected portion", visibleText: "Full page text")
         XCTAssertTrue(result.contains("Selected portion"), "selected text included")
         XCTAssertTrue(result.contains("Full page text"), "visible text included")
         // Selected must come before visible
-        let selectedRange = result.range(of: "Selected portion")!
-        let visibleRange = result.range(of: "Full page text")!
+        let selectedRange = try XCTUnwrap(result.range(of: "Selected portion"))
+        let visibleRange = try XCTUnwrap(result.range(of: "Full page text"))
         XCTAssertLessThan(selectedRange.lowerBound, visibleRange.lowerBound, "selected text appears first")
         XCTAssertTrue(result.contains("---"), "separator present")
     }
 
-    func testBothPresentWithStructuredDataCombinesAll() {
+    func testBothPresentWithStructuredDataCombinesAll() throws {
         let result = cleanDescription(
             selectedText: "Selected",
             visibleText: "Visible",
@@ -35,8 +35,8 @@ final class CleaningTests: XCTestCase {
         XCTAssertTrue(result.contains("Visible"), "visible text included")
         XCTAssertTrue(result.contains("Structured details"), "structured data included")
         // Selected must come before visible
-        let selectedRange = result.range(of: "Selected")!
-        let visibleRange = result.range(of: "Visible")!
+        let selectedRange = try XCTUnwrap(result.range(of: "Selected"))
+        let visibleRange = try XCTUnwrap(result.range(of: "Visible"))
         XCTAssertLessThan(selectedRange.lowerBound, visibleRange.lowerBound, "selected text appears first")
     }
 

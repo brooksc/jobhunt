@@ -148,8 +148,12 @@ public actor BackgroundStore {
             }
         }
         let count = orphans.count
-        for orphan in orphans { modelContext.delete(orphan) }
-        for job in affected { recomputeJobFitSummary(job) }
+        for orphan in orphans {
+            modelContext.delete(orphan)
+        }
+        for job in affected {
+            recomputeJobFitSummary(job)
+        }
         try modelContext.save()
         return count
     }
@@ -266,7 +270,7 @@ public actor BackgroundStore {
         record.model = model
         record.scoredAt = scoredAt
         record.updatedAt = Date()
-        _ = resume  // resume captured for the record relationship above
+        _ = resume // resume captured for the record relationship above
 
         // Job-level mirror reflects the BEST score across all resumes (Electron parity).
         recomputeJobFitSummary(job)
@@ -334,7 +338,9 @@ public actor BackgroundStore {
     public func pruneOrphanRequestAttempts() throws -> Int {
         let orphans = try modelContext.fetch(FetchDescriptor<LLMRequestAttempt>())
             .filter { $0.request == nil }
-        for orphan in orphans { modelContext.delete(orphan) }
+        for orphan in orphans {
+            modelContext.delete(orphan)
+        }
         if !orphans.isEmpty { try modelContext.save() }
         return orphans.count
     }
@@ -379,7 +385,9 @@ public actor BackgroundStore {
         guard !toDelete.isEmpty else { return 0 }
 
         let affectedJobs = toDelete.compactMap(\.job)
-        for score in toDelete { modelContext.delete(score) }
+        for score in toDelete {
+            modelContext.delete(score)
+        }
         try modelContext.save()
 
         for job in affectedJobs {
@@ -491,10 +499,13 @@ public actor BackgroundStore {
         guard !activeResumes.isEmpty else { return 0 }
 
         // Resume IDs that already have an in-flight fit request for this job (avoid duplicates).
-        let inflight = try modelContext.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.finishedAt == nil }))
+        let inflight = try modelContext
+            .fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.finishedAt == nil }))
         let busyResumeIDs = Set(
             inflight
-                .filter { $0.requestType == .fit && $0.job?.id == jid && ($0.status == .queued || $0.status == .running) }
+                .filter {
+                    $0.requestType == .fit && $0.job?.id == jid && ($0.status == .queued || $0.status == .running)
+                }
                 .compactMap { $0.resume?.id }
         )
 
@@ -534,14 +545,16 @@ public actor BackgroundStore {
     @discardableResult
     public func reconcileOrphanedFitScores() throws -> Int {
         let inflight = try modelContext.fetch(
-            FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.finishedAt == nil }))
+            FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.finishedAt == nil })
+        )
         let backed = Set(
             inflight
                 .filter { $0.requestType == .fit && ($0.status == .queued || $0.status == .running) }
                 .compactMap { req -> String? in
                     guard let jid = req.job?.id, let rid = req.resume?.id else { return nil }
                     return "\(jid)|\(rid)"
-                })
+                }
+        )
 
         let scores = try modelContext.fetch(FetchDescriptor<JobFitScore>())
         var affectedJobIDs = Set<String>()
@@ -564,6 +577,7 @@ public actor BackgroundStore {
     }
 
     // MARK: - Off-actor LLM work boundary (TASK-526)
+
     //
     // The queue runs provider calls on the QueueActor; it must never read or mutate a live SwiftData
     // @Model fetched from this @ModelActor (models aren't Sendable, and a lazy relationship faulted
@@ -574,7 +588,8 @@ public actor BackgroundStore {
     public func requestStatus(id: String) throws -> LLMRequestStatus? {
         let id = id
         return try modelContext.fetch(
-            FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == id })).first?.status
+            FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == id })
+        ).first?.status
     }
 
     /// Build the extraction snapshot on the store actor (so the live Job/Capture relationship is never
@@ -609,7 +624,8 @@ public actor BackgroundStore {
         let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))
         guard let job = jobs.first else { return nil }
         let resume = try modelContext.fetch(
-            FetchDescriptor<Resume>(predicate: #Predicate { $0.id == rid })).first
+            FetchDescriptor<Resume>(predicate: #Predicate { $0.id == rid })
+        ).first
         return FitInputs(
             job: JobFitSnapshot(
                 title: job.title, company: job.company, seniority: job.seniority,
@@ -646,10 +662,12 @@ public actor BackgroundStore {
             error: error, promptChars: promptChars, responseChars: responseChars
         )
         record.request = try modelContext.fetch(
-            FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == rid })).first
+            FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == rid })
+        ).first
         if let jobID {
             record.job = try modelContext.fetch(
-                FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID })).first
+                FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID })
+            ).first
         }
         modelContext.insert(record)
         try modelContext.save()
@@ -725,7 +743,8 @@ public actor BackgroundStore {
         let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { ids.contains($0.id) }))
         let jobMap = Dictionary(jobs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let existing = try modelContext.fetch(
-            FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.finishedAt == nil }))
+            FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.finishedAt == nil })
+        )
         let alreadyActive = Set(
             existing
                 .filter { ($0.status == .queued || $0.status == .running) && $0.requestType == mode }
@@ -749,7 +768,9 @@ public actor BackgroundStore {
     /// (the mirror is best-across-resumes, not active-resume-specific).
     public func recomputeJobFitMirrors(activeResumeID _: String?) throws {
         let jobs = try modelContext.fetch(FetchDescriptor<Job>())
-        for job in jobs { recomputeJobFitSummary(job) }
+        for job in jobs {
+            recomputeJobFitSummary(job)
+        }
         try modelContext.save()
     }
 
@@ -772,7 +793,7 @@ public actor BackgroundStore {
         var flagged = 0
         for pair in pairs {
             guard let candidate = jobIndex[pair.candidate.id] else { continue }
-            if candidate.duplicateOfJobID == pair.original.id { continue }  // already flagged
+            if candidate.duplicateOfJobID == pair.original.id { continue } // already flagged
             candidate.duplicateOfJobID = pair.original.id
             candidate.duplicateConfidence = pair.confidence
             if candidate.status != .duplicate { candidate.status = .duplicate }
@@ -793,7 +814,8 @@ public actor BackgroundStore {
     /// Record (or update) a duplicate decision so a resolved pair does not resurface in detection.
     public func upsertDuplicateDecision(cleanedHash: String, decision: String, keepJobID: String?) throws {
         let ch = cleanedHash
-        let existing = try modelContext.fetch(FetchDescriptor<DuplicateDecision>(predicate: #Predicate { $0.cleanedHash == ch }))
+        let existing = try modelContext
+            .fetch(FetchDescriptor<DuplicateDecision>(predicate: #Predicate { $0.cleanedHash == ch }))
         if let row = existing.first {
             row.decision = decision
             row.keepJobID = keepJobID
@@ -876,7 +898,8 @@ public actor BackgroundStore {
 
             // Re-queue extraction unless one is already in flight for this job.
             let jid = job.id
-            let inflight = try modelContext.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.finishedAt == nil }))
+            let inflight = try modelContext
+                .fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.finishedAt == nil }))
             let hasActiveExtract = inflight.contains {
                 $0.requestType == .extract && $0.job?.id == jid && ($0.status == .queued || $0.status == .running)
             }
@@ -964,5 +987,4 @@ public actor BackgroundStore {
 
         return AtomicIngestResult(captureID: input.captureID, jobNumber: jobNumber, isDuplicate: false)
     }
-
 }

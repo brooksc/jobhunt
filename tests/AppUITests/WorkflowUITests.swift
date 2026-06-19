@@ -3,7 +3,6 @@ import XCTest
 /// Seeded workflow tests for high-risk user journeys.
 /// These tests require --ui-test-store and --seed-demo-data (set by launchApp).
 final class WorkflowUITests: XCTestCase {
-
     private var app: XCUIApplication!
 
     override func setUp() {

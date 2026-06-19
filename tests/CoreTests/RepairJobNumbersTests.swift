@@ -24,10 +24,16 @@ final class RepairJobNumbersTests: XCTestCase {
         var db: OpaquePointer?
         XCTAssertEqual(sqlite3_open(path, &db), SQLITE_OK)
         defer { sqlite3_close(db) }
-        XCTAssertEqual(sqlite3_exec(db, "CREATE TABLE ZJOB (Z_PK INTEGER PRIMARY KEY, ZJOBNUMBER INTEGER)", nil, nil, nil), SQLITE_OK)
+        XCTAssertEqual(
+            sqlite3_exec(db, "CREATE TABLE ZJOB (Z_PK INTEGER PRIMARY KEY, ZJOBNUMBER INTEGER)", nil, nil, nil),
+            SQLITE_OK
+        )
         for row in rows {
             let value = row.num.map(String.init) ?? "NULL"
-            XCTAssertEqual(sqlite3_exec(db, "INSERT INTO ZJOB (Z_PK, ZJOBNUMBER) VALUES (\(row.pk), \(value))", nil, nil, nil), SQLITE_OK)
+            XCTAssertEqual(
+                sqlite3_exec(db, "INSERT INTO ZJOB (Z_PK, ZJOBNUMBER) VALUES (\(row.pk), \(value))", nil, nil, nil),
+                SQLITE_OK
+            )
         }
         return path
     }
@@ -37,7 +43,10 @@ final class RepairJobNumbersTests: XCTestCase {
         XCTAssertEqual(sqlite3_open(path, &db), SQLITE_OK)
         defer { sqlite3_close(db) }
         var stmt: OpaquePointer?
-        XCTAssertEqual(sqlite3_prepare_v2(db, "SELECT Z_PK, ZJOBNUMBER FROM ZJOB WHERE ZJOBNUMBER IS NOT NULL", -1, &stmt, nil), SQLITE_OK)
+        XCTAssertEqual(
+            sqlite3_prepare_v2(db, "SELECT Z_PK, ZJOBNUMBER FROM ZJOB WHERE ZJOBNUMBER IS NOT NULL", -1, &stmt, nil),
+            SQLITE_OK
+        )
         defer { sqlite3_finalize(stmt) }
         var result: [Int: Int] = [:]
         while sqlite3_step(stmt) == SQLITE_ROW {

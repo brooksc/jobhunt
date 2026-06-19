@@ -10,7 +10,7 @@ import XCTest
 /// The exact counts here are a drift detector — if `FixtureSeeder` changes, rebuild the
 /// fixture (`./scripts/build-fixture-db.sh`) and update these expectations deliberately.
 final class FixtureTests: XCTestCase {
-    // Expected contents of the committed fixture (see docs/test-db-spec.md).
+    /// Expected contents of the committed fixture (see docs/test-db-spec.md).
     private enum Expected {
         static let jobs = 48
         static let captures = 48
@@ -21,7 +21,7 @@ final class FixtureTests: XCTestCase {
         static let duplicateMarked = 3
         static let jobsByStatus: [String: Int] = [
             "new": 12, "pursuing": 8, "applied": 7, "interview": 3, "offer": 2,
-            "rejected": 4, "passed": 3, "archived": 3, "closed": 2, "expired": 4,
+            "rejected": 4, "passed": 3, "archived": 3, "closed": 2, "expired": 4
         ]
     }
 
@@ -29,8 +29,8 @@ final class FixtureTests: XCTestCase {
     /// checkout/CI without hardcoding an absolute path.
     static func fixtureURL() -> URL {
         URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()          // tests/CoreTests
-            .deletingLastPathComponent()          // tests
+            .deletingLastPathComponent() // tests/CoreTests
+            .deletingLastPathComponent() // tests
             .appendingPathComponent("fixtures/jobhunt-test.sqlite")
     }
 
@@ -87,8 +87,8 @@ final class FixtureTests: XCTestCase {
         }
 
         // Extraction edge cases are present (pending + failed), not just succeeded.
-        XCTAssertGreaterThan(jobs.filter { $0.extractionStatus == .pending }.count, 0)
-        XCTAssertGreaterThan(jobs.filter { $0.extractionStatus == .failed }.count, 0)
+        XCTAssertGreaterThan(jobs.count(where: { $0.extractionStatus == .pending }), 0)
+        XCTAssertGreaterThan(jobs.count(where: { $0.extractionStatus == .failed }), 0)
     }
 
     // MARK: - Fixture-backed read test (demonstrates the pattern over realistic data)
@@ -103,8 +103,10 @@ final class FixtureTests: XCTestCase {
     // parallel consumers can't delete or overwrite each other's store.
     func testFixtureCopiesAreIsolatedPerCall() throws {
         let url = Self.fixtureURL()
-        try XCTSkipUnless(FileManager.default.fileExists(atPath: url.path),
-                          "Fixture missing — run ./scripts/build-fixture-db.sh")
+        try XCTSkipUnless(
+            FileManager.default.fileExists(atPath: url.path),
+            "Fixture missing — run ./scripts/build-fixture-db.sh"
+        )
         let a = try ModelContainerFactory.fixture(copying: url)
         let b = try ModelContainerFactory.fixture(copying: url)
         let pathA = a.configurations.first?.url.path
@@ -117,7 +119,7 @@ final class FixtureTests: XCTestCase {
     // TASK-421: seeding twice yields identical timestamps (fixed base date, no wall-clock drift).
     func testFixtureSeed_isDeterministicAcrossRuns() async throws {
         func seedAndSnapshot() async throws -> [(Int, Date, Date?)] {
-            let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+            let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
             try await FixtureSeeder.seed(into: store)
             let jobs = try await store.fetch(FetchDescriptor<Job>(sortBy: [SortDescriptor(\.jobNumber)]))
             return jobs.map { ($0.jobNumber ?? -1, $0.createdAt, $0.capturedAtDenormalized) }
@@ -132,6 +134,6 @@ final class FixtureTests: XCTestCase {
             XCTAssertEqual(a.2, b.2, "capturedAt must be identical across regenerations")
         }
         // And anchored to the documented fixed base date, not wall-clock now.
-        XCTAssertLessThan(runA.map(\.1).max()!, Date(timeIntervalSince1970: 1_760_000_000))
+        XCTAssertLessThan(try XCTUnwrap(runA.map(\.1).max()), Date(timeIntervalSince1970: 1_760_000_000))
     }
 }

@@ -53,7 +53,11 @@ final class MCPTests: XCTestCase {
     func testToolList_allSchemasHaveType() {
         for tool in tools {
             let schema = tool["inputSchema"] as? [String: Any]
-            XCTAssertEqual(schema?["type"] as? String, "object", "inputSchema.type should be 'object' for \(tool["name"] ?? "?")")
+            XCTAssertEqual(
+                schema?["type"] as? String,
+                "object",
+                "inputSchema.type should be 'object' for \(tool["name"] ?? "?")"
+            )
         }
     }
 
@@ -129,7 +133,8 @@ final class MCPTests: XCTestCase {
 
     func testResolveToolRoute_setStatus_acceptsJobIdWithStatus() {
         guard case let .success((path, _)) = resolveToolRoute(
-            name: "set_job_status", args: ["job_id": "job-x", "status": "applied"]) else {
+            name: "set_job_status", args: ["job_id": "job-x", "status": "applied"]
+        ) else {
             return XCTFail("job_id + status should succeed")
         }
         XCTAssertEqual(path, "/mcp/jobs/status")
@@ -156,8 +161,10 @@ final class MCPTests: XCTestCase {
         let rawTextProp = properties?["include_raw_text"] as? [String: Any]
         XCTAssertEqual(rawTextProp?["type"] as? String, "boolean", "include_raw_text must be boolean")
         let desc = rawTextProp?["description"] as? String ?? ""
-        XCTAssertTrue(desc.contains("Omitted by default") || desc.contains("omitted") || desc.contains("default"),
-                      "include_raw_text description must mention it is omitted by default")
+        XCTAssertTrue(
+            desc.contains("Omitted by default") || desc.contains("omitted") || desc.contains("default"),
+            "include_raw_text description must mention it is omitted by default"
+        )
     }
 
     func testJobGet_description_mentionsOmittedByDefault() {
@@ -169,7 +176,8 @@ final class MCPTests: XCTestCase {
         )
         // Must not claim raw text is included by default
         XCTAssertFalse(
-            description.lowercased().contains("included by default") || description.lowercased().contains("including raw"),
+            description.lowercased().contains("included by default") || description.lowercased()
+                .contains("including raw"),
             "job_get description must not claim raw text is included by default"
         )
     }

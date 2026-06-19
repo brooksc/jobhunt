@@ -107,7 +107,7 @@ final class WorkflowEndToEndTests: XCTestCase {
         XCTAssertEqual(kept.capture?.url, "https://acme.com/jobs/staff-eng")
 
         // ── Stage 4: QUALITY — a company-less job surfaces a quality issue ───────
-        let badJob = Job(title: "Mystery role", extractionStatus: .succeeded)  // company nil
+        let badJob = Job(title: "Mystery role", extractionStatus: .succeeded) // company nil
         try await store.insert(badJob)
         let issues = QualityChecker.issues(for: badJob)
         XCTAssertTrue(issues.contains(.missingCompany), "expected missingCompany; got \(issues)")
@@ -116,8 +116,13 @@ final class WorkflowEndToEndTests: XCTestCase {
         let resume = Resume(name: "Mine", text: "Senior Swift engineer, distributed systems, 8 years.")
         try await store.insert(resume)
         let fitOut = try await ExtractionEngine.scoreFit(
-            job: JobFitSnapshot(title: kept.title, company: kept.company, seniority: nil,
-                                extractedJSON: kept.extractedJSON, extractionModel: nil),
+            job: JobFitSnapshot(
+                title: kept.title,
+                company: kept.company,
+                seniority: nil,
+                extractedJSON: kept.extractedJSON,
+                extractionModel: nil
+            ),
             resume: ResumeSnapshot(text: resume.text),
             model: "stub-model",
             provider: StubProvider(response: fitJSON)

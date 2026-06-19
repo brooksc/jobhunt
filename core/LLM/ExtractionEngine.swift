@@ -2,6 +2,7 @@
 import Foundation
 
 // MARK: - Sendable snapshots
+
 //
 // Callers fetch live SwiftData models, snapshot the needed fields into these structs,
 // then pass the snapshots to the engine. The engine never holds a SwiftData model reference.
@@ -55,7 +56,9 @@ public struct JobFitSnapshot: Sendable {
 
 public struct ResumeSnapshot: Sendable {
     public let text: String
-    public init(text: String) { self.text = text }
+    public init(text: String) {
+        self.text = text
+    }
 }
 
 // MARK: - ExtractionResult

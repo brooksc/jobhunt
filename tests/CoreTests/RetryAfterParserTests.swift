@@ -47,24 +47,26 @@ final class RetryAfterParserTests: XCTestCase {
 final class QueueBackoffTests: XCTestCase {
     func testRateLimitedHonorsRetryAfterClamped() {
         let err = LLMProviderError.rateLimited(retryAfter: 12)
-        XCTAssertEqual(QueueActor.backoffMs(for: err, attempt: 0), 12_000)
+        XCTAssertEqual(QueueActor.backoffMs(for: err, attempt: 0), 12000)
         // Clamp to maxRetryAfterSeconds.
         let huge = LLMProviderError.rateLimited(retryAfter: 9999)
-        XCTAssertEqual(QueueActor.backoffMs(for: huge, attempt: 0),
-                       Int(QueueActor.maxRetryAfterSeconds * 1000))
+        XCTAssertEqual(
+            QueueActor.backoffMs(for: huge, attempt: 0),
+            Int(QueueActor.maxRetryAfterSeconds * 1000)
+        )
     }
 
     func testRateLimitedWithoutRetryAfterUsesExponential() {
         // No advised delay → falls back to generic exponential backoff.
         let err = LLMProviderError.rateLimited(retryAfter: nil)
-        XCTAssertEqual(QueueActor.backoffMs(for: err, attempt: 2), 4_000)
+        XCTAssertEqual(QueueActor.backoffMs(for: err, attempt: 2), 4000)
     }
 
     func testNonRateLimitedUsesExponentialBackoff() {
         let err = LLMProviderError.httpError(statusCode: 500, body: "boom")
-        XCTAssertEqual(QueueActor.backoffMs(for: err, attempt: 0), 1_000)
-        XCTAssertEqual(QueueActor.backoffMs(for: err, attempt: 3), 8_000)
+        XCTAssertEqual(QueueActor.backoffMs(for: err, attempt: 0), 1000)
+        XCTAssertEqual(QueueActor.backoffMs(for: err, attempt: 3), 8000)
         // Capped at 30s.
-        XCTAssertEqual(QueueActor.backoffMs(for: err, attempt: 20), 30_000)
+        XCTAssertEqual(QueueActor.backoffMs(for: err, attempt: 20), 30000)
     }
 }

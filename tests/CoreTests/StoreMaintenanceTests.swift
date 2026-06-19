@@ -6,7 +6,7 @@ import XCTest
 /// recomputeAllJobFitMirrors and pruneOrphanRequestAttempts.
 final class StoreMaintenanceTests: XCTestCase {
     func testRecomputeFitMirrors_correctsDriftAndCountsOnlyChanged() async throws {
-        let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
         let resume = Resume(name: "R", text: "body")
 
         // Stale-high mirror: says 94 but best resume-linked score is 88.
@@ -24,8 +24,12 @@ final class StoreMaintenanceTests: XCTestCase {
         s2.job = ok; s2.resume = resume
 
         try await store.insert(resume)
-        for m in [stale, ok] { try await store.insert(m) }
-        for m in [s1, s2] { try await store.insert(m) }
+        for m in [stale, ok] {
+            try await store.insert(m)
+        }
+        for m in [s1, s2] {
+            try await store.insert(m)
+        }
 
         let changed = try await store.recomputeAllJobFitMirrors()
         XCTAssertEqual(changed, 1, "only the drifted job is corrected")
@@ -37,12 +41,17 @@ final class StoreMaintenanceTests: XCTestCase {
     }
 
     func testPruneOrphanAttempts_deletesOnlyRequestlessAttempts() async throws {
-        let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
 
         // Linked attempt (has a parent request).
         let req = LLMRequest(requestType: .extract, status: .succeeded)
         req.finishedAt = Date()
-        let linked = LLMRequestAttempt(requestType: .extract, attempt: 1, status: .succeeded, modelRequested: "lmstudio")
+        let linked = LLMRequestAttempt(
+            requestType: .extract,
+            attempt: 1,
+            status: .succeeded,
+            modelRequested: "lmstudio"
+        )
         linked.request = req
 
         // Orphan attempt (no request).
@@ -61,7 +70,7 @@ final class StoreMaintenanceTests: XCTestCase {
     }
 
     func testPruneOrphanAttempts_noOrphansIsNoOp() async throws {
-        let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
         let req = LLMRequest(requestType: .extract, status: .succeeded)
         let a = LLMRequestAttempt(requestType: .extract, attempt: 1, status: .succeeded, modelRequested: "x")
         a.request = req

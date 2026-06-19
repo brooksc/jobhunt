@@ -45,7 +45,7 @@ public enum ExportService {
                 "fit_score": job.fitScore.map(String.init) ?? "",
                 "fit_status": job.fitStatus.rawValue,
                 "has_pending_actions": job.actions.contains { $0.completedAt == nil } ? "true" : "false",
-                "open_actions_count": String(job.actions.filter { $0.completedAt == nil }.count)
+                "open_actions_count": String(job.actions.count(where: { $0.completedAt == nil }))
             ]
 
             // TASK-376: sanitize EVERY field for spreadsheet formula injection at this single point,

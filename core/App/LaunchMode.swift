@@ -36,10 +36,14 @@ public struct LaunchPlan: Equatable {
     }
 
     /// The MCP token is only needed when the HTTP server runs.
-    public var needsMCPToken: Bool { runsRuntimeServices }
+    public var needsMCPToken: Bool {
+        runsRuntimeServices
+    }
 
     /// The LLM queue starts paused in UI-test mode so seeded `.pending` jobs keep their state.
-    public var startsQueuePaused: Bool { mode == .uiTest }
+    public var startsQueuePaused: Bool {
+        mode == .uiTest
+    }
 
     /// Demo seeding is confined to the UI-test store (TASK-427).
     public var allowsDemoSeed: Bool {
@@ -55,9 +59,9 @@ public enum LaunchArgumentError: Error, Equatable, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case .missingValue(let flag):
+        case let .missingValue(flag):
             return "Launch argument \(flag) requires a value (e.g. \(flag) /path/to/store)."
-        case .conflictingModes(let flags):
+        case let .conflictingModes(flags):
             return "Conflicting launch mode arguments: \(flags.joined(separator: ", ")). Pass at most one."
         }
     }

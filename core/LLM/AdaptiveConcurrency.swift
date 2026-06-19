@@ -17,8 +17,8 @@ public struct AdaptiveConcurrency: Equatable {
         let clampedCeiling = max(1, ceiling)
         self.ceiling = clampedCeiling
         self.promoteAfter = max(1, promoteAfter)
-        self.effective = clampedCeiling
-        self.consecutiveSuccesses = 0
+        effective = clampedCeiling
+        consecutiveSuccesses = 0
     }
 
     /// A 429 was observed: collapse to a single in-flight request and reset the promotion streak.

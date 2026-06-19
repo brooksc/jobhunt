@@ -6,7 +6,7 @@ import XCTest
 /// linked (which otherwise render as a model name and hijack the job's "Best match").
 final class PruneOrphanFitScoresTests: XCTestCase {
     func testPrune_deletesOrphansAndRecomputesJobMirror() async throws {
-        let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
 
         let resume = Resume(name: "Real Resume", text: "resume body")
         let job = Job(jobNumber: 136, title: "Staff TPM")
@@ -37,7 +37,7 @@ final class PruneOrphanFitScoresTests: XCTestCase {
     }
 
     func testPrune_noOrphansIsNoOp() async throws {
-        let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
         let resume = Resume(name: "R", text: "body")
         let job = Job(jobNumber: 1, title: "SWE")
         let score = JobFitScore(fitScore: 80, fitStatus: .succeeded)
@@ -54,7 +54,7 @@ final class PruneOrphanFitScoresTests: XCTestCase {
     }
 
     func testPrune_clearsMirrorWhenAllScoresWereOrphans() async throws {
-        let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
         let job = Job(jobNumber: 7, title: "EM")
         let orphan = JobFitScore(fitScore: 90, fitStatus: .succeeded, model: "gemini-3.1-flash-lite")
         orphan.job = job
@@ -74,7 +74,7 @@ final class PruneOrphanFitScoresTests: XCTestCase {
     // TASK-472: a fit-failure message with control chars/quotes/backslashes must produce VALID
     // JSON. Hand-escaping only `"` left newlines/tabs raw → invalid JSON the UI silently dropped.
     func testMarkFitScoreFailed_errorWithControlCharsIsValidJSON() async throws {
-        let store = BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
         let resume = Resume(name: "R", text: "body")
         let job = Job(jobNumber: 1, title: "SWE")
         try await store.insert(resume)

@@ -195,7 +195,7 @@ public final class PlatformIntegration: NSObject, ObservableObject {
                 )
             }
         } else {
-            let strong = ready.values.filter { ($0.fitScore ?? 0) >= strongMatchThreshold }.count
+            let strong = ready.values.count(where: { ($0.fitScore ?? 0) >= strongMatchThreshold })
             var body = "\(ready.count) jobs ready to review"
             if strong > 0 { body += " · \(strong) strong match\(strong == 1 ? "" : "es")" }
             if failed > 0 { body += " · \(failed) failed" }
@@ -290,7 +290,7 @@ public final class PlatformIntegration: NSObject, ObservableObject {
 
     /// Posted by `AvailabilityChecker` off the main thread — stay `nonisolated`, pull the Sendable
     /// primitives out of `userInfo`, then hop to the main actor to post the notification.
-    @objc nonisolated private func handleJobUnavailable(_ note: Notification) {
+    @objc private nonisolated func handleJobUnavailable(_ note: Notification) {
         let jobNumber = note.userInfo?[JobUnavailableKey.jobNumber] as? Int
         let title = note.userInfo?[JobUnavailableKey.title] as? String
         Task { @MainActor [weak self] in

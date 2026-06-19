@@ -155,36 +155,36 @@ final class SavedSearchMatchesTests: XCTestCase {
 
     func testMinSalary_salaryMinBelowThreshold() {
         let search = makeSearch(minSalary: 100_000)
-        let job = makeJob(salaryMin: 80_000)
+        let job = makeJob(salaryMin: 80000)
         XCTAssertFalse(search.matches(job))
     }
 
     func testMinSalary_nilSalaryTreatedAsZero() {
-        let search = makeSearch(minSalary: 50_000)
+        let search = makeSearch(minSalary: 50000)
         let job = makeJob(salaryMin: nil)
         XCTAssertFalse(search.matches(job))
     }
 
     // MARK: - recentDays filter
 
-    func testRecentDays_jobWithinWindow() {
+    func testRecentDays_jobWithinWindow() throws {
         let search = makeSearch(recentDays: 7)
-        let recentDate = Calendar.current.date(byAdding: .day, value: -3, to: Date())!
+        let recentDate = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: -3, to: Date()))
         let job = makeJob(capturedAt: recentDate)
         XCTAssertTrue(search.matches(job))
     }
 
-    func testRecentDays_jobOutsideWindow() {
+    func testRecentDays_jobOutsideWindow() throws {
         let search = makeSearch(recentDays: 7)
-        let oldDate = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
+        let oldDate = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: -30, to: Date()))
         let job = makeJob(capturedAt: oldDate)
         XCTAssertFalse(search.matches(job))
     }
 
-    func testRecentDays_usesCapturedAtDenormalized() {
+    func testRecentDays_usesCapturedAtDenormalized() throws {
         let search = makeSearch(recentDays: 7)
         // capturedAt is recent, createdAt will default to Date() in Job init
-        let recentDate = Calendar.current.date(byAdding: .day, value: -2, to: Date())!
+        let recentDate = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: -2, to: Date()))
         let job = makeJob(capturedAt: recentDate)
         XCTAssertTrue(search.matches(job))
     }

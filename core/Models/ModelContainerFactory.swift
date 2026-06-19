@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 
 // MARK: - Uniqueness-constraint strategy (TASK-372)
+
 //
 // SwiftData enforces `@Attribute(.unique)` with a SQLite unique index. A store that already holds
 // duplicate values on a newly-constrained column can't be opened — index creation fails during
@@ -48,9 +49,11 @@ public enum ModelContainerFactory {
     public static func storeAndSidecars(of url: URL) -> [URL] {
         let dir = url.deletingLastPathComponent()
         let name = url.lastPathComponent
-        return [url,
-                dir.appendingPathComponent(name + "-wal"),
-                dir.appendingPathComponent(name + "-shm")]
+        return [
+            url,
+            dir.appendingPathComponent(name + "-wal"),
+            dir.appendingPathComponent(name + "-shm")
+        ]
     }
 
     /// Like `test(at:)` but FAILS CLOSED (TASK-424): creates the parent directory and removes any

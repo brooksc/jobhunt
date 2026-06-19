@@ -22,7 +22,7 @@ struct JobsView: View {
     @State private var showSaveSheet = false
     @State private var showAddJobSheet = false
     @State private var jobIDsToDelete: [String] = []
-    // Mirror of router.sidebarJobFilter as @State so SwiftUI reliably re-renders.
+    /// Mirror of router.sidebarJobFilter as @State so SwiftUI reliably re-renders.
     @State private var localSidebarFilter: JobStatus?
 
     var body: some View {
@@ -33,102 +33,108 @@ struct JobsView: View {
 
     private var jobListWithModifiers: some View {
         jobListWithFilterObservers
-        .searchable(text: $searchText, tokens: $searchTokens, prompt: "Search jobs…") { token in
-            Label(token.label, systemImage: token.systemImage)
-        }
-        .searchSuggestions {
-            JobSearchSuggestions(searchText: searchText)
-        }
-        .toolbar { toolbarItems }
-        .navigationTitle(navTitle)
-        .sheet(isPresented: $showAddJobSheet) { AddJobSheet() }
-        .sheet(isPresented: $showSaveSheet) {
-            SaveSearchSheet(filterState: filterState, searchText: searchText, searchTokens: searchTokens)
-        }
-        .confirmationDialog(
-            "Delete \(jobIDsToDelete.count == 1 ? "Job" : "\(jobIDsToDelete.count) Jobs")?",
-            isPresented: .init(get: { !jobIDsToDelete.isEmpty }, set: { if !$0 { jobIDsToDelete = [] } }),
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                let ids = jobIDsToDelete
-                let svc = appServices.jobService
-                let toast = appServices.toastStore
-                jobIDsToDelete = []
-                Task {
-                    for id in ids {
-                        do { try await svc.delete(jobID: id) }
-                        catch { toast.show("Delete failed: \(error.localizedDescription)", isError: true) }
+            .searchable(text: $searchText, tokens: $searchTokens, prompt: "Search jobs…") { token in
+                Label(token.label, systemImage: token.systemImage)
+            }
+            .searchSuggestions {
+                JobSearchSuggestions(searchText: searchText)
+            }
+            .toolbar { toolbarItems }
+            .navigationTitle(navTitle)
+            .sheet(isPresented: $showAddJobSheet) { AddJobSheet() }
+            .sheet(isPresented: $showSaveSheet) {
+                SaveSearchSheet(filterState: filterState, searchText: searchText, searchTokens: searchTokens)
+            }
+            .confirmationDialog(
+                "Delete \(jobIDsToDelete.count == 1 ? "Job" : "\(jobIDsToDelete.count) Jobs")?",
+                isPresented: .init(get: { !jobIDsToDelete.isEmpty }, set: { if !$0 { jobIDsToDelete = [] } }),
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    let ids = jobIDsToDelete
+                    let svc = appServices.jobService
+                    let toast = appServices.toastStore
+                    jobIDsToDelete = []
+                    Task {
+                        for id in ids {
+                            do { try await svc.delete(jobID: id) } catch { toast.show(
+                                "Delete failed: \(error.localizedDescription)",
+                                isError: true
+                            ) }
+                        }
+                        await MainActor.run { selectedJobIDs = selectedJobIDs.subtracting(ids) }
                     }
-                    await MainActor.run { selectedJobIDs = selectedJobIDs.subtracting(ids) }
+                }
+                Button("Cancel", role: .cancel) { jobIDsToDelete = [] }
+            } message: {
+                Text("This will permanently delete the job and all related data.")
+            }
+            .onChange(of: router.activeSavedSearchID) { _, id in
+                if let id, let search = savedSearches.first(where: { $0.id == id }) {
+                    applySearchToTokens(search)
+                } else if id == nil {
+                    searchTokens = []
+                    searchText = ""
+                    filterState = JobsFilterState()
+                    // #7: a sidebar/smart-folder switch clears the saved search but should keep
+                    // the user's chosen sort rather than snapping back to the default.
+                    applyPersistedSort()
                 }
             }
-            Button("Cancel", role: .cancel) { jobIDsToDelete = [] }
-        } message: {
-            Text("This will permanently delete the job and all related data.")
-        }
-        .onChange(of: router.activeSavedSearchID) { _, id in
-            if let id, let search = savedSearches.first(where: { $0.id == id }) {
-                applySearchToTokens(search)
-            } else if id == nil {
+            .onChange(of: router.sidebarJobFilter) { _, status in
+                localSidebarFilter = status
+                router.activeSavedSearchID = nil
                 searchTokens = []
-                searchText = ""
-                filterState = JobsFilterState()
-                // #7: a sidebar/smart-folder switch clears the saved search but should keep
-                // the user's chosen sort rather than snapping back to the default.
-                applyPersistedSort()
             }
-        }
-        .onChange(of: router.sidebarJobFilter) { _, status in
-            localSidebarFilter = status
-            router.activeSavedSearchID = nil
-            searchTokens = []
-        }
-        .onChange(of: searchTokens) { _, _ in
-            router.activeSavedSearchID = nil
-        }
-        .onChange(of: filteredJobIDs) { _, newIDs in
-            // Remove stale selections when the filter changes — and tell the user if their
-            // multi-selection just shrank, so they don't bulk-act on fewer jobs than they think.
-            let before = selectedJobIDs.count
-            selectedJobIDs = selectedJobIDs.intersection(newIDs)
-            let dropped = before - selectedJobIDs.count
-            if dropped > 0 && before > 1 {
-                appServices.toastStore.show("\(dropped) selected job\(dropped == 1 ? "" : "s") no longer match the filter — \(selectedJobIDs.count) still selected.")
+            .onChange(of: searchTokens) { _, _ in
+                router.activeSavedSearchID = nil
             }
-        }
-        .onChange(of: selectedJobIDs) { _, newIDs in
-            // Mark opened when exactly one job is selected
-            if newIDs.count == 1, let id = newIDs.first {
-                let svc = appServices.jobService
-                // Automatic side-effect (not a user command) — log a failure rather than toast.
-                Task {
-                    do { try await svc.markOpened(jobID: id) }
-                    catch { NSLog("JobsView: markOpened failed for \(id): \(error)") }
+            .onChange(of: filteredJobIDs) { _, newIDs in
+                // Remove stale selections when the filter changes — and tell the user if their
+                // multi-selection just shrank, so they don't bulk-act on fewer jobs than they think.
+                let before = selectedJobIDs.count
+                selectedJobIDs = selectedJobIDs.intersection(newIDs)
+                let dropped = before - selectedJobIDs.count
+                if dropped > 0 && before > 1 {
+                    appServices.toastStore
+                        .show(
+                            "\(dropped) selected job\(dropped == 1 ? "" : "s") no longer match the filter — \(selectedJobIDs.count) still selected."
+                        )
                 }
             }
-        }
-        // HIG-20: Space is not used for deselect (macOS convention)
-        .onChange(of: router.showAddJobSheet) { _, show in
-            if show { showAddJobSheet = true; router.showAddJobSheet = false }
-        }
-        .onChange(of: router.exportJobsRequested) { _, requested in
-            if requested { router.exportJobsRequested = false; exportCSV() }
-        }
-        .onChange(of: router.focusSearch) { _, focus in
-            if focus {
-                router.focusSearch = false
-                DispatchQueue.main.async {
-                    guard let toolbar = NSApp.keyWindow?.toolbar else { return }
-                    for item in toolbar.items {
-                        if let searchItem = item as? NSSearchToolbarItem {
-                            searchItem.beginSearchInteraction()
-                            return
+            .onChange(of: selectedJobIDs) { _, newIDs in
+                // Mark opened when exactly one job is selected
+                if newIDs.count == 1, let id = newIDs.first {
+                    let svc = appServices.jobService
+                    // Automatic side-effect (not a user command) — log a failure rather than toast.
+                    Task {
+                        do { try await svc.markOpened(jobID: id) } catch {
+                            NSLog("JobsView: markOpened failed for \(id): \(error)")
                         }
                     }
                 }
             }
-        }
+            // HIG-20: Space is not used for deselect (macOS convention)
+            .onChange(of: router.showAddJobSheet) { _, show in
+                if show { showAddJobSheet = true; router.showAddJobSheet = false }
+            }
+            .onChange(of: router.exportJobsRequested) { _, requested in
+                if requested { router.exportJobsRequested = false; exportCSV() }
+            }
+            .onChange(of: router.focusSearch) { _, focus in
+                if focus {
+                    router.focusSearch = false
+                    DispatchQueue.main.async {
+                        guard let toolbar = NSApp.keyWindow?.toolbar else { return }
+                        for item in toolbar.items {
+                            if let searchItem = item as? NSSearchToolbarItem {
+                                searchItem.beginSearchInteraction()
+                                return
+                            }
+                        }
+                    }
+                }
+            }
     }
 
     // MARK: - Toolbar
@@ -203,8 +209,10 @@ struct JobsView: View {
                         let svc = appServices.jobService
                         let toast = appServices.toastStore
                         Task {
-                            do { try await svc.resetExtractionBulk(jobIDs: ids) }
-                            catch { toast.show("Couldn't re-run AI: \(error.localizedDescription)", isError: true) }
+                            do { try await svc.resetExtractionBulk(jobIDs: ids) } catch { toast.show(
+                                "Couldn't re-run AI: \(error.localizedDescription)",
+                                isError: true
+                            ) }
                         }
                     } label: {
                         Label("Re-run AI on \(selectedJobIDs.count) Selected", systemImage: "arrow.clockwise")
@@ -226,8 +234,14 @@ struct JobsView: View {
                                 if failed > 0 {
                                     toast.show("Archive failed for \(failed) job(s)", isError: true)
                                 } else {
-                                    toast.show("Archived \(ids.count) job\(ids.count == 1 ? "" : "s")", actionLabel: "Undo") {
-                                        Task { for (id, status) in priors { try? await svc.setStatus(status, for: id) } }
+                                    toast.show(
+                                        "Archived \(ids.count) job\(ids.count == 1 ? "" : "s")",
+                                        actionLabel: "Undo"
+                                    ) {
+                                        Task { for (id, status) in priors {
+                                            try? await svc.setStatus(status, for: id)
+                                        }
+                                        }
                                     }
                                 }
                             }
@@ -241,11 +255,16 @@ struct JobsView: View {
                         let queue = appServices.queueActor
                         let toast = appServices.toastStore
                         Task {
-                            do { try await queue.enqueueFitForActiveResumes(jobIDs: ids) }
-                            catch { toast.show("Couldn't queue fit scoring: \(error.localizedDescription)", isError: true) }
+                            do { try await queue.enqueueFitForActiveResumes(jobIDs: ids) } catch { toast.show(
+                                "Couldn't queue fit scoring: \(error.localizedDescription)",
+                                isError: true
+                            ) }
                         }
                     } label: {
-                        Label("Score Fit on \(selectedJobIDs.count) Selected", systemImage: "person.crop.circle.badge.checkmark")
+                        Label(
+                            "Score Fit on \(selectedJobIDs.count) Selected",
+                            systemImage: "person.crop.circle.badge.checkmark"
+                        )
                     }
                     Button {
                         openSelectedPages()
@@ -259,7 +278,9 @@ struct JobsView: View {
                 } label: {
                     Label("Export Filtered List to CSV…", systemImage: "square.and.arrow.up")
                 }
-                .help("Exports the current filtered/sorted list (\(filteredJobs.count) jobs). Use Back Up Data in Settings for a complete backup.")
+                .help(
+                    "Exports the current filtered/sorted list (\(filteredJobs.count) jobs). Use Back Up Data in Settings for a complete backup."
+                )
                 Divider()
                 if hasActiveFilters || !searchTokens.isEmpty {
                     Button(role: .destructive) {
@@ -353,67 +374,67 @@ struct JobsView: View {
             .padding(.bottom, 8)
             Divider()
             ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                filterSection("Remote") {
-                    HStack(spacing: 6) {
-                        ForEach([RemoteType.remote, .hybrid, .onsite], id: \.self) { rt in
-                            remoteToggle(rt)
+                VStack(alignment: .leading, spacing: 0) {
+                    filterSection("Remote") {
+                        HStack(spacing: 6) {
+                            ForEach([RemoteType.remote, .hybrid, .onsite], id: \.self) { rt in
+                                remoteToggle(rt)
+                            }
                         }
                     }
-                }
-                Divider()
-                filterSection("Min Fit Score") {
-                    HStack(spacing: 6) {
-                        fitScoreChip(nil, label: "Any")
-                        fitScoreChip(55, label: "55+")
-                        fitScoreChip(70, label: "70+")
-                        fitScoreChip(85, label: "85+")
+                    Divider()
+                    filterSection("Min Fit Score") {
+                        HStack(spacing: 6) {
+                            fitScoreChip(nil, label: "Any")
+                            fitScoreChip(55, label: "55+")
+                            fitScoreChip(70, label: "70+")
+                            fitScoreChip(85, label: "85+")
+                        }
+                    }
+                    Divider()
+                    filterSection("Min Rating") {
+                        HStack(spacing: 6) {
+                            ratingChip(nil, label: "Any")
+                            ForEach([3, 4, 5], id: \.self) { r in ratingChip(r, label: "\(r)★+") }
+                        }
+                    }
+                    Divider()
+                    filterSection("Min Salary") {
+                        HStack(spacing: 6) {
+                            salaryChip(nil, label: "Any")
+                            salaryChip(100_000, label: "$100k")
+                            salaryChip(150_000, label: "$150k")
+                            salaryChip(200_000, label: "$200k")
+                        }
+                    }
+                    Divider()
+                    filterSection("Captured") {
+                        HStack(spacing: 6) {
+                            recentChip(nil, label: "Any time")
+                            recentChip(7, label: "7 days")
+                            recentChip(30, label: "30 days")
+                            recentChip(90, label: "90 days")
+                        }
+                    }
+                    Divider()
+                    filterSection("Extraction") {
+                        HStack(spacing: 6) {
+                            extractionChip(nil, label: "Any")
+                            extractionChip(.succeeded, label: "OK")
+                            extractionChip(.pending, label: "Pending")
+                            extractionChip(.failed, label: "Failed")
+                        }
+                    }
+                    Divider()
+                    filterSection("Location criteria") {
+                        Toggle("Meets criteria only", isOn: Binding(
+                            get: { filterState.meetsCriteriaOnly },
+                            set: { filterState.meetsCriteriaOnly = $0 }
+                        ))
+                        .toggleStyle(.checkbox)
+                        .font(.caption)
                     }
                 }
-                Divider()
-                filterSection("Min Rating") {
-                    HStack(spacing: 6) {
-                        ratingChip(nil, label: "Any")
-                        ForEach([3, 4, 5], id: \.self) { r in ratingChip(r, label: "\(r)★+") }
-                    }
-                }
-                Divider()
-                filterSection("Min Salary") {
-                    HStack(spacing: 6) {
-                        salaryChip(nil, label: "Any")
-                        salaryChip(100_000, label: "$100k")
-                        salaryChip(150_000, label: "$150k")
-                        salaryChip(200_000, label: "$200k")
-                    }
-                }
-                Divider()
-                filterSection("Captured") {
-                    HStack(spacing: 6) {
-                        recentChip(nil, label: "Any time")
-                        recentChip(7, label: "7 days")
-                        recentChip(30, label: "30 days")
-                        recentChip(90, label: "90 days")
-                    }
-                }
-                Divider()
-                filterSection("Extraction") {
-                    HStack(spacing: 6) {
-                        extractionChip(nil, label: "Any")
-                        extractionChip(.succeeded, label: "OK")
-                        extractionChip(.pending, label: "Pending")
-                        extractionChip(.failed, label: "Failed")
-                    }
-                }
-                Divider()
-                filterSection("Location criteria") {
-                    Toggle("Meets criteria only", isOn: Binding(
-                        get: { filterState.meetsCriteriaOnly },
-                        set: { filterState.meetsCriteriaOnly = $0 }
-                    ))
-                    .toggleStyle(.checkbox)
-                    .font(.caption)
-                }
-            }
             } // end ScrollView
         } // end outer VStack
         .frame(width: 280)
@@ -527,7 +548,8 @@ struct JobsView: View {
     }
 
     private var hasActiveFilters: Bool {
-        filterState.hasActiveFilters || !searchTokens.isEmpty || !searchText.trimmingCharacters(in: .whitespaces).isEmpty
+        filterState.hasActiveFilters || !searchTokens.isEmpty || !searchText.trimmingCharacters(in: .whitespaces)
+            .isEmpty
     }
 
     /// #7: load the persisted Jobs sort into `filterState`.
@@ -618,7 +640,9 @@ struct JobsView: View {
     /// Computed live each render so an in-place status change (e.g. New → Interested) immediately
     /// drops the job out of the active smart-folder/filter — a few hundred rows is imperceptible
     /// (a cached @State version went stale because in-place mutations don't trip onChange).
-    private var filteredJobs: [Job] { computeFilteredJobs() }
+    private var filteredJobs: [Job] {
+        computeFilteredJobs()
+    }
 
     private func computeFilteredJobs() -> [Job] {
         let base = allJobs.filter { job in
@@ -629,14 +653,14 @@ struct JobsView: View {
             // Search tokens
             for token in searchTokens {
                 switch token {
-                case .status(let s):      if job.status != s { return false }
-                case .minFitScore(let n): if (job.fitScore ?? 0) < n { return false }
-                case .minSalary(let n):
+                case let .status(s): if job.status != s { return false }
+                case let .minFitScore(n): if (job.fitScore ?? 0) < n { return false }
+                case let .minSalary(n):
                     let sal = job.salaryMin ?? job.salaryMax ?? 0
                     if sal < n { return false }
-                case .remoteType(let rt): if job.remoteType != rt { return false }
-                case .minRating(let n):   if (job.rating ?? 0) < n { return false }
-                case .recentDays(let d):
+                case let .remoteType(rt): if job.remoteType != rt { return false }
+                case let .minRating(n): if (job.rating ?? 0) < n { return false }
+                case let .recentDays(d):
                     let cutoff = Calendar.current.date(byAdding: .day, value: -d, to: Date()) ?? Date()
                     if (job.capturedAtDenormalized ?? job.createdAt) < cutoff { return false }
                 }
@@ -696,7 +720,10 @@ struct JobsView: View {
         let label: String = targets.count > 1 ? "\(targets.count) Jobs" : "Job"
 
         Button { openPostingJobs(targets) }
-            label: { Label(targets.count > 1 ? "Open \(targets.count) Postings" : "Open Posting", systemImage: "arrow.up.right.square") }
+            label: { Label(
+                targets.count > 1 ? "Open \(targets.count) Postings" : "Open Posting",
+                systemImage: "arrow.up.right.square"
+            ) }
         Button { copyJobLink(job) }
             label: { Label("Copy Job Link", systemImage: "link") }
         // Add Note targets the right-clicked job (notes are per-job) — selects it and opens its
@@ -705,7 +732,7 @@ struct JobsView: View {
             selectedJobIDs = [job.id]
             router.composeNoteJobID = job.id
         }
-            label: { Label("Add Note", systemImage: "note.text.badge.plus") }
+        label: { Label("Add Note", systemImage: "note.text.badge.plus") }
         Divider()
         Menu("Set Status") {
             ForEach(JobStatus.allCases, id: \.self) { status in
@@ -735,13 +762,17 @@ struct JobsView: View {
         }
         Task {
             var failed = 0
-            for id in ids { do { try await svc.archive(jobID: id) } catch { failed += 1 } }
+            for id in ids {
+                do { try await svc.archive(jobID: id) } catch { failed += 1 }
+            }
             await MainActor.run {
                 if failed > 0 {
                     toast.show("Couldn't archive \(failed) of \(ids.count) job(s)", isError: true)
                 } else {
                     toast.show("Archived \(ids.count) job\(ids.count == 1 ? "" : "s")", actionLabel: "Undo") {
-                        Task { for (id, status) in priors { try? await svc.setStatus(status, for: id) } }
+                        Task { for (id, status) in priors {
+                            try? await svc.setStatus(status, for: id)
+                        } }
                     }
                 }
             }
@@ -758,7 +789,9 @@ struct JobsView: View {
         }
         Task {
             var failed = 0
-            for id in ids { do { try await svc.setStatus(status, for: id) } catch { failed += 1 } }
+            for id in ids {
+                do { try await svc.setStatus(status, for: id) } catch { failed += 1 }
+            }
             await MainActor.run {
                 if failed > 0 {
                     toast.show("Couldn't update status for \(failed) of \(ids.count) job(s)", isError: true)
@@ -766,7 +799,9 @@ struct JobsView: View {
                     let changed = priors.filter { $0.1 != status }
                     if !changed.isEmpty {
                         toast.show("Status set to \(status.displayName)", actionLabel: "Undo") {
-                            Task { for (id, old) in changed { try? await svc.setStatus(old, for: id) } }
+                            Task { for (id, old) in changed {
+                                try? await svc.setStatus(old, for: id)
+                            } }
                         }
                     }
                 }
@@ -779,8 +814,10 @@ struct JobsView: View {
         let svc = appServices.jobService
         let toast = appServices.toastStore
         Task {
-            do { try await svc.resetExtractionBulk(jobIDs: ids) }
-            catch { toast.show("Couldn't re-run AI: \(error.localizedDescription)", isError: true) }
+            do { try await svc.resetExtractionBulk(jobIDs: ids) } catch { toast.show(
+                "Couldn't re-run AI: \(error.localizedDescription)",
+                isError: true
+            ) }
         }
     }
 
@@ -844,7 +881,7 @@ struct JobsView: View {
         searchTokens = []
         searchText = ""
         filterState = JobsFilterState()
-        applyPersistedSort()  // #7: clearing filters shouldn't reset the chosen sort
+        applyPersistedSort() // #7: clearing filters shouldn't reset the chosen sort
         router.activeSavedSearchID = nil
     }
 
@@ -870,7 +907,6 @@ struct JobsView: View {
             appServices.toastStore.show("Export failed: \(error.localizedDescription)", isError: true)
         }
     }
-
 }
 
 // MARK: - Job list row
@@ -948,14 +984,16 @@ private struct JobListRow: View {
         return sym + parts.joined(separator: "–")
     }
 
-    private func formatK(_ value: Int) -> String { value >= 1000 ? "\(value / 1000)k" : "\(value)" }
+    private func formatK(_ value: Int) -> String {
+        value >= 1000 ? "\(value / 1000)k" : "\(value)"
+    }
 
     private func currencySymbol(_ code: String) -> String {
         switch code {
         case "USD": return "$"
         case "GBP": return "£"
         case "EUR": return "€"
-        default:    return "$"
+        default: return "$"
         }
     }
 }
@@ -965,16 +1003,16 @@ private struct JobListRow: View {
 private extension JobsSortKey {
     var displayName: String {
         switch self {
-        case .jobNumber:   "Job #"
-        case .company:     "Company"
-        case .title:       "Title"
-        case .status:      "Status"
-        case .fitScore:    "Fit Score"
-        case .rating:      "Rating"
-        case .salaryMin:   "Salary (min)"
-        case .salaryMax:   "Salary (max)"
-        case .location:    "Location"
-        case .capturedAt:  "Date Captured"
+        case .jobNumber: "Job #"
+        case .company: "Company"
+        case .title: "Title"
+        case .status: "Status"
+        case .fitScore: "Fit Score"
+        case .rating: "Rating"
+        case .salaryMin: "Salary (min)"
+        case .salaryMax: "Salary (max)"
+        case .location: "Location"
+        case .capturedAt: "Date Captured"
         case .extractedAt: "Date Extracted"
         case .lastOpenedAt: "Last Opened"
         }

@@ -52,8 +52,13 @@ final class MockURLProtocol: URLProtocol {
 
 /// URLProtocol subclass that always fails with URLError(.notConnectedToInternet).
 final class FailingURLProtocol: URLProtocol {
-    override static func canInit(with _: URLRequest) -> Bool { true }
-    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override static func canInit(with _: URLRequest) -> Bool {
+        true
+    }
+
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
@@ -293,8 +298,8 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
 
     func testReturnsErrorOnNetworkFailure() async throws {
         let failingSession = FailingURLProtocol.makeSession()
-        let result = await AvailabilityChecker.checkURL(
-            try XCTUnwrap(URL(string: "https://example.com/job/999")),
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: "https://example.com/job/999")),
             title: "Some Job",
             session: failingSession
         )
@@ -528,8 +533,8 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         _ = staleJob
     }
 
-    // AC#3 for TASK-147: active stale jobs must be found even when many earlier-created jobs are archived.
-    // The old limit*10 over-fetch could miss active jobs if archived jobs filled the fetch window.
+    /// AC#3 for TASK-147: active stale jobs must be found even when many earlier-created jobs are archived.
+    /// The old limit*10 over-fetch could miss active jobs if archived jobs filled the fetch window.
     func testCheckStaleJobs_findsActiveJobsBeyondArchivedWindow() async throws {
         let staleDate = Date().addingTimeInterval(-30 * 86400)
 
@@ -563,7 +568,11 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
             session: session
         )
 
-        XCTAssertEqual(result.checked, 1, "Active stale job must be checked even when earlier archived jobs fill the window")
+        XCTAssertEqual(
+            result.checked,
+            1,
+            "Active stale job must be checked even when earlier archived jobs fill the window"
+        )
     }
 
     func testMaybeRunStaleCheckSkipsWhenDisabled() async {
@@ -607,11 +616,13 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
     private actor CompletionRecorder {
         private(set) var date: Date?
         private(set) var callCount = 0
-        func record(_ d: Date) { date = d; callCount += 1 }
+        func record(_ d: Date) {
+            date = d; callCount += 1
+        }
     }
 
-    // TASK-428/389 AC#2/#4: the last-check timestamp is advanced only after a valid pass, delivered
-    // through the explicit `onAutoCheckCompleted` callback (no global notification observer).
+    /// TASK-428/389 AC#2/#4: the last-check timestamp is advanced only after a valid pass, delivered
+    /// through the explicit `onAutoCheckCompleted` callback (no global notification observer).
     func testMaybeRunStaleCheck_invokesCompletionCallbackOnSuccessfulPass() async {
         let context = ModelContext(container)
         let settings = SettingsStore(modelContext: context)
@@ -645,7 +656,8 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         let recorder = CompletionRecorder()
         let result = await AvailabilityChecker.maybeRunStaleCheck(
             store: store, settings: settings, session: session,
-            onAutoCheckCompleted: { await recorder.record($0) })
+            onAutoCheckCompleted: { await recorder.record($0) }
+        )
 
         XCTAssertFalse(result.skipped, "a fetch failure is a failed pass, not a skip")
         XCTAssertEqual(result.reason, "fetch-error")

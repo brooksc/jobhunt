@@ -293,8 +293,11 @@ final class FitScorerTests: XCTestCase {
         partial.removeValue(forKey: "domain_fit")
         let result = FitScorer.computeScore(dimensions: partial)
         XCTAssertEqual(result.overall, 85)
-        XCTAssertLessThan(result.overall, full.overall,
-                          "A partial response must score lower than a full response with the same values")
+        XCTAssertLessThan(
+            result.overall,
+            full.overall,
+            "A partial response must score lower than a full response with the same values"
+        )
     }
 
     func testAllDimensionsMissing_scoreIsZero() {
@@ -354,7 +357,7 @@ final class FitScorerTests: XCTestCase {
             ["name": "preferred_qualifications", "score": 60],
             ["name": "skills", "score": 70],
             ["name": "experience_level", "score": 90],
-            ["name": "domain_fit", "score": 50],
+            ["name": "domain_fit", "score": 50]
         ]
     }
 

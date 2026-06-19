@@ -64,7 +64,7 @@ final class JobServiceMutationTests: XCTestCase {
     func testCreateAction_persistsActionLinkedToJob() async throws {
         let (svc, store) = try makeService()
         let jobID = try await seedJob(store)
-        let due = Date(timeIntervalSinceNow: 86_400)
+        let due = Date(timeIntervalSinceNow: 86400)
 
         try await svc.createAction(jobID: jobID, text: "Follow up with recruiter", dueAt: due)
 
@@ -92,7 +92,7 @@ final class JobServiceMutationTests: XCTestCase {
         let jobID = try await seedJob(store)
         try await svc.createAction(jobID: jobID, text: "Send thank-you note", dueAt: nil)
         let actionID = try await fetchFirst(store, JobAction.self).id
-        let until = Date(timeIntervalSinceNow: 3 * 86_400)
+        let until = Date(timeIntervalSinceNow: 3 * 86400)
 
         try await svc.snoozeAction(actionID: actionID, until: until)
 
@@ -122,7 +122,12 @@ final class JobServiceMutationTests: XCTestCase {
         try await svc.createContact(jobID: jobID, name: "Dana Lee", email: nil, role: nil)
         let contactID = try await fetchFirst(store, Contact.self).id
 
-        try await svc.updateContact(contactID: contactID, name: "Dana Park", email: "dana@x.com", role: "Hiring Manager")
+        try await svc.updateContact(
+            contactID: contactID,
+            name: "Dana Park",
+            email: "dana@x.com",
+            role: "Hiring Manager"
+        )
 
         let contact = try await fetchFirst(store, Contact.self)
         XCTAssertEqual(contact.name, "Dana Park")
@@ -320,7 +325,7 @@ final class JobServiceMutationTests: XCTestCase {
 
         let allSites = try await store.fetch(FetchDescriptor<Site>())
         let site = try XCTUnwrap(allSites.first { $0.id == siteID })
-        let expected = Date(timeIntervalSinceNow: 7 * 86_400)
+        let expected = Date(timeIntervalSinceNow: 7 * 86400)
         let next = try XCTUnwrap(site.nextReviewAt)
         XCTAssertEqual(next.timeIntervalSince1970, expected.timeIntervalSince1970, accuracy: 120)
     }

@@ -5,7 +5,6 @@ import XCTest
 // MARK: - BackgroundStore updateOne / deleteOne guard tests
 
 final class BackgroundStoreOneTests: XCTestCase {
-
     private func makeStore(_ container: ModelContainer) -> BackgroundStore {
         BackgroundStore(modelContainer: container)
     }
@@ -17,7 +16,8 @@ final class BackgroundStoreOneTests: XCTestCase {
         let store = makeStore(container)
         let missingID = "missing-id"
         do {
-            try await store.updateOne(Job.self, predicate: #Predicate { $0.id == missingID }, id: missingID) { $0.company = "X" }
+            try await store
+                .updateOne(Job.self, predicate: #Predicate { $0.id == missingID }, id: missingID) { $0.company = "X" }
             XCTFail("Expected notFound")
         } catch BackgroundStoreError.notFound {
             // expected
@@ -47,9 +47,13 @@ final class BackgroundStoreOneTests: XCTestCase {
         try await store.insertBatch([job1, job2])
 
         do {
-            try await store.updateOne(Job.self, predicate: #Predicate { $0.company == sharedCompany }, id: sharedCompany) { $0.title = "X" }
+            try await store.updateOne(
+                Job.self,
+                predicate: #Predicate { $0.company == sharedCompany },
+                id: sharedCompany
+            ) { $0.title = "X" }
             XCTFail("Expected multipleMatches")
-        } catch BackgroundStoreError.multipleMatches(let count) {
+        } catch let BackgroundStoreError.multipleMatches(count) {
             XCTAssertEqual(count, 2)
         }
     }
@@ -90,9 +94,13 @@ final class BackgroundStoreOneTests: XCTestCase {
         try await store.insertBatch([job1, job2])
 
         do {
-            try await store.deleteOne(Job.self, predicate: #Predicate { $0.company == sharedCompany }, id: sharedCompany)
+            try await store.deleteOne(
+                Job.self,
+                predicate: #Predicate { $0.company == sharedCompany },
+                id: sharedCompany
+            )
             XCTFail("Expected multipleMatches")
-        } catch BackgroundStoreError.multipleMatches(let count) {
+        } catch let BackgroundStoreError.multipleMatches(count) {
             XCTAssertEqual(count, 2)
             // Both rows must still exist — nothing was deleted
             let jobs = try await store.fetch(FetchDescriptor<Job>())
@@ -104,7 +112,6 @@ final class BackgroundStoreOneTests: XCTestCase {
 // MARK: - BackgroundStore not-found regression tests
 
 final class BackgroundStoreNotFoundTests: XCTestCase {
-
     private func makeStore(_ container: ModelContainer) -> BackgroundStore {
         BackgroundStore(modelContainer: container)
     }

@@ -331,7 +331,9 @@ struct DataQualityView: View {
         let svc = appServices.jobService
         Task {
             do {
-                for id in ids { try await svc.markDataQualityReviewed(jobID: id, notes: nil) }
+                for id in ids {
+                    try await svc.markDataQualityReviewed(jobID: id, notes: nil)
+                }
             } catch {
                 await MainActor.run { errorMessage = error.localizedDescription }
             }
@@ -344,7 +346,9 @@ struct DataQualityView: View {
         let svc = appServices.jobService
         Task {
             do {
-                for id in ids { try await svc.clearDataQualityReview(jobID: id) }
+                for id in ids {
+                    try await svc.clearDataQualityReview(jobID: id)
+                }
             } catch {
                 await MainActor.run { errorMessage = error.localizedDescription }
             }

@@ -28,7 +28,8 @@ public enum LLMProviderFactory {
             // rebuilds; nil disables rotation (single configured model).
             let pool = settings.llmOpenRouterFreeRotate ? OpenRouterModelPool.shared : nil
             return OpenRouterProvider(
-                apiKey: apiKey, model: model, timeoutSeconds: timeout, session: session, pool: pool)
+                apiKey: apiKey, model: model, timeoutSeconds: timeout, session: session, pool: pool
+            )
         case "custom":
             let baseURL = settings.llmBaseURL
             return CustomProvider(

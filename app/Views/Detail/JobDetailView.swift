@@ -40,15 +40,21 @@ struct JobDetailView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DetailHeader(job: job, selectedTab: $selectedTab, onNavigatePrev: onNavigatePrev, onNavigateNext: onNavigateNext, onClose: onClose)
+            DetailHeader(
+                job: job,
+                selectedTab: $selectedTab,
+                onNavigatePrev: onNavigatePrev,
+                onNavigateNext: onNavigateNext,
+                onClose: onClose
+            )
             Divider()
             // HIG-5: system segmented Picker replaces hand-rolled tab bar
             Picker("Tab", selection: $selectedTab) {
                 ForEach(visibleTabs, id: \.self) { tab in
                     Text(tab == .timeline && timelineCount > 0
-                         ? "\(tab.rawValue) (\(timelineCount))"
-                         : tab.rawValue)
-                    .tag(tab)
+                        ? "\(tab.rawValue) (\(timelineCount))"
+                        : tab.rawValue)
+                        .tag(tab)
                 }
             }
             .pickerStyle(.segmented)
@@ -81,12 +87,12 @@ struct JobDetailView: View {
     @ViewBuilder
     private var tabBody: some View {
         switch selectedTab {
-        case .overview:    OverviewTabView(job: job, goFit: { selectedTab = .fit })
-        case .fit:         FitTabView(job: job)
-        case .timeline:    TimelineTabView(job: job)
+        case .overview: OverviewTabView(job: job, goFit: { selectedTab = .fit })
+        case .fit: FitTabView(job: job)
+        case .timeline: TimelineTabView(job: job)
         case .description: DescriptionTabView(job: job)
-        case .raw:         RawTabView(job: job, onClose: onClose)
-        case .compare:     CompareTabView(job: job)
+        case .raw: RawTabView(job: job, onClose: onClose)
+        case .compare: CompareTabView(job: job)
         }
     }
 }
@@ -192,9 +198,11 @@ private struct DetailHeader: View {
                 if let emp = job.employmentType { metaChip(emp) }
                 // TASK-464: location/remote criteria pass/fail (only when computed).
                 if let meets = job.meetsCriteria {
-                    Label(meets ? "Meets criteria" : "Outside criteria",
-                          systemImage: meets ? "checkmark.circle" : "xmark.circle")
-                        .foregroundStyle(meets ? Color.green : Color.orange)
+                    Label(
+                        meets ? "Meets criteria" : "Outside criteria",
+                        systemImage: meets ? "checkmark.circle" : "xmark.circle"
+                    )
+                    .foregroundStyle(meets ? Color.green : Color.orange)
                 }
             }
             .font(.caption)
@@ -221,8 +229,10 @@ private struct DetailHeader: View {
                     guard !isEnqueuing else { return }
                     isEnqueuing = true
                     Task {
-                        do { try await jobService?.resetExtraction(jobID: job.id) }
-                        catch { appServices.toastStore.show("Couldn't re-run AI: \(error.localizedDescription)", isError: true) }
+                        do { try await jobService?.resetExtraction(jobID: job.id) } catch { appServices.toastStore.show(
+                            "Couldn't re-run AI: \(error.localizedDescription)",
+                            isError: true
+                        ) }
                         try? await Task.sleep(nanoseconds: 800_000_000)
                         isEnqueuing = false
                     }
@@ -234,10 +244,12 @@ private struct DetailHeader: View {
                         }
                         .foregroundStyle(Color.accentColor)
                     } else {
-                        Label(job.extractionStatus == .pending ? "Run AI" : "Re-run",
-                              systemImage: "arrow.clockwise")
-                            .font(.caption)
-                            .foregroundStyle(job.extractionStatus == .pending ? Color.accentColor : .secondary)
+                        Label(
+                            job.extractionStatus == .pending ? "Run AI" : "Re-run",
+                            systemImage: "arrow.clockwise"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(job.extractionStatus == .pending ? Color.accentColor : .secondary)
                     }
                 }
                 .buttonStyle(.plain)
@@ -263,7 +275,8 @@ private struct DetailHeader: View {
 
             // Surface WHY extraction failed, with a one-click re-run — otherwise the only place the
             // reason appears is the LLM Queue's error column, and the job just shows a red chip.
-            if job.extractionStatus == .failed, let err = job.extractionError, !err.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if job.extractionStatus == .failed, let err = job.extractionError,
+               !err.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 HStack(alignment: .top, spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
@@ -276,8 +289,12 @@ private struct DetailHeader: View {
                         guard !isEnqueuing else { return }
                         isEnqueuing = true
                         Task {
-                            do { try await jobService?.resetExtraction(jobID: job.id) }
-                            catch { appServices.toastStore.show("Couldn't re-run AI: \(error.localizedDescription)", isError: true) }
+                            do { try await jobService?.resetExtraction(jobID: job.id) } catch {
+                                appServices.toastStore.show(
+                                    "Couldn't re-run AI: \(error.localizedDescription)",
+                                    isError: true
+                                )
+                            }
                             try? await Task.sleep(nanoseconds: 800_000_000)
                             isEnqueuing = false
                         }
@@ -361,8 +378,10 @@ private struct StatusPickerButton: View {
                                         Task { try? await jobService?.setStatus(old, for: job.id) }
                                     }
                                 }
-                            }
-                            catch { appServices.toastStore.show("Couldn't change status: \(error.localizedDescription)", isError: true) }
+                            } catch { appServices.toastStore.show(
+                                "Couldn't change status: \(error.localizedDescription)",
+                                isError: true
+                            ) }
                         }
                         showPicker = false
                     } label: {
@@ -421,7 +440,7 @@ private struct DetailFooter: View {
                     Button {
                         completeWithUndo(actionID: action.id)
                     } label: { Image(systemName: "checkmark").font(.caption2) }
-                    .buttonStyle(.bordered).controlSize(.mini)
+                        .buttonStyle(.bordered).controlSize(.mini)
                 }
             }
             if job.status == .pursuing || job.status == .new,
@@ -443,14 +462,19 @@ private struct DetailFooter: View {
                                     let followText = who.isEmpty ? "Follow up on application" : "Follow up on \(who)"
                                     try await jobService?.createAction(jobID: job.id, text: followText, dueAt: due)
                                 } catch {
-                                    appServices.toastStore.show("Couldn't mark as applied: \(error.localizedDescription)", isError: true)
+                                    appServices.toastStore.show(
+                                        "Couldn't mark as applied: \(error.localizedDescription)",
+                                        isError: true
+                                    )
                                 }
                             }
                         }
                         Button("Just Open URL") { NSWorkspace.shared.open(url) }
                         Button("Cancel", role: .cancel) {}
                     } message: {
-                        Text("Opening the application. Would you like to mark this job as applied and schedule a follow-up?")
+                        Text(
+                            "Opening the application. Would you like to mark this job as applied and schedule a follow-up?"
+                        )
                     }
             }
         }
@@ -489,10 +513,21 @@ struct OverviewTabView: View {
     @State private var activeCurrent: String = ""
     @State private var activeCommit: ((String) -> Void)?
 
-    private var projection: JobDetailProjection { JobDetailProjection(job: job) }
-    private var summary: String? { projection.summary }
-    private var requirements: [String] { projection.requirements }
-    private var niceToHaves: [String] { projection.niceToHaves }
+    private var projection: JobDetailProjection {
+        JobDetailProjection(job: job)
+    }
+
+    private var summary: String? {
+        projection.summary
+    }
+
+    private var requirements: [String] {
+        projection.requirements
+    }
+
+    private var niceToHaves: [String] {
+        projection.niceToHaves
+    }
 
     var body: some View {
         ScrollView {
@@ -583,8 +618,12 @@ struct OverviewTabView: View {
             VStack(alignment: .trailing, spacing: 6) {
                 InteractiveStarRating(rating: job.rating ?? 0) { newVal in
                     Task {
-                        do { try await jobService?.setRating(newVal == 0 ? nil : newVal, for: job.id) }
-                        catch { appServices.toastStore.show("Couldn't update rating: \(error.localizedDescription)", isError: true) }
+                        do { try await jobService?.setRating(newVal == 0 ? nil : newVal, for: job.id) } catch {
+                            appServices.toastStore.show(
+                                "Couldn't update rating: \(error.localizedDescription)",
+                                isError: true
+                            )
+                        }
                     }
                 }
                 if job.status == .passed {
@@ -734,29 +773,43 @@ struct OverviewTabView: View {
             VStack(alignment: .leading, spacing: 0) {
                 editableRow("Company", job.company ?? "", placeholder: "Add company") { v in
                     Task {
-                        do { try await jobService?.updateJobFields(jobID: job.id, company: .some(v.isEmpty ? nil : v)) }
-                        catch { appServices.toastStore.show("Couldn't save company: \(error.localizedDescription)", isError: true) }
+                        do { try await jobService?.updateJobFields(jobID: job.id, company: .some(v.isEmpty ? nil : v))
+                        } catch { appServices.toastStore.show(
+                            "Couldn't save company: \(error.localizedDescription)",
+                            isError: true
+                        ) }
                     }
                 }
                 Divider()
                 editableRow("Title", job.title ?? "", placeholder: "Add title") { v in
                     Task {
-                        do { try await jobService?.updateJobFields(jobID: job.id, title: .some(v.isEmpty ? nil : v)) }
-                        catch { appServices.toastStore.show("Couldn't save title: \(error.localizedDescription)", isError: true) }
+                        do { try await jobService?.updateJobFields(jobID: job.id, title: .some(v.isEmpty ? nil : v))
+                        } catch { appServices.toastStore.show(
+                            "Couldn't save title: \(error.localizedDescription)",
+                            isError: true
+                        ) }
                     }
                 }
                 Divider()
                 editableRow("Location", job.location ?? "", placeholder: "Add location") { v in
                     Task {
-                        do { try await jobService?.updateJobFields(jobID: job.id, location: .some(v.isEmpty ? nil : v)) }
-                        catch { appServices.toastStore.show("Couldn't save location: \(error.localizedDescription)", isError: true) }
+                        do { try await jobService?.updateJobFields(jobID: job.id, location: .some(v.isEmpty ? nil : v))
+                        } catch { appServices.toastStore.show(
+                            "Couldn't save location: \(error.localizedDescription)",
+                            isError: true
+                        ) }
                     }
                 }
                 Divider()
                 editableRow("Application URL", job.applicationURL ?? "", placeholder: "Add application link") { v in
                     Task {
-                        do { try await jobService?.updateJobFields(jobID: job.id, applicationURL: .some(v.isEmpty ? nil : v)) }
-                        catch { appServices.toastStore.show("Couldn't save URL: \(error.localizedDescription)", isError: true) }
+                        do { try await jobService?.updateJobFields(
+                            jobID: job.id,
+                            applicationURL: .some(v.isEmpty ? nil : v)
+                        ) } catch { appServices.toastStore.show(
+                            "Couldn't save URL: \(error.localizedDescription)",
+                            isError: true
+                        ) }
                     }
                 }
                 Divider()
@@ -807,9 +860,12 @@ struct OverviewTabView: View {
 
     /// A detail row that becomes an inline text field when its pencil is tapped. Committing an
     /// edit records a manual override so re-extraction won't clobber the value.
-    @ViewBuilder
-    private func editableRow(_ label: String, _ value: String, placeholder: String,
-                             commit: @escaping (String) -> Void) -> some View {
+    private func editableRow(
+        _ label: String,
+        _ value: String,
+        placeholder: String,
+        commit: @escaping (String) -> Void
+    ) -> some View {
         HStack(spacing: 10) {
             Text(label)
                 .font(.caption).foregroundStyle(.secondary)
@@ -940,14 +996,16 @@ struct FitTabView: View {
     @Environment(\.queueActor) private var queueActor
     @Query private var allResumes: [Resume]
 
-    @State private var openResumeName: String? = nil
+    @State private var openResumeName: String?
     @State private var isBusy = false
 
-    private var activeResumes: [Resume] { allResumes.filter(\.active) }
+    private var activeResumes: [Resume] {
+        allResumes.filter(\.active)
+    }
 
-    // Sort by score desc, highest is "best". Skip resume-less scores: an orphaned fit score
-    // (resume deleted after scoring, or a legacy score whose resume didn't survive migration)
-    // has no resume name, so it would otherwise render as the model name and hijack "Best match".
+    /// Sort by score desc, highest is "best". Skip resume-less scores: an orphaned fit score
+    /// (resume deleted after scoring, or a legacy score whose resume didn't survive migration)
+    /// has no resume name, so it would otherwise render as the model name and hijack "Best match".
     private var sortedScores: [JobFitScore] {
         job.fitScores
             .filter { $0.resume != nil }
@@ -955,8 +1013,13 @@ struct FitTabView: View {
     }
 
     /// Highest *scored* resume (nil until a real score exists) — drives the hero.
-    private var bestScore: JobFitScore? { sortedScores.first { $0.fitScore != nil } }
-    private var scoredCount: Int { sortedScores.lazy.filter { $0.fitScore != nil }.count }
+    private var bestScore: JobFitScore? {
+        sortedScores.first { $0.fitScore != nil }
+    }
+
+    private var scoredCount: Int {
+        sortedScores.lazy.count(where: { $0.fitScore != nil })
+    }
 
     var body: some View {
         ScrollView {
@@ -1003,24 +1066,33 @@ struct FitTabView: View {
                                         guard let resumeID = fs.resume?.id else { return }
                                         isBusy = true
                                         Task { defer { isBusy = false }
-                                            do { try await queueActor?.enqueueFit(jobIDs: [job.id], resumeID: resumeID) }
-                                            catch { appServices.toastStore.show("Couldn't start fit scoring: \(error.localizedDescription)", isError: true) }
+                                            do { try await queueActor?.enqueueFit(jobIDs: [job.id], resumeID: resumeID)
+                                            } catch { appServices.toastStore.show(
+                                                "Couldn't start fit scoring: \(error.localizedDescription)",
+                                                isError: true
+                                            ) }
                                         }
                                     }
                                 )
                             }
                         }
-
                     } else {
                         // No scores yet — show score button
                         HStack {
                             Spacer()
                             Button(isBusy ? "Queuing…"
-                                   : (activeResumes.count > 1 ? "Score against \(activeResumes.count) resumes" : "Score against resume")) {
+                                :
+                                (activeResumes
+                                    .count > 1 ? "Score against \(activeResumes.count) resumes" :
+                                    "Score against resume")) {
                                 isBusy = true
                                 Task { defer { isBusy = false }
-                                    do { try await queueActor?.enqueueFitForActiveResumes(jobIDs: [job.id]) }
-                                    catch { appServices.toastStore.show("Couldn't start fit scoring: \(error.localizedDescription)", isError: true) }
+                                    do { try await queueActor?.enqueueFitForActiveResumes(jobIDs: [job.id]) } catch {
+                                        appServices.toastStore.show(
+                                            "Couldn't start fit scoring: \(error.localizedDescription)",
+                                            isError: true
+                                        )
+                                    }
                                 }
                             }
                             .disabled(isBusy || activeResumes.isEmpty)
@@ -1050,9 +1122,11 @@ struct FitTabView: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                     if let model = bestScore?.model {
-                        Text("scored against \(sortedScores.count) resume\(sortedScores.count == 1 ? "" : "s") · \(model)")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                        Text(
+                            "scored against \(sortedScores.count) resume\(sortedScores.count == 1 ? "" : "s") · \(model)"
+                        )
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                     }
                 }
             } else {
@@ -1081,14 +1155,30 @@ private struct ResumeScoreCard: View {
     let onToggle: () -> Void
     let onRescore: () -> Void
 
-    private var resumeName: String { fitScore.resume?.name ?? fitScore.model ?? "Resume" }
-    private var fitProjection: FitScoreProjection { FitScoreProjection(fitScore: fitScore) }
-    private var requirementsMet: [String] { fitProjection.requirementsMet }
-    private var requirementsNotMet: [String] { fitProjection.requirementsNotMet }
-    private var requirementAssessments: [RequirementAssessment] { fitProjection.requirementAssessments }
-    private var dimensions: [FitDimension] { fitProjection.dimensions }
+    private var resumeName: String {
+        fitScore.resume?.name ?? fitScore.model ?? "Resume"
+    }
 
-    @ViewBuilder
+    private var fitProjection: FitScoreProjection {
+        FitScoreProjection(fitScore: fitScore)
+    }
+
+    private var requirementsMet: [String] {
+        fitProjection.requirementsMet
+    }
+
+    private var requirementsNotMet: [String] {
+        fitProjection.requirementsNotMet
+    }
+
+    private var requirementAssessments: [RequirementAssessment] {
+        fitProjection.requirementAssessments
+    }
+
+    private var dimensions: [FitDimension] {
+        fitProjection.dimensions
+    }
+
     private func assessmentColumn(_ title: String, _ items: [RequirementAssessment]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
@@ -1119,15 +1209,15 @@ private struct ResumeScoreCard: View {
         switch status {
         case "met": "checkmark"
         case "partial": "exclamationmark"
-        default: "xmark"  // missing
+        default: "xmark" // missing
         }
     }
 
     private static func assessmentColor(_ status: String) -> Color {
         switch status {
         case "met": Color(red: 0.34, green: 0.76, blue: 0.45)
-        case "partial": Color(red: 0.90, green: 0.62, blue: 0.0)   // amber for partial evidence
-        default: Color(red: 0.88, green: 0.45, blue: 0.44)         // red for missing
+        case "partial": Color(red: 0.90, green: 0.62, blue: 0.0) // amber for partial evidence
+        default: Color(red: 0.88, green: 0.45, blue: 0.44) // red for missing
         }
     }
 
@@ -1247,7 +1337,8 @@ private struct ResumeScoreCard: View {
                                                 .fill(Color.secondary.opacity(0.12))
                                             RoundedRectangle(cornerRadius: 2)
                                                 .fill(fitColor(dim.score))
-                                                .frame(width: geo.size.width * CGFloat(max(0, min(100, dim.score))) / 100)
+                                                .frame(width: geo.size
+                                                    .width * CGFloat(max(0, min(100, dim.score))) / 100)
                                         }
                                     }
                                     .frame(height: 4)
@@ -1327,7 +1418,7 @@ struct TimelineTabView: View {
     @State private var showSetAction = false
     @State private var saveNoteError: String?
 
-    // Pending actions
+    /// Pending actions
     private var pendingActions: [JobAction] {
         let now = Date()
         return job.actions
@@ -1414,7 +1505,7 @@ struct TimelineTabView: View {
                 }
                 TextField("Add a note — ⌘↵ to save", text: $noteText, axis: .vertical)
                     .font(.caption)
-                    .lineLimit(2...6)
+                    .lineLimit(2 ... 6)
                     .textFieldStyle(.plain)
                     .onKeyPress(keys: [.return]) { press in
                         guard press.modifiers.contains(.command) else { return .ignored }
@@ -1497,16 +1588,20 @@ private struct PendingActionRow: View {
         let text = draft
         isEditing = false
         Task {
-            do { try await jobService?.updateAction(actionID: id, text: text) }
-            catch { appServices.toastStore.show("Couldn't save follow-up: \(error.localizedDescription)", isError: true) }
+            do { try await jobService?.updateAction(actionID: id, text: text) } catch { appServices.toastStore.show(
+                "Couldn't save follow-up: \(error.localizedDescription)",
+                isError: true
+            ) }
         }
     }
 
     private func deleteAction() {
         let id = action.id
         Task {
-            do { try await jobService?.deleteAction(actionID: id) }
-            catch { appServices.toastStore.show("Couldn't delete follow-up: \(error.localizedDescription)", isError: true) }
+            do { try await jobService?.deleteAction(actionID: id) } catch { appServices.toastStore.show(
+                "Couldn't delete follow-up: \(error.localizedDescription)",
+                isError: true
+            ) }
         }
     }
 
@@ -1608,8 +1703,10 @@ private struct SetNextActionSheet: View {
     init(job: Job, followupDefaultDays: Int) {
         self.job = job
         self.followupDefaultDays = followupDefaultDays
-        _dueDate = State(initialValue: Calendar.current.date(byAdding: .day, value: followupDefaultDays, to: Date()) ?? Date())
+        _dueDate = State(initialValue: Calendar.current
+            .date(byAdding: .day, value: followupDefaultDays, to: Date()) ?? Date())
     }
+
     @State private var saveError: String?
     @State private var isSaving = false
 
@@ -1670,7 +1767,9 @@ private struct TimelineEventRow: View {
     @State private var draft = ""
 
     /// Only user notes are editable; system events (capture/extraction/…) are not.
-    private var isEditableNote: Bool { event.eventType == "note" }
+    private var isEditableNote: Bool {
+        event.eventType == "note"
+    }
 
     private var icon: String {
         switch event.eventType {
@@ -1747,9 +1846,11 @@ private struct TimelineEventRow: View {
                         .background(Color.secondary.opacity(0.07))
                         .clipShape(RoundedRectangle(cornerRadius: 7))
                         .textSelection(.enabled)
-                        .modifier(NoteEditMenu(enabled: isEditableNote,
-                                               onEdit: { draft = note; isEditing = true },
-                                               onDelete: { deleteNote() }))
+                        .modifier(NoteEditMenu(
+                            enabled: isEditableNote,
+                            onEdit: { draft = note; isEditing = true },
+                            onDelete: { deleteNote() }
+                        ))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1763,8 +1864,10 @@ private struct TimelineEventRow: View {
         let text = draft
         isEditing = false
         Task {
-            do { try await jobService?.updateNote(eventID: id, text: text) }
-            catch { appServices.toastStore.show("Couldn't save note: \(error.localizedDescription)", isError: true) }
+            do { try await jobService?.updateNote(eventID: id, text: text) } catch { appServices.toastStore.show(
+                "Couldn't save note: \(error.localizedDescription)",
+                isError: true
+            ) }
         }
     }
 
@@ -1786,8 +1889,8 @@ private struct TimelineEventRow: View {
                         }
                     }
                 }
+            } catch { appServices.toastStore.show("Couldn't delete note: \(error.localizedDescription)", isError: true)
             }
-            catch { appServices.toastStore.show("Couldn't delete note: \(error.localizedDescription)", isError: true) }
         }
     }
 }
@@ -1939,7 +2042,7 @@ struct RawTabView: View {
     @State private var showDeleteConfirm = false
     @State private var showArchiveConfirm = false
     @State private var showMarkUnavailableConfirm = false
-    @State private var expandedHash: String? = nil
+    @State private var expandedHash: String?
 
     var body: some View {
         ScrollView {
@@ -1959,8 +2062,12 @@ struct RawTabView: View {
 
                     Button {
                         Task {
-                            do { try await jobService?.resetExtraction(jobID: job.id) }
-                            catch { appServices.toastStore.show("Couldn't re-run AI: \(error.localizedDescription)", isError: true) }
+                            do { try await jobService?.resetExtraction(jobID: job.id) } catch {
+                                appServices.toastStore.show(
+                                    "Couldn't re-run AI: \(error.localizedDescription)",
+                                    isError: true
+                                )
+                            }
                         }
                     } label: {
                         Label("Re-run AI", systemImage: "arrow.clockwise")
@@ -1994,8 +2101,10 @@ struct RawTabView: View {
                             let id = job.id
                             onClose()
                             Task {
-                                do { try await jobService?.delete(jobID: id) }
-                                catch { appServices.toastStore.show("Couldn't delete job: \(error.localizedDescription)", isError: true) }
+                                do { try await jobService?.delete(jobID: id) } catch { appServices.toastStore.show(
+                                    "Couldn't delete job: \(error.localizedDescription)",
+                                    isError: true
+                                ) }
                             }
                         }
                         .font(.caption)
@@ -2092,19 +2201,27 @@ struct RawTabView: View {
         .confirmationDialog("Archive this job?", isPresented: $showArchiveConfirm, titleVisibility: .visible) {
             Button("Archive", role: .destructive) {
                 Task {
-                    do { try await jobService?.archive(jobID: job.id) }
-                    catch { appServices.toastStore.show("Couldn't archive job: \(error.localizedDescription)", isError: true) }
+                    do { try await jobService?.archive(jobID: job.id) } catch { appServices.toastStore.show(
+                        "Couldn't archive job: \(error.localizedDescription)",
+                        isError: true
+                    ) }
                 }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("The job will be moved to Archived status.")
         }
-        .confirmationDialog("Mark job as unavailable?", isPresented: $showMarkUnavailableConfirm, titleVisibility: .visible) {
+        .confirmationDialog(
+            "Mark job as unavailable?",
+            isPresented: $showMarkUnavailableConfirm,
+            titleVisibility: .visible
+        ) {
             Button("Mark Unavailable", role: .destructive) {
                 Task {
-                    do { try await jobService?.setStatus(.closed, for: job.id) }
-                    catch { appServices.toastStore.show("Couldn't mark unavailable: \(error.localizedDescription)", isError: true) }
+                    do { try await jobService?.setStatus(.closed, for: job.id) } catch { appServices.toastStore.show(
+                        "Couldn't mark unavailable: \(error.localizedDescription)",
+                        isError: true
+                    ) }
                 }
             }
             Button("Cancel", role: .cancel) {}
@@ -2196,8 +2313,11 @@ struct CompareTabView: View {
                     HStack(spacing: 8) {
                         Button("Unmark as Duplicate") {
                             Task {
-                                do { try await jobService?.updateJobFields(jobID: job.id, duplicateOfJobID: .some(nil)) }
-                                catch { appServices.toastStore.show("Couldn't unmark duplicate: \(error.localizedDescription)", isError: true) }
+                                do { try await jobService?.updateJobFields(jobID: job.id, duplicateOfJobID: .some(nil))
+                                } catch { appServices.toastStore.show(
+                                    "Couldn't unmark duplicate: \(error.localizedDescription)",
+                                    isError: true
+                                ) }
                             }
                         }
                         .buttonStyle(.bordered).controlSize(.small).font(.caption)
@@ -2219,14 +2339,17 @@ struct CompareTabView: View {
             ("Location", job.location ?? "—", original.location ?? "—"),
             ("Remote", job.remoteType?.displayName ?? "—", original.remoteType?.displayName ?? "—"),
             ("Status", job.status.rawValue, original.status.rawValue),
-            ("Rating", job.rating.map { "\($0)" } ?? "—", original.rating.map { "\($0)" } ?? "—"),
+            ("Rating", job.rating.map { "\($0)" } ?? "—", original.rating.map { "\($0)" } ?? "—")
         ]
 
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 0) {
                 Text("Field").font(.caption2).foregroundStyle(.secondary).frame(width: 80, alignment: .leading)
                 Text("This").font(.caption2).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                Text("Original").font(.caption2).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                Text("Original").font(.caption2).foregroundStyle(.secondary).frame(
+                    maxWidth: .infinity,
+                    alignment: .leading
+                )
             }
             .padding(.horizontal, 10).padding(.vertical, 6).background(Color.secondary.opacity(0.06))
             Divider()
@@ -2271,7 +2394,7 @@ private struct InteractiveStarRating: View {
 private struct FlowLayout: Layout {
     var spacing: CGFloat = 6
 
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
         let width = proposal.width ?? .infinity
         var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0
         for subview in subviews {
@@ -2283,11 +2406,12 @@ private struct FlowLayout: Layout {
         return CGSize(width: width, height: y + rowHeight)
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+    func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
         var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
         for subview in subviews {
             let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > bounds.maxX && x > bounds.minX { y += rowHeight + spacing; x = bounds.minX; rowHeight = 0 }
+            if x + size.width > bounds.maxX && x > bounds
+                .minX { y += rowHeight + spacing; x = bounds.minX; rowHeight = 0 }
             subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
             x += size.width + spacing
             rowHeight = max(rowHeight, size.height)
@@ -2323,6 +2447,5 @@ private func completeFollowUpWithUndo(actionID: String, jobService: JobService?,
         }
     }
 }
-
 
 // swiftlint:enable file_length

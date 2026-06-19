@@ -18,19 +18,25 @@ final class AdaptiveConcurrencyTests: XCTestCase {
         a.onRateLimit()
         XCTAssertEqual(a.effective, 1)
         // 9 successes: not yet promoted.
-        for _ in 0 ..< 9 { a.onSuccess() }
+        for _ in 0 ..< 9 {
+            a.onSuccess()
+        }
         XCTAssertEqual(a.effective, 1)
         // 10th success: step up one.
         a.onSuccess()
         XCTAssertEqual(a.effective, 2)
         // Another 10 → up to ceiling.
-        for _ in 0 ..< 10 { a.onSuccess() }
+        for _ in 0 ..< 10 {
+            a.onSuccess()
+        }
         XCTAssertEqual(a.effective, 3)
     }
 
     func testNeverExceedsCeiling() {
         var a = AdaptiveConcurrency(ceiling: 2, promoteAfter: 1)
-        for _ in 0 ..< 50 { a.onSuccess() }
+        for _ in 0 ..< 50 {
+            a.onSuccess()
+        }
         XCTAssertEqual(a.effective, 2)
     }
 
@@ -49,14 +55,18 @@ final class AdaptiveConcurrencyTests: XCTestCase {
     func testNoRateLimit_staysAtCeiling() {
         // AC#5: with no 429, effective never changes from the ceiling.
         var a = AdaptiveConcurrency(ceiling: 3)
-        for _ in 0 ..< 100 { a.onSuccess() }
+        for _ in 0 ..< 100 {
+            a.onSuccess()
+        }
         XCTAssertEqual(a.effective, 3)
     }
 
     func testRateLimitAfterRecoveryDropsAgain() {
         var a = AdaptiveConcurrency(ceiling: 4, promoteAfter: 2)
         a.onRateLimit()
-        for _ in 0 ..< 2 { a.onSuccess() } // → 2
+        for _ in 0 ..< 2 {
+            a.onSuccess()
+        } // → 2
         XCTAssertEqual(a.effective, 2)
         a.onRateLimit() // back to 1
         XCTAssertEqual(a.effective, 1)

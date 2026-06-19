@@ -36,16 +36,22 @@ final class JobURLPolicyTests: XCTestCase {
 
     func testApplicationURL_prefersExplicitApplicationURL() {
         XCTAssertEqual(
-            JobURLPolicy.applicationURL(applicationURL: "https://apply.example/a",
-                                        canonicalURL: "https://canon.example/x",
-                                        captureURL: "https://raw.example/y"),
+            JobURLPolicy.applicationURL(
+                applicationURL: "https://apply.example/a",
+                canonicalURL: "https://canon.example/x",
+                captureURL: "https://raw.example/y"
+            ),
             "https://apply.example/a"
         )
     }
 
     func testApplicationURL_fallsBackThroughCanonicalThenCapture() {
         XCTAssertEqual(
-            JobURLPolicy.applicationURL(applicationURL: nil, canonicalURL: "https://canon.example/x", captureURL: "https://raw.example/y"),
+            JobURLPolicy.applicationURL(
+                applicationURL: nil,
+                canonicalURL: "https://canon.example/x",
+                captureURL: "https://raw.example/y"
+            ),
             "https://canon.example/x"
         )
         XCTAssertEqual(
@@ -70,9 +76,11 @@ final class JobURLPolicyTests: XCTestCase {
     func testDisplayURL_prefersSourceListingOverApplication() {
         // Even with an application URL present, "View Posting" opens the listing.
         XCTAssertEqual(
-            JobURLPolicy.displayURL(applicationURL: "https://apply.example/a",
-                                    canonicalURL: "https://canon.example/x",
-                                    captureURL: "https://raw.example/y"),
+            JobURLPolicy.displayURL(
+                applicationURL: "https://apply.example/a",
+                canonicalURL: "https://canon.example/x",
+                captureURL: "https://raw.example/y"
+            ),
             "https://canon.example/x"
         )
     }
@@ -102,8 +110,11 @@ final class JobURLPolicyTests: XCTestCase {
 
         XCTAssertEqual(JobURLPolicy.sourceURL(job: job), "https://canon.example/x")
         XCTAssertEqual(JobURLPolicy.applicationURL(job: job), "https://apply.example/a")
-        XCTAssertEqual(JobURLPolicy.availabilityCheckURL(job: job), "https://apply.example/a",
-                       "availability check uses application-URL precedence")
+        XCTAssertEqual(
+            JobURLPolicy.availabilityCheckURL(job: job),
+            "https://apply.example/a",
+            "availability check uses application-URL precedence"
+        )
         XCTAssertEqual(JobURLPolicy.displayURL(job: job), "https://canon.example/x")
     }
 }

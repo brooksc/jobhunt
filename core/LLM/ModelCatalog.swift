@@ -26,7 +26,7 @@ public enum ModelCatalog {
             return try await fetchOpenAIStyle(
                 url: "https://api.openai.com/v1/models",
                 headers: bearer(apiKey), session: session, timeout: timeoutSeconds,
-                filterNonText: true   // OpenAI's list includes tts / dall-e / whisper / embeddings
+                filterNonText: true // OpenAI's list includes tts / dall-e / whisper / embeddings
             )
         case "openrouter":
             // OpenRouter's model list is public — the key is optional.
@@ -114,13 +114,13 @@ public enum ModelCatalog {
     }
 
     static let nonTextModelFragments: [String] = [
-        "tts", "speech", "audio", "whisper", "voice",          // audio / speech
-        "image", "imagen", "dall-e", "dalle", "nano-banana",   // image generation
-        "veo", "video",                                        // video
-        "lyria", "music", "-clip",                             // music / audio
-        "embed",                                               // embeddings
-        "rerank", "moderation", "guard",                       // utility, not chat
-        "robotics", "robot", "computer-use", "deep-research", "antigravity", // agentic / specialized
+        "tts", "speech", "audio", "whisper", "voice", // audio / speech
+        "image", "imagen", "dall-e", "dalle", "nano-banana", // image generation
+        "veo", "video", // video
+        "lyria", "music", "-clip", // music / audio
+        "embed", // embeddings
+        "rerank", "moderation", "guard", // utility, not chat
+        "robotics", "robot", "computer-use", "deep-research", "antigravity" // agentic / specialized
     ]
 
     private static func get(
@@ -142,9 +142,13 @@ public enum ModelCatalog {
             // secret — plus the server's reason. View in Console.app, filter process "Jobhunt".
             let authHeader = headers["x-goog-api-key"] ?? headers["Authorization"] ?? headers["x-api-key"] ?? ""
             let rawKey = authHeader.hasPrefix("Bearer ") ? String(authHeader.dropFirst(7)) : authHeader
-            NSLog("[jobhunt-llm] model fetch FAILED status=%d url=%@ key=%@ body=%@",
-                  http.statusCode, url.absoluteString, Self.keyFingerprint(rawKey),
-                  String(data: data.prefix(500), encoding: .utf8) ?? "<non-utf8>")
+            NSLog(
+                "[jobhunt-llm] model fetch FAILED status=%d url=%@ key=%@ body=%@",
+                http.statusCode,
+                url.absoluteString,
+                Self.keyFingerprint(rawKey),
+                String(data: data.prefix(500), encoding: .utf8) ?? "<non-utf8>"
+            )
             throw ModelCatalogError.httpError(statusCode: http.statusCode, serverMessage: Self.serverErrorMessage(data))
         }
         return data
@@ -157,7 +161,7 @@ public enum ModelCatalog {
         let head = String(key.prefix(4))
         let tail = String(key.suffix(4))
         let hasWhitespace = key.rangeOfCharacter(from: .whitespacesAndNewlines) != nil
-        let isASCII = key.allSatisfy { $0.isASCII }
+        let isASCII = key.allSatisfy(\.isASCII)
         return "len=\(key.count) \(head)…\(tail) ws=\(hasWhitespace) ascii=\(isASCII)"
     }
 

@@ -23,7 +23,14 @@ private func makeQueue(_ container: ModelContainer) -> QueueActor {
         store: makeStore(container),
         isPaused: { true },
         onSetPaused: { _ in },
-        readExtractionSettings: { ExtractionSettings(llmModel: "", preferredLocations: "", locationFilterEnabled: false, locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true) },
+        readExtractionSettings: { ExtractionSettings(
+            llmModel: "",
+            preferredLocations: "",
+            locationFilterEnabled: false,
+            locationAllowRemote: true,
+            locationAllowHybrid: true,
+            locationAllowOnsite: true
+        ) },
         providerFactory: { NoOpProvider() }
     )
 }
@@ -98,7 +105,8 @@ final class JobServiceTests: XCTestCase {
             url: "https://jobs.example.com/eng",
             pageTitle: "Eng",
             visibleText: "A long job description for a senior engineer role on the platform team.",
-            canonicalURL: "https://jobs.example.com/engineering"))
+            canonicalURL: "https://jobs.example.com/engineering"
+        ))
         let jobNumber = result.jobNumber
 
         // exact original url
@@ -114,8 +122,13 @@ final class JobServiceTests: XCTestCase {
         XCTAssertNil(none, "unrelated URL must not match")
     }
 
-    private func assertFindsJob(_ svc: JobService, _ url: String, _ expected: Int,
-                                file: StaticString = #filePath, line: UInt = #line) async {
+    private func assertFindsJob(
+        _ svc: JobService,
+        _ url: String,
+        _ expected: Int,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
         do {
             let found = try await svc.findJobNumber(byURL: url)
             XCTAssertEqual(found, expected, "lookup for \(url)", file: file, line: line)
@@ -127,7 +140,8 @@ final class JobServiceTests: XCTestCase {
     func testURLNormalizer_canonicalForm() {
         XCTAssertEqual(
             URLNormalizer.normalized("https://Example.com/Jobs/Eng/?utm_source=x&b=2&a=1#frag"),
-            URLNormalizer.normalized("https://example.com/Jobs/Eng?a=1&b=2"))
+            URLNormalizer.normalized("https://example.com/Jobs/Eng?a=1&b=2")
+        )
         XCTAssertNil(URLNormalizer.normalized("not a url"))
         XCTAssertNil(URLNormalizer.normalized("ftp://example.com/x"))
     }
@@ -144,14 +158,16 @@ final class JobServiceTests: XCTestCase {
             + "using Swift and Go across many teams worldwide with strong end-to-end ownership."
         _ = try await svc.ingestCapture(CapturePayload(
             url: "https://a.com/job", pageTitle: "Eng", visibleText: desc,
-            canonicalURL: "https://a.com/canonical-a"))
+            canonicalURL: "https://a.com/canonical-a"
+        ))
         _ = try await svc.ingestCapture(CapturePayload(
             url: "https://b.com/job", pageTitle: "Eng", visibleText: desc,
-            canonicalURL: "https://b.com/canonical-b"))
+            canonicalURL: "https://b.com/canonical-b"
+        ))
 
         let jobs = try await store.fetch(FetchDescriptor<Job>())
         XCTAssertEqual(jobs.count, 2)
-        XCTAssertEqual(jobs.filter { $0.duplicateOfJobID != nil }.count, 1, "second is a semantic duplicate")
+        XCTAssertEqual(jobs.count(where: { $0.duplicateOfJobID != nil }), 1, "second is a semantic duplicate")
 
         let extractReqs = try await store.fetch(FetchDescriptor<LLMRequest>())
             .filter { $0.requestType == .extract }
@@ -286,9 +302,13 @@ final class JobServiceTests: XCTestCase {
         let queue = makeQueue(container)
         let svc = JobService(store: store, queue: queue)
 
-        let r = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/r1", pageTitle: "Eng", visibleText: "Job text"))
+        let r = try await svc.ingestCapture(CapturePayload(
+            url: "https://j.example.com/r1",
+            pageTitle: "Eng",
+            visibleText: "Job text"
+        ))
         let jobs = try await store.fetch(FetchDescriptor<Job>())
-        let jobID = jobs.first(where: { $0.jobNumber == r.jobNumber })!.id
+        let jobID = try XCTUnwrap(jobs.first(where: { $0.jobNumber == r.jobNumber })?.id)
 
         // Simulate a prior extraction result with stale fields
         try await store.update(Job.self, predicate: #Predicate { $0.id == jobID }) { job in
@@ -301,7 +321,11 @@ final class JobServiceTests: XCTestCase {
         try await svc.resetExtraction(jobID: jobID)
 
         let updated = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
-        XCTAssertEqual(updated.first?.extractionStatus, .pending, "resetExtraction must set extractionStatus to .pending")
+        XCTAssertEqual(
+            updated.first?.extractionStatus,
+            .pending,
+            "resetExtraction must set extractionStatus to .pending"
+        )
         XCTAssertNil(updated.first?.extractionError, "resetExtraction must clear extractionError")
         XCTAssertNil(updated.first?.extractedAt, "resetExtraction must clear extractedAt")
 
@@ -319,9 +343,13 @@ final class JobServiceTests: XCTestCase {
         let queue = makeQueue(container)
         let svc = JobService(store: store, queue: queue)
 
-        let r = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/p1", pageTitle: "Eng", visibleText: "Job text"))
+        let r = try await svc.ingestCapture(CapturePayload(
+            url: "https://j.example.com/p1",
+            pageTitle: "Eng",
+            visibleText: "Job text"
+        ))
         let jobs = try await store.fetch(FetchDescriptor<Job>())
-        let jobID = jobs.first(where: { $0.jobNumber == r.jobNumber })!.id
+        let jobID = try XCTUnwrap(jobs.first(where: { $0.jobNumber == r.jobNumber })?.id)
 
         // Simulate a prior extraction that populated all extracted scalars
         try await store.update(Job.self, predicate: #Predicate { $0.id == jobID }) { job in
@@ -371,8 +399,12 @@ final class JobServiceTests: XCTestCase {
         let queue = makeQueue(container)
         let svc = JobService(store: store, queue: queue)
 
-        for i in 1...3 {
-            _ = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/b\(i)", pageTitle: "J\(i)", visibleText: "desc"))
+        for i in 1 ... 3 {
+            _ = try await svc.ingestCapture(CapturePayload(
+                url: "https://j.example.com/b\(i)",
+                pageTitle: "J\(i)",
+                visibleText: "desc"
+            ))
         }
         try await queue.deleteAll()
 
@@ -393,13 +425,15 @@ final class JobServiceTests: XCTestCase {
 
         let first = try await svc.ingestCapture(CapturePayload(
             url: "https://re.example.com/job", pageTitle: "Title A",
-            visibleText: "Original description text for this role."))
+            visibleText: "Original description text for this role."
+        ))
         XCTAssertFalse(first.isDuplicate)
 
         // Re-capture the same URL with different content.
         let second = try await svc.ingestCapture(CapturePayload(
             url: "https://re.example.com/job", pageTitle: "Title B",
-            visibleText: "Updated and substantially changed description text."))
+            visibleText: "Updated and substantially changed description text."
+        ))
 
         XCTAssertFalse(second.isDuplicate)
         XCTAssertEqual(second.jobNumber, first.jobNumber, "re-capture must update the same job, not create a new one")
@@ -417,7 +451,11 @@ final class JobServiceTests: XCTestCase {
         let container = try ModelContainerFactory.inMemory()
         let store = makeStore(container)
         let svc = JobService(store: store, queue: makeQueue(container))
-        let result = try await svc.ingestCapture(CapturePayload(url: "https://o.example.com/j", pageTitle: "T", visibleText: "desc"))
+        let result = try await svc.ingestCapture(CapturePayload(
+            url: "https://o.example.com/j",
+            pageTitle: "T",
+            visibleText: "desc"
+        ))
         let jobs = try await store.fetch(FetchDescriptor<Job>())
         let jobID = try XCTUnwrap(jobs.first(where: { $0.jobNumber == result.jobNumber })).id
 
@@ -426,7 +464,11 @@ final class JobServiceTests: XCTestCase {
         let updatedJobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
         let updated = try XCTUnwrap(updatedJobs.first)
         XCTAssertEqual(updated.company, "Acme Corp")
-        XCTAssertEqual(updated.manualFieldOverridesJSON?.contains("company"), true, "editing company must record a manual override")
+        XCTAssertEqual(
+            updated.manualFieldOverridesJSON?.contains("company"),
+            true,
+            "editing company must record a manual override"
+        )
 
         try await svc.clearFieldOverrides(jobID: jobID)
         let clearedJobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
@@ -441,9 +483,13 @@ final class JobServiceTests: XCTestCase {
         let store = makeStore(container)
         let svc = JobService(store: store, queue: makeQueue(container))
 
-        let result = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/arc", pageTitle: "Eng", visibleText: "Job description here"))
+        let result = try await svc.ingestCapture(CapturePayload(
+            url: "https://j.example.com/arc",
+            pageTitle: "Eng",
+            visibleText: "Job description here"
+        ))
         let jobs = try await store.fetch(FetchDescriptor<Job>())
-        let jobID = jobs.first(where: { $0.jobNumber == result.jobNumber })!.id
+        let jobID = try XCTUnwrap(jobs.first(where: { $0.jobNumber == result.jobNumber })?.id)
 
         try await svc.archive(jobID: jobID)
 
@@ -538,8 +584,18 @@ final class JobServiceTests: XCTestCase {
         let svc = JobService(store: store, queue: queue)
 
         // Ingest two jobs
-        let payload1 = CapturePayload(url: "https://example.com/j/1", pageTitle: "Job One", selectedText: nil, visibleText: "Text one")
-        let payload2 = CapturePayload(url: "https://example.com/j/2", pageTitle: "Job Two", selectedText: nil, visibleText: "Text two")
+        let payload1 = CapturePayload(
+            url: "https://example.com/j/1",
+            pageTitle: "Job One",
+            selectedText: nil,
+            visibleText: "Text one"
+        )
+        let payload2 = CapturePayload(
+            url: "https://example.com/j/2",
+            pageTitle: "Job Two",
+            selectedText: nil,
+            visibleText: "Text two"
+        )
         let r1 = try await svc.ingestCapture(payload1)
         let r2 = try await svc.ingestCapture(payload2)
 
@@ -573,7 +629,7 @@ final class JobServiceTests: XCTestCase {
         let queue = makeQueue(container)
         let svc = JobService(store: store, queue: queue)
 
-        for i in 1...5 {
+        for i in 1 ... 5 {
             let p = CapturePayload(url: "https://example.com/j/\(i)", pageTitle: "Job \(i)", visibleText: "text")
             _ = try await svc.ingestCapture(p)
         }
@@ -594,7 +650,7 @@ final class JobServiceTests: XCTestCase {
         _ = try await svc.ingestCapture(p2)
 
         let all = try await store.fetch(FetchDescriptor<Job>())
-        let job1 = all.first(where: { $0.jobNumber == r1.jobNumber })!
+        let job1 = try XCTUnwrap(all.first(where: { $0.jobNumber == r1.jobNumber }))
         try await svc.setStatus(.pursuing, for: job1.id)
 
         let pursuing = try await svc.listJobs(status: "pursuing", limit: 50)
@@ -615,15 +671,23 @@ final class JobServiceTests: XCTestCase {
         // only reaches them after paging past the first 200-row page.
         var pursuingIDs: Set<String> = []
         for i in 0 ..< 5 {
-            let job = Job(jobNumber: i + 1, title: "Pursuing \(i)", status: .pursuing,
-                          createdAt: base.addingTimeInterval(Double(i)))
+            let job = Job(
+                jobNumber: i + 1,
+                title: "Pursuing \(i)",
+                status: .pursuing,
+                createdAt: base.addingTimeInterval(Double(i))
+            )
             try await store.insert(job)
             pursuingIDs.insert(job.id)
         }
         // 250 newer .new rows fill the first page and then some.
         for i in 0 ..< 250 {
-            let job = Job(jobNumber: 100 + i, title: "New \(i)", status: .new,
-                          createdAt: base.addingTimeInterval(Double(1000 + i)))
+            let job = Job(
+                jobNumber: 100 + i,
+                title: "New \(i)",
+                status: .new,
+                createdAt: base.addingTimeInterval(Double(1000 + i))
+            )
             try await store.insert(job)
         }
 
@@ -675,7 +739,7 @@ final class JobServiceTests: XCTestCase {
         let queue = makeQueue(container)
         let svc = JobService(store: store, queue: queue)
 
-        let payloads = (1...5).map { i in
+        let payloads = (1 ... 5).map { i in
             CapturePayload(
                 url: "https://example.com/j/\(i)",
                 pageTitle: "Job \(i)",
@@ -685,9 +749,13 @@ final class JobServiceTests: XCTestCase {
 
         // Launch all 5 ingestions concurrently
         let results = try await withThrowingTaskGroup(of: IngestResult.self) { group in
-            for p in payloads { group.addTask { try await svc.ingestCapture(p) } }
+            for p in payloads {
+                group.addTask { try await svc.ingestCapture(p) }
+            }
             var out: [IngestResult] = []
-            for try await r in group { out.append(r) }
+            for try await r in group {
+                out.append(r)
+            }
             return out
         }
 
@@ -720,9 +788,9 @@ final class JobServiceTests: XCTestCase {
         XCTAssertEqual(requests.first?.job?.id, jobs.first?.id)
     }
 
-    // TASK-142 regression: ingest must remain correct with a large existing dataset.
-    // Seeds 50 jobs then verifies that a new capture gets job number 51 and a rawHash duplicate
-    // is detected without loading all rows.
+    /// TASK-142 regression: ingest must remain correct with a large existing dataset.
+    /// Seeds 50 jobs then verifies that a new capture gets job number 51 and a rawHash duplicate
+    /// is detected without loading all rows.
     func testAtomicIngest_jobNumberingIsCorrectWithLargeDataset() async throws {
         let container = try ModelContainerFactory.inMemory()
         let store = makeStore(container)
@@ -730,21 +798,33 @@ final class JobServiceTests: XCTestCase {
         let svc = JobService(store: store, queue: queue)
 
         // Seed 50 distinct jobs
-        for i in 1...50 {
-            let p = CapturePayload(url: "https://example.com/seed/\(i)", pageTitle: "Seed \(i)", visibleText: "text \(i)")
+        for i in 1 ... 50 {
+            let p = CapturePayload(
+                url: "https://example.com/seed/\(i)",
+                pageTitle: "Seed \(i)",
+                visibleText: "text \(i)"
+            )
             _ = try await svc.ingestCapture(p)
         }
 
         // A new unique job should get job number 51
         let newResult = try await svc.ingestCapture(
-            CapturePayload(url: "https://example.com/new-unique", pageTitle: "New", visibleText: "brand new text unique xyz")
+            CapturePayload(
+                url: "https://example.com/new-unique",
+                pageTitle: "New",
+                visibleText: "brand new text unique xyz"
+            )
         )
         XCTAssertEqual(newResult.jobNumber, 51, "Job number must be max+1 after 50 existing jobs")
         XCTAssertFalse(newResult.isDuplicate)
 
         // Re-ingesting the same URL+text must detect the rawHash duplicate (not create job 52)
         let dupResult = try await svc.ingestCapture(
-            CapturePayload(url: "https://example.com/new-unique", pageTitle: "New", visibleText: "brand new text unique xyz")
+            CapturePayload(
+                url: "https://example.com/new-unique",
+                pageTitle: "New",
+                visibleText: "brand new text unique xyz"
+            )
         )
         XCTAssertTrue(dupResult.isDuplicate)
         XCTAssertEqual(dupResult.jobNumber, 51, "Duplicate must return original job number")
@@ -760,7 +840,7 @@ final class JobServiceTests: XCTestCase {
         let queue = makeQueue(container)
         let svc = JobService(store: store, queue: queue)
 
-        for i in 1...3 {
+        for i in 1 ... 3 {
             let p = CapturePayload(url: "https://example.com/j/\(i)", pageTitle: "Job \(i)", visibleText: "t")
             _ = try await svc.ingestCapture(p)
         }
@@ -779,8 +859,12 @@ final class JobServiceTests: XCTestCase {
         let svc = JobService(store: store, queue: queue)
 
         var ids: [String] = []
-        for i in 1...4 {
-            let r = try await svc.ingestCapture(CapturePayload(url: "https://x.com/\(i)", pageTitle: "J\(i)", visibleText: "t"))
+        for i in 1 ... 4 {
+            let r = try await svc.ingestCapture(CapturePayload(
+                url: "https://x.com/\(i)",
+                pageTitle: "J\(i)",
+                visibleText: "t"
+            ))
             ids.append(r.captureID)
         }
         let jobs = try await store.fetch(FetchDescriptor<Job>())
@@ -802,8 +886,12 @@ final class JobServiceTests: XCTestCase {
         let queue = makeQueue(container)
         let svc = JobService(store: store, queue: queue)
 
-        for i in 1...3 {
-            _ = try await svc.ingestCapture(CapturePayload(url: "https://x.com/\(i)", pageTitle: "J\(i)", visibleText: "t"))
+        for i in 1 ... 3 {
+            _ = try await svc.ingestCapture(CapturePayload(
+                url: "https://x.com/\(i)",
+                pageTitle: "J\(i)",
+                visibleText: "t"
+            ))
         }
         let jobs = try await store.fetch(FetchDescriptor<Job>())
         XCTAssertEqual(jobs.count, 3)
@@ -825,8 +913,12 @@ final class JobServiceTests: XCTestCase {
         let svc = JobService(store: store, queue: queue)
 
         // Ingest 3 jobs (each creates its own LLMRequest automatically)
-        for i in 1...3 {
-            _ = try await svc.ingestCapture(CapturePayload(url: "https://x.com/\(i)", pageTitle: "J\(i)", visibleText: "t"))
+        for i in 1 ... 3 {
+            _ = try await svc.ingestCapture(CapturePayload(
+                url: "https://x.com/\(i)",
+                pageTitle: "J\(i)",
+                visibleText: "t"
+            ))
         }
         let jobs = try await store.fetch(FetchDescriptor<Job>())
         let jobIDs = jobs.map(\.id)
@@ -858,15 +950,18 @@ final class JobServiceTests: XCTestCase {
             url: "https://example.com/jobs/structured",
             pageTitle: "Staff Engineer",
             visibleText: "short page text",
-            structuredDataJSON: jsonLd)
+            structuredDataJSON: jsonLd
+        )
         _ = try await svc.ingestCapture(payload)
 
         let captures = try await store.fetch(FetchDescriptor<Capture>())
         let capture = try XCTUnwrap(captures.first)
         XCTAssertEqual(capture.structuredDataJSON, jsonLd, "structured data must be persisted on the capture")
         let cleaned = try XCTUnwrap(capture.cleanedDescription)
-        XCTAssertTrue(cleaned.contains("Build distributed systems at scale."),
-                      "cleaner must promote the JSON-LD description into cleanedDescription")
+        XCTAssertTrue(
+            cleaned.contains("Build distributed systems at scale."),
+            "cleaner must promote the JSON-LD description into cleanedDescription"
+        )
     }
 
     // MARK: - TASK-146: byte counts persisted at ingest
@@ -878,7 +973,7 @@ final class JobServiceTests: XCTestCase {
         let svc = JobService(store: store, queue: queue)
 
         let selected = String(repeating: "a", count: 200)
-        let visible  = String(repeating: "b", count: 500)
+        let visible = String(repeating: "b", count: 500)
         let payload = CapturePayload(
             url: "https://example.com/byte-test",
             pageTitle: "Byte Test",
@@ -902,7 +997,8 @@ final class JobServiceTests: XCTestCase {
         let svc = JobService(store: store, queue: makeQueue(container))
         _ = try await svc.ingestCapture(CapturePayload(
             url: "https://example.com/sel", pageTitle: "T",
-            selectedText: String(repeating: "a", count: 300)))
+            selectedText: String(repeating: "a", count: 300)
+        ))
         let jobs = try await store.fetch(FetchDescriptor<Job>())
         let job = try XCTUnwrap(jobs.first)
         XCTAssertEqual(job.rawTextBytes, 300)
@@ -914,7 +1010,8 @@ final class JobServiceTests: XCTestCase {
         let svc = JobService(store: store, queue: makeQueue(container))
         _ = try await svc.ingestCapture(CapturePayload(
             url: "https://example.com/vis", pageTitle: "T",
-            visibleText: String(repeating: "b", count: 400)))
+            visibleText: String(repeating: "b", count: 400)
+        ))
         let jobs = try await store.fetch(FetchDescriptor<Job>())
         let job = try XCTUnwrap(jobs.first)
         XCTAssertEqual(job.rawTextBytes, 400)
@@ -928,12 +1025,15 @@ final class JobServiceTests: XCTestCase {
         _ = try await svc.ingestCapture(CapturePayload(
             url: "https://example.com/both", pageTitle: "T",
             selectedText: String(repeating: "a", count: 600),
-            visibleText: String(repeating: "b", count: 600)))
+            visibleText: String(repeating: "b", count: 600)
+        ))
         let jobs = try await store.fetch(FetchDescriptor<Job>())
         let job = try XCTUnwrap(jobs.first)
         XCTAssertEqual(job.rawTextBytes, 1200, "combined input must not be undercounted")
-        XCTAssertFalse(QualityChecker.issues(for: job).contains(.shortRawText),
-                       "1200 combined bytes must not be flagged short")
+        XCTAssertFalse(
+            QualityChecker.issues(for: job).contains(.shortRawText),
+            "1200 combined bytes must not be flagged short"
+        )
     }
 
     func testIngestCapture_rawBytesUsedByQualityChecker_withoutFaultingCapture() async throws {
@@ -982,8 +1082,10 @@ final class JobServiceTests: XCTestCase {
 
         let after = try await store.fetch(FetchDescriptor<LLMRequest>())
         XCTAssertEqual(after.count, 2, "3 old terminal records should be pruned; 1 recent + 1 queued remain")
-        XCTAssertTrue(after.allSatisfy { $0.status == .queued || $0.finishedAt! > oldDate },
-                      "remaining records must be queued or recently finished")
+        XCTAssertTrue(
+            after.allSatisfy { $0.status == .queued || $0.finishedAt! > oldDate },
+            "remaining records must be queued or recently finished"
+        )
     }
 
     // MARK: - addJobByURL
@@ -1055,7 +1157,8 @@ final class JobServiceTests: XCTestCase {
         let svc = JobService(store: store, queue: makeQueue(container))
 
         let payload = CapturePayload(
-            url: "javascript:alert(1)", pageTitle: "Engineer", selectedText: nil, visibleText: "text")
+            url: "javascript:alert(1)", pageTitle: "Engineer", selectedText: nil, visibleText: "text"
+        )
         do {
             _ = try await svc.ingestCapture(payload)
             XCTFail("Expected invalidURL error")
@@ -1074,7 +1177,8 @@ final class JobServiceTests: XCTestCase {
 
         let payload = CapturePayload(
             url: "https://example.com/job", pageTitle: "Engineer",
-            visibleText: "text", canonicalURL: "not-a-valid-url")
+            visibleText: "text", canonicalURL: "not-a-valid-url"
+        )
         _ = try await svc.ingestCapture(payload)
 
         let ctx = ModelContext(container)
@@ -1195,7 +1299,8 @@ final class JobServiceTests: XCTestCase {
         // Moving a flagged duplicate to a normal status must repair the invariant.
         try await svc.setStatus(.pursuing, for: "dup-status-1")
 
-        let updated = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "dup-status-1" })).first
+        let updated = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "dup-status-1" }))
+            .first
         XCTAssertEqual(updated?.status, .pursuing)
         XCTAssertNil(updated?.duplicateOfJobID, "leaving .duplicate must clear the link")
         XCTAssertNil(updated?.duplicateConfidence)
@@ -1213,7 +1318,8 @@ final class JobServiceTests: XCTestCase {
         // Re-setting .duplicate must not clear an existing link.
         try await svc.setStatus(.duplicate, for: "dup-status-2")
 
-        let updated = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "dup-status-2" })).first
+        let updated = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "dup-status-2" }))
+            .first
         XCTAssertEqual(updated?.duplicateOfJobID, "orig-2")
     }
 
@@ -1227,7 +1333,8 @@ final class JobServiceTests: XCTestCase {
 
         try await svc.updateJobFields(jobID: "dup-field-1", duplicateOfJobID: "orig-3")
 
-        let updated = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "dup-field-1" })).first
+        let updated = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "dup-field-1" }))
+            .first
         XCTAssertEqual(updated?.duplicateOfJobID, "orig-3")
         XCTAssertEqual(updated?.status, .duplicate, "setting the link via field update must set .duplicate")
     }
@@ -1243,7 +1350,8 @@ final class JobServiceTests: XCTestCase {
 
         try await svc.updateJobFields(jobID: "dup-field-2", duplicateOfJobID: .some(nil))
 
-        let updated = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "dup-field-2" })).first
+        let updated = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "dup-field-2" }))
+            .first
         XCTAssertNil(updated?.duplicateOfJobID)
         XCTAssertEqual(updated?.status, .new, "clearing the link from a .duplicate job resets status to .new")
     }
@@ -1256,7 +1364,11 @@ final class JobServiceTests: XCTestCase {
         let queue = makeQueue(container)
         let svc = JobService(store: store, queue: queue)
 
-        let result = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/1", pageTitle: "Eng", visibleText: "Swift engineer role"))
+        let result = try await svc.ingestCapture(CapturePayload(
+            url: "https://j.example.com/1",
+            pageTitle: "Eng",
+            visibleText: "Swift engineer role"
+        ))
         try await queue.deleteAll()
 
         let resume = Resume(name: "My Resume", text: "Swift iOS developer", charCount: 20, active: true, sortOrder: 0)
@@ -1267,7 +1379,7 @@ final class JobServiceTests: XCTestCase {
         // enqueueFit with a captureID that doesn't match a job should create 0 requests
         // — re-do with the actual jobID
         let jobs = try await store.fetch(FetchDescriptor<Job>())
-        let jobID = jobs.first!.id
+        let jobID = try XCTUnwrap(jobs.first?.id)
         try await queue.enqueueFit(jobIDs: [jobID], resumeID: resume.id)
 
         let requests = try await store.fetch(FetchDescriptor<LLMRequest>())
@@ -1286,10 +1398,14 @@ final class JobServiceTests: XCTestCase {
         let queue = makeQueue(container)
         let svc = JobService(store: store, queue: queue)
 
-        _ = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/2", pageTitle: "PM", visibleText: "Product manager role"))
+        _ = try await svc.ingestCapture(CapturePayload(
+            url: "https://j.example.com/2",
+            pageTitle: "PM",
+            visibleText: "Product manager role"
+        ))
         try await queue.deleteAll()
         let jobs = try await store.fetch(FetchDescriptor<Job>())
-        let jobID = jobs.first!.id
+        let jobID = try XCTUnwrap(jobs.first?.id)
 
         do {
             try await queue.enqueueFit(jobIDs: [jobID], resumeID: "nonexistent-resume")
@@ -1309,9 +1425,13 @@ final class JobServiceTests: XCTestCase {
         let store = makeStore(container)
         let svc = JobService(store: store, queue: makeQueue(container))
 
-        let result = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/fail-active", pageTitle: "Dev", visibleText: "Engineer role"))
+        let result = try await svc.ingestCapture(CapturePayload(
+            url: "https://j.example.com/fail-active",
+            pageTitle: "Dev",
+            visibleText: "Engineer role"
+        ))
         let jobs = try await store.fetch(FetchDescriptor<Job>())
-        let job = jobs.first!
+        let job = try XCTUnwrap(jobs.first)
 
         let resume = Resume(name: "Active Resume", text: "Swift dev", charCount: 10, active: true, sortOrder: 0)
         try await store.insert(resume)
@@ -1328,23 +1448,44 @@ final class JobServiceTests: XCTestCase {
         let store = makeStore(container)
         let svc = JobService(store: store, queue: makeQueue(container))
 
-        let result = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/fail-inactive", pageTitle: "Dev", visibleText: "Engineer role"))
+        let result = try await svc.ingestCapture(CapturePayload(
+            url: "https://j.example.com/fail-inactive",
+            pageTitle: "Dev",
+            visibleText: "Engineer role"
+        ))
         let jobs = try await store.fetch(FetchDescriptor<Job>())
-        let job = jobs.first!
+        let job = try XCTUnwrap(jobs.first)
 
         let activeResume = Resume(name: "Active Resume", text: "Swift dev", charCount: 10, active: true, sortOrder: 0)
-        let inactiveResume = Resume(name: "Inactive Resume", text: "Old resume", charCount: 10, active: false, sortOrder: 1)
+        let inactiveResume = Resume(
+            name: "Inactive Resume",
+            text: "Old resume",
+            charCount: 10,
+            active: false,
+            sortOrder: 1
+        )
         try await store.insert(activeResume)
         try await store.insert(inactiveResume)
 
         // Simulate active resume already succeeded
-        try await store.saveFitScore(jobID: job.id, resumeID: activeResume.id, overall: 85, fitJSON: nil, model: nil, scoredAt: Date())
+        try await store.saveFitScore(
+            jobID: job.id,
+            resumeID: activeResume.id,
+            overall: 85,
+            fitJSON: nil,
+            model: nil,
+            scoredAt: Date()
+        )
 
         // Now fail the inactive resume's request
         try await store.markFitScoreFailed(jobID: job.id, resumeID: inactiveResume.id, errorMessage: "timeout")
 
         let updatedJobs = try await store.fetch(FetchDescriptor<Job>())
-        XCTAssertEqual(updatedJobs.first?.fitStatus, .succeeded, "Job mirror must not change when an inactive resume fails")
+        XCTAssertEqual(
+            updatedJobs.first?.fitStatus,
+            .succeeded,
+            "Job mirror must not change when an inactive resume fails"
+        )
         _ = result
     }
 
@@ -1356,16 +1497,28 @@ final class JobServiceTests: XCTestCase {
         let queue = makeQueue(container)
         let svc = JobService(store: store, queue: makeQueue(container))
 
-        let result1 = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/batch1", pageTitle: "Job 1", visibleText: "role 1"))
-        let result2 = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/batch2", pageTitle: "Job 2", visibleText: "role 2"))
-        let result3 = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/batch3", pageTitle: "Job 3", visibleText: "role 3"))
+        let result1 = try await svc.ingestCapture(CapturePayload(
+            url: "https://j.example.com/batch1",
+            pageTitle: "Job 1",
+            visibleText: "role 1"
+        ))
+        let result2 = try await svc.ingestCapture(CapturePayload(
+            url: "https://j.example.com/batch2",
+            pageTitle: "Job 2",
+            visibleText: "role 2"
+        ))
+        let result3 = try await svc.ingestCapture(CapturePayload(
+            url: "https://j.example.com/batch3",
+            pageTitle: "Job 3",
+            visibleText: "role 3"
+        ))
         try await queue.deleteAll()
 
         let resume = Resume(name: "Batch Resume", text: "Swift dev", charCount: 10, active: true, sortOrder: 0)
         try await store.insert(resume)
 
         let jobs = try await store.fetch(FetchDescriptor<Job>())
-        let jobIDs = jobs.map { $0.id }
+        let jobIDs = jobs.map(\.id)
 
         try await queue.enqueueFit(jobIDs: jobIDs, resumeID: resume.id)
 
@@ -1399,7 +1552,7 @@ final class JobServiceTests: XCTestCase {
         XCTAssertEqual(jobsBefore.count, 1)
         XCTAssertEqual(capturesBefore.count, 1)
 
-        let jobID = jobsBefore.first!.id
+        let jobID = try XCTUnwrap(jobsBefore.first?.id)
         try await svc.delete(jobID: jobID)
 
         let jobsAfter = try ctx.fetch(FetchDescriptor<Job>())
@@ -1419,7 +1572,7 @@ final class JobServiceTests: XCTestCase {
             (.jobNotFound("any-id"), "Job not found"),
             (.actionNotFound("x"), "Action item not found"),
             (.contactNotFound("x"), "Contact not found"),
-            (.coverLetterNotFound("x"), "Cover letter not found"),
+            (.coverLetterNotFound("x"), "Cover letter not found")
         ]
         for (error, expected) in cases {
             XCTAssertEqual(error.localizedDescription, expected, "Wrong description for \(error)")
@@ -1430,7 +1583,9 @@ final class JobServiceTests: XCTestCase {
 // MARK: - Fit scoring state persistence tests
 
 final class FitScoringStateTests: XCTestCase {
-    private func makeStore(_ container: ModelContainer) -> BackgroundStore { BackgroundStore(modelContainer: container) }
+    private func makeStore(_ container: ModelContainer) -> BackgroundStore {
+        BackgroundStore(modelContainer: container)
+    }
 
     // MARK: - TASK-275: saveFitScore only updates Job fields for active resume
 
@@ -1443,7 +1598,13 @@ final class FitScoringStateTests: XCTestCase {
 
         let job = Job(id: "job-fit-1", jobNumber: 1)
         let activeResume = Resume(name: "Active", text: "Swift developer", charCount: 15, active: true, sortOrder: 0)
-        let inactiveResume = Resume(name: "Inactive", text: "Python developer", charCount: 16, active: false, sortOrder: 1)
+        let inactiveResume = Resume(
+            name: "Inactive",
+            text: "Python developer",
+            charCount: 16,
+            active: false,
+            sortOrder: 1
+        )
         try await store.insert(job)
         try await store.insert(activeResume)
         try await store.insert(inactiveResume)
@@ -1481,20 +1642,49 @@ final class FitScoringStateTests: XCTestCase {
         try await store.insert(r1)
         try await store.insert(r2)
 
-        try await store.saveFitScore(jobID: "job-mirror", resumeID: r1.id, overall: 97, fitJSON: nil, model: "m", scoredAt: Date())
-        try await store.saveFitScore(jobID: "job-mirror", resumeID: r2.id, overall: 80, fitJSON: nil, model: "m", scoredAt: Date())
+        try await store.saveFitScore(
+            jobID: "job-mirror",
+            resumeID: r1.id,
+            overall: 97,
+            fitJSON: nil,
+            model: "m",
+            scoredAt: Date()
+        )
+        try await store.saveFitScore(
+            jobID: "job-mirror",
+            resumeID: r2.id,
+            overall: 80,
+            fitJSON: nil,
+            model: "m",
+            scoredAt: Date()
+        )
         var jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-mirror" }))
         XCTAssertEqual(try XCTUnwrap(jobs.first).fitScore, 97, "mirror starts at the best (97)")
 
         // Begin re-scoring the high resume: its old 97 must drop out of the mirror immediately.
         try await store.markFitScoreRunning(jobID: "job-mirror", resumeID: r1.id)
         jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-mirror" }))
-        XCTAssertEqual(try XCTUnwrap(jobs.first).fitScore, 80, "while re-scoring, the mirror reflects the best *settled* score (80), not the stale 97")
+        XCTAssertEqual(
+            try XCTUnwrap(jobs.first).fitScore,
+            80,
+            "while re-scoring, the mirror reflects the best *settled* score (80), not the stale 97"
+        )
 
         // New score lands lower than the old one — the mirror must follow it, never stay at 97.
-        try await store.saveFitScore(jobID: "job-mirror", resumeID: r1.id, overall: 92, fitJSON: nil, model: "m", scoredAt: Date())
+        try await store.saveFitScore(
+            jobID: "job-mirror",
+            resumeID: r1.id,
+            overall: 92,
+            fitJSON: nil,
+            model: "m",
+            scoredAt: Date()
+        )
         jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-mirror" }))
-        XCTAssertEqual(try XCTUnwrap(jobs.first).fitScore, 92, "mirror equals the new best across resumes (92), not the stale 97")
+        XCTAssertEqual(
+            try XCTUnwrap(jobs.first).fitScore,
+            92,
+            "mirror equals the new best across resumes (92), not the stale 97"
+        )
     }
 
     // TASK-519: a re-queued (pending) fit must drop its stale score from the job mirror, exactly like
@@ -1506,7 +1696,14 @@ final class FitScoringStateTests: XCTestCase {
         let resume = Resume(name: "R", text: "x", charCount: 1, active: true, sortOrder: 0)
         try await store.insert(job)
         try await store.insert(resume)
-        try await store.saveFitScore(jobID: "job-pending", resumeID: resume.id, overall: 90, fitJSON: nil, model: "m", scoredAt: Date())
+        try await store.saveFitScore(
+            jobID: "job-pending",
+            resumeID: resume.id,
+            overall: 90,
+            fitJSON: nil,
+            model: "m",
+            scoredAt: Date()
+        )
         var jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-pending" }))
         XCTAssertEqual(try XCTUnwrap(jobs.first).fitScore, 90, "mirror starts at the scored value")
 
@@ -1525,7 +1722,14 @@ final class FitScoringStateTests: XCTestCase {
         let resume = Resume(name: "R", text: "x", charCount: 1, active: true, sortOrder: 0)
         try await store.insert(job)
         try await store.insert(resume)
-        try await store.saveFitScore(jobID: "job-pending-2", resumeID: resume.id, overall: 75, fitJSON: nil, model: "m", scoredAt: Date())
+        try await store.saveFitScore(
+            jobID: "job-pending-2",
+            resumeID: resume.id,
+            overall: 75,
+            fitJSON: nil,
+            model: "m",
+            scoredAt: Date()
+        )
 
         try await store.markFitScorePending(jobID: "job-pending-2", resumeID: resume.id)
         let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-pending-2" }))
@@ -1555,7 +1759,7 @@ final class FitScoringStateTests: XCTestCase {
         XCTAssertNil(after.fitScore)
     }
 
-    // A fit still backed by a queued/running request (e.g. after a reset) must be left alone.
+    /// A fit still backed by a queued/running request (e.g. after a reset) must be left alone.
     func testReconcileOrphanedFitScores_leavesBackedPendingAlone() async throws {
         let container = try ModelContainerFactory.inMemory()
         let store = makeStore(container)
@@ -1586,7 +1790,14 @@ final class FitScoringStateTests: XCTestCase {
         {"name":"experience_level","score":90},{"name":"domain_fit","score":60}],\
         "requirements_not_met":[]}
         """
-        try await store.saveFitScore(jobID: "rescore-job", resumeID: resume.id, overall: 50, fitJSON: json, model: "m", scoredAt: Date())
+        try await store.saveFitScore(
+            jobID: "rescore-job",
+            resumeID: resume.id,
+            overall: 50,
+            fitJSON: json,
+            model: "m",
+            scoredAt: Date()
+        )
 
         let n = try await store.recomputeAllFitScores()
         XCTAssertEqual(n, 1)
@@ -1630,12 +1841,23 @@ final class FitScoringStateTests: XCTestCase {
             store: store,
             isPaused: { false },
             onSetPaused: { _ in },
-            readExtractionSettings: { ExtractionSettings(llmModel: "", preferredLocations: "", locationFilterEnabled: false, locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true) },
+            readExtractionSettings: { ExtractionSettings(
+                llmModel: "",
+                preferredLocations: "",
+                locationFilterEnabled: false,
+                locationAllowRemote: true,
+                locationAllowHybrid: true,
+                locationAllowOnsite: true
+            ) },
             providerFactory: { NoOpProvider() }
         )
         let svc = JobService(store: store, queue: queue)
 
-        _ = try await svc.ingestCapture(CapturePayload(url: "https://j.example.com/fit1", pageTitle: "Eng", visibleText: "Swift engineer role"))
+        _ = try await svc.ingestCapture(CapturePayload(
+            url: "https://j.example.com/fit1",
+            pageTitle: "Eng",
+            visibleText: "Swift engineer role"
+        ))
         let jobs = try await store.fetch(FetchDescriptor<Job>())
         let jobID = try XCTUnwrap(jobs.first?.id)
 
@@ -1662,21 +1884,30 @@ final class FitScoringStateTests: XCTestCase {
         try await store.insert(job)
         try await store.insert(resume)
 
-        try await store.markFitScoreFailed(jobID: "job-fail-1", resumeID: resume.id, errorMessage: "rate limit exceeded")
+        try await store.markFitScoreFailed(
+            jobID: "job-fail-1",
+            resumeID: resume.id,
+            errorMessage: "rate limit exceeded"
+        )
 
         let scores = try await store.fetch(FetchDescriptor<JobFitScore>())
         XCTAssertEqual(scores.count, 1, "markFitScoreFailed must create a JobFitScore record")
         let score = try XCTUnwrap(scores.first)
         XCTAssertEqual(score.fitStatus, .failed)
         XCTAssertNotNil(score.fitScoreJSON, "fitScoreJSON must contain the error message")
-        XCTAssertTrue(score.fitScoreJSON?.contains("rate limit exceeded") == true, "fitScoreJSON must include the error text")
+        XCTAssertTrue(
+            score.fitScoreJSON?.contains("rate limit exceeded") == true,
+            "fitScoreJSON must include the error text"
+        )
     }
 }
 
 // MARK: - TASK-280: Status-change timeline events
 
 final class StatusTimelineEventTests: XCTestCase {
-    private func makeStore(_ container: ModelContainer) -> BackgroundStore { BackgroundStore(modelContainer: container) }
+    private func makeStore(_ container: ModelContainer) -> BackgroundStore {
+        BackgroundStore(modelContainer: container)
+    }
 
     func testSetStatus_createsTimelineEvent() async throws {
         let container = try ModelContainerFactory.inMemory()
@@ -1697,7 +1928,10 @@ final class StatusTimelineEventTests: XCTestCase {
         let events = try await store.fetch(FetchDescriptor<JobEvent>())
         let statusEvents = events.filter { $0.eventType == "status" && $0.job?.id == jobID }
         XCTAssertEqual(statusEvents.count, 1, "setStatus must create one status timeline event")
-        XCTAssertTrue(statusEvents.first?.note?.contains("applied") == true, "Status event note should mention the new status")
+        XCTAssertTrue(
+            statusEvents.first?.note?.contains("applied") == true,
+            "Status event note should mention the new status"
+        )
     }
 
     func testSetStatusBulk_createsEventsForEachJob() async throws {
@@ -1705,8 +1939,16 @@ final class StatusTimelineEventTests: XCTestCase {
         let store = makeStore(container)
         let svc = JobService(store: store, queue: makeQueue(container))
 
-        _ = try await svc.ingestCapture(CapturePayload(url: "https://example.com/bulk/1", pageTitle: "Job 1", visibleText: "text"))
-        _ = try await svc.ingestCapture(CapturePayload(url: "https://example.com/bulk/2", pageTitle: "Job 2", visibleText: "text"))
+        _ = try await svc.ingestCapture(CapturePayload(
+            url: "https://example.com/bulk/1",
+            pageTitle: "Job 1",
+            visibleText: "text"
+        ))
+        _ = try await svc.ingestCapture(CapturePayload(
+            url: "https://example.com/bulk/2",
+            pageTitle: "Job 2",
+            visibleText: "text"
+        ))
 
         let jobs = try await store.fetch(FetchDescriptor<Job>())
         XCTAssertEqual(jobs.count, 2)
@@ -1739,7 +1981,11 @@ final class StatusTimelineEventTests: XCTestCase {
         }
 
         let fetched = try await store.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == reqID }))
-        XCTAssertEqual(fetched.first?.status, .retryExhausted, "retryExhausted must not be overwritten by markRequestFailed")
+        XCTAssertEqual(
+            fetched.first?.status,
+            .retryExhausted,
+            "retryExhausted must not be overwritten by markRequestFailed"
+        )
     }
 
     func testMarkRequestFailed_doesNotOverwriteQueued() async throws {

@@ -4,7 +4,6 @@ import XCTest
 /// Run the AppUITests scheme. Screenshots land in screenshots/<timestamp>/ and
 /// are also attached to the Xcode test result for inline viewing.
 final class ScreenshotTests: XCTestCase {
-
     private var app: XCUIApplication!
 
     override func setUp() {

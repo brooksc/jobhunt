@@ -1,9 +1,10 @@
 ---
 id: TASK-518
 title: 'State machine: clear duplicate confidence whenever duplicate link is cleared'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 02:00'
+updated_date: '2026-06-19 05:07'
 labels:
   - audit
   - state-machine
@@ -34,3 +35,9 @@ Suggested implementation: make `duplicateOfJobID == nil` imply `duplicateConfide
 - [ ] #3 Changing status away from `.duplicate` still clears duplicate metadata consistently.
 - [ ] #4 Tests assert the invariant `duplicateOfJobID == nil` implies `duplicateConfidence == nil` for manual unmarking, status changes, field updates, and recapture where applicable.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+JobService.unmarkDuplicate now clears duplicateConfidence along with duplicateOfJobID (matching setStatus's invariant repair and updateJobFields); the recapture path in BackgroundStore also clears it. Covered by testUnmarkDuplicate_clearsLinkAndConfidence. Commit cc71925.
+<!-- SECTION:FINAL_SUMMARY:END -->

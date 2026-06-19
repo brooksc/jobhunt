@@ -52,10 +52,14 @@ jobs:
           fi
 
       - name: Install mise
-        run: curl -Ls https://mise.run | sh && echo "$HOME/.local/bin" >> $GITHUB_PATH
+        run: |
+          curl -Ls https://mise.run | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          # Expose tool shims (tuist/swiftlint/swiftformat) to later steps, not just the mise binary.
+          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
 
       - name: Install pinned tools (Tuist, SwiftLint, SwiftFormat)
-        run: mise install
+        run: mise install && mise reshim
 
       - name: Generate Xcode project
         run: tuist generate --no-open

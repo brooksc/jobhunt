@@ -1,9 +1,10 @@
 ---
 id: TASK-523
 title: 'Migrator: reject ambiguous commands with multiple operation flags'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 03:56'
+updated_date: '2026-06-19 05:16'
 labels:
   - audit
   - persistence
@@ -36,3 +37,9 @@ Suggested implementation: count selected operation flags during argument parsing
 - [ ] #4 Usage text communicates that migrator operations are mutually exclusive.
 - [ ] #5 Focused tests cover multi-mode rejection and representative valid modes.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+parseArgs now rejects any invocation with more than one operation flag (or an operation flag combined with --output/migrate), naming the conflicting flags, instead of silently running the first in priority order. Made parseArgs arg-injectable (defaults to CommandLine.arguments) and added Args.swift to the CoreTests sources so it's unit-tested (single flag parses, two flags rejected, flag+migrate rejected, migrate-only parses). Commit 11884cb.
+<!-- SECTION:FINAL_SUMMARY:END -->

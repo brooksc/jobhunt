@@ -464,20 +464,9 @@ public actor JobService {
         try await store.update(Job.self, predicate: #Predicate { $0.id == id }) { job in
             job.extractionStatus = .pending
             job.extractionError = nil
-            job.extractedAt = nil
-            job.company = nil
-            job.title = nil
-            job.location = nil
-            job.remoteType = nil
-            job.salaryMin = nil
-            job.salaryMax = nil
-            job.salaryCurrency = nil
-            job.salaryNote = nil
-            job.employmentType = nil
-            job.seniority = nil
-            job.extractedJSON = nil
-            job.extractionModel = nil
-            job.extractionConfidence = nil
+            // TASK-517: centralized, override-aware clearing (was missing salaryHourly*, applicationURL,
+            // meetsCriteria — and cleared overridden fields unconditionally, losing manual edits).
+            clearExtractionOwnedFields(job)
             job.updatedAt = Date()
         }
         try await queue.enqueue(jobIDs: [jobID], mode: .extract)
@@ -671,6 +660,9 @@ public actor JobService {
     public func unmarkDuplicate(jobID: String) async throws {
         try await store.update(Job.self, predicate: #Predicate { $0.id == jobID }) { job in
             job.duplicateOfJobID = nil
+            // TASK-518: the confidence is meaningless without the link — clear it too, matching
+            // setStatus's invariant repair and updateJobFields.
+            job.duplicateConfidence = nil
             if job.status == .duplicate {
                 job.status = .new
             }

@@ -401,7 +401,11 @@ public actor BackgroundStore {
         guard let job = jobs.first else { return }
         let record = try fitScoreRecord(job: job, resumeID: resumeID)
         record.fitStatus = .pending
+        // TASK-519: a queued rescore must not keep its now-stale score driving the job's fit mirror
+        // (the mirror picks the best non-nil score and would show .succeeded with the old value).
+        record.fitScore = nil
         record.updatedAt = Date()
+        recomputeJobFitSummary(job)
         try modelContext.save()
     }
 
@@ -466,7 +470,9 @@ public actor BackgroundStore {
                 record.resume = resume
             }
             record.fitStatus = .pending
+            record.fitScore = nil // TASK-519: drop a reused record's stale score from the mirror
             record.updatedAt = Date()
+            recomputeJobFitSummary(job)
         }
         try modelContext.save()
     }
@@ -505,10 +511,14 @@ public actor BackgroundStore {
                 record.resume = resume
             }
             record.fitStatus = .pending
+            record.fitScore = nil // TASK-519: drop a reused record's stale score from the mirror
             record.updatedAt = Date()
             queued += 1
         }
-        if queued > 0 { try modelContext.save() }
+        if queued > 0 {
+            recomputeJobFitSummary(job)
+            try modelContext.save()
+        }
         return queued
     }
 
@@ -639,7 +649,11 @@ public actor BackgroundStore {
 
             job.extractionStatus = .pending
             job.extractionError = nil
+            // TASK-517: a same-URL recapture re-queues extraction, so clear the OLD capture's stale
+            // extracted fields (override-aware) instead of showing them as current until re-extraction.
+            clearExtractionOwnedFields(job)
             job.duplicateOfJobID = nil
+            job.duplicateConfidence = nil // TASK-518: confidence is meaningless without the link
             if job.status == .duplicate { job.status = .new }
             // TASK-445: total raw bytes the extension transmitted (selected + visible). The cleaner
             // uses both inputs, so `max` undercounted captures where both contribute. This is the raw

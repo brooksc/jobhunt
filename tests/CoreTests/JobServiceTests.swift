@@ -1497,6 +1497,43 @@ final class FitScoringStateTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(jobs.first).fitScore, 92, "mirror equals the new best across resumes (92), not the stale 97")
     }
 
+    // TASK-519: a re-queued (pending) fit must drop its stale score from the job mirror, exactly like
+    // the running path does — otherwise a job shows .succeeded with an old score while a rescore waits.
+    func testEnqueueFitForActiveResumes_pending_clearsStaleScoreFromMirror() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let job = Job(id: "job-pending", jobNumber: 1)
+        let resume = Resume(name: "R", text: "x", charCount: 1, active: true, sortOrder: 0)
+        try await store.insert(job)
+        try await store.insert(resume)
+        try await store.saveFitScore(jobID: "job-pending", resumeID: resume.id, overall: 90, fitJSON: nil, model: "m", scoredAt: Date())
+        var jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-pending" }))
+        XCTAssertEqual(try XCTUnwrap(jobs.first).fitScore, 90, "mirror starts at the scored value")
+
+        let n = try await store.enqueueFitForActiveResumes(jobID: "job-pending")
+        XCTAssertEqual(n, 1)
+        jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-pending" }))
+        let after = try XCTUnwrap(jobs.first)
+        XCTAssertNil(after.fitScore, "a queued rescore must clear the stale score from the mirror")
+        XCTAssertEqual(after.fitStatus, .pending)
+    }
+
+    func testMarkFitScorePending_clearsStaleScoreFromMirror() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let job = Job(id: "job-pending-2", jobNumber: 1)
+        let resume = Resume(name: "R", text: "x", charCount: 1, active: true, sortOrder: 0)
+        try await store.insert(job)
+        try await store.insert(resume)
+        try await store.saveFitScore(jobID: "job-pending-2", resumeID: resume.id, overall: 75, fitJSON: nil, model: "m", scoredAt: Date())
+
+        try await store.markFitScorePending(jobID: "job-pending-2", resumeID: resume.id)
+        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-pending-2" }))
+        let after = try XCTUnwrap(jobs.first)
+        XCTAssertNil(after.fitScore)
+        XCTAssertEqual(after.fitStatus, .pending)
+    }
+
     func testRecomputeAllFitScores_recomputesFromStoredJSONWithoutLLM() async throws {
         // Electron parity (rescore.js): recompute the overall score from stored dimensions using
         // current weights, no LLM. Dimensions 80/50/70/90/60 → 76 with the standard weights.

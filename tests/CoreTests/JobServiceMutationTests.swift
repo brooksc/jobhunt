@@ -174,6 +174,52 @@ final class JobServiceMutationTests: XCTestCase {
         XCTAssertEqual(note.createdAt.timeIntervalSince1970, created.timeIntervalSince1970, accuracy: 1)
     }
 
+    // TASK-517: reset clears extraction-owned fields (incl. the previously-missed hourly salary,
+    // applicationURL, meetsCriteria) but preserves fields the user manually overrode.
+    func testResetExtraction_clearsExtractionFields_preservesManualOverrides() async throws {
+        let (svc, store) = try makeService()
+        let jobID = try await seedJob(store)
+        try await store.update(Job.self, predicate: #Predicate { $0.id == jobID }) { job in
+            job.title = "Engineer"
+            job.company = "Acme"
+            job.salaryHourlyMin = 50
+            job.salaryHourlyMax = 80
+            job.applicationURL = "https://apply.example.com"
+            job.meetsCriteria = true
+            job.extractionStatus = .succeeded
+            // The user manually set the company — it must survive a reset.
+            job.manualFieldOverridesJSON = manualFieldOverrideJSON(["company"])
+        }
+
+        try await svc.resetExtraction(jobID: jobID)
+
+        let job = try await firstJob(store)
+        XCTAssertEqual(job.extractionStatus, .pending)
+        XCTAssertNil(job.title)
+        XCTAssertNil(job.salaryHourlyMin)
+        XCTAssertNil(job.salaryHourlyMax)
+        XCTAssertNil(job.applicationURL)
+        XCTAssertNil(job.meetsCriteria)
+        XCTAssertEqual(job.company, "Acme", "a manually-overridden field must survive reset")
+    }
+
+    // TASK-518: clearing a duplicate link must also clear its confidence.
+    func testUnmarkDuplicate_clearsLinkAndConfidence() async throws {
+        let (svc, store) = try makeService()
+        let jobID = try await seedJob(store)
+        try await svc.markDuplicate(jobID: jobID, ofJobID: "other-job", confidence: 0.88)
+        var job = try await firstJob(store)
+        XCTAssertEqual(job.duplicateOfJobID, "other-job")
+        XCTAssertEqual(job.duplicateConfidence, 0.88)
+        XCTAssertEqual(job.status, .duplicate)
+
+        try await svc.unmarkDuplicate(jobID: jobID)
+        job = try await firstJob(store)
+        XCTAssertNil(job.duplicateOfJobID)
+        XCTAssertNil(job.duplicateConfidence)
+        XCTAssertEqual(job.status, .new)
+    }
+
     func testSetRating_persistsAndClears() async throws {
         let (svc, store) = try makeService()
         let jobID = try await seedJob(store)

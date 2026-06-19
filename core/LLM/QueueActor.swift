@@ -560,6 +560,16 @@ public actor QueueActor {
             // not only once the request completes. Overwritten with the returned model on success.
             await setRequestModel(itemID: itemID, model: extractSettings.llmModel)
 
+            // TASK-516: mirror the active extraction at the job level so the UI shows "Extracting"
+            // (and disables Run AI) while the provider call is in flight, instead of "pending".
+            // Terminal success/failure below remain the authority for the final state.
+            try? await store.update(Job.self, predicate: #Predicate { $0.id == jobID }) { job in
+                guard job.extractionStatus != .running else { return }
+                job.extractionStatus = .running
+                job.extractionError = nil
+                job.updatedAt = Date()
+            }
+
             let result = try await ExtractionEngine.extract(snapshot: extractionSnapshot, provider: provider, settings: extractSettings)
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
 
@@ -760,6 +770,9 @@ public actor QueueActor {
                 req.finishedAt = Date()
                 req.error = errMsg
             }
+            // TASK-520: a pre-provider failure must move the fit record off .pending too, or the
+            // job's fit mirror is stuck "pending" forever.
+            try? await store.markFitScoreFailed(jobID: jobID, resumeID: resumeID, errorMessage: errMsg)
             return false
         }
 
@@ -773,6 +786,9 @@ public actor QueueActor {
         )
         guard consented else {
             await markRequestFailed(item: item, error: ConsentError.notConsented, startedAt: startedAt)
+            // TASK-520: keep the fit record's state consistent with the failed request.
+            try? await store.markFitScoreFailed(jobID: jobID, resumeID: resumeID,
+                                                errorMessage: ConsentError.notConsented.localizedDescription)
             return false
         }
 

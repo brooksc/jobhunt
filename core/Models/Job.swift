@@ -172,3 +172,31 @@ func manualFieldOverrideJSON(_ set: Set<String>) -> String? {
     else { return nil }
     return String(data: data, encoding: .utf8)
 }
+
+/// Clear every extraction-owned field on a job so a stale value can't show as current while
+/// extraction is pending — used by both the explicit reset and the same-URL recapture requeue so the
+/// two can't drift (TASK-517). Fields the user manually overrode are PRESERVED: re-extraction also
+/// skips overridden fields, so clearing them here would silently lose the edit. Salary-hourly,
+/// employment type, seniority, and criteria have no manual-edit path and are always cleared. The
+/// caller sets `extractionStatus`/`extractionError`/`updatedAt`.
+func clearExtractionOwnedFields(_ job: Job) {
+    let overrides = manualFieldOverrideSet(job.manualFieldOverridesJSON)
+    job.extractedAt = nil
+    job.extractedJSON = nil
+    job.extractionModel = nil
+    job.extractionConfidence = nil
+    if !overrides.contains("company") { job.company = nil }
+    if !overrides.contains("title") { job.title = nil }
+    if !overrides.contains("location") { job.location = nil }
+    if !overrides.contains("remoteType") { job.remoteType = nil }
+    if !overrides.contains("salaryMin") { job.salaryMin = nil }
+    if !overrides.contains("salaryMax") { job.salaryMax = nil }
+    if !overrides.contains("salaryCurrency") { job.salaryCurrency = nil }
+    if !overrides.contains("salaryNote") { job.salaryNote = nil }
+    if !overrides.contains("applicationURL") { job.applicationURL = nil }
+    job.salaryHourlyMin = nil
+    job.salaryHourlyMax = nil
+    job.employmentType = nil
+    job.seniority = nil
+    job.meetsCriteria = nil
+}

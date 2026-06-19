@@ -3,10 +3,10 @@ id: TASK-507
 title: >-
   Command coverage: menu-bar Job actions, ⌘F search, focused-row Delete/Archive
   keys, richer row context menu
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-06-19 01:12'
-updated_date: '2026-06-19 01:19'
+updated_date: '2026-06-19 01:23'
 labels:
   - hig
   - keyboard
@@ -32,8 +32,16 @@ Evidence: JobhuntApp.swift:251 (⌘K search), JobsView.swift:694 (context menu l
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A menu-bar Job menu exposes Open Posting, Mark Applied, Mark Interested, Re-run Extraction, Archive, Delete acting on the current selection
-- [ ] #2 ⌘F focuses the Jobs search field (⌘K still works)
-- [ ] #3 Delete/Archive can be triggered from the keyboard on the focused/selected row(s), honoring existing confirm/undo
-- [ ] #4 Row context menu includes Open Posting, Copy Job Link, and Add Note
+- [x] #1 A menu-bar Job menu exposes Open Posting, Mark Applied, Mark Interested, Re-run Extraction, Archive, Delete acting on the current selection
+- [x] #2 ⌘F focuses the Jobs search field (⌘K still works)
+- [x] #3 Delete/Archive can be triggered from the keyboard on the focused/selected row(s), honoring existing confirm/undo
+- [x] #4 Row context menu includes Open Posting, Copy Job Link, and Add Note
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added a menu-bar "Job" CommandMenu (FocusedValue pattern, mirroring Queue/Quality) published by JobsView for the current selection: Open Posting (⌘O), Mark Applied, Mark Interested, Re-run Extraction (⌃⌘R), Archive (⌃⌘A), Delete (⌘⌫). ⌘F now focuses the Jobs search field (standard Find; ⌘K retained). The Delete key on focused/selected rows opens the existing delete confirmation (onDeleteCommand). Row context menu gained Open Posting, Copy Job Link, and Add Note (the latter selects the job and opens its Timeline tab via new Router.composeNoteJobID, consumed in JobDetailView). Selection actions factored into shared JobsView methods. Committed in de184cd. App build, fast gate, and AppUITests bundle all compile/pass.
+
+Note: keyboard shortcut assignments — Re-run is ⌃⌘R (plain ⌘R stays the Data Quality command, only active when that view is focused); Archive ⌃⌘A and Delete ⌘⌫ are new. These are unverified against real key-event delivery since AppUITests weren't run in a VM this session.
+<!-- SECTION:FINAL_SUMMARY:END -->

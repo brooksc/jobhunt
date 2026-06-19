@@ -24,9 +24,6 @@ struct JobsView: View {
     @State private var jobIDsToDelete: [String] = []
     // Mirror of router.sidebarJobFilter as @State so SwiftUI reliably re-renders.
     @State private var localSidebarFilter: JobStatus?
-    /// Cached result of the full filter+sort pipeline. Updated when any filter input changes.
-    /// Avoids recomputing the list twice per render (once for List body, once for filteredJobIDs).
-    @State private var cachedFilteredJobs: [Job] = []
 
     var body: some View {
         jobListWithModifiers
@@ -89,7 +86,6 @@ struct JobsView: View {
         }
         .onChange(of: searchTokens) { _, _ in
             router.activeSavedSearchID = nil
-            cachedFilteredJobs = computeFilteredJobs()
         }
         .onChange(of: filteredJobIDs) { _, newIDs in
             // Remove stale selections when the filter changes — and tell the user if their
@@ -289,18 +285,13 @@ struct JobsView: View {
                 localSidebarFilter = router.sidebarJobFilter
                 // #7: restore the persisted sort when no saved search is dictating one.
                 if router.activeSavedSearchID == nil { applyPersistedSort() }
-                cachedFilteredJobs = computeFilteredJobs()
             }
-            .onChange(of: allJobs) { _, _ in cachedFilteredJobs = computeFilteredJobs() }
-            .onChange(of: searchText) { _, _ in cachedFilteredJobs = computeFilteredJobs() }
-            .onChange(of: filterState) { _, _ in cachedFilteredJobs = computeFilteredJobs() }
             .onChange(of: filterState.sortKey) { _, newKey in
                 appServices.settings.jobsSortKey = newKey.rawValue
             }
             .onChange(of: filterState.sortAscending) { _, newAsc in
                 appServices.settings.jobsSortAscending = newAsc
             }
-            .onChange(of: localSidebarFilter) { _, _ in cachedFilteredJobs = computeFilteredJobs() }
     }
 
     // MARK: - Job list (extracted to help compiler type-check)
@@ -621,10 +612,13 @@ struct JobsView: View {
     }
 
     private var filteredJobIDs: Set<String> {
-        Set(cachedFilteredJobs.map(\.id))
+        Set(filteredJobs.map(\.id))
     }
 
-    private var filteredJobs: [Job] { cachedFilteredJobs }
+    /// Computed live each render so an in-place status change (e.g. New → Interested) immediately
+    /// drops the job out of the active smart-folder/filter — a few hundred rows is imperceptible
+    /// (a cached @State version went stale because in-place mutations don't trip onChange).
+    private var filteredJobs: [Job] { computeFilteredJobs() }
 
     private func computeFilteredJobs() -> [Job] {
         let base = allJobs.filter { job in
@@ -856,7 +850,7 @@ struct JobsView: View {
 
     /// TASK-464: open the source/display page for every selected job in the browser.
     private func openSelectedPages() {
-        let selected = cachedFilteredJobs.filter { selectedJobIDs.contains($0.id) }
+        let selected = filteredJobs.filter { selectedJobIDs.contains($0.id) }
         for job in selected {
             if let urlStr = JobURLPolicy.displayURL(job: job), let url = URL(string: urlStr) {
                 NSWorkspace.shared.open(url)

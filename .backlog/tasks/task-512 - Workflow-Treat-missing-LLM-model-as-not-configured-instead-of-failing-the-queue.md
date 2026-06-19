@@ -3,9 +3,10 @@ id: TASK-512
 title: >-
   Workflow: Treat missing LLM model as not configured instead of failing the
   queue
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 01:31'
+updated_date: '2026-06-19 02:29'
 labels:
   - workflow
   - llm
@@ -34,9 +35,15 @@ Suggested implementation: Centralize AI readiness so the queue and UI agree. Inc
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Queued extraction work with an empty `llmModel` emits `.providerNotConfigured` and remains queued instead of marking requests failed or auto-pausing.
-- [ ] #2 Hosted providers still require a non-empty API key and non-empty model before processing starts.
-- [ ] #3 Local providers such as LM Studio require a non-empty model but do not require an API key.
-- [ ] #4 The UI banner/service-status readiness and queue readiness use the same rule or share the same core helper to prevent future drift.
-- [ ] #5 Focused tests cover empty-model behavior for at least the default local provider and one hosted provider.
+- [x] #1 Queued extraction work with an empty `llmModel` emits `.providerNotConfigured` and remains queued instead of marking requests failed or auto-pausing.
+- [x] #2 Hosted providers still require a non-empty API key and non-empty model before processing starts.
+- [x] #3 Local providers such as LM Studio require a non-empty model but do not require an API key.
+- [x] #4 The UI banner/service-status readiness and queue readiness use the same rule or share the same core helper to prevent future drift.
+- [x] #5 Focused tests cover empty-model behavior for at least the default local provider and one hosted provider.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added core AIReadiness as the single readiness rule (model selected AND, for key-requiring providers, a key present) and routed both the queue's isProviderConfigured gate (AppServices) and the UI's AIConfig through it. Empty llmModel is now "not configured" for every provider, so the queue hits the existing not-configured path (QueueActor:319): emits .providerNotConfigured once and breaks, leaving requests queued — instead of running and failing with noModelSelected / auto-pausing. requiresAPIKey covers the same {openai,anthropic,google,openrouter} set AIConfig hardcoded, so the key behaviour is unchanged. AIReadinessTests cover empty-model for a local (lmstudio) and hosted (openai) provider plus the key gate. Commit fd9f35c.
+<!-- SECTION:FINAL_SUMMARY:END -->

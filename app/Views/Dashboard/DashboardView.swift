@@ -40,7 +40,7 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 20) {
-                AIConfigBanner(settings: appServices.settings)
+                SetupChecklistCard(settings: appServices.settings)
                 statCardsSection
                 HStack(alignment: .top, spacing: 16) {
                     pipelineFunnelSection

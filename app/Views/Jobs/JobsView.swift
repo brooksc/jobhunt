@@ -357,7 +357,9 @@ struct JobsView: View {
                         ContentUnavailableView(
                             "No jobs yet",
                             systemImage: "tray",
-                            description: Text("Capture jobs with the Chrome extension, or press ⌘N to add one manually.")
+                            description: Text(
+                                "Capture jobs with the Chrome extension, or press ⌘N to add one manually."
+                            )
                         )
                         // First-run setup checklist — hides itself once AI + résumé are configured.
                         SetupChecklistCard(settings: appServices.settings)

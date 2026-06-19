@@ -142,6 +142,10 @@ public final class Router {
     /// Which tab the ⌘, Settings window should show. Set by deep-links (e.g. the
     /// "AI not configured" nudge) before opening the window.
     public var settingsTab: SettingsPane = .general
+    /// Session-scoped dismissal of the first-run setup checklist (TASK-498). In-memory by design:
+    /// the checklist returns on next launch if setup is still incomplete ("persistent until
+    /// configured"), but the user can hide it for the current session.
+    public var setupChecklistDismissed: Bool = false
     /// Set by "Add Note" affordances (e.g. the Jobs row context menu) to ask the job detail view
     /// to open the selected job's Timeline tab for note entry. Cleared once consumed.
     public var composeNoteJobID: String?

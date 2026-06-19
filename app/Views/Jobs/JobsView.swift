@@ -14,6 +14,14 @@ struct JobsView: View {
 
     @Query(sort: \Job.createdAt, order: .reverse) private var allJobs: [Job]
     @Query(sort: \SavedSearch.sortOrder) private var savedSearches: [SavedSearch]
+    @Query private var resumes: [Resume]
+
+    /// Whether a fit score could ever be produced — an AI provider is configured *and* a résumé is
+    /// active. When false, rows neutralize the fit ring instead of showing a forever-pending
+    /// placeholder (TASK-525).
+    private var fitScoringAvailable: Bool {
+        AIConfig.isConfigured(appServices.settings) && resumes.contains(where: \.active)
+    }
 
     @State private var searchText = ""
     @State private var searchTokens: [JobSearchToken] = []
@@ -326,7 +334,7 @@ struct JobsView: View {
 
     private var jobListInner: some View {
         List(filteredJobs, selection: $selectedJobIDs) { job in
-            JobListRow(job: job, isSelected: selectedJobIDs.contains(job.id))
+            JobListRow(job: job, isSelected: selectedJobIDs.contains(job.id), fitScoringAvailable: fitScoringAvailable)
                 .tag(job.id)
                 .contextMenu { jobContextMenu(job) }
                 .accessibilityIdentifier("job.row.\(job.id)")
@@ -916,6 +924,7 @@ struct JobsView: View {
 private struct JobListRow: View {
     let job: Job
     let isSelected: Bool
+    let fitScoringAvailable: Bool
 
     var body: some View {
         HStack(spacing: 10) {
@@ -932,13 +941,16 @@ private struct JobListRow: View {
         Group {
             if let score = job.fitScore {
                 FitRingView(score: score, size: 36)
-            } else {
+            } else if fitScoringAvailable {
+                // A score can still be produced — show the awaiting-score placeholder.
                 ZStack {
                     Circle().stroke(Color.secondary.opacity(0.12), lineWidth: 3)
                     Image(systemName: "sparkle").font(.system(size: 10)).foregroundStyle(.quaternary)
                 }
                 .frame(width: 36, height: 36)
             }
+            // else: no LLM / no active résumé — render nothing so the row doesn't imply a pending
+            // score forever (TASK-525).
         }
     }
 

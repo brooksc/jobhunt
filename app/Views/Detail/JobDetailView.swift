@@ -500,6 +500,8 @@ struct OverviewTabView: View {
     @Environment(\.jobService) private var jobService
     @Environment(Router.self) private var router
 
+    @Query private var resumes: [Resume]
+
     @State private var skills: [String] = []
     @State private var newSkillText = ""
     @State private var showAddSkill = false
@@ -579,6 +581,12 @@ struct OverviewTabView: View {
 
     // MARK: Decision strip
 
+    /// A fit score can only exist if an AI provider is configured and a résumé is active. When not,
+    /// the fit indicator is neutralized rather than implying a forever-pending score (TASK-525).
+    private var fitScoringAvailable: Bool {
+        AIConfig.isConfigured(appServices.settings) && resumes.contains(where: \.active)
+    }
+
     private var decisionStrip: some View {
         HStack(spacing: 16) {
             // Fit ring + quality
@@ -599,12 +607,20 @@ struct OverviewTabView: View {
                                     .foregroundStyle(.tertiary)
                             }
                         }
-                    } else {
+                    } else if fitScoringAvailable {
                         Image(systemName: "sparkle")
                             .font(.title2)
                             .foregroundStyle(.quaternary)
                             .frame(width: 48, height: 48)
                         Text("Not scored")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    } else {
+                        Image(systemName: "target")
+                            .font(.title2)
+                            .foregroundStyle(.quaternary)
+                            .frame(width: 48, height: 48)
+                        Text("Fit unavailable")
                             .font(.caption)
                             .foregroundStyle(.tertiary)
                     }

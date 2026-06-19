@@ -166,7 +166,7 @@ private struct DetailHeader: View {
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.tertiary)
                 }
-                Text(job.title ?? "Untitled")
+                Text(job.displayTitle)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(2)

@@ -193,7 +193,7 @@ struct DashboardView: View {
                                         FitRingView(score: score, size: 32)
                                     }
                                     VStack(alignment: .leading, spacing: 1) {
-                                        Text(job.title ?? "Untitled")
+                                        Text(job.displayTitle)
                                             .font(.caption.weight(.semibold))
                                             .foregroundStyle(.primary)
                                             .lineLimit(1)
@@ -254,7 +254,7 @@ struct DashboardView: View {
                                 HStack(spacing: 8) {
                                     CompanyMarkView(name: job.company, size: 22)
                                     VStack(alignment: .leading, spacing: 1) {
-                                        Text(job.title ?? "Untitled")
+                                        Text(job.displayTitle)
                                             .font(.caption.weight(.semibold))
                                             .foregroundStyle(.primary)
                                             .lineLimit(1)

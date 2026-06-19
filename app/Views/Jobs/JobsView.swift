@@ -947,7 +947,7 @@ private struct JobListRow: View {
                     Circle().fill(Color.accentColor).frame(width: 5, height: 5)
                         .accessibilityLabel("Unread")
                 }
-                Text(job.title ?? "Untitled")
+                Text(job.displayTitle)
                     .font(.subheadline.weight(job.unread ? .semibold : .medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)

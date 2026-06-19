@@ -119,15 +119,6 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         case let .jobReady(jobNumber, title, fitScore):
             accumulateReady(jobNumber: jobNumber, title: title, fitScore: fitScore)
 
-        case let .jobUnavailable(jobNumber):
-            let body = "Job #\(jobNumber ?? 0) is no longer available"
-            postNotification(
-                id: "job-unavailable-\(jobNumber ?? 0)",
-                title: "Job Unavailable",
-                body: body,
-                userInfo: jobNumber.map { ["jobNumber": $0] } ?? [:]
-            )
-
         case let .processingComplete(_, failed):
             flushReady(failed: failed)
 

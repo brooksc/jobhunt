@@ -206,12 +206,6 @@ public actor BackgroundStore {
         try modelContext.save()
     }
 
-    /// Delete a single known model object, then save.
-    public func deleteObject(_ model: some PersistentModel) throws {
-        modelContext.delete(model)
-        try modelContext.save()
-    }
-
     /// Delete models matching `predicate` that also pass an in-memory `filter`, then save.
     /// Use when the predicate can narrow the fetch (e.g. by date) but the final filter
     /// requires enum comparison that SwiftData predicates cannot express.

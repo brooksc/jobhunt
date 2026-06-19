@@ -7,7 +7,6 @@ import SwiftData
 /// Domain events emitted by the queue, consumed by platform integration.
 public enum QueueEvent: Sendable {
     case jobReady(jobNumber: Int?, title: String?, fitScore: Int?)
-    case jobUnavailable(jobNumber: Int?)
     case processingComplete(processed: Int, failed: Int)
     case autoPaused
     /// The queue could not read its work from the store (a degraded state — NOT an empty queue).

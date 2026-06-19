@@ -561,7 +561,7 @@ struct LLMQueueView: View {
             isPaused = true
         case .processingComplete:
             break
-        case .jobReady, .jobUnavailable, .providerNotConfigured:
+        case .jobReady, .providerNotConfigured:
             // PlatformIntegration owns the user-facing notice for .providerNotConfigured (TASK-483);
             // nothing extra to do in this view.
             break

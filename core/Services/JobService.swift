@@ -282,6 +282,18 @@ public actor JobService {
         }
     }
 
+    /// Re-insert a deleted note, preserving its original timeline position. Used by the "Undo"
+    /// toast after a note delete (the deleted event is gone, so this creates an equivalent one
+    /// with the same text and timestamps rather than resurrecting the original row).
+    public func restoreNote(jobID: String, text: String, occurredAt: Date, createdAt: Date) async throws {
+        let id = jobID
+        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == id }))
+        guard let job = jobs.first else { throw JobServiceError.jobNotFound(jobID) }
+        let event = JobEvent(eventType: "note", note: text, occurredAt: occurredAt, createdAt: createdAt)
+        event.job = job
+        try await store.insert(event)
+    }
+
     public func archive(jobID: String) async throws {
         try await setStatus(.archived, for: jobID)
     }

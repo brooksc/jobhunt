@@ -211,6 +211,7 @@ struct JobhuntApp: App {
             if let r = router, let services = appServices, let container = modelContainer {
                 QueueMenuCommands()
                 QualityMenuCommands()
+                JobMenuCommands()
 
                 // Go menu — jump to any section via ⌃⌘<n>. A standard macOS navigation
                 // affordance, and the deterministic path UI tests use (synthesized clicks on
@@ -254,6 +255,16 @@ struct JobhuntApp: App {
                         r.focusSearch = true
                     }
                     .keyboardShortcut("k", modifiers: .command)
+                }
+
+                // ⌘F — standard macOS Find, placed in the Edit menu. Focuses the Jobs search
+                // field (an alias for ⌘K, which stays for muscle memory). HIG-3.8/10.2.
+                CommandGroup(after: .textEditing) {
+                    Button("Find") {
+                        r.navigateToSection(.jobs)
+                        r.focusSearch = true
+                    }
+                    .keyboardShortcut("f", modifiers: .command)
                 }
 
                 // ⌘⇧E — Export the current filtered Jobs view to CSV (not a full backup; HIG-18).

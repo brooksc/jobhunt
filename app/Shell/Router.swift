@@ -140,6 +140,9 @@ public final class Router {
     /// Which tab the ⌘, Settings window should show. Set by deep-links (e.g. the
     /// "AI not configured" nudge) before opening the window.
     public var settingsTab: SettingsPane = .general
+    /// Set by "Add Note" affordances (e.g. the Jobs row context menu) to ask the job detail view
+    /// to open the selected job's Timeline tab for note entry. Cleared once consumed.
+    public var composeNoteJobID: String?
 
     public init() {}
 

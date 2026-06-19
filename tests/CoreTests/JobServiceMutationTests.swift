@@ -156,6 +156,24 @@ final class JobServiceMutationTests: XCTestCase {
         XCTAssertEqual(notes.first?.job?.id, jobID)
     }
 
+    func testRestoreNote_reinsertsWithPreservedTimestamps() async throws {
+        let (svc, store) = try makeService()
+        let jobID = try await seedJob(store)
+        let occurred = Date(timeIntervalSince1970: 1_700_000_000)
+        let created = Date(timeIntervalSince1970: 1_700_000_500)
+
+        // Simulate the undo path: a note was deleted, and we re-insert it.
+        try await svc.restoreNote(jobID: jobID, text: "Recovered note", occurredAt: occurred, createdAt: created)
+
+        let notes = try await store.fetch(FetchDescriptor<JobEvent>()).filter { $0.eventType == "note" }
+        XCTAssertEqual(notes.count, 1)
+        let note = try XCTUnwrap(notes.first)
+        XCTAssertEqual(note.note, "Recovered note")
+        XCTAssertEqual(note.job?.id, jobID)
+        XCTAssertEqual(note.occurredAt.timeIntervalSince1970, occurred.timeIntervalSince1970, accuracy: 1)
+        XCTAssertEqual(note.createdAt.timeIntervalSince1970, created.timeIntervalSince1970, accuracy: 1)
+    }
+
     func testSetRating_persistsAndClears() async throws {
         let (svc, store) = try makeService()
         let jobID = try await seedJob(store)

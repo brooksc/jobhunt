@@ -64,6 +64,18 @@ struct JobDetailView: View {
             }
         }
         .onKeyPress(.escape) { onClose(); return .handled }
+        // "Add Note" from the Jobs row context menu selects the job and asks us to open its
+        // Timeline tab for note entry. The view re-mounts per job (.id(job.id)), so onAppear
+        // covers a fresh selection and onChange covers re-triggering on the same job.
+        .onAppear { consumeComposeNoteRequest() }
+        .onChange(of: router.composeNoteJobID) { _, _ in consumeComposeNoteRequest() }
+    }
+
+    private func consumeComposeNoteRequest() {
+        if router.composeNoteJobID == job.id {
+            selectedTab = .timeline
+            router.composeNoteJobID = nil
+        }
     }
 
     @ViewBuilder
@@ -340,8 +352,16 @@ private struct StatusPickerButton: View {
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(JobStatus.allCases, id: \.self) { s in
                     Button {
+                        let old = job.status
                         Task {
-                            do { try await jobService?.setStatus(s, for: job.id) }
+                            do {
+                                try await jobService?.setStatus(s, for: job.id)
+                                if s != old {
+                                    appServices.toastStore.show("Status set to \(s.displayName)", actionLabel: "Undo") {
+                                        Task { try? await jobService?.setStatus(old, for: job.id) }
+                                    }
+                                }
+                            }
                             catch { appServices.toastStore.show("Couldn't change status: \(error.localizedDescription)", isError: true) }
                         }
                         showPicker = false
@@ -1778,8 +1798,23 @@ private struct TimelineEventRow: View {
 
     private func deleteNote() {
         let id = event.id
+        let text = event.note ?? ""
+        let occurredAt = event.occurredAt
+        let createdAt = event.createdAt
+        let jobID = event.job?.id
         Task {
-            do { try await jobService?.updateNote(eventID: id, text: "") }
+            do {
+                try await jobService?.updateNote(eventID: id, text: "")
+                if let jobID, !text.isEmpty {
+                    appServices.toastStore.show("Note deleted.", actionLabel: "Undo") {
+                        Task {
+                            try? await jobService?.restoreNote(
+                                jobID: jobID, text: text, occurredAt: occurredAt, createdAt: createdAt
+                            )
+                        }
+                    }
+                }
+            }
             catch { appServices.toastStore.show("Couldn't delete note: \(error.localizedDescription)", isError: true) }
         }
     }

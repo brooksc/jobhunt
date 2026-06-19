@@ -30,6 +30,7 @@ struct JobsView: View {
 
     var body: some View {
         jobListWithModifiers
+            .focusedSceneValue(\.jobCommands, makeJobCommands())
             .accessibilityIdentifier("content.jobs")
     }
 
@@ -319,6 +320,12 @@ struct JobsView: View {
                 .accessibilityIdentifier("job.row.\(job.id)")
         }
         .listStyle(.inset)
+        // The Delete key on the focused/selected row(s) opens the same confirmation dialog as the
+        // context-menu / Job-menu Delete (TASK-507). Archive is keyboard-reachable via ⌃⌘A.
+        .onDeleteCommand {
+            let ids = Array(selectedJobIDs)
+            if !ids.isEmpty { jobIDsToDelete = ids }
+        }
         .overlay {
             if filteredJobs.isEmpty {
                 if allJobs.isEmpty {
@@ -693,55 +700,130 @@ struct JobsView: View {
     private func jobContextMenu(_ job: Job) -> some View {
         let targets: [String] = selectedJobIDs.contains(job.id) ? Array(selectedJobIDs) : [job.id]
         let label: String = targets.count > 1 ? "\(targets.count) Jobs" : "Job"
-        let svc = appServices.jobService
-        let toast = appServices.toastStore
 
+        Button { openPostingJobs(targets) }
+            label: { Label(targets.count > 1 ? "Open \(targets.count) Postings" : "Open Posting", systemImage: "arrow.up.right.square") }
+        Button { copyJobLink(job) }
+            label: { Label("Copy Job Link", systemImage: "link") }
+        // Add Note targets the right-clicked job (notes are per-job) — selects it and opens its
+        // Timeline tab in the detail pane, regardless of any multi-selection.
+        Button {
+            selectedJobIDs = [job.id]
+            router.composeNoteJobID = job.id
+        }
+            label: { Label("Add Note", systemImage: "note.text.badge.plus") }
+        Divider()
         Menu("Set Status") {
             ForEach(JobStatus.allCases, id: \.self) { status in
-                Button(status.displayName) {
-                    Task {
-                        var failed = 0
-                        for id in targets {
-                            do { try await svc.setStatus(status, for: id) } catch { failed += 1 }
-                        }
-                        if failed > 0 {
-                            toast.show("Couldn't update status for \(failed) of \(targets.count) job(s)", isError: true)
-                        }
-                    }
-                }
+                Button(status.displayName) { setStatusJobs(status, targets) }
             }
         }
-        Button {
-            let priors: [(String, JobStatus)] = targets.compactMap { id in
-                allJobs.first(where: { $0.id == id }).map { (id, $0.status) }
-            }
-            Task {
-                var failed = 0
-                for id in targets {
-                    do { try await svc.archive(jobID: id) } catch { failed += 1 }
-                }
-                if failed > 0 {
-                    toast.show("Couldn't archive \(failed) of \(targets.count) job(s)", isError: true)
-                } else {
-                    toast.show("Archived \(targets.count) job\(targets.count == 1 ? "" : "s")", actionLabel: "Undo") {
-                        Task { for (id, status) in priors { try? await svc.setStatus(status, for: id) } }
-                    }
-                }
-            }
-        }
+        Button { archiveJobs(targets) }
             label: { Label("Archive \(label)", systemImage: "archivebox") }
             .accessibilityIdentifier("jobContextMenu.archive")
-        Button {
-            Task {
-                do { try await svc.resetExtractionBulk(jobIDs: targets) }
-                catch { toast.show("Couldn't re-run AI: \(error.localizedDescription)", isError: true) }
-            }
-        }
+        Button { reRunJobs(targets) }
             label: { Label("Re-run AI on \(label)", systemImage: "arrow.clockwise") }
             .accessibilityIdentifier("jobContextMenu.reextract")
         Divider()
         Button(role: .destructive) { jobIDsToDelete = targets }
             label: { Label("Delete \(label)", systemImage: "trash") }
+    }
+
+    // MARK: - Selection actions (shared by the row context menu and the menu-bar Job menu)
+
+    /// Archive a set of jobs with an Undo toast restoring each job's prior status.
+    private func archiveJobs(_ ids: [String]) {
+        guard !ids.isEmpty else { return }
+        let svc = appServices.jobService
+        let toast = appServices.toastStore
+        let priors: [(String, JobStatus)] = ids.compactMap { id in
+            allJobs.first(where: { $0.id == id }).map { (id, $0.status) }
+        }
+        Task {
+            var failed = 0
+            for id in ids { do { try await svc.archive(jobID: id) } catch { failed += 1 } }
+            await MainActor.run {
+                if failed > 0 {
+                    toast.show("Couldn't archive \(failed) of \(ids.count) job(s)", isError: true)
+                } else {
+                    toast.show("Archived \(ids.count) job\(ids.count == 1 ? "" : "s")", actionLabel: "Undo") {
+                        Task { for (id, status) in priors { try? await svc.setStatus(status, for: id) } }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Set status on a set of jobs with an Undo toast restoring each job's prior status.
+    private func setStatusJobs(_ status: JobStatus, _ ids: [String]) {
+        guard !ids.isEmpty else { return }
+        let svc = appServices.jobService
+        let toast = appServices.toastStore
+        let priors: [(String, JobStatus)] = ids.compactMap { id in
+            allJobs.first(where: { $0.id == id }).map { (id, $0.status) }
+        }
+        Task {
+            var failed = 0
+            for id in ids { do { try await svc.setStatus(status, for: id) } catch { failed += 1 } }
+            await MainActor.run {
+                if failed > 0 {
+                    toast.show("Couldn't update status for \(failed) of \(ids.count) job(s)", isError: true)
+                } else {
+                    let changed = priors.filter { $0.1 != status }
+                    if !changed.isEmpty {
+                        toast.show("Status set to \(status.displayName)", actionLabel: "Undo") {
+                            Task { for (id, old) in changed { try? await svc.setStatus(old, for: id) } }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func reRunJobs(_ ids: [String]) {
+        guard !ids.isEmpty else { return }
+        let svc = appServices.jobService
+        let toast = appServices.toastStore
+        Task {
+            do { try await svc.resetExtractionBulk(jobIDs: ids) }
+            catch { toast.show("Couldn't re-run AI: \(error.localizedDescription)", isError: true) }
+        }
+    }
+
+    private func openPostingJobs(_ ids: [String]) {
+        let jobs = allJobs.filter { ids.contains($0.id) }
+        var opened = 0
+        for job in jobs {
+            if let urlStr = JobURLPolicy.displayURL(job: job), let url = URL(string: urlStr) {
+                NSWorkspace.shared.open(url)
+                opened += 1
+            }
+        }
+        if opened == 0 { appServices.toastStore.show("No posting link available") }
+    }
+
+    private func copyJobLink(_ job: Job) {
+        guard let urlStr = JobURLPolicy.displayURL(job: job) else {
+            appServices.toastStore.show("No link available for this job")
+            return
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(urlStr, forType: .string)
+        appServices.toastStore.show("Link copied")
+    }
+
+    /// Handlers published to the menu-bar Job menu; act on the current selection.
+    private func makeJobCommands() -> JobCommandHandlers {
+        let ids = Array(selectedJobIDs)
+        return JobCommandHandlers(
+            hasSelection: !ids.isEmpty,
+            openPosting: { openPostingJobs(ids) },
+            markApplied: { setStatusJobs(.applied, ids) },
+            markInterested: { setStatusJobs(.pursuing, ids) },
+            reRunExtraction: { reRunJobs(ids) },
+            archive: { archiveJobs(ids) },
+            delete: { jobIDsToDelete = ids }
+        )
     }
 
     // MARK: - Helpers

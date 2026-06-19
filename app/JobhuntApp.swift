@@ -208,7 +208,7 @@ struct JobhuntApp: App {
         }
         .defaultSize(width: 1200, height: 750)
         .commands {
-            if let r = router, let services = appServices, let container = modelContainer {
+            if let r = router {
                 QueueMenuCommands()
                 QualityMenuCommands()
                 JobMenuCommands()

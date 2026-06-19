@@ -44,3 +44,4 @@ Tuist/Dependencies/
 # Xcode build output (TASK-344: was accidentally tracked; config moved to config/entitlements/)
 build/
 *.profraw
+nohup.out

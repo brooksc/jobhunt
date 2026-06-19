@@ -116,14 +116,26 @@ final class ScreenshotTests: XCTestCase {
 
     func test16_SettingsGeneral() {
         openSettingsWindow()
-        clickSettingsTab(label: "Settings")
+        clickSettingsTab(label: "General")
         snap(app, "16-settings-general")
     }
 
-    func test17_SettingsLLM() {
+    func test16b_SettingsJobs() {
         openSettingsWindow()
-        clickSettingsTab(label: "LLM")
-        snap(app, "17-settings-llm")
+        clickSettingsTab(label: "Jobs")
+        snap(app, "16b-settings-jobs")
+    }
+
+    func test17_SettingsAI() {
+        openSettingsWindow()
+        clickSettingsTab(label: "AI")
+        snap(app, "17-settings-ai")
+    }
+
+    func test17b_SettingsData() {
+        openSettingsWindow()
+        clickSettingsTab(label: "Data")
+        snap(app, "17b-settings-data")
     }
 
     func test18_SettingsDebug() {

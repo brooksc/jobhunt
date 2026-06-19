@@ -45,19 +45,27 @@ private struct SettingsTabView: View {
     private var tabView: some View {
         TabView(selection: $selectedTab) {
             SettingsTab(settings: settings)
-                .tabItem { Label("Settings", systemImage: "gear") }
+                .tabItem { Label("General", systemImage: "gearshape") }
                 .tag(0)
 
-            LLMTab(settings: settings)
-                .tabItem { Label("LLM", systemImage: "cpu") }
+            JobsSettingsTab(settings: settings)
+                .tabItem { Label("Jobs", systemImage: "briefcase") }
                 .tag(1)
+
+            LLMTab(settings: settings)
+                .tabItem { Label("AI", systemImage: "cpu") }
+                .tag(2)
+
+            DataSettingsTab()
+                .tabItem { Label("Data", systemImage: "externaldrive") }
+                .tag(3)
 
             DebugTab()
                 .tabItem { Label("Debug", systemImage: "ant") }
-                .tag(2)
+                .tag(4)
         }
         .padding()
-        .frame(minWidth: 480, minHeight: 400)
+        .frame(minWidth: 560, minHeight: 560)
         .navigationTitle("Settings")
     }
 }

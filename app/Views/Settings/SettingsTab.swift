@@ -4,63 +4,20 @@ import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
+// MARK: - General tab (appearance, intervals, about)
+
 struct SettingsTab: View {
     let settings: SettingsStore
 
-    @State private var isRunningAvailabilityCheck = false
-    @State private var availabilityCheckMessage: String?
-    @State private var customJDText: String = ""
-    @State private var goneJobs: [GoneJobResult] = []
-    @State private var showingExpiredConfirmation = false
-    @State private var showingRestoreConfirmation = false
-    @State private var pendingRestoreURL: URL?
-
     @Environment(Theme.self) private var theme
-    @Environment(AppServices.self) private var appServices
-    @Query private var allJobs: [Job]
 
     var body: some View {
         Form {
             appearanceSection
-            locationSection
             intervalsSection
-            availabilitySection
-            customExtractionSection
-            dataSection
             appInfoSection
         }
         .formStyle(.grouped)
-        .onAppear {
-            customJDText = settings.string(forKey: SettingsKey.jobDescriptionMarkdown)
-        }
-        .confirmationDialog(
-            "Replace Current Data?",
-            isPresented: $showingRestoreConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Restore and Relaunch", role: .destructive) {
-                if let url = pendingRestoreURL { performRestore(from: url) }
-            }
-            Button("Cancel", role: .cancel) { pendingRestoreURL = nil }
-        } message: {
-            Text(
-                "All current jobs, captures, settings, and resumes will be replaced with the backup. " +
-                "A pre-restore backup will be saved automatically. " +
-                "API keys are not part of the backup (they live in the Keychain) — you may need to " +
-                "re-enter them in AI Provider settings afterward. " +
-                "The app must relaunch to apply the restored data."
-            )
-        }
-        .sheet(isPresented: $showingExpiredConfirmation) {
-            ExpiredConfirmationSheet(
-                goneJobs: goneJobs,
-                onConfirm: { markExpired($0) },
-                onDismiss: {
-                    showingExpiredConfirmation = false
-                    availabilityCheckMessage = "\(goneJobs.count) potential expiration(s) — none marked"
-                }
-            )
-        }
     }
 
     // MARK: - Appearance section (HIG-3: theme preference moved here from sidebar)
@@ -76,6 +33,92 @@ struct SettingsTab: View {
                 }
             }
             .pickerStyle(.segmented)
+        }
+    }
+
+    // MARK: - Intervals section
+
+    private var intervalsSection: some View {
+        Section("Intervals") {
+            Stepper(
+                "Site review interval: \(settings.siteReviewIntervalDays) days",
+                value: Binding(
+                    get: { settings.siteReviewIntervalDays },
+                    set: { settings.siteReviewIntervalDays = $0 }
+                ),
+                in: 1 ... 90
+            )
+
+            Stepper(
+                "Follow-up default: \(settings.followupDefaultDays) days",
+                value: Binding(
+                    get: { settings.followupDefaultDays },
+                    set: { settings.followupDefaultDays = $0 }
+                ),
+                in: 1 ... 60
+            )
+        }
+    }
+
+    // MARK: - App info
+
+    private var appInfoSection: some View {
+        Section("About") {
+            LabeledContent("Version") {
+                Text(appVersion)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            LabeledContent("Build") {
+                Text(appBuild)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        }
+    }
+
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+    }
+
+    private var appBuild: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
+    }
+}
+
+// MARK: - Jobs tab (location filter, availability, extraction instructions)
+
+struct JobsSettingsTab: View {
+    let settings: SettingsStore
+
+    @State private var customJDText: String = ""
+    @State private var isRunningAvailabilityCheck = false
+    @State private var availabilityCheckMessage: String?
+    @State private var goneJobs: [GoneJobResult] = []
+    @State private var showingExpiredConfirmation = false
+
+    @Environment(AppServices.self) private var appServices
+    @Query private var allJobs: [Job]
+
+    var body: some View {
+        Form {
+            locationSection
+            availabilitySection
+            customExtractionSection
+        }
+        .formStyle(.grouped)
+        .onAppear {
+            customJDText = settings.string(forKey: SettingsKey.jobDescriptionMarkdown)
+        }
+        .sheet(isPresented: $showingExpiredConfirmation) {
+            ExpiredConfirmationSheet(
+                goneJobs: goneJobs,
+                onConfirm: { markExpired($0) },
+                onDismiss: {
+                    showingExpiredConfirmation = false
+                    availabilityCheckMessage = "\(goneJobs.count) potential expiration(s) — none marked"
+                }
+            )
         }
     }
 
@@ -113,30 +156,6 @@ struct SettingsTab: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-        }
-    }
-
-    // MARK: - Intervals section
-
-    private var intervalsSection: some View {
-        Section("Intervals") {
-            Stepper(
-                "Site review interval: \(settings.siteReviewIntervalDays) days",
-                value: Binding(
-                    get: { settings.siteReviewIntervalDays },
-                    set: { settings.siteReviewIntervalDays = $0 }
-                ),
-                in: 1 ... 90
-            )
-
-            Stepper(
-                "Follow-up default: \(settings.followupDefaultDays) days",
-                value: Binding(
-                    get: { settings.followupDefaultDays },
-                    set: { settings.followupDefaultDays = $0 }
-                ),
-                in: 1 ... 60
-            )
         }
     }
 
@@ -216,7 +235,81 @@ struct SettingsTab: View {
         }
     }
 
-    // MARK: - Data section
+    // MARK: - Helpers
+
+    private var lastAutoCheckDate: Date? {
+        let str = settings.string(forKey: SettingsKey.availabilityLastAutoCheckAt)
+        guard !str.isEmpty else { return nil }
+        return ISO8601DateFormatter().date(from: str)
+    }
+
+    private func runAvailabilityCheck() async {
+        isRunningAvailabilityCheck = true
+        availabilityCheckMessage = nil
+        defer { isRunningAvailabilityCheck = false }
+
+        let pursuing = allJobs.filter { $0.status == .pursuing }
+        guard !pursuing.isEmpty else {
+            availabilityCheckMessage = "No pursuing jobs to check"
+            return
+        }
+
+        availabilityCheckMessage = "Checking \(pursuing.count) jobs…"
+        let found = await AvailabilityChecker.findGoneJobs(pursuing)
+
+        let now = ISO8601DateFormatter().string(from: Date())
+        settings.set(now, forKey: SettingsKey.availabilityLastAutoCheckAt)
+
+        if found.isEmpty {
+            availabilityCheckMessage = "All \(pursuing.count) jobs are still available"
+        } else {
+            goneJobs = found
+            showingExpiredConfirmation = true
+            availabilityCheckMessage = nil
+        }
+    }
+
+    private func markExpired(_ jobs: [GoneJobResult]) {
+        showingExpiredConfirmation = false
+        let ids = jobs.map(\.jobID)
+        let count = ids.count
+        Task { try? await appServices.jobService.markExpired(jobIDs: ids) }
+        availabilityCheckMessage = "\(count) job(s) marked expired"
+    }
+}
+
+// MARK: - Data tab (backup & restore)
+
+struct DataSettingsTab: View {
+    @State private var showingRestoreConfirmation = false
+    @State private var pendingRestoreURL: URL?
+
+    @Environment(AppServices.self) private var appServices
+
+    var body: some View {
+        Form {
+            dataSection
+        }
+        .formStyle(.grouped)
+        .confirmationDialog(
+            "Replace Current Data?",
+            isPresented: $showingRestoreConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Restore and Relaunch", role: .destructive) {
+                if let url = pendingRestoreURL { performRestore(from: url) }
+            }
+            Button("Cancel", role: .cancel) { pendingRestoreURL = nil }
+        } message: {
+            Text(
+                "All current jobs, captures, settings, and resumes will be replaced with the backup. " +
+                "A pre-restore backup will be saved automatically. " +
+                "API keys are not part of the backup (they live in the Keychain) — you may need to " +
+                "re-enter them in AI Provider settings afterward. " +
+                "The app must relaunch to apply the restored data."
+            )
+        }
+    }
 
     private var dataSection: some View {
         Section("Data") {
@@ -246,64 +339,7 @@ struct SettingsTab: View {
         }
     }
 
-    // MARK: - App info
-
-    private var appInfoSection: some View {
-        Section("About") {
-            LabeledContent("Version") {
-                Text(appVersion)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-            LabeledContent("Build") {
-                Text(appBuild)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-        }
-    }
-
     // MARK: - Helpers
-
-    private var lastAutoCheckDate: Date? {
-        let str = settings.string(forKey: SettingsKey.availabilityLastAutoCheckAt)
-        guard !str.isEmpty else { return nil }
-        return ISO8601DateFormatter().date(from: str)
-    }
-
-    private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
-    }
-
-    private var appBuild: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
-    }
-
-    private func runAvailabilityCheck() async {
-        isRunningAvailabilityCheck = true
-        availabilityCheckMessage = nil
-        defer { isRunningAvailabilityCheck = false }
-
-        let pursuing = allJobs.filter { $0.status == .pursuing }
-        guard !pursuing.isEmpty else {
-            availabilityCheckMessage = "No pursuing jobs to check"
-            return
-        }
-
-        availabilityCheckMessage = "Checking \(pursuing.count) jobs…"
-        let found = await AvailabilityChecker.findGoneJobs(pursuing)
-
-        let now = ISO8601DateFormatter().string(from: Date())
-        settings.set(now, forKey: SettingsKey.availabilityLastAutoCheckAt)
-
-        if found.isEmpty {
-            availabilityCheckMessage = "All \(pursuing.count) jobs are still available"
-        } else {
-            goneJobs = found
-            showingExpiredConfirmation = true
-            availabilityCheckMessage = nil
-        }
-    }
 
     private func backUpData() {
         let panel = NSSavePanel()
@@ -391,14 +427,6 @@ struct SettingsTab: View {
         alert.addButton(withTitle: "Quit Now")
         alert.runModal()
         NSApp.terminate(nil)
-    }
-
-    private func markExpired(_ jobs: [GoneJobResult]) {
-        showingExpiredConfirmation = false
-        let ids = jobs.map(\.jobID)
-        let count = ids.count
-        Task { try? await appServices.jobService.markExpired(jobIDs: ids) }
-        availabilityCheckMessage = "\(count) job(s) marked expired"
     }
 }
 

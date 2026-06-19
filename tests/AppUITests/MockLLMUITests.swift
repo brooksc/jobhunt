@@ -30,10 +30,10 @@ final class MockLLMUITests: XCTestCase {
         XCTAssertTrue(app.windows["Settings"].waitForExistence(timeout: 5),
                       "⌘, should open the Settings window")
 
-        // The Settings sub-tabs are a TabView; match the "LLM" tab item by label regardless of the
-        // concrete element type the macOS tab bar exposes.
-        let llmTab = app.descendants(matching: .any).matching(NSPredicate(format: "label == 'LLM'")).firstMatch
-        XCTAssertTrue(llmTab.waitForExistence(timeout: 10), "LLM settings tab must exist")
+        // The Settings sub-tabs are a TabView; match the "AI" tab item (provider/model/pricing) by
+        // label regardless of the concrete element type the macOS tab bar exposes.
+        let llmTab = app.descendants(matching: .any).matching(NSPredicate(format: "label == 'AI'")).firstMatch
+        XCTAssertTrue(llmTab.waitForExistence(timeout: 10), "AI settings tab must exist")
         llmTab.click()
 
         let testButton = app.buttons["Test Connection"].firstMatch

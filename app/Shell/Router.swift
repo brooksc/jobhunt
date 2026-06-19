@@ -117,8 +117,10 @@ public enum SidebarItem: Hashable, Sendable {
 /// Tabs in the ⌘, Settings window (rawValue matches each tab's `.tag`).
 public enum SettingsPane: Int {
     case general = 0
-    case llm = 1
-    case debug = 2
+    case jobs = 1
+    case llm = 2
+    case data = 3
+    case debug = 4
 }
 
 @Observable

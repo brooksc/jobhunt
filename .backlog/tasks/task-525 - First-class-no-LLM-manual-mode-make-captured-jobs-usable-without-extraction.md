@@ -1,9 +1,10 @@
 ---
 id: TASK-525
 title: 'First-class no-LLM / manual mode: make captured jobs usable without extraction'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 04:45'
+updated_date: '2026-06-19 21:58'
 labels:
   - ux
   - llm
@@ -33,9 +34,22 @@ References: app/Views/Jobs/JobsView.swift, app/Views/Detail/JobDetailView.swift,
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A job with no extracted title displays its captured page title (and domain as a company hint) instead of "Untitled", consistently across Jobs list, detail header, Dashboard, Needs Action, and Duplicates
-- [ ] #2 The fallback title is used for sorting and search, not just display
-- [ ] #3 An un-extracted job in the detail inspector offers a discoverable path to enter company/title/location/salary manually (especially when no AI provider is configured)
-- [ ] #4 The fit ring/score is visually neutralized (not a perpetual empty placeholder) when there is no LLM or no active resume
-- [ ] #5 The fallback is display-only and does not overwrite extraction-owned fields (re-extraction still populates them normally)
+- [x] #1 A job with no extracted title displays its captured page title (and domain as a company hint) instead of "Untitled", consistently across Jobs list, detail header, Dashboard, Needs Action, and Duplicates
+- [x] #2 The fallback title is used for sorting and search, not just display
+- [x] #3 An un-extracted job in the detail inspector offers a discoverable path to enter company/title/location/salary manually (especially when no AI provider is configured)
+- [x] #4 The fit ring/score is visually neutralized (not a perpetual empty placeholder) when there is no LLM or no active resume
+- [x] #5 The fallback is display-only and does not overwrite extraction-owned fields (re-extraction still populates them normally)
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Made "no LLM / pre-extraction" a supported mode rather than a degraded-looking one.
+
+- **Display fallbacks** (`Job.displayTitle`/`displayCompany`/`captureHost`, core/Models/Job+Display.swift, 9 unit tests): extracted value → captured page title → capture host → "Untitled". Computed at read time, so extraction-owned stored fields are never touched (AC#5) and AI users benefit too (jobs legible before the LLM finishes). Wired the four render sites: Jobs row, detail header, Dashboard ×2 (AC#1).
+- **Sort & search** use the same fallbacks (AC#2): JobsSortLogic .title/.company cases → displayTitle/displayCompany; the cheap-field search array too — un-extracted jobs sort by page title and match a page-title/domain search instead of collapsing to the bottom / being unfindable.
+- **Fit ring neutralized** when no AI provider or no active résumé (AC#4): added a `fitScoringAvailable` signal to the Jobs row and JobDetailView OverviewTabView — the row renders no ring and the detail header shows "Fit unavailable" instead of a forever-pending sparkle placeholder. Dashboard already only drew a ring when a score existed.
+- **Discoverable manual entry** (AC#3): the inline editable Company/Title/Location/URL rows already existed; added a non-nagging hint above them (shown only when no AI provider is configured and the job is still empty) pointing to manual entry with a SettingsLink to set up AI.
+
+Commits: 25d40c4 (display), 27a427f (sort/search), d624c6e (fit ring), c3dbc7e (manual entry). Build + fast gate green; CI green.
+<!-- SECTION:FINAL_SUMMARY:END -->

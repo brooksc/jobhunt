@@ -146,6 +146,10 @@ public final class Router {
     /// the checklist returns on next launch if setup is still incomplete ("persistent until
     /// configured"), but the user can hide it for the current session.
     public var setupChecklistDismissed: Bool = false
+    /// One-shot: the Jobs list scrolls to this job id when it's opened via *external* navigation
+    /// (LLM Queue "Open Job", notification deep-links). Cleared once the list scrolls. User clicks
+    /// select through the list binding and don't set this, so an in-list click never re-scrolls.
+    public var pendingJobScrollID: String?
     /// Set by "Add Note" affordances (e.g. the Jobs row context menu) to ask the job detail view
     /// to open the selected job's Timeline tab for note entry. Cleared once consumed.
     public var composeNoteJobID: String?
@@ -158,6 +162,7 @@ public final class Router {
     public func selectJob(id: String) {
         selectedSection = .jobs
         selectedJobID = id
+        pendingJobScrollID = id
     }
 
     public func navigateToSection(_ section: SidebarSection) {

@@ -337,43 +337,62 @@ struct JobsView: View {
         // Keychain (API-key presence) via AIConfig.isConfigured, so evaluating it per row meant one
         // Keychain hit per visible job (~hundreds of ms when switching filters on a full list).
         let canScore = fitScoringAvailable
-        return List(filteredJobs, selection: $selectedJobIDs) { job in
-            JobListRow(job: job, isSelected: selectedJobIDs.contains(job.id), fitScoringAvailable: canScore)
-                .tag(job.id)
-                .contextMenu { jobContextMenu(job) }
-                .accessibilityIdentifier("job.row.\(job.id)")
-        }
-        .listStyle(.inset)
-        // The Delete key on the focused/selected row(s) opens the same confirmation dialog as the
-        // context-menu / Job-menu Delete (TASK-507). Archive is keyboard-reachable via ⌃⌘A.
-        .onDeleteCommand {
-            let ids = Array(selectedJobIDs)
-            if !ids.isEmpty { jobIDsToDelete = ids }
-        }
-        .overlay {
-            if filteredJobs.isEmpty {
-                if allJobs.isEmpty {
-                    VStack(spacing: 20) {
-                        ContentUnavailableView(
-                            "No jobs yet",
-                            systemImage: "tray",
-                            description: Text(
-                                "Capture jobs with the Chrome extension, or press ⌘N to add one manually."
+        return ScrollViewReader { proxy in
+            List(filteredJobs, selection: $selectedJobIDs) { job in
+                JobListRow(job: job, isSelected: selectedJobIDs.contains(job.id), fitScoringAvailable: canScore)
+                    .tag(job.id)
+                    .contextMenu { jobContextMenu(job) }
+                    .accessibilityIdentifier("job.row.\(job.id)")
+            }
+            .listStyle(.inset)
+            // The Delete key on the focused/selected row(s) opens the same confirmation dialog as the
+            // context-menu / Job-menu Delete (TASK-507). Archive is keyboard-reachable via ⌃⌘A.
+            .onDeleteCommand {
+                let ids = Array(selectedJobIDs)
+                if !ids.isEmpty { jobIDsToDelete = ids }
+            }
+            .overlay {
+                if filteredJobs.isEmpty {
+                    if allJobs.isEmpty {
+                        VStack(spacing: 20) {
+                            ContentUnavailableView(
+                                "No jobs yet",
+                                systemImage: "tray",
+                                description: Text(
+                                    "Capture jobs with the Chrome extension, or press ⌘N to add one manually."
+                                )
                             )
+                            // First-run setup checklist — hides itself once AI + résumé are configured.
+                            SetupChecklistCard(settings: appServices.settings)
+                                .frame(maxWidth: 440)
+                                .padding(.horizontal)
+                        }
+                    } else {
+                        ContentUnavailableView(
+                            "No matching jobs",
+                            systemImage: "line.3.horizontal.decrease.circle",
+                            description: Text("No jobs match the current view, filters, or search.")
                         )
-                        // First-run setup checklist — hides itself once AI + résumé are configured.
-                        SetupChecklistCard(settings: appServices.settings)
-                            .frame(maxWidth: 440)
-                            .padding(.horizontal)
                     }
-                } else {
-                    ContentUnavailableView(
-                        "No matching jobs",
-                        systemImage: "line.3.horizontal.decrease.circle",
-                        description: Text("No jobs match the current view, filters, or search.")
-                    )
                 }
             }
+            // Scroll to a job opened via external navigation. onChange covers the already-mounted
+            // case (notification while on Jobs); onAppear covers arriving from another section.
+            .onChange(of: router.pendingJobScrollID) { _, target in
+                scrollToPendingJob(proxy, target)
+            }
+            .onAppear { scrollToPendingJob(proxy, router.pendingJobScrollID) }
+        }
+    }
+
+    /// Scroll the list to a job opened via external navigation (Open Job / notification deep-link),
+    /// then clear the one-shot signal. Deferred a tick so the target row exists after a mount or
+    /// filter change. A no-op when the job isn't in the current filtered list.
+    private func scrollToPendingJob(_ proxy: ScrollViewProxy, _ target: String?) {
+        guard let target else { return }
+        DispatchQueue.main.async {
+            withAnimation { proxy.scrollTo(target, anchor: .center) }
+            router.pendingJobScrollID = nil
         }
     }
 

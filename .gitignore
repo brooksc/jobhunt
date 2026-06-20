@@ -45,3 +45,4 @@ Tuist/Dependencies/
 build/
 *.profraw
 nohup.out
+.wrangler/

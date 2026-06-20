@@ -86,12 +86,18 @@ jobs:
 
       - name: Archive
         run: |
+          # Project.swift's sharedBase uses automaticCodeSigning; Developer ID distribution needs
+          # MANUAL signing. Passing CODE_SIGN_IDENTITY alone leaves the style as Automatic and Xcode
+          # errors with "conflicting provisioning settings", so force CODE_SIGN_STYLE=Manual here.
+          # Developer ID apps need no provisioning profile, so clear the specifier too.
           nice xcodebuild archive \
             -project Jobhunt.xcodeproj \
             -scheme Jobhunt-DMG \
             -configuration Release-DMG \
             -archivePath build/Jobhunt-DMG.xcarchive \
+            CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Developer ID Application" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
             DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }}
 
       - name: Export archive (Developer ID)

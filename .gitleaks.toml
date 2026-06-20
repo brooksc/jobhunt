@@ -15,4 +15,7 @@ regexes = [
   '''mock-(model|token|key)''',
   '''sk-test''',
   '''127\.0\.0\.1''',
+  # Sparkle EdDSA PUBLIC key (SUPublicEDKey, Project.swift) — public by design: it ships in the app
+  # Info.plist to verify update signatures. The private half lives only in a CI secret (TASK-566).
+  '''M\+FYCXWxrdmjRzphUpv5wZMxaDh/ecJU22324\+3o4zQ=''',
 ]

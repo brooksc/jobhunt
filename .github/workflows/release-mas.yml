@@ -1,8 +1,12 @@
 name: Release MAS
 
 on:
-  push:
-    tags: ['v*']
+  # MAS release is deferred until App Store signing is configured: MAS_CERT_BASE64 /
+  # MAS_INSTALLER_CERT_BASE64 / MAS_CERT_PASSWORD / MAS_INSTALLER_CERT_PASSWORD are NOT set, and
+  # MAS needs an App Store Connect app record. Manual-dispatch only so a `v*` tag yields a clean
+  # DMG-only release (release-dmg.yml) instead of a guaranteed MAS failure. Re-add
+  # `push: { tags: ['v*'] }` here once MAS signing exists. (TASK-566)
+  workflow_dispatch:
 
 # TASK-353: least-privilege permissions — job-level write only for the release job
 permissions:

@@ -554,8 +554,13 @@
     document.getElementById('carouselPrev').addEventListener('click', () => { goTo(current - 1); startAuto(); });
     document.getElementById('carouselNext').addEventListener('click', () => { goTo(current + 1); startAuto(); });
     dots.forEach(d => d.addEventListener('click', () => { goTo(+d.dataset.index); startAuto(); }));
-    carousel.addEventListener('mouseenter', () => clearInterval(timer));
-    carousel.addEventListener('mouseleave', startAuto);
+
+    // Keep the slideshow advancing continuously. (We intentionally don't pause on hover so the
+    // images always cycle; the arrows/dots still let you take manual control.) Pause only when the
+    // tab is hidden, then resume — avoids piling up transitions in a background tab.
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { clearInterval(timer); } else { startAuto(); }
+    });
 
     startAuto();
   </script>

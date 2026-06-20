@@ -123,6 +123,7 @@ public final class AIProviderFormModel {
         syncAPIKey()
         fetchedModels = []
         fetchError = nil
+        if canFetchModels { Task { await fetchModels() } }
     }
 
     public func syncAPIKey() {

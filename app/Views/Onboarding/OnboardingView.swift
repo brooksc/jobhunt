@@ -232,58 +232,11 @@ private struct ChromeExtensionStep: View {
 
 private struct AIProviderStep: View {
     let settings: SettingsStore
+    @State private var model: AIProviderFormModel
 
-    @State private var selectedProviderID: String = "lmstudio"
-    @State private var apiKeyText: String = ""
-    @State private var baseURLText: String = ""
-    @State private var modelText: String = ""
-    @State private var fetchedModels: [String] = []
-    @State private var isFetchingModels = false
-    @State private var fetchError: String?
-    @State private var connectionStatus: ConnectionStatus = .idle
-    @State private var showConsentSheet = false
-    @State private var pendingProviderID: String?
-
-    private enum ConnectionStatus { case idle, testing, success(String), failure(String) }
-
-    private struct ProviderOption: Identifiable {
-        let id: String
-        let label: String
-        let isCloud: Bool
-        let privacyURL: String?
-
-        static let all: [ProviderOption] = [
-            ProviderOption(id: "lmstudio", label: "LM Studio", isCloud: false, privacyURL: nil),
-            ProviderOption(
-                id: "openai",
-                label: "OpenAI",
-                isCloud: true,
-                privacyURL: "https://openai.com/policies/privacy-policy"
-            ),
-            ProviderOption(
-                id: "anthropic",
-                label: "Anthropic",
-                isCloud: true,
-                privacyURL: "https://www.anthropic.com/privacy"
-            ),
-            ProviderOption(
-                id: "google",
-                label: "Google",
-                isCloud: true,
-                privacyURL: "https://policies.google.com/privacy"
-            ),
-            ProviderOption(
-                id: "openrouter",
-                label: "OpenRouter",
-                isCloud: true,
-                privacyURL: "https://openrouter.ai/privacy"
-            ),
-            ProviderOption(id: "custom", label: "Custom", isCloud: false, privacyURL: nil)
-        ]
-
-        static func find(_ id: String) -> ProviderOption? {
-            all.first { $0.id == id }
-        }
+    init(settings: SettingsStore) {
+        self.settings = settings
+        _model = State(initialValue: AIProviderFormModel(settings: settings))
     }
 
     var body: some View {
@@ -298,60 +251,67 @@ private struct AIProviderStep: View {
 
             Form {
                 Picker("Provider", selection: Binding(
-                    get: { selectedProviderID },
-                    set: { handleProviderChange(to: $0) }
+                    get: { model.selectedProviderID },
+                    set: { model.handleProviderChange(to: $0) }
                 )) {
-                    ForEach(ProviderOption.all) { opt in
+                    ForEach(AIProviderFormModel.ProviderOption.all) { opt in
                         Text(opt.label).tag(opt.id)
                     }
                 }
 
-                if selectedProviderID == "lmstudio" || selectedProviderID == "custom" {
-                    TextField("Base URL", text: $baseURLText)
-                        .onChange(of: baseURLText) { _, new in settings.llmBaseURL = new }
+                if model.selectedProviderID == "lmstudio" || model.selectedProviderID == "custom" {
+                    TextField("Base URL", text: Binding(
+                        get: { model.baseURLText },
+                        set: { model.onBaseURLChanged($0) }
+                    ))
                 }
-                if selectedProviderID == "lmstudio", let url = URL(string: "https://lmstudio.ai/download") {
+                if model.selectedProviderID == "lmstudio", let url = URL(string: "https://lmstudio.ai/download") {
                     Link("Download LM Studio", destination: url).font(.caption)
                 }
 
-                if needsAPIKey {
-                    SecureField("API Key", text: $apiKeyText)
-                        .onChange(of: apiKeyText) { _, _ in
-                            settings.setAPIKey(apiKeyText, forProvider: selectedProviderID)
-                        }
+                if model.needsAPIKey {
+                    SecureField("API Key", text: Binding(
+                        get: { model.apiKeyText },
+                        set: { model.onAPIKeyChanged($0) }
+                    ))
                     // TASK-464: per-provider "Get API key" link.
-                    if let keyURL = Self.apiKeyURL(for: selectedProviderID) {
+                    if let urlString = AIProviderFormModel.ProviderOption.find(model.selectedProviderID).apiKeyURL,
+                       let keyURL = URL(string: urlString) {
                         Link("Get an API key →", destination: keyURL).font(.caption)
                     }
                 }
 
                 HStack {
-                    if fetchedModels.isEmpty {
-                        TextField("Model", text: $modelText)
-                            .onChange(of: modelText) { _, new in settings.llmModel = new }
+                    if model.fetchedModels.isEmpty {
+                        TextField("Model", text: Binding(
+                            get: { model.modelText },
+                            set: { model.onModelChanged($0) }
+                        ))
                     } else {
-                        Picker("Model", selection: $modelText) {
-                            if !fetchedModels.contains(modelText) {
+                        Picker("Model", selection: Binding(
+                            get: { model.modelText },
+                            set: { new in if !new.isEmpty { model.onModelChanged(new) } }
+                        )) {
+                            if !model.fetchedModels.contains(model.modelText) {
                                 Text("Select a model…").tag("")
                             }
-                            ForEach(fetchedModels, id: \.self) { Text($0).tag($0) }
+                            ForEach(model.fetchedModels, id: \.self) { Text($0).tag($0) }
                         }
-                        .onChange(of: modelText) { _, new in settings.llmModel = new }
                     }
-                    if canFetchModels {
+                    if model.canFetchModels {
                         Button {
-                            Task { await fetchModels() }
+                            Task { await model.fetchModels() }
                         } label: {
-                            if isFetchingModels {
+                            if model.isFetchingModels {
                                 ProgressView().controlSize(.small)
                             } else {
                                 Text("Fetch Models")
                             }
                         }
-                        .disabled(isFetchingModels)
+                        .disabled(model.isFetchingModels)
                     }
                 }
-                if let fetchError {
+                if let fetchError = model.fetchError {
                     Label(fetchError, systemImage: "exclamationmark.triangle")
                         .font(.caption)
                         .foregroundStyle(.orange)
@@ -359,15 +319,15 @@ private struct AIProviderStep: View {
 
                 HStack {
                     Button {
-                        Task { await testConnection() }
+                        Task { await model.testConnection() }
                     } label: {
-                        if case .testing = connectionStatus {
+                        if model.connectionStatus == .testing {
                             ProgressView().controlSize(.small)
                         } else {
                             Label("Test Connection", systemImage: "network")
                         }
                     }
-                    .disabled({ if case .testing = connectionStatus { return true }; return false }())
+                    .disabled(model.connectionStatus == .testing)
 
                     Spacer()
                     connectionStatusView
@@ -377,87 +337,24 @@ private struct AIProviderStep: View {
             .frame(maxHeight: 260)
         }
         .padding(24)
-        .onAppear { syncFromSettings() }
-        .sheet(isPresented: $showConsentSheet) {
-            if let pid = pendingProviderID, let provider = ProviderOption.find(pid) {
-                LLMConsentSheet(
-                    providerName: provider.label,
-                    providerID: pid,
-                    privacyURL: provider.privacyURL,
-                    settings: settings,
-                    onAgree: {
-                        applyProvider(pid)
-                        pendingProviderID = nil
-                    },
-                    onCancel: { pendingProviderID = nil }
-                )
-            }
-        }
-    }
-
-    private var needsAPIKey: Bool {
-        ["openai", "anthropic", "google", "openrouter", "custom"].contains(selectedProviderID)
-    }
-
-    /// Where to obtain an API key for a hosted provider (TASK-464, Electron API_KEY_URLS).
-    static func apiKeyURL(for providerID: String) -> URL? {
-        let urls = [
-            "openai": "https://platform.openai.com/api-keys",
-            "anthropic": "https://console.anthropic.com/settings/keys",
-            "google": "https://aistudio.google.com/app/apikey",
-            "openrouter": "https://openrouter.ai/keys"
-        ]
-        return urls[providerID].flatMap(URL.init(string:))
-    }
-
-    private var canFetchModels: Bool {
-        switch selectedProviderID {
-        case "openai", "anthropic", "google": !apiKeyText.isEmpty
-        case "openrouter": true // public model list — no key required
-        case "lmstudio", "custom": !baseURLText.isEmpty
-        default: false
-        }
-    }
-
-    private func fetchModels() async {
-        isFetchingModels = true
-        fetchError = nil
-        defer { isFetchingModels = false }
-        do {
-            let models = try await ModelCatalog.listModels(
-                provider: selectedProviderID,
-                baseURL: baseURLText.isEmpty ? settings.llmBaseURL : baseURLText,
-                apiKey: apiKeyText
+        .onAppear { model.syncFromSettings() }
+        .sheet(item: Binding(get: { model.pendingConsent }, set: { model.pendingConsent = $0 })) { request in
+            let opt = AIProviderFormModel.ProviderOption.find(request.id)
+            LLMConsentSheet(
+                providerName: opt.label,
+                providerID: request.id,
+                privacyURL: opt.privacyURL,
+                settings: settings,
+                // .sheet(item:) auto-clears pendingConsent on dismiss.
+                onAgree: { model.applyProviderChange(to: request.id) },
+                onCancel: {}
             )
-            fetchedModels = models
-            if models.isEmpty {
-                fetchError = "No models returned by the provider"
-            } else if !models.contains(modelText) {
-                modelText = ""
-                settings.llmModel = ""
-            }
-        } catch {
-            fetchedModels = []
-            fetchError = error.localizedDescription
         }
-    }
-
-    /// Switches the active provider, clearing the selected model so the user must explicitly
-    /// pick one for the new provider, then auto-fetches the model list when possible.
-    private func applyProvider(_ newID: String) {
-        selectedProviderID = newID
-        settings.llmProvider = newID
-        modelText = ""
-        settings.llmModel = ""
-        fetchedModels = []
-        fetchError = nil
-        syncAPIKey()
-        if canFetchModels { Task { await fetchModels() } }
     }
 
     @ViewBuilder
     private var connectionStatusView: some View {
-        switch connectionStatus {
+        switch model.connectionStatus {
         case .idle, .testing: EmptyView()
         case let .success(msg):
             Label(msg, systemImage: "checkmark.circle.fill")
@@ -465,47 +362,6 @@ private struct AIProviderStep: View {
         case let .failure(msg):
             Label(msg, systemImage: "xmark.circle.fill")
                 .foregroundStyle(.red).font(.callout).lineLimit(2)
-        }
-    }
-
-    private func syncFromSettings() {
-        selectedProviderID = settings.llmProvider
-        modelText = settings.llmModel
-        baseURLText = settings.llmBaseURL
-        syncAPIKey()
-        fetchedModels = []
-        fetchError = nil
-        if canFetchModels { Task { await fetchModels() } }
-    }
-
-    private func syncAPIKey() {
-        apiKeyText = settings.apiKey(forProvider: selectedProviderID)
-    }
-
-    private func handleProviderChange(to newID: String) {
-        guard let provider = ProviderOption.find(newID) else { return }
-        if provider.isCloud && !ConsentHelper.isConsented(provider: newID, settings: settings) {
-            pendingProviderID = newID
-            showConsentSheet = true
-        } else {
-            applyProvider(newID)
-        }
-    }
-
-    func testConnection() async {
-        connectionStatus = .testing
-        let provider = LLMProviderFactory.makeProvider(settings: settings)
-        let request = ChatRequest(
-            messages: [ChatMessage(role: "user", content: "Reply with the word OK and nothing else.")],
-            model: settings.llmModel,
-            maxTokens: 16
-        )
-        do {
-            let response = try await provider.complete(request)
-            let preview = String(response.content.prefix(40))
-            connectionStatus = .success(preview.isEmpty ? "Connected" : preview)
-        } catch {
-            connectionStatus = .failure(error.localizedDescription)
         }
     }
 }

@@ -18,6 +18,10 @@ jobs:
     permissions:
       contents: write   # required to upload release artifacts
       id-token: write   # reserved for future OIDC/attestation use
+    env:
+      # Authenticates mise's GitHub API calls (tool downloads) → 1000/hr instead of the
+      # unauthenticated 60/hr per-IP limit, which otherwise fails 'mise install' (matches swift-build.yml).
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       # actions/checkout@v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683

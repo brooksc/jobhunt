@@ -29,6 +29,12 @@ struct JobhuntApp: App {
     let platformIntegration: PlatformIntegration?
     let theme = Theme()
 
+    // Sparkle auto-updater — DMG (Developer ID) builds only. Created once and held for the app's
+    // lifetime so scheduled background update checks run. MAS builds exclude Sparkle entirely.
+    #if !MAS_BUILD
+        let sparkleUpdater = SparkleUpdaterController()
+    #endif
+
     struct StoreFailure {
         let storeURL: URL
         let message: String
@@ -288,9 +294,7 @@ struct JobhuntApp: App {
 
                 #if !MAS_BUILD
                     CommandGroup(after: .appInfo) {
-                        Button("Check for Updates…") {
-                            SparkleUpdater.checkForUpdates()
-                        }
+                        CheckForUpdatesCommand(updater: sparkleUpdater)
                     }
                 #endif
             }

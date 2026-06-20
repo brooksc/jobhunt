@@ -58,7 +58,9 @@ jobs:
         run: mise install
 
       - name: Generate Xcode project
-        run: tuist generate --no-open
+        # TASK-566: TUIST_MAS_ONLY=1 omits Sparkle (package, dependency, Info.plist keys) so the
+        # App Store binary never links a third-party updater. See Project.swift `includeSparkle`.
+        run: TUIST_MAS_ONLY=1 tuist generate --no-open
 
       - name: Run tests
         run: nice xcodebuild test -project Jobhunt.xcodeproj -scheme Jobhunt-MAS -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
@@ -98,6 +100,12 @@ jobs:
           # MAS build must NOT include the MCP helper (not allowed in sandbox)
           if [ -f "$HELPER" ]; then
             echo "ERROR: MCP helper should not be present in MAS build"
+            exit 1
+          fi
+
+          # TASK-566: MAS build must NOT bundle Sparkle (App Store bans third-party updaters).
+          if [ -e "$APP_PATH/Contents/Frameworks/Sparkle.framework" ]; then
+            echo "ERROR: Sparkle.framework present in MAS build — TUIST_MAS_ONLY generation failed"
             exit 1
           fi
 

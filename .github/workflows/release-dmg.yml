@@ -104,6 +104,12 @@ jobs:
           test -x "$HELPER" || { echo "ERROR: MCP helper not executable"; exit 1; }
           codesign --verify --verbose "$HELPER" || { echo "ERROR: MCP helper not signed"; exit 1; }
 
+          # TASK-566: Sparkle auto-updater must be embedded and signed (notarization rejects
+          # unsigned nested code, and a missing framework crashes the app at launch).
+          SPARKLE="$APP_PATH/Contents/Frameworks/Sparkle.framework"
+          test -d "$SPARKLE" || { echo "ERROR: Sparkle.framework missing from DMG export"; exit 1; }
+          codesign --verify --verbose "$SPARKLE" || { echo "ERROR: Sparkle.framework not signed"; exit 1; }
+
           # TASK-401: assert the hardened runtime is enabled BEFORE notarization — Developer ID apps
           # without it are rejected by notarytool, and catching it here gives a clear error instead
           # of a late, opaque notarization failure. `codesign -dvv` prints `flags=0x10000(runtime)`.
@@ -151,12 +157,53 @@ jobs:
           fi
           xcrun stapler staple "$DMG"
 
+      # TASK-566: EdDSA-sign the stapled DMG and publish a Sparkle appcast so DMG installs
+      # auto-update. Must run AFTER stapling — the signature covers the final DMG bytes.
+      - name: Generate signed Sparkle appcast
+        env:
+          SPARKLE_EDDSA_PRIVATE_KEY: ${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"
+          DMG="build/Jobhunt-${TAG}.dmg"
+
+          # Sparkle CLI tools, pinned to the SPM-resolved version (Project.swift: upToNextMajor 2.6.4).
+          SPARKLE_VERSION=2.9.3
+          curl -fsSL -o sparkle.tar.xz \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+          mkdir -p sparkle-tools
+          tar -xf sparkle.tar.xz -C sparkle-tools
+
+          # Private signing key from the CI secret → temp file (never echoed). printf avoids a
+          # trailing newline that would corrupt the key.
+          printf '%s' "$SPARKLE_EDDSA_PRIVATE_KEY" > sparkle_ed_key
+          chmod 600 sparkle_ed_key
+
+          # generate_appcast reads version / shortVersion / minimumSystemVersion from the app inside
+          # the DMG, EdDSA-signs the stapled DMG, and emits appcast.xml whose enclosure points at the
+          # GitHub release download URL. Only the current DMG is in the dir → single-item appcast.
+          mkdir -p build/appcast-src
+          cp "$DMG" build/appcast-src/
+          sparkle-tools/bin/generate_appcast \
+            --ed-key-file sparkle_ed_key \
+            --download-url-prefix "https://github.com/brooksc/jobhunt/releases/download/${TAG}/" \
+            -o build/appcast.xml \
+            build/appcast-src/
+
+          rm -f sparkle_ed_key
+          echo "--- appcast.xml ---"
+          cat build/appcast.xml
+          # Sanity: the signature and the correct enclosure URL must be present.
+          grep -q 'sparkle:edSignature' build/appcast.xml || { echo "ERROR: appcast missing EdDSA signature"; exit 1; }
+          grep -q "releases/download/${TAG}/Jobhunt-${TAG}.dmg" build/appcast.xml \
+            || { echo "ERROR: appcast enclosure URL is wrong"; exit 1; }
+
       # TASK-356: Clean up signing certificate material before upload steps
       - name: Clean up signing certificate
         if: always()
         run: |
-          # Remove decoded p12 file from working directory
-          rm -f cert.p12
+          # Remove decoded p12 file and any Sparkle private key from working directory
+          rm -f cert.p12 sparkle_ed_key
           # Lock and delete temporary keychain
           security lock-keychain build.keychain 2>/dev/null || true
           security delete-keychain build.keychain 2>/dev/null || true
@@ -197,6 +244,7 @@ jobs:
           files: |
             build/Jobhunt-${{ github.ref_name }}.dmg
             build/Jobhunt-${{ github.ref_name }}.dmg.sha256
+            build/appcast.xml
             provenance.txt
             ${{ steps.ext.outputs.zip }}
             ${{ steps.ext.outputs.zip }}.sha256

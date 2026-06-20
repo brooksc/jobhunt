@@ -3,6 +3,21 @@ import ProjectDescription
 let bundleId = "com.jobhunt-app.jobhunt"
 let deploymentTarget: DeploymentTargets = .macOS("15.0")
 
+// MARK: - Sparkle auto-update (DMG only)
+
+// TASK-566: Sparkle 2 powers auto-update for Developer ID (DMG) builds. The Mac App Store bans
+// third-party updaters, so Sparkle must NOT be linked into the MAS binary. Tuist can't scope a
+// linked SPM package per build configuration, so instead `release-mas.yml` generates the project
+// with TUIST_MAS_ONLY=1 and we omit Sparkle (package, dependency, and Info.plist keys) entirely.
+// The default generation (local dev + `release-dmg.yml`) includes it.
+let includeSparkle = !Environment.masOnly.getBoolean(default: false)
+
+// EdDSA public key matching the private key used to sign DMGs in `release-dmg.yml`. Generated once
+// via Sparkle's `generate_keys`; the private half lives only in the SPARKLE_EDDSA_PRIVATE_KEY CI
+// secret. Replacing this invalidates every previously signed update.
+let sparklePublicEDKey = "M+FYCXWxrdmjRzphUpv5wZMxaDh/ecJU22324+3o4zQ="
+let sparkleFeedURL = "https://github.com/brooksc/jobhunt/releases/latest/download/appcast.xml"
+
 // MARK: - Project-level configurations (four: debug+release × dmg+mas)
 
 // TASK-401: Developer ID (DMG) builds MUST notarize with the hardened runtime. Set it explicitly
@@ -143,7 +158,11 @@ let appInfoPlist: [String: Plist.Value] = [
     "NSAppTransportSecurity": .dictionary([
         "NSAllowsLocalNetworking": true,
     ]),
-]
+].merging(includeSparkle ? [
+    // Sparkle auto-update (DMG only) — see TASK-566. Omitted from MAS generation.
+    "SUFeedURL": .string(sparkleFeedURL),
+    "SUPublicEDKey": .string(sparklePublicEDKey),
+] : [:]) { _, new in new }
 
 let dmgEntitlements: Path = "config/entitlements/Jobhunt-DMG.entitlements"
 let masEntitlements: Path = "config/entitlements/Jobhunt-MAS.entitlements"
@@ -194,7 +213,7 @@ let appTarget = Target.target(
         .target(name: "JobhuntCore"),
         .target(name: "JobhuntServer"),
         .target(name: "JobhuntMCP"),
-    ],
+    ] + (includeSparkle ? [.package(product: "Sparkle")] : []),
     settings: .settings(
         base: sharedBase,
         configurations: appConfigurations,
@@ -339,6 +358,9 @@ let project = Project(
         defaultKnownRegions: ["en"],
         developmentRegion: "en"
     ),
+    packages: includeSparkle
+        ? [.remote(url: "https://github.com/sparkle-project/Sparkle", requirement: .upToNextMajor(from: "2.6.4"))]
+        : [],
     settings: .settings(
         base: sharedBase,
         configurations: projectConfigurations,

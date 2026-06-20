@@ -74,6 +74,11 @@ struct SettingsTab: View {
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
+            Toggle("Show Debug tab", isOn: Binding(
+                get: { !settings.bool(forKey: SettingsKey.hideDebugTab) },
+                set: { settings.setBool(!$0, forKey: SettingsKey.hideDebugTab) }
+            ))
+            .help("The Debug tab holds developer diagnostics and maintenance actions.")
         }
     }
 

@@ -13,6 +13,7 @@ struct DebugTab: View {
     @Query private var attempts: [LLMRequestAttempt]
 
     @Environment(AppServices.self) private var appServices
+    @Environment(Router.self) private var router
 
     var body: some View {
         Form {
@@ -192,6 +193,13 @@ struct DebugTab: View {
             .help("Posts a notification now to verify macOS delivery. If nothing appears, check " +
                 "System Settings → Notifications → Jobhunt, turn off Do Not Disturb / Focus, and see " +
                 "the Console for 'Jobhunt test-notification' lines (auth status + add() result).")
+
+            Divider()
+            Button("Hide Debug Tab") {
+                router.settingsTab = .general
+                appServices.settings.setBool(true, forKey: SettingsKey.hideDebugTab)
+            }
+            .help("Removes this tab from Settings. Re-enable it from General → Show Debug tab.")
         }
     }
 

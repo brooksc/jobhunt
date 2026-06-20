@@ -60,9 +60,11 @@ private struct SettingsTabView: View {
                 .tabItem { Label("Data", systemImage: "externaldrive") }
                 .tag(3)
 
-            DebugTab()
-                .tabItem { Label("Debug", systemImage: "ant") }
-                .tag(4)
+            if !settings.bool(forKey: SettingsKey.hideDebugTab) {
+                DebugTab()
+                    .tabItem { Label("Debug", systemImage: "ant") }
+                    .tag(4)
+            }
         }
         .padding()
         .frame(minWidth: 560, minHeight: 560)

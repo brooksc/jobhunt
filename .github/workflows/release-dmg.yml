@@ -114,6 +114,32 @@ jobs:
           mkdir -p build/export-dmg
           ditto "$APP_SRC" build/export-dmg/Jobhunt.app
 
+      # Xcode's archive signing does NOT recurse into Sparkle's nested helpers (Updater.app and
+      # Autoupdate), so they keep Sparkle's upstream signature — no Developer ID, no secure timestamp
+      # — and notarization rejects them (TASK-566). Re-sign Sparkle's nested code inside-out with the
+      # Developer ID identity + hardened runtime + a secure timestamp (preserving each component's
+      # entitlements), then re-seal the framework and the app over the new hashes.
+      - name: Re-sign Sparkle nested code for notarization
+        run: |
+          set -euo pipefail
+          APP="build/export-dmg/Jobhunt.app"
+          SP="$APP/Contents/Frameworks/Sparkle.framework"
+          SPV="$SP/Versions/Current"
+          sign() {
+            codesign --force --options runtime --timestamp --preserve-metadata=entitlements \
+              --sign "Developer ID Application" "$@"
+          }
+          sign "$SPV/Updater.app/Contents/MacOS/Updater"
+          sign "$SPV/Updater.app"
+          sign "$SPV/Autoupdate"
+          sign "$SPV/XPCServices/Downloader.xpc"
+          sign "$SPV/XPCServices/Installer.xpc"
+          sign "$SP"
+          sign "$APP/Contents/Helpers/jobhunt-mcp"
+          sign "$APP"
+          # Catch any remaining nested-signing gap here instead of as an opaque notarization failure.
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
       - name: Smoke check DMG contents
         run: |
           APP_PATH="build/export-dmg/Jobhunt.app"
@@ -161,14 +187,19 @@ jobs:
           DMG="build/Jobhunt-${{ github.ref_name }}.dmg"
           # TASK-401: capture the submission output so that on failure we can fetch the detailed
           # notarization log (the reason is otherwise buried in Apple's portal, not the CI logs).
+          # NOTE: `notarytool submit --wait` exits 0 even when the result is Invalid, so detect the
+          # outcome from the printed status (not the exit code) — otherwise an Invalid submission
+          # silently falls through to `stapler staple`, which then fails opaquely with Error 65.
           SUBMIT_OUTPUT=$(xcrun notarytool submit "$DMG" \
             --apple-id "${{ secrets.APPLE_ID }}" \
             --password "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" \
             --team-id "${{ secrets.APPLE_TEAM_ID }}" \
-            --wait 2>&1) && NOTARIZE_OK=1 || NOTARIZE_OK=0
+            --wait 2>&1) || true
           echo "$SUBMIT_OUTPUT"
-          if [ "$NOTARIZE_OK" != "1" ]; then
-            SUBMISSION_ID=$(echo "$SUBMIT_OUTPUT" | grep -Eo 'id: [0-9a-f-]+' | head -1 | awk '{print $2}')
+          SUBMISSION_ID=$(echo "$SUBMIT_OUTPUT" | grep -Eo 'id: [0-9a-f-]+' | head -1 | awk '{print $2}')
+          STATUS=$(echo "$SUBMIT_OUTPUT" | awk -F': *' '/status:/{s=$2} END{print s}')
+          echo "Notarization status: ${STATUS:-unknown} (submission ${SUBMISSION_ID:-none})"
+          if [ "$STATUS" != "Accepted" ]; then
             if [ -n "$SUBMISSION_ID" ]; then
               echo "--- notarization log ($SUBMISSION_ID) ---"
               xcrun notarytool log "$SUBMISSION_ID" \
@@ -176,7 +207,7 @@ jobs:
                 --password "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" \
                 --team-id "${{ secrets.APPLE_TEAM_ID }}" || true
             fi
-            echo "ERROR: notarization failed (see log above)." >&2
+            echo "ERROR: notarization not Accepted (status=${STATUS:-unknown}); see log above." >&2
             exit 1
           fi
           xcrun stapler staple "$DMG"

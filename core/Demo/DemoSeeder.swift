@@ -129,6 +129,9 @@ extension BackgroundStore {
             let fitStatus: FitStatus
             let note: String?
             let duplicateOfJobID: String?
+            // Optional shared cleaned-hash so a pair of seed jobs is detected as a duplicate pair in
+            // the Duplicates review screen (the detector groups by identical cleanedHash + company).
+            var dupGroupHash: String? = nil
         }
 
         let jobs: [SeedJob] = [
@@ -283,7 +286,8 @@ extension BackgroundStore {
                 capturedAt: daysAgo(2), extractedAt: nil,
                 extractionStatus: .pending, fitScore: nil, fitStatus: .none,
                 note: nil,
-                duplicateOfJobID: nil
+                duplicateOfJobID: nil,
+                dupGroupHash: "demo_dhash_amazon"
             ),
             SeedJob(
                 capId: "cap_010", jobId: "job_010", jobNum: 10,
@@ -369,7 +373,8 @@ extension BackgroundStore {
                 capturedAt: daysAgo(1), extractedAt: daysAgo(1),
                 extractionStatus: .succeeded, fitScore: nil, fitStatus: .none,
                 note: nil,
-                duplicateOfJobID: "job_009"
+                duplicateOfJobID: "job_009",
+                dupGroupHash: "demo_dhash_amazon"
             ),
             // Accidentally captured non-job page
             SeedJob(
@@ -400,7 +405,9 @@ extension BackgroundStore {
                 .joined(separator: "\n")
 
             let rawHash = "demo_hash_\(seed.capId)"
-            let cleanedHash = seed.duplicateOfJobID != nil ? "demo_dhash_dup" : "demo_chash_\(seed.capId)"
+            // A shared dupGroupHash makes the two tagged jobs collide into one duplicate pair; all
+            // others get a unique hash so they're never flagged as duplicates.
+            let cleanedHash = seed.dupGroupHash ?? "demo_chash_\(seed.capId)"
 
             let capture = Capture(
                 id: seed.capId,

@@ -42,8 +42,12 @@ final class ScreenshotTests: XCTestCase {
 
     func test03_JobsAllWithDetail() {
         navigate(app, label: "All Jobs")
-        let firstRow = app.cells.element(boundBy: 0)
-        if firstRow.waitForExistence(timeout: 4) {
+        // Scope to the content.jobs outline. `app.cells.element(boundBy: 0)` matches the first cell
+        // in the whole window — the Dashboard sidebar row — and clicking it navigates away, so the
+        // shot captured the Dashboard instead of a selected job.
+        let jobsOutline = app.descendants(matching: .any).matching(identifier: "content.jobs").firstMatch
+        let firstRow = jobsOutline.descendants(matching: .cell).firstMatch
+        if firstRow.waitForExistence(timeout: 6) {
             firstRow.click()
             // Wait for the detail pane to render at least one text element.
             waitUntil(timeout: 3) { self.app.staticTexts.count > 5 }
@@ -94,6 +98,14 @@ final class ScreenshotTests: XCTestCase {
 
     func test13_Duplicates() {
         navigate(app, label: "Duplicates")
+        // Select the first detected pair so the side-by-side comparison pane is shown (the demo
+        // seeds one Amazon duplicate pair). Scope to content.duplicates to avoid the sidebar.
+        let list = app.descendants(matching: .any).matching(identifier: "content.duplicates").firstMatch
+        let firstPair = list.descendants(matching: .cell).firstMatch
+        if firstPair.waitForExistence(timeout: 6) {
+            firstPair.click()
+            waitUntil(timeout: 3) { self.app.staticTexts.count > 8 }
+        }
         snap(app, "13-duplicates")
     }
 

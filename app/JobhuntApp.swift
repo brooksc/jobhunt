@@ -31,8 +31,11 @@ struct JobhuntApp: App {
 
     // Sparkle auto-updater — DMG (Developer ID) builds only. Created once and held for the app's
     // lifetime so scheduled background update checks run. MAS builds exclude Sparkle entirely.
+    // nil in UI-test mode: Sparkle's first-launch "check for updates automatically?" prompt steals
+    // focus and blocks UI/screenshot automation.
     #if !MAS_BUILD
-        let sparkleUpdater = SparkleUpdaterController()
+        let sparkleUpdater: SparkleUpdaterController? =
+            CommandLine.arguments.contains("--ui-test-store") ? nil : SparkleUpdaterController()
     #endif
 
     struct StoreFailure {
@@ -293,8 +296,10 @@ struct JobhuntApp: App {
                 }
 
                 #if !MAS_BUILD
-                    CommandGroup(after: .appInfo) {
-                        CheckForUpdatesCommand(updater: sparkleUpdater)
+                    if let sparkleUpdater {
+                        CommandGroup(after: .appInfo) {
+                            CheckForUpdatesCommand(updater: sparkleUpdater)
+                        }
                     }
                 #endif
             }

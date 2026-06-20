@@ -100,20 +100,19 @@ jobs:
             PROVISIONING_PROFILE_SPECIFIER="" \
             DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }}
 
-      - name: Export archive (Developer ID)
+      # Take the already-signed app straight from the archive instead of `xcodebuild -exportArchive`.
+      # exportArchive's IDEDistribution throws "Unknown Distribution Error" for manually-signed
+      # Developer ID archives on the runner's Xcode 16.4. The archive's app is already signed with
+      # the Developer ID identity + hardened runtime (the MCP helper is copied before Xcode's CodeSign
+      # phase, and Sparkle is embedded+signed), so for Developer ID distribution a copy is equivalent
+      # — exportArchive would not re-sign it with a different cert. ditto preserves the bundle's
+      # signature exactly. The smoke check below verifies the signature before notarization.
+      - name: Export app from archive (Developer ID)
         run: |
-          cat > export-options-dmg.plist << 'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0"><dict>
-            <key>method</key><string>developer-id</string>
-            <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
-          </dict></plist>
-          EOF
-          xcodebuild -exportArchive \
-            -archivePath build/Jobhunt-DMG.xcarchive \
-            -exportPath build/export-dmg \
-            -exportOptionsPlist export-options-dmg.plist
+          APP_SRC="build/Jobhunt-DMG.xcarchive/Products/Applications/Jobhunt.app"
+          test -d "$APP_SRC" || { echo "ERROR: Jobhunt.app missing from archive at $APP_SRC"; exit 1; }
+          mkdir -p build/export-dmg
+          ditto "$APP_SRC" build/export-dmg/Jobhunt.app
 
       - name: Smoke check DMG contents
         run: |

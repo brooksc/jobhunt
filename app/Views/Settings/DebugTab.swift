@@ -1,5 +1,6 @@
 import AppKit
 import JobhuntCore
+import JobhuntServer
 import SwiftData
 import SwiftUI
 import UserNotifications
@@ -15,29 +16,180 @@ struct DebugTab: View {
     @Environment(AppServices.self) private var appServices
     @Environment(Router.self) private var router
 
+    /// The local server is an actor, so its port is loaded async into here on appear.
+    @State private var serverPort: UInt16 = 0
+
     var body: some View {
         Form {
-            jobStatsSection
-            entityCountsSection
+            environmentSection
+            maintenanceSection
             llmStatsSection
-            fitScoresSection
             settingsErrorSection
             recentErrorsSection
             diagnosticsSection
         }
         .formStyle(.grouped)
+        .task { serverPort = await appServices.server.port }
     }
 
-    // MARK: - LLM stats (prompt size + processing time)
+    // MARK: - Environment (ground-truth runtime state that's hard to see elsewhere)
+
+    private var environmentSection: some View {
+        let storeURL = ModelContainerFactory.productionStoreURL()
+        let settings = appServices.settings
+        let queued = llmRequests.count(where: { $0.status == .queued })
+        let running = llmRequests.count(where: { $0.status == .running })
+        let failed = llmRequests.count(where: { $0.status == .failed || $0.status == .retryExhausted })
+        let keyPresent = !settings.apiKey(forProvider: settings.llmProvider)
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return Section("Environment") {
+            LabeledContent("Store") {
+                Text(storeURL.path)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+            }
+            LabeledContent("Store size") { mono(storeSizeString(storeURL)) }
+            LabeledContent("Sandboxed") {
+                Text(storeURL.path.contains("/Containers/") ? "Yes (MAS)" : "No (DMG)").foregroundStyle(.secondary)
+            }
+            LabeledContent("Data") {
+                mono(
+                    "\(jobs.count) jobs · \(captures.count) captures · \(resumes.count) résumés · \(sites.count) sites"
+                )
+            }
+
+            Divider()
+            LabeledContent("AI provider") { Text(settings.llmProvider).foregroundStyle(.secondary) }
+            LabeledContent("AI model") {
+                Text(settings.llmModel.isEmpty ? "—" : settings.llmModel).foregroundStyle(.secondary)
+            }
+            statusRow("API key", ok: keyPresent, okText: "Present", badText: "Not set")
+            statusRow("AI ready", ok: AIConfig.isConfigured(settings), okText: "Yes", badText: "No")
+
+            Divider()
+            statusRow(
+                "Local server",
+                ok: appServices.serverRunning,
+                okText: "Running · port \(serverPort)",
+                badText: appServices.serverError ?? "Stopped"
+            )
+            statusRow(
+                "MCP token",
+                ok: FileManager.default.fileExists(atPath: MCPTokenManager.tokenURL.path),
+                okText: "Present",
+                badText: "Missing"
+            )
+            LabeledContent("Queue") {
+                mono("\(queued) queued · \(running) running · \(failed) failed" +
+                    (settings.llmQueuePaused ? " · paused" : ""))
+            }
+
+            Button("Reveal Store in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([storeURL])
+            }
+        }
+    }
+
+    private func mono(_ string: String) -> some View {
+        Text(string).foregroundStyle(.secondary).monospacedDigit()
+    }
+
+    private func statusRow(_ label: String, ok: Bool, okText: String, badText: String) -> some View {
+        LabeledContent(label) {
+            Label(ok ? okText : badText, systemImage: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .labelStyle(.titleAndIcon)
+                .font(.caption)
+                .foregroundStyle(ok ? Color.green : Color.orange)
+        }
+    }
+
+    private func storeSizeString(_ url: URL) -> String {
+        let fm = FileManager.default
+        let total = [url.path, url.path + "-wal", url.path + "-shm"].reduce(Int64(0)) { sum, path in
+            sum + ((try? fm.attributesOfItem(atPath: path))?[.size] as? Int64 ?? 0)
+        }
+        return ByteCountFormatter.string(fromByteCount: total, countStyle: .file)
+    }
+
+    // MARK: - Maintenance (safe, recurring actions — NOT one-time data ops; those are CLI-only)
+
+    private var maintenanceSection: some View {
+        Section("Maintenance") {
+            Button("Back Up Store Now") { backUpNow() }
+                .help("Writes a timestamped snapshot to ~/Documents/jobhunt-backups (safe while the app runs).")
+
+            Button("Recompute Fit Scores (no LLM)") {
+                runMaintenance("Recomputed fit scores") {
+                    let n = try await appServices.jobService.recomputeAllFitScores()
+                    return "Recomputed \(n) fit score\(n == 1 ? "" : "s")"
+                }
+            }
+            .help("Re-applies the current scoring weights to already-scored jobs, without calling the LLM.")
+
+            Button("Requeue Stuck “Running”") {
+                runMaintenance("Requeued stuck requests") {
+                    try await appServices.queueActor.requeueRunningOnLaunch()
+                    return "Requeued stuck requests"
+                }
+            }
+            .help("Resets any request left in 'running' (e.g. after a crash) back to queued.")
+
+            Button("Clear Finished Requests") {
+                runMaintenance("Cleared finished requests") {
+                    try await appServices.queueActor.clearCompleted()
+                    return "Cleared finished requests"
+                }
+            }
+            .help("Deletes completed / failed / cancelled rows from the LLM queue history.")
+
+            Divider()
+            Button("Seed Demo Data") {
+                runMaintenance("Seeded demo data") {
+                    try await DemoSeeder.seedDemo(into: appServices.backgroundStore)
+                    return "Seeded demo data"
+                }
+            }
+            .help("Adds sample jobs / résumés / sites for testing. Does not wipe existing data.")
+        }
+    }
+
+    /// Run an async maintenance action and toast the result/error.
+    private func runMaintenance(_: String, _ action: @escaping () async throws -> String) {
+        Task {
+            do {
+                let message = try await action()
+                appServices.toastStore.show(message)
+            } catch {
+                appServices.toastStore.show("Failed: \(error.localizedDescription)", isError: true)
+            }
+        }
+    }
+
+    private func backUpNow() {
+        let storeURL = ModelContainerFactory.productionStoreURL()
+        Task {
+            do {
+                let dir = URL.homeDirectory.appending(path: "Documents/jobhunt-backups")
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyyMMdd-HHmmss"
+                let dest = dir.appending(path: "jobhunt-\(formatter.string(from: Date())).store")
+                try BackupService.backup(storeURL: storeURL, to: dest)
+                appServices.toastStore.show("Backed up to \(dest.lastPathComponent)")
+            } catch {
+                appServices.toastStore.show("Backup failed: \(error.localizedDescription)", isError: true)
+            }
+        }
+    }
+
+    // MARK: - LLM stats (prompt size + processing time — aggregate diagnostics, not a view duplicate)
 
     private var llmStatsSection: some View {
         let promptChars = attempts.compactMap(\.promptChars).filter { $0 > 0 }
         let responseChars = attempts.compactMap(\.responseChars).filter { $0 > 0 }
         let durations = attempts.compactMap(\.durationMs).filter { $0 > 0 }
         return Section("LLM Stats") {
-            LabeledContent("Attempts recorded") {
-                Text("\(attempts.count)").foregroundStyle(.secondary).monospacedDigit()
-            }
+            LabeledContent("Attempts recorded") { mono("\(attempts.count)") }
             statRow("Prompt chars (avg / max)", avg: average(promptChars), max: promptChars.max())
             statRow("Response chars (avg / max)", avg: average(responseChars), max: responseChars.max())
             statRow("Processing ms (avg / max)", avg: average(durations), max: durations.max())
@@ -56,83 +208,13 @@ struct DebugTab: View {
         return values.reduce(0, +) / values.count
     }
 
-    // MARK: - Fit scores (no-LLM recompute)
-
-    private var fitScoresSection: some View {
-        Section("Fit Scores") {
-            Button("Recompute from Saved Data (no LLM)") {
-                Task {
-                    do {
-                        let n = try await appServices.jobService.recomputeAllFitScores()
-                        appServices.toastStore.show("Recomputed \(n) fit score\(n == 1 ? "" : "s")")
-                    } catch {
-                        appServices.toastStore.show("Recompute failed: \(error.localizedDescription)", isError: true)
-                    }
-                }
-            }
-            Text(
-                "Re-applies the current scoring weights and penalties to already-scored jobs, without calling the LLM."
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-    }
-
-    // MARK: - Job stats by status
-
-    private var jobStatsSection: some View {
-        Section("Jobs by Status") {
-            ForEach(JobStatus.allCases, id: \.self) { status in
-                let count = jobs.count(where: { $0.status == status })
-                LabeledContent(status.rawValue.capitalized) {
-                    Text("\(count)")
-                        .foregroundStyle(count > 0 ? .primary : .tertiary)
-                        .monospacedDigit()
-                }
-            }
-            LabeledContent("Total") {
-                Text("\(jobs.count)")
-                    .fontWeight(.semibold)
-                    .monospacedDigit()
-            }
-        }
-    }
-
-    // MARK: - Entity counts
-
-    private var entityCountsSection: some View {
-        Section("Database") {
-            LabeledContent("Captures") {
-                Text("\(captures.count)").foregroundStyle(.secondary).monospacedDigit()
-            }
-            LabeledContent("Resumes") {
-                Text("\(resumes.count)").foregroundStyle(.secondary).monospacedDigit()
-            }
-            LabeledContent("Sites") {
-                Text("\(sites.count)").foregroundStyle(.secondary).monospacedDigit()
-            }
-            LabeledContent("Extraction pending") {
-                let pending = jobs.count(where: { $0.extractionStatus == .pending })
-                Text("\(pending)").foregroundStyle(.secondary).monospacedDigit()
-            }
-            LabeledContent("Extraction failed") {
-                let failed = jobs.count(where: { $0.extractionStatus == .failed })
-                Text("\(failed)")
-                    .foregroundStyle(failed > 0 ? .red : .secondary)
-                    .monospacedDigit()
-            }
-        }
-    }
-
     // MARK: - Settings persistence error
 
     @ViewBuilder
     private var settingsErrorSection: some View {
         if let err = appServices.settings.lastSettingsError {
             Section("Settings Error") {
-                Text(err)
-                    .font(.callout)
-                    .foregroundStyle(.red)
+                Text(err).font(.callout).foregroundStyle(.red)
             }
         }
     }
@@ -146,11 +228,9 @@ struct DebugTab: View {
             Section("Recent Errors (last \(errors.count))") {
                 ForEach(errors.reversed()) { record in
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(record.message)
-                            .font(.callout)
+                        Text(record.message).font(.callout)
                         Text(record.timestamp.formatted(date: .omitted, time: .standard))
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                            .font(.caption2).foregroundStyle(.tertiary)
                     }
                     .padding(.vertical, 2)
                 }
@@ -158,43 +238,38 @@ struct DebugTab: View {
         }
     }
 
-    // MARK: - Copy diagnostics
+    // MARK: - Support / diagnostics
 
     private var diagnosticsSection: some View {
         Section("Support") {
-            Button("Copy Diagnostics") {
-                copyDiagnostics()
-            }
-            .help(
-                "Copies system info, queue counts, and recent error messages. Sensitive values " +
-                    "(file paths, URL query strings, API keys/tokens) are redacted on a best-effort " +
-                    "basis. Does not include job descriptions or resume content. Review before sharing."
-            )
+            Button("Copy Diagnostics") { copyDiagnostics() }
+                .help(
+                    "Copies system info, queue counts, and recent error messages. Sensitive values " +
+                        "(file paths, URL query strings, API keys/tokens) are redacted on a best-effort " +
+                        "basis. Does not include job descriptions or resume content. Review before sharing."
+                )
+
+            // Delivery smoke test (TASK-542): OS notification delivery can't be unit-tested, so this
+            // posts one immediately and logs the auth status, to tell "we never post" apart from
+            // "macOS suppressed it" (Focus / alert style / signing-reset authorization).
+            Button("Send Test Notification") { sendTestNotification() }
+                .help("Posts a notification now to verify macOS delivery. If nothing appears, check " +
+                    "System Settings → Notifications → Jobhunt, turn off Do Not Disturb / Focus, and see " +
+                    "the Console for 'Jobhunt test-notification' lines (auth status + add() result).")
+
+            Divider()
             // TASK-464: re-present the onboarding flow (preview — leaves the completion flag set).
             Button("Reopen Onboarding") {
                 NotificationCenter.default.post(name: .reopenOnboarding, object: nil)
             }
             .help("Show the first-run setup flow again. Dismissing keeps your setup; this is just a preview.")
 
-            // Clear the first-run flag so the wizard behaves exactly as it does on a brand-new
-            // install (re-presents now, and again on next launch until completed).
             Button("Reset First-Run Setup") {
                 appServices.settings.set("", forKey: "onboarding_complete")
                 NotificationCenter.default.post(name: .reopenOnboarding, object: nil)
             }
             .help("Clears the onboarding-complete flag and re-presents the first-run wizard, as on a fresh install.")
 
-            // Delivery smoke test (TASK-542): OS notification delivery can't be unit-tested, so this
-            // posts one immediately and logs the auth status, to tell "we never post" apart from
-            // "macOS suppressed it" (Focus / alert style / signing-reset authorization).
-            Button("Send Test Notification") {
-                sendTestNotification()
-            }
-            .help("Posts a notification now to verify macOS delivery. If nothing appears, check " +
-                "System Settings → Notifications → Jobhunt, turn off Do Not Disturb / Focus, and see " +
-                "the Console for 'Jobhunt test-notification' lines (auth status + add() result).")
-
-            Divider()
             Button("Hide Debug Tab") {
                 router.settingsTab = .general
                 appServices.settings.setBool(true, forKey: SettingsKey.hideDebugTab)
@@ -234,9 +309,8 @@ struct DebugTab: View {
     }
 
     private func copyDiagnostics() {
-        let bundle = buildDiagnosticsText()
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(bundle, forType: .string)
+        NSPasteboard.general.setString(buildDiagnosticsText(), forType: .string)
     }
 
     private func buildDiagnosticsText() -> String {

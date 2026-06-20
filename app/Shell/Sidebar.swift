@@ -390,8 +390,13 @@ struct Sidebar: View {
         case .dashboard: item = .dashboard
         case .needsAction: item = .needsAction
         case .jobs:
-            if let id = router.activeSavedSearchID { item = .savedSearch(id) }
-            else if let status = router.sidebarJobFilter { item = .jobs(status) } else { item = .jobsAll }
+            if let id = router.activeSavedSearchID {
+                item = .savedSearch(id)
+            } else if let status = router.sidebarJobFilter {
+                item = .jobs(status)
+            } else {
+                item = .jobsAll
+            }
         case .resumes: item = .resumes
         case .sites: item = .sites
         case .duplicates: item = .duplicates

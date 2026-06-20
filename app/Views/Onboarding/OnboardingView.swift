@@ -1,8 +1,6 @@
 import JobhuntCore
 import PDFKit
 import SwiftData
-
-// swiftlint:disable file_length
 import SwiftUI
 
 // MARK: - OnboardingView

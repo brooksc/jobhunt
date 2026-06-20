@@ -1,6 +1,6 @@
 import CryptoKit
 
-// swiftlint:disable file_length line_length cyclomatic_complexity function_body_length type_body_length large_tuple
+// swiftlint:disable line_length large_tuple
 import Foundation
 import SwiftData
 

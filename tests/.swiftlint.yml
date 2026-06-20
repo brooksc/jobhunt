@@ -1,0 +1,19 @@
+# Tests are linted, but length/complexity/style heuristics are relaxed here: comprehensive test
+# suites are legitimately long, force-unwraps fail a test rather than ship a bug, and fixture data
+# lines are long by nature. Correctness rules from the parent config still apply.
+disabled_rules:
+  - file_length
+  - type_body_length
+  - function_body_length
+  - cyclomatic_complexity
+  - force_unwrapping
+  - line_length
+  - large_tuple
+  - function_parameter_count
+  - nesting
+  - optional_data_string_conversion
+  - orphaned_doc_comment
+  - static_over_final_class
+  - superfluous_disable_command
+  - switch_case_alignment
+  - statement_position

@@ -415,7 +415,7 @@ private struct DetailFooter: View {
     private var pendingAction: JobAction? {
         let now = Date()
         return job.actions
-            .filter { $0.completedAt == nil && ($0.snoozedUntil == nil || $0.snoozedUntil! <= now) }
+            .filter { $0.completedAt == nil && (($0.snoozedUntil ?? now) <= now) }
             .sorted { $0.dueDate < $1.dueDate }
             .first
     }
@@ -473,7 +473,8 @@ private struct DetailFooter: View {
                         Button("Cancel", role: .cancel) {}
                     } message: {
                         Text(
-                            "Opening the application. Would you like to mark this job as applied and schedule a follow-up?"
+                            "Opening the application. Would you like to mark this job as applied " +
+                                "and schedule a follow-up?"
                         )
                     }
             }
@@ -1163,7 +1164,8 @@ struct FitTabView: View {
                         .foregroundStyle(.primary)
                     if let model = bestScore?.model {
                         Text(
-                            "scored against \(sortedScores.count) resume\(sortedScores.count == 1 ? "" : "s") · \(model)"
+                            "scored against \(sortedScores.count) resume\(sortedScores.count == 1 ? "" : "s") " +
+                                "· \(model)"
                         )
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -1462,7 +1464,7 @@ struct TimelineTabView: View {
     private var pendingActions: [JobAction] {
         let now = Date()
         return job.actions
-            .filter { $0.completedAt == nil && ($0.snoozedUntil == nil || $0.snoozedUntil! <= now) }
+            .filter { $0.completedAt == nil && (($0.snoozedUntil ?? now) <= now) }
             .sorted { $0.dueDate < $1.dueDate }
     }
 

@@ -83,7 +83,6 @@ public actor JobService {
 
     // MARK: - Core ingestion
 
-    // swiftlint:disable function_body_length
     /// Validate → clean → hash → dedup → create Job → enqueue extraction.
     public func ingestCapture(_ payload: CapturePayload) async throws -> IngestResult {
         // 1. Validate — one shared URL policy (TASK-443). Reject before any persistence/enqueue.

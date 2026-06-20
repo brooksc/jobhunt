@@ -122,7 +122,9 @@ let tools: [[String: Any]] = [
     ],
     [
         "name": "job_get",
-        "description": "Fetch full job metadata. Identify the job by job_number (preferred) or job_id. Raw captured page text (selected_text, visible_text) is omitted by default; pass include_raw_text: true to include it.",
+        "description": "Fetch full job metadata. Identify the job by job_number (preferred) or job_id. " +
+            "Raw captured page text (selected_text, visible_text) is omitted by default; " +
+            "pass include_raw_text: true to include it.",
         "inputSchema": [
             "type": "object",
             "required": [],
@@ -134,7 +136,8 @@ let tools: [[String: Any]] = [
                 ] as [String: Any],
                 "include_raw_text": [
                     "type": "boolean",
-                    "description": "Set to true to include raw captured page text (selected_text, visible_text). Omitted by default for privacy."
+                    "description": "Set to true to include raw captured page text " +
+                        "(selected_text, visible_text). Omitted by default for privacy."
                 ] as [String: Any]
             ] as [String: Any]
         ] as [String: Any]
@@ -202,7 +205,8 @@ let tools: [[String: Any]] = [
     ],
     [
         "name": "rerun_extraction",
-        "description": "Reset extraction so it will be retried on the next run. Identify the job by job_number (preferred) or job_id.",
+        "description": "Reset extraction so it will be retried on the next run. " +
+            "Identify the job by job_number (preferred) or job_id.",
         "inputSchema": [
             "type": "object",
             "required": [],

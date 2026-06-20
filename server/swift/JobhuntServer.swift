@@ -283,7 +283,10 @@ public actor JobhuntServer {
                 listener.cancel()
                 throw ServerError.listenerTimeout
             }
-            let result = try await group.next()!
+            guard let result = try await group.next() else {
+                group.cancelAll()
+                throw ServerError.listenerTimeout
+            }
             group.cancelAll()
             return result
         }

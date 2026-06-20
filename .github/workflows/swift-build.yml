@@ -103,10 +103,9 @@ jobs:
       - name: Run extension Node tests
         run: npm test --prefix extension
 
-      # Non-strict pending TASK-545: pre-existing length/complexity violations report as warnings
-      # rather than failing the build. Restore `--strict` once TASK-545 clears them.
+      # SwiftLint --strict: warnings fail the build; tests use a relaxed nested config (TASK-545).
       - name: SwiftLint
-        run: swiftlint lint
+        run: swiftlint lint --strict
 
       - name: SwiftFormat check
         run: swiftformat app core server/swift mcp/swift tests --lint

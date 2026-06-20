@@ -1,4 +1,4 @@
-// swiftlint:disable line_length function_body_length
+// swiftlint:disable line_length
 import Foundation
 
 // MARK: - PromptBuilder

@@ -96,7 +96,8 @@ final class AppServices: @unchecked Sendable {
                 // recent-errors log) so the user can re-run the queue.
                 NSLog("AppServices: requeueRunningOnLaunch failed: \(error)")
                 self?.toastStore.show(
-                    "Couldn't recover the LLM queue on launch — some requests may be stuck. \(error.localizedDescription)",
+                    "Couldn't recover the LLM queue on launch — some requests may be stuck. " +
+                        "\(error.localizedDescription)",
                     isError: true
                 )
             }

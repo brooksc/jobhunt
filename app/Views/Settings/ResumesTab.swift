@@ -32,7 +32,8 @@ struct ResumesTab: View {
 
             if !resumes.isEmpty {
                 Text(
-                    "Active resumes (✓) are auto-scored against new jobs; a job's fit shows the best match across resumes."
+                    "Active resumes (✓) are auto-scored against new jobs; " +
+                        "a job's fit shows the best match across resumes."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -80,7 +81,8 @@ struct ResumesTab: View {
                 let cleared = try await appServices.resumeService.updateResume(id: id, name: name, text: text)
                 if cleared > 0 {
                     appServices.toastStore.show(
-                        "Résumé updated — cleared \(cleared) fit score\(cleared == 1 ? "" : "s"). Re-score jobs to update."
+                        "Résumé updated — cleared \(cleared) fit score\(cleared == 1 ? "" : "s"). " +
+                            "Re-score jobs to update."
                     )
                 }
             })

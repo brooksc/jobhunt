@@ -198,7 +198,7 @@ struct DebugTab: View {
 
     private func statRow(_ label: String, avg: Int?, max: Int?) -> some View {
         LabeledContent(label) {
-            Text(avg == nil ? "—" : "\(avg!) / \(max ?? 0)")
+            Text(avg.map { "\($0) / \(max ?? 0)" } ?? "—")
                 .foregroundStyle(.secondary).monospacedDigit()
         }
     }
@@ -336,7 +336,8 @@ struct DebugTab: View {
         let errorLines = errors.isEmpty
             ? "  (none)"
             : errors.map {
-                "  [\($0.timestamp.formatted(date: .omitted, time: .standard))] \(DiagnosticsRedactor.redact($0.message))"
+                "  [\($0.timestamp.formatted(date: .omitted, time: .standard))] " +
+                    "\(DiagnosticsRedactor.redact($0.message))"
             }
             .joined(separator: "\n")
 

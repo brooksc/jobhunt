@@ -1,3 +1,5 @@
+// Large cohesive file; splitting deferred (TASK-545).
+// swiftlint:disable file_length type_body_length function_body_length
 import Foundation
 import SwiftData
 

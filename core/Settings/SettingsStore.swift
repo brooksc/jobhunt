@@ -262,7 +262,8 @@ public final class SettingsStore {
             // don't let subsequent writes persist defaults over the stored values we failed to read
             // (persistToStore is gated on loadError). Surface a recovery state instead.
             NSLog("SettingsStore: failed to load settings: \(error)")
-            loadError = "Couldn't load saved settings (\(type(of: error))). Your preferences weren't read; relaunch to retry."
+            loadError = "Couldn't load saved settings (\(type(of: error))). " +
+                "Your preferences weren't read; relaunch to retry."
         }
     }
 

@@ -20,7 +20,6 @@ private enum StatusFilter: String, CaseIterable {
 
 // MARK: - LLMQueueView
 
-// swiftlint:disable:next type_body_length
 struct LLMQueueView: View {
     // MARK: Dependencies
 
@@ -200,7 +199,6 @@ struct LLMQueueView: View {
         .frame(minHeight: 120)
     }
 
-    // swiftlint:disable function_body_length
     /// The request table (shared columns + selection + context menu), rendered for a given subset.
     private func requestTable(_ requests: [LLMRequest]) -> some View {
         Table(requests, selection: $selection) {

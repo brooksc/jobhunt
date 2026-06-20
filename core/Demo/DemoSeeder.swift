@@ -1,4 +1,4 @@
-// swiftlint:disable line_length file_length function_body_length large_tuple
+// swiftlint:disable line_length function_body_length large_tuple
 import Foundation
 import SwiftData
 

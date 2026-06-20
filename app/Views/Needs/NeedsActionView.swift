@@ -234,7 +234,8 @@ struct NeedsActionView: View {
                 } message: {
                     let filterNote = (statusFilter != .all || !searchText.isEmpty) ? " matching the current filter" : ""
                     Text(
-                        "Snooze all \(overdueActions.count) overdue follow-up\(overdueActions.count == 1 ? "" : "s")\(filterNote) for 7 days?"
+                        "Snooze all \(overdueActions.count) overdue follow-up\(overdueActions.count == 1 ? "" : "s")" +
+                            "\(filterNote) for 7 days?"
                     )
                 }
             }

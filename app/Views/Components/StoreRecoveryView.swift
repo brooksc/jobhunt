@@ -95,7 +95,8 @@ struct StoreRecoveryView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "This will delete all current data. The corrupt store will be moved aside (not permanently deleted) before the app relaunches."
+                "This will delete all current data. The corrupt store will be moved aside " +
+                    "(not permanently deleted) before the app relaunches."
             )
         }
     }

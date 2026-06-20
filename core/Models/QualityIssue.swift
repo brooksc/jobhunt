@@ -69,7 +69,6 @@ public enum QualityChecker: Sendable {
     private static let minRawBytes = 1000
     private static let minCleanedBytes = 700
 
-    // swiftlint:disable:next cyclomatic_complexity
     public static func issues(for job: Job) -> [QualityIssueKind] {
         var kinds: [QualityIssueKind] = []
 

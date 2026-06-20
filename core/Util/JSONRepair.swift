@@ -62,7 +62,9 @@ public enum JSONRepairError: Error, LocalizedError {
     case unparseable(String)
 
     public var errorDescription: String? {
-        switch self { case .unparseable: "Model response could not be parsed as valid JSON" }
+        switch self {
+        case .unparseable: "Model response could not be parsed as valid JSON"
+        }
     }
 }
 

@@ -1,9 +1,8 @@
-// swiftlint:disable line_length file_length function_body_length
+// swiftlint:disable line_length
 import Foundation
 
 // MARK: - SalaryNormalizer
 
-// swiftlint:disable type_body_length
 /// Mirrors normalizeSalaryFromSource() and helpers from server/extract.js.
 /// Pure functions — no I/O, no SwiftData.
 public enum SalaryNormalizer {

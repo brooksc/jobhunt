@@ -1,3 +1,5 @@
+// Large cohesive file; splitting deferred (TASK-545).
+// swiftlint:disable file_length type_body_length cyclomatic_complexity
 import AppKit
 import JobhuntCore
 import SwiftData
@@ -106,7 +108,8 @@ struct JobsView: View {
                 if dropped > 0 && before > 1 {
                     appServices.toastStore
                         .show(
-                            "\(dropped) selected job\(dropped == 1 ? "" : "s") no longer match the filter — \(selectedJobIDs.count) still selected."
+                            "\(dropped) selected job\(dropped == 1 ? "" : "s") no longer match the filter — " +
+                                "\(selectedJobIDs.count) still selected."
                         )
                 }
             }
@@ -287,7 +290,8 @@ struct JobsView: View {
                     Label("Export Filtered List to CSV…", systemImage: "square.and.arrow.up")
                 }
                 .help(
-                    "Exports the current filtered/sorted list (\(filteredJobs.count) jobs). Use Back Up Data in Settings for a complete backup."
+                    "Exports the current filtered/sorted list (\(filteredJobs.count) jobs). " +
+                        "Use Back Up Data in Settings for a complete backup."
                 )
                 Divider()
                 if hasActiveFilters || !searchTokens.isEmpty {

@@ -1,4 +1,4 @@
-// swiftlint:disable cyclomatic_complexity function_body_length nesting
+// swiftlint:disable function_body_length nesting
 import Foundation
 
 /// Shared transport logic for all OpenAI-compatible providers

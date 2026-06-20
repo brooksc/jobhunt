@@ -164,7 +164,8 @@ struct HelpView: View {
                 )
                 SettingsRow(
                     name: "Follow-up Interval",
-                    description: "Default number of days used to pre-fill a follow-up reminder when you apply. You are offered (not automatically scheduled) a follow-up when you mark a job applied."
+                    description: "Default number of days used to pre-fill a follow-up reminder when you apply. " +
+                        "You are offered (not automatically scheduled) a follow-up when you mark a job applied."
                 )
                 SettingsRow(name: "Review Interval", description: "Default interval (days) for site review reminders.")
             }

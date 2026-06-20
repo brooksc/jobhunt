@@ -1,4 +1,4 @@
-// swiftlint:disable line_length cyclomatic_complexity function_body_length large_tuple type_body_length
+// swiftlint:disable line_length large_tuple
 import Foundation
 import SwiftData
 

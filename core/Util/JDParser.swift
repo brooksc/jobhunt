@@ -1,6 +1,6 @@
 // JDParser.swift — port of static/jd-parser.js
 // Pure Foundation only — no SwiftUI/AppKit/SwiftData imports.
-// swiftlint:disable line_length cyclomatic_complexity function_body_length
+// swiftlint:disable line_length
 import Foundation
 
 // MARK: - Types

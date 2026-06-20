@@ -320,7 +320,7 @@ struct DashboardView: View {
                             } label: {
                                 let action = job.actions
                                     .filter {
-                                        $0.completedAt == nil && ($0.snoozedUntil == nil || $0.snoozedUntil! <= now)
+                                        $0.completedAt == nil && (($0.snoozedUntil ?? now) <= now)
                                     }
                                     .sorted { $0.dueDate < $1.dueDate }.first
                                 HStack(spacing: 8) {
@@ -587,7 +587,7 @@ private struct DashboardDerived {
         let dueCutoff = Calendar.current.date(byAdding: .day, value: 7, to: now) ?? now
         func activeDue(_ job: Job) -> Date? {
             job.actions
-                .filter { $0.completedAt == nil && ($0.snoozedUntil == nil || $0.snoozedUntil! <= now) }
+                .filter { $0.completedAt == nil && (($0.snoozedUntil ?? now) <= now) }
                 .map(\.dueDate).min()
         }
         followUps = Array(

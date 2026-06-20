@@ -1,4 +1,3 @@
-// swiftlint:disable file_length
 #if !MAS_BUILD
     import Foundation
     import JobhuntCore
@@ -260,9 +259,8 @@
 
     // MARK: - MCP bridge routing (extends JobhuntServer routing)
 
-    // Call this from JobhuntServer.routeRequest to handle /mcp/* endpoints.
-    // Returns nil if the path is not a recognised MCP route.
-    // swiftlint:disable:next cyclomatic_complexity
+    /// Call this from JobhuntServer.routeRequest to handle /mcp/* endpoints.
+    /// Returns nil if the path is not a recognised MCP route.
     func routeMCPRequest(
         _ request: HTTPRequest,
         jobService: JobService,

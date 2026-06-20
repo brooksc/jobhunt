@@ -5,7 +5,9 @@ public enum SiteServiceError: Error, LocalizedError, Sendable {
     case siteNotFound(String)
 
     public var errorDescription: String? {
-        switch self { case .siteNotFound: "Site not found" }
+        switch self {
+        case .siteNotFound: "Site not found"
+        }
     }
 }
 

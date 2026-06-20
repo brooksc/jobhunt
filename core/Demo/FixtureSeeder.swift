@@ -31,7 +31,6 @@ extension BackgroundStore {
         try executeFixtureSeed()
     }
 
-    // swiftlint:disable:next cyclomatic_complexity
     private func executeFixtureSeed() throws {
         // TASK-421: a FIXED base date so regenerating the fixture yields byte-stable SQLite + manifest
         // (no wall-clock drift). All fixture timestamps derive from this. 1_750_000_000 =
@@ -1049,9 +1048,8 @@ extension BackgroundStore {
                 .joined(separator: "\n")
 
             let rawHash = "fixture_hash_\(seed.capId)"
-            let cleanedHash = seed.duplicateOfJobID != nil
-                ? "fixture_dhash_dup_\(seed.duplicateOfJobID!)"
-                : "fixture_chash_\(seed.capId)"
+            let cleanedHash = seed.duplicateOfJobID
+                .map { "fixture_dhash_dup_\($0)" } ?? "fixture_chash_\(seed.capId)"
 
             let capture = Capture(
                 id: seed.capId,

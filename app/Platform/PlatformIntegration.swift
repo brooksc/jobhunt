@@ -143,7 +143,8 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         case let .authenticationFailed(statusCode):
             // App-wide banner so it's visible from any screen, not only the LLM Queue (TASK-542).
             router.queueAlert = QueueAlert(
-                message: "API key rejected (HTTP \(statusCode)) — check your AI provider key in Settings → AI Provider.",
+                message: "API key rejected (HTTP \(statusCode)) — check your AI provider key in " +
+                    "Settings → AI Provider.",
                 showsAISettings: true
             )
 

@@ -1,10 +1,10 @@
 ---
 id: TASK-566
 title: 'Release: complete Sparkle 2 auto-update (currently a manual-download stub)'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-06-20 04:05'
-updated_date: '2026-06-20 05:06'
+updated_date: '2026-06-20 18:19'
 labels:
   - release
   - distribution
@@ -66,3 +66,18 @@ REMAINING (operational, blocks real auto-update):
 3. End-to-end: cut a tag, confirm appcast.xml served at /releases/latest/download/appcast.xml and an older install updates.
 4. BLOCKER for update detection: CFBundleVersion is a fixed constant — see follow-up task on build-number monotonicity.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Shipped in v1.0.1 (2026-06-20). Real Sparkle 2.9.3 auto-update wired DMG-only; full Developer ID release pipeline now works end-to-end.
+
+Verified on the published v1.0.1 release:
+- DMG notarized + stapled (`xcrun stapler validate` passes), `spctl` → "accepted, source=Notarized Developer ID".
+- appcast.xml served at /releases/latest/download/appcast.xml (= SUFeedURL) with a valid sparkle:edSignature, correct enclosure URL/length, sparkle:version=CFBundleVersion, minimumSystemVersion=15.0.
+- Sparkle.framework embedded + Downloader/Installer XPC; MAS generation (TUIST_MAS_ONLY=1) omits Sparkle.
+
+First-run release-workflow bugs fixed along the way (release-dmg.yml had never run before): mise shims/reshim missing (tuist 127); release tests ran the full scheme incl. AppUITests (restricted to fast gate); cert import replaced the keychain search list before tests (broke SettingsStore Keychain tests — moved import after tests); mise unauthenticated GitHub API rate limit (added GITHUB_TOKEN); automaticCodeSigning vs manual Developer ID conflict (CODE_SIGN_STYLE=Manual); exportArchive IDEDistribution "Unknown Distribution Error" on Xcode 16.4 (export app from .xcarchive via ditto); Sparkle Updater.app/Autoupdate not re-signed by Xcode → notarization Invalid (re-sign nested Sparkle inside-out with --options runtime --timestamp); notarytool submit --wait exits 0 on Invalid (parse status, require Accepted). gitleaks flagged the public Sparkle key (allowlisted). MAS release deferred to workflow_dispatch until App Store signing exists.
+
+Follow-ups: TASK-571 (CFBundleVersion monotonicity — required before v1.0.2 or Sparkle won't detect the update) and app-bundle stapling for offline first-launch robustness.
+<!-- SECTION:FINAL_SUMMARY:END -->

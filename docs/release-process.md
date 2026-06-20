@@ -6,11 +6,10 @@ How to ship a new version of Jobhunt. There are two distribution channels:
 |---|---|---|---|
 | **Developer ID / DMG** (direct download) | notarized `.dmg` + Sparkle `appcast.xml` | `.github/workflows/release-dmg.yml` | **Live** — primary channel |
 | **Mac App Store (MAS)** | `.pkg` for App Store Connect | `.github/workflows/release-mas.yml` | **Deferred** — needs setup (see below) |
-| **Chrome extension** | `jobhunt-capture-<v>.zip` | built by `release-dmg.yml`, uploaded manually to CWS | Manual |
+| **Chrome extension** | `jobhunt-capture-<v>.zip` | `release-extension.yml` (auto-publish to CWS on tag) | Live once `CWS_*` secrets set |
 
-Both app channels share the **same source and version**. A `vX.Y.Z` tag drives the DMG release;
-MAS is built on demand. The Chrome extension zip is produced by the DMG workflow and submitted to the
-Chrome Web Store separately.
+Both app channels share the **same source and version**. A `vX.Y.Z` tag drives the DMG release and
+(in parallel) the Chrome extension publish; MAS is built on demand.
 
 > First native release was **v1.0.1 (2026-06-20)**. The earlier `v0.2.x` GitHub releases were the
 > legacy Electron app.
@@ -149,15 +148,52 @@ signature verifies.
 
 ## 4. Chrome extension (Chrome Web Store)
 
-The DMG workflow builds `jobhunt-capture-<version>.zip` and attaches it to the release. To publish:
+**Automated:** `release-extension.yml` runs on every `v*` tag (and via manual dispatch). It verifies
+the manifest version matches the tag, packages the zip, uploads it as a build artifact, and — when
+the `CWS_*` secrets are configured — **uploads it to the Chrome Web Store and submits it for review**
+(`--auto-publish`). If the secrets aren't set, it skips the store upload (the tag still succeeds) and
+just produces the zip. CWS still reviews each new version before it goes live (hours–days).
 
-1. Download the zip from the GitHub release (or run `./scripts/package-extension.sh` locally).
-2. Upload at the [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole).
-3. Use the reviewer notes in `docs/chrome-web-store-review.md` for the submission.
-4. After CWS approval, add the published extension ID to `JobhuntServer.allowedExtensionOrigins`
-   (CORS allowlist) — see the note in the root `CLAUDE.md`.
+The extension version must match the app version (enforced by `version-parity`), and the store
+**rejects re-uploading an already-published version** — so each release tag must carry a new version.
 
-The extension version must match the app version (enforced by `version-parity`).
+### One-time setup — Chrome Web Store API credentials
+Needed to enable the automated upload. All go in repo **Actions secrets**:
+
+| Secret | What it is |
+|---|---|
+| `CWS_EXTENSION_ID` | the published item id — `jekcbebhfeidkpapienoflbcaeeknlch` |
+| `CWS_CLIENT_ID` / `CWS_CLIENT_SECRET` | OAuth 2.0 **Desktop app** client from Google Cloud |
+| `CWS_REFRESH_TOKEN` | a refresh token for that client (one-time OAuth flow) |
+
+Steps:
+1. [Google Cloud Console](https://console.cloud.google.com) → create/select a project → **APIs &
+   Services → Library** → enable **Chrome Web Store API**.
+2. **OAuth consent screen** → External; add your own Google account as a **Test user**.
+3. **Credentials → Create credentials → OAuth client ID → Desktop app** → copy the **client ID** +
+   **client secret**.
+4. Get a refresh token (interactive, one-time):
+   ```bash
+   npx --yes chrome-webstore-upload-keys
+   ```
+   It opens a browser, you authorize, and it prints the **refresh token**.
+5. Load the secrets:
+   ```bash
+   printf 'jekcbebhfeidkpapienoflbcaeeknlch' | gh secret set CWS_EXTENSION_ID
+   printf '<client-id>'      | gh secret set CWS_CLIENT_ID
+   printf '<client-secret>'  | gh secret set CWS_CLIENT_SECRET
+   printf '<refresh-token>'  | gh secret set CWS_REFRESH_TOKEN
+   ```
+
+### Manual / draft upload
+- Trigger **Actions → Release Extension → Run workflow**; untick **publish** to upload as a *draft*
+  (review/publish later in the dashboard) instead of submitting for review.
+- Or fully manual: download the zip from the GitHub release (or run `./scripts/package-extension.sh`)
+  and upload at the [CWS Developer Dashboard](https://chrome.google.com/webstore/devconsole). Use the
+  reviewer notes in `docs/chrome-web-store-review.md`.
+
+After the **first** publish of a new extension id, add it to `JobhuntServer.allowedExtensionOrigins`
+(CORS allowlist) — see the note in the root `CLAUDE.md`. (The current id is already published.)
 
 ---
 

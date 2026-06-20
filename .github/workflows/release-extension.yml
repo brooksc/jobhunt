@@ -1,0 +1,88 @@
+name: Release Extension
+
+# Publishes the Chrome extension to the Chrome Web Store on each version tag (and via manual
+# dispatch). Runs alongside release-dmg.yml so one `v*` tag ships the Mac app + the extension.
+#
+# Requires four repo secrets (see docs/release-process.md §4):
+#   CWS_EXTENSION_ID, CWS_CLIENT_ID, CWS_CLIENT_SECRET, CWS_REFRESH_TOKEN
+# If they aren't set, the job still builds + uploads the zip artifact but SKIPS the store upload,
+# so a tag doesn't fail before the credentials are configured.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Submit the new version for review/publish (uncheck to upload as a draft only)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish-extension:
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout (pinned to the same SHA as the other workflows)
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      - name: Verify version (tag builds)
+        if: github.ref_type == 'tag'
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          EXT_VERSION=$(node -e "console.log(require('./extension/manifest.json').version)")
+          echo "Tag: $TAG_VERSION, Extension manifest: $EXT_VERSION"
+          [ "$TAG_VERSION" = "$EXT_VERSION" ] \
+            || { echo "ERROR: tag ($TAG_VERSION) != extension version ($EXT_VERSION)"; exit 1; }
+
+      - name: Package extension
+        run: ./scripts/package-extension.sh
+
+      - name: Upload zip as build artifact
+        # actions/upload-artifact (pinned to the same SHA as the other workflows)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: jobhunt-capture-extension
+          path: chromestore/jobhunt-capture-*.zip
+
+      - name: Check Chrome Web Store credentials
+        id: cws
+        env:
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+        run: |
+          if [ -z "$CWS_CLIENT_ID" ]; then
+            echo "::warning::Chrome Web Store credentials not configured (CWS_CLIENT_ID empty) — skipping store upload. Set the CWS_* secrets to enable auto-publish (see docs/release-process.md §4)."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload to Chrome Web Store
+        if: steps.cws.outputs.configured == 'true'
+        env:
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+          EVENT: ${{ github.event_name }}
+          PUBLISH_INPUT: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          # Publish (submit for review) on tag pushes; for manual dispatch honor the 'publish' input.
+          PUBLISH=true
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$PUBLISH_INPUT" = "false" ]; then PUBLISH=false; fi
+          AUTO_PUBLISH=""
+          [ "$PUBLISH" = "true" ] && AUTO_PUBLISH="--auto-publish"
+
+          ZIP=$(ls chromestore/jobhunt-capture-*.zip | head -1)
+          echo "Uploading $ZIP to Chrome Web Store item $CWS_EXTENSION_ID (publish=$PUBLISH)…"
+          # Note: the Chrome Web Store rejects re-uploading an already-published version, so each
+          # release tag must carry a new extension version (enforced by version-parity).
+          npx --yes chrome-webstore-upload-cli@3 upload \
+            --source "$ZIP" \
+            --extension-id "$CWS_EXTENSION_ID" \
+            --client-id "$CWS_CLIENT_ID" \
+            --client-secret "$CWS_CLIENT_SECRET" \
+            --refresh-token "$CWS_REFRESH_TOKEN" \
+            $AUTO_PUBLISH

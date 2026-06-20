@@ -72,65 +72,15 @@ private struct SettingsTabView: View {
     }
 }
 
-// MARK: - Provider model (used by LLMTab)
-
-/// Identifiable wrapper so the consent flow can drive `.sheet(item:)` (the provider id is the id).
-private struct ConsentRequest: Identifiable {
-    let id: String
-}
-
-private struct ProviderOption: Identifiable, Hashable {
-    let id: String
-    let label: String
-    let isCloud: Bool
-    let privacyURL: String?
-
-    static let all: [ProviderOption] = [
-        ProviderOption(id: "lmstudio", label: "LM Studio", isCloud: false, privacyURL: nil),
-        ProviderOption(
-            id: "openai", label: "OpenAI", isCloud: true,
-            privacyURL: "https://openai.com/policies/privacy-policy"
-        ),
-        ProviderOption(
-            id: "anthropic", label: "Anthropic", isCloud: true,
-            privacyURL: "https://www.anthropic.com/privacy"
-        ),
-        ProviderOption(
-            id: "google", label: "Google", isCloud: true,
-            privacyURL: "https://policies.google.com/privacy"
-        ),
-        ProviderOption(
-            id: "openrouter", label: "OpenRouter", isCloud: true,
-            privacyURL: "https://openrouter.ai/privacy"
-        ),
-        ProviderOption(id: "custom", label: "Custom", isCloud: false, privacyURL: nil)
-    ]
-
-    static func find(_ id: String) -> ProviderOption {
-        all.first { $0.id == id } ?? all[0]
-    }
-}
-
 // MARK: - LLMTab
 
 struct LLMTab: View {
     let settings: SettingsStore
+    @State private var model: AIProviderFormModel
 
     @Query(sort: \Resume.sortOrder) private var resumes: [Resume]
     @Query private var jobs: [Job]
 
-    /// The provider awaiting a consent decision. Drives the consent sheet via `.sheet(item:)`, which
-    /// only presents when this is non-nil and hands the value to the content — avoiding the empty-sheet
-    /// race a separate `Bool` + optional read (`if let`) caused when both were set in one update.
-    @State private var pendingConsent: ConsentRequest?
-    @State private var selectedProviderID: String
-    @State private var apiKeyText: String = ""
-    @State private var connectionStatus: ConnectionStatus = .idle
-    @State private var isFetchingModels = false
-    @State private var fetchedModels: [String] = []
-    @State private var fetchError: String?
-    @State private var modelText: String = ""
-    @State private var baseURLText: String = ""
     @State private var priceInput: String = ""
     @State private var priceOutput: String = ""
     @FocusState private var inputPriceFocused: Bool
@@ -138,11 +88,7 @@ struct LLMTab: View {
 
     init(settings: SettingsStore) {
         self.settings = settings
-        _selectedProviderID = State(initialValue: settings.llmProvider)
-    }
-
-    private enum ConnectionStatus {
-        case idle, testing, success(String), failure(String)
+        _model = State(initialValue: AIProviderFormModel(settings: settings))
     }
 
     private var activeResume: Resume? {
@@ -169,21 +115,20 @@ struct LLMTab: View {
         }
         .formStyle(.grouped)
         .onAppear {
-            syncFromSettings()
+            model.syncFromSettings()
             priceInput = String(settings.double(forKey: SettingsKey.llmPriceInput))
             priceOutput = String(settings.double(forKey: SettingsKey.llmPriceOutput))
         }
-        .sheet(item: $pendingConsent) { request in
-            let provider = ProviderOption.find(request.id)
+        .sheet(item: Binding(get: { model.pendingConsent }, set: { model.pendingConsent = $0 })) { request in
+            let opt = AIProviderFormModel.ProviderOption.find(request.id)
             LLMConsentSheet(
-                providerName: provider.label,
+                providerName: opt.label,
                 providerID: request.id,
-                privacyURL: provider.privacyURL,
+                privacyURL: opt.privacyURL,
                 settings: settings,
-                // .sheet(item:) auto-clears pendingConsent on dismiss, so neither closure needs to.
-                // On cancel the Picker stays on the prior provider (selectedProviderID is unchanged
-                // until consent is granted).
-                onAgree: { applyProviderChange(to: request.id) },
+                // .sheet(item:) auto-clears pendingConsent on dismiss; on cancel the Picker stays on the
+                // prior provider (selectedProviderID is unchanged until consent is granted).
+                onAgree: { model.applyProviderChange(to: request.id) },
                 onCancel: {}
             )
         }
@@ -194,40 +139,26 @@ struct LLMTab: View {
     private var providerSection: some View {
         Section("Provider") {
             Picker("Provider", selection: Binding(
-                get: { selectedProviderID },
-                set: { handleProviderChange(to: $0) }
+                get: { model.selectedProviderID },
+                set: { model.handleProviderChange(to: $0) }
             )) {
-                ForEach(ProviderOption.all) { option in
+                ForEach(AIProviderFormModel.ProviderOption.all) { option in
                     Text(option.label).tag(option.id)
                 }
             }
 
-            if selectedProviderID == "lmstudio" || selectedProviderID == "custom" {
-                TextField("Base URL", text: $baseURLText)
-                    .onSubmit { settings.llmBaseURL = baseURLText }
-                    .onChange(of: baseURLText) { _, new in
-                        settings.llmBaseURL = new
-                        if selectedProviderID == "custom",
-                           !ConsentHelper.isConsented(provider: "custom", settings: settings) {
-                            pendingConsent = ConsentRequest(id: "custom")
-                        }
-                    }
+            if model.selectedProviderID == "lmstudio" || model.selectedProviderID == "custom" {
+                TextField("Base URL", text: Binding(
+                    get: { model.baseURLText },
+                    set: { model.onBaseURLChanged($0) }
+                ))
             }
 
-            if needsAPIKey {
-                SecureField("API Key", text: $apiKeyText)
-                    .onSubmit { saveAPIKey() }
-                    .onChange(of: apiKeyText) { _, newValue in
-                        // Strip any whitespace/newlines the moment they land in the field — an API key
-                        // never contains them, and a pasted trailing newline silently breaks auth.
-                        // Re-assigning fires onChange again with the cleaned value, which then saves.
-                        let cleaned = newValue.filter { !$0.isWhitespace }
-                        if cleaned != newValue {
-                            apiKeyText = cleaned
-                        } else {
-                            saveAPIKey()
-                        }
-                    }
+            if model.needsAPIKey {
+                SecureField("API Key", text: Binding(
+                    get: { model.apiKeyText },
+                    set: { model.onAPIKeyChanged($0) }
+                ))
                 if let err = settings.keychainWriteError {
                     Label(err, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
@@ -236,57 +167,54 @@ struct LLMTab: View {
             }
 
             HStack {
-                if fetchedModels.isEmpty {
-                    TextField("Model", text: $modelText)
-                        .onSubmit { settings.setModelForProvider(modelText, provider: selectedProviderID) }
-                        .onChange(of: modelText) { _, new in settings.setModelForProvider(
-                            new,
-                            provider: selectedProviderID
-                        ) }
+                if model.fetchedModels.isEmpty {
+                    TextField("Model", text: Binding(
+                        get: { model.modelText },
+                        set: { model.onModelChanged($0) }
+                    ))
                 } else {
-                    Picker("Model", selection: $modelText) {
+                    Picker("Model", selection: Binding(
+                        get: { model.modelText },
+                        set: { new in if !new.isEmpty { model.onModelChanged(new) } }
+                    )) {
                         // No silent default — the user must pick. The placeholder represents
                         // "not yet selected" (empty model id).
-                        if !fetchedModels.contains(modelText) {
+                        if !model.fetchedModels.contains(model.modelText) {
                             Text("Select a model…").tag("")
                         }
-                        ForEach(fetchedModels, id: \.self) { Text($0).tag($0) }
+                        ForEach(model.fetchedModels, id: \.self) { Text($0).tag($0) }
                     }
-                    .onChange(of: modelText) { _, new in
-                        guard !new.isEmpty else { return }
-                        settings.setModelForProvider(new, provider: selectedProviderID)
-                    }
-                    Button("Clear") { fetchedModels = [] }
+                    Button("Clear") { model.fetchedModels = [] }
                         .buttonStyle(.borderless)
                         .foregroundStyle(.secondary)
                 }
 
-                if canFetchModels {
+                if model.canFetchModels {
                     Button {
-                        Task { await fetchModels() }
+                        Task { await model.fetchModels() }
                     } label: {
-                        if isFetchingModels {
+                        if model.isFetchingModels {
                             ProgressView().controlSize(.small)
                         } else {
                             Text("Fetch Models")
                         }
                     }
-                    .disabled(isFetchingModels)
+                    .disabled(model.isFetchingModels)
                 }
             }
 
-            if let fetchError {
+            if let fetchError = model.fetchError {
                 Label(fetchError, systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(.orange)
-            } else if modelText.isEmpty {
+            } else if model.modelText.isEmpty {
                 Text("Fetch models and choose one — no model is selected.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             // TASK-462: OpenRouter free-model rotation + failover.
-            if selectedProviderID == "openrouter" {
+            if model.selectedProviderID == "openrouter" {
                 Toggle("Rotate free structured-output models", isOn: Binding(
                     get: { settings.llmOpenRouterFreeRotate },
                     set: { settings.llmOpenRouterFreeRotate = $0 }
@@ -298,15 +226,15 @@ struct LLMTab: View {
 
             HStack {
                 Button {
-                    Task { await testConnection() }
+                    Task { await model.testConnection() }
                 } label: {
-                    if case .testing = connectionStatus {
+                    if model.connectionStatus == .testing {
                         ProgressView().controlSize(.small)
                     } else {
                         Label("Test Connection", systemImage: "network")
                     }
                 }
-                .disabled({ if case .testing = connectionStatus { return true }; return false }())
+                .disabled(model.connectionStatus == .testing)
 
                 Spacer()
                 connectionStatusView
@@ -377,7 +305,7 @@ struct LLMTab: View {
 
     @ViewBuilder
     private var connectionStatusView: some View {
-        switch connectionStatus {
+        switch model.connectionStatus {
         case .idle, .testing:
             EmptyView()
         case let .success(msg):
@@ -394,143 +322,8 @@ struct LLMTab: View {
         }
     }
 
-    private var needsAPIKey: Bool {
-        switch selectedProviderID {
-        case "openai", "anthropic", "google", "openrouter":
-            return true
-        case "custom":
-            return !ConsentHelper.isLoopbackURL(baseURLText)
-        default:
-            return false
-        }
-    }
-
-    private var canFetchModels: Bool {
-        switch selectedProviderID {
-        case "openai", "anthropic", "google": !apiKeyText.isEmpty
-        case "openrouter": true // public model list — no key required
-        case "lmstudio", "custom": !baseURLText.isEmpty
-        default: false
-        }
-    }
-
-    private func syncFromSettings() {
-        selectedProviderID = settings.llmProvider
-        modelText = settings.modelForProvider(settings.llmProvider)
-        baseURLText = settings.llmBaseURL
-        syncAPIKey()
-        fetchedModels = []
-        fetchError = nil
-        if canFetchModels { Task { await fetchModels() } }
-    }
-
-    private func syncAPIKey() {
-        apiKeyText = settings.apiKey(forProvider: selectedProviderID)
-    }
-
-    private func saveAPIKey() {
-        settings.setAPIKey(apiKeyText, forProvider: selectedProviderID)
-    }
-
-    private func handleProviderChange(to newID: String) {
-        if !ConsentHelper.isConsented(provider: newID, settings: settings) {
-            pendingConsent = ConsentRequest(id: newID)
-        } else {
-            applyProviderChange(to: newID)
-        }
-    }
-
-    private func applyProviderChange(to newID: String) {
-        selectedProviderID = newID
-        settings.llmProvider = newID
-        modelText = settings.modelForProvider(newID)
-        // Keep the active model in sync with the provider's remembered choice (may be empty,
-        // which forces an explicit selection before extraction can run).
-        settings.llmModel = modelText
-        syncAPIKey()
-        fetchedModels = []
-        fetchError = nil
-        if canFetchModels { Task { await fetchModels() } }
-    }
-
     private func savePrices() {
         if let v = Double(priceInput) { settings.setDouble(v, forKey: SettingsKey.llmPriceInput) }
         if let v = Double(priceOutput) { settings.setDouble(v, forKey: SettingsKey.llmPriceOutput) }
-    }
-
-    func testConnection() async {
-        // A request with no model hits e.g. Google's `models/:generateContent` and returns a baffling
-        // 404. Fail fast with a clear instruction instead.
-        let model = settings.llmModel.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !model.isEmpty else {
-            connectionStatus = .failure("Select or enter a model first (use Fetch Models, or type a model name).")
-            return
-        }
-        connectionStatus = .testing
-        let provider = LLMProviderFactory.makeProvider(settings: settings)
-        let request = ChatRequest(
-            messages: [ChatMessage(role: "user", content: "Reply with the word OK and nothing else.")],
-            model: model,
-            maxTokens: 16
-        )
-        do {
-            let response = try await provider.complete(request)
-            let preview = String(response.content.prefix(40))
-            connectionStatus = .success(preview.isEmpty ? "Connected" : preview)
-        } catch let LLMProviderError.httpError(code, body) {
-            connectionStatus = .failure(Self.httpFailureMessage(code: code, body: body))
-        } catch {
-            connectionStatus = .failure(error.localizedDescription)
-        }
-    }
-
-    /// Turn a provider HTTP error into something actionable: a 401/403 hint plus the provider's own
-    /// error message (Google/OpenAI/Anthropic all return `{ "error": { "message": … } }`).
-    private static func httpFailureMessage(code: Int, body: String) -> String {
-        var text = "HTTP \(code)"
-        if code == 401 || code == 403 {
-            text += " — the API key was rejected. Use an unrestricted key (no HTTP-referrer / IP / app "
-                + "restrictions) with the provider's API enabled."
-        }
-        if let data = body.data(using: .utf8),
-           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let error = obj["error"] as? [String: Any],
-           let message = error["message"] as? String, !message.isEmpty {
-            text += "\n\(message)"
-        }
-        return text
-    }
-
-    private func fetchModels() async {
-        // TASK-468: capture the provider this fetch is for, so a slow fetch that resolves after the
-        // user switched providers can't clobber the now-current provider's model list.
-        let provider = selectedProviderID
-        isFetchingModels = true
-        fetchError = nil
-        defer { isFetchingModels = false }
-        do {
-            let models = try await ModelCatalog.listModels(
-                provider: provider,
-                baseURL: baseURLText.isEmpty ? settings.llmBaseURL : baseURLText,
-                apiKey: apiKeyText.trimmingCharacters(in: .whitespacesAndNewlines)
-            )
-            guard provider == selectedProviderID else { return }
-            fetchedModels = models
-            // Do not auto-select — selection is explicit. If the remembered model is no longer in
-            // the list, clear it so the picker shows the "Select a model…" placeholder.
-            if models.isEmpty {
-                fetchError = "No models returned by the provider"
-            } else if !models.contains(modelText) {
-                // Also clear the PERSISTED selection — otherwise the UI shows "unselected" while
-                // settings still points at the unavailable model and extraction/testConnection use
-                // it (the Picker's onChange guards !isEmpty, so it never clears it itself).
-                modelText = ""
-                settings.setModelForProvider("", provider: provider)
-            }
-        } catch {
-            guard provider == selectedProviderID else { return }
-            fetchedModels = []
-            fetchError = error.localizedDescription
-        }
     }
 }

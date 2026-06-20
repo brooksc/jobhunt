@@ -117,6 +117,8 @@ public final class PlatformIntegration: NSObject, ObservableObject {
     private func handleEvent(_ event: QueueEvent) async {
         switch event {
         case let .jobReady(jobNumber, title, fitScore):
+            // A success means the provider/key is working again — clear any standing queue alert.
+            router.queueAlert = nil
             accumulateReady(jobNumber: jobNumber, title: title, fitScore: fitScore)
 
         case let .processingComplete(_, failed):
@@ -127,8 +129,7 @@ public final class PlatformIntegration: NSObject, ObservableObject {
                 id: "queue-auto-paused",
                 title: "AI Queue Paused",
                 body: "Auto-paused after repeated failures",
-                userInfo: ["navigate": "llmQueue"],
-                isCritical: true
+                userInfo: ["navigate": "llmQueue"]
             )
             NSApp.requestUserAttention(.criticalRequest)
             router.navigateToSection(.llmQueue)
@@ -151,10 +152,14 @@ public final class PlatformIntegration: NSObject, ObservableObject {
                 id: "auth-failed",
                 title: "AI key rejected",
                 body: "Your AI provider rejected the request (HTTP \(statusCode)). Check your API key in Settings → AI Provider.",
-                userInfo: ["navigate": "settings-ai"],
-                isCritical: true
+                userInfo: ["navigate": "settings-ai"]
             )
             NSApp.requestUserAttention(.criticalRequest)
+            // App-wide banner so it's visible from any screen, not only the LLM Queue (TASK-542).
+            router.queueAlert = QueueAlert(
+                message: "API key rejected (HTTP \(statusCode)) — check your AI provider key in Settings → AI Provider.",
+                showsAISettings: true
+            )
 
         case let .queueError(message):
             // Degraded queue state (e.g. a store read/write failure) — background AI work may be
@@ -251,13 +256,16 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         id: String,
         title: String,
         body: String,
-        userInfo: [AnyHashable: Any],
-        isCritical: Bool = false
+        userInfo: [AnyHashable: Any]
     ) {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        content.sound = isCritical ? .defaultCritical : .default
+        // Always .default: `.defaultCritical` requires the (Apple-approval-only) critical-alerts
+        // entitlement, which this app doesn't have — using it made `add()` fail silently, so the
+        // "critical" auto-pause / auth notifications never appeared. Extra urgency comes from the
+        // dock bounce (NSApp.requestUserAttention) and the app-wide banner instead (TASK-542).
+        content.sound = .default
         content.userInfo = userInfo
 
         let request = UNNotificationRequest(

@@ -34,6 +34,11 @@ struct ContentView: View {
         .environment(\.jobService, appServices.jobService)
         .environment(\.queueActor, appServices.queueActor)
         .toolbar { serviceStatusMenu }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let alert = router.queueAlert {
+                QueueAlertBanner(alert: alert) { router.queueAlert = nil }
+            }
+        }
         .overlay(alignment: .bottom) {
             ToastOverlay(store: appServices.toastStore)
         }

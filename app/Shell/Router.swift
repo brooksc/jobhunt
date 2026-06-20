@@ -123,6 +123,13 @@ public enum SettingsPane: Int {
     case debug = 4
 }
 
+/// An app-wide queue attention banner (TASK-542). `showsAISettings` adds a one-click jump to the
+/// AI Provider settings tab — used for credential failures.
+public struct QueueAlert: Equatable {
+    public let message: String
+    public let showsAISettings: Bool
+}
+
 @Observable
 public final class Router {
     public var selectedSection: SidebarSection = .jobs
@@ -150,6 +157,10 @@ public final class Router {
     /// (LLM Queue "Open Job", notification deep-links). Cleared once the list scrolls. User clicks
     /// select through the list binding and don't set this, so an in-list click never re-scrolls.
     public var pendingJobScrollID: String?
+    /// App-wide attention banner for a queue problem the user must act on (e.g. a rejected API key).
+    /// Set by PlatformIntegration so the banner is visible from *any* screen, not just the LLM Queue
+    /// (TASK-542). Cleared on dismiss or when the queue next succeeds.
+    public var queueAlert: QueueAlert?
     /// Set by "Add Note" affordances (e.g. the Jobs row context menu) to ask the job detail view
     /// to open the selected job's Timeline tab for note entry. Cleared once consumed.
     public var composeNoteJobID: String?

@@ -2,6 +2,7 @@ import AppKit
 import JobhuntCore
 import SwiftData
 import SwiftUI
+import UserNotifications
 
 struct DebugTab: View {
     @Query private var jobs: [Job]
@@ -181,6 +182,46 @@ struct DebugTab: View {
                 NotificationCenter.default.post(name: .reopenOnboarding, object: nil)
             }
             .help("Clears the onboarding-complete flag and re-presents the first-run wizard, as on a fresh install.")
+
+            // Delivery smoke test (TASK-542): OS notification delivery can't be unit-tested, so this
+            // posts one immediately and logs the auth status, to tell "we never post" apart from
+            // "macOS suppressed it" (Focus / alert style / signing-reset authorization).
+            Button("Send Test Notification") {
+                sendTestNotification()
+            }
+            .help("Posts a notification now to verify macOS delivery. If nothing appears, check " +
+                "System Settings → Notifications → Jobhunt, turn off Do Not Disturb / Focus, and see " +
+                "the Console for 'Jobhunt test-notification' lines (auth status + add() result).")
+        }
+    }
+
+    private func sendTestNotification() {
+        let center = UNUserNotificationCenter.current()
+        // Log current authorization so a "not seeing it" report can be diagnosed from Console.
+        center.getNotificationSettings { settings in
+            NSLog(
+                "Jobhunt test-notification: authStatus=\(settings.authorizationStatus.rawValue) " +
+                    "alertSetting=\(settings.alertSetting.rawValue) " +
+                    "notificationCenter=\(settings.notificationCenterSetting.rawValue)"
+            )
+        }
+        // Request authorization in case a rebuild reset it (ad-hoc signing changes the identity).
+        center.requestAuthorization(options: [.alert, .sound]) { granted, error in
+            NSLog(
+                "Jobhunt test-notification: requestAuthorization granted=\(granted) error=\(String(describing: error))"
+            )
+        }
+        let content = UNMutableNotificationContent()
+        content.title = "Jobhunt test notification"
+        content.body = "If you can see this, macOS notification delivery is working."
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: "jobhunt-test-notification", content: content, trigger: nil)
+        center.add(request) { error in
+            if let error {
+                NSLog("Jobhunt test-notification: add() FAILED: \(error)")
+            } else {
+                NSLog("Jobhunt test-notification: add() succeeded")
+            }
         }
     }
 

@@ -115,6 +115,19 @@ public final class PlatformIntegration: NSObject, ObservableObject {
     }
 
     private func handleEvent(_ event: QueueEvent) async {
+        // The notification CONTENT comes from the pure, unit-tested `QueueEvent.notification` mapping
+        // (Core) so it can't drift from the tests. Delivery + side-effects (banner, navigation,
+        // dock bounce) stay here in the app layer.
+        if let spec = event.notification {
+            postNotification(
+                id: spec.id,
+                title: spec.title,
+                body: spec.body,
+                userInfo: spec.navigate.map { ["navigate": $0] } ?? [:]
+            )
+            if spec.requestsAttention { NSApp.requestUserAttention(.criticalRequest) }
+        }
+
         switch event {
         case let .jobReady(jobNumber, title, fitScore):
             // A success means the provider/key is working again — clear any standing queue alert.
@@ -125,36 +138,9 @@ public final class PlatformIntegration: NSObject, ObservableObject {
             flushReady(failed: failed)
 
         case .autoPaused:
-            postNotification(
-                id: "queue-auto-paused",
-                title: "AI Queue Paused",
-                body: "Auto-paused after repeated failures",
-                userInfo: ["navigate": "llmQueue"]
-            )
-            NSApp.requestUserAttention(.criticalRequest)
             router.navigateToSection(.llmQueue)
 
-        case .providerNotConfigured:
-            // TASK-483: work is queued but no usable AI provider is set up. Tell the user up front and
-            // deep-link to AI Provider settings, rather than waiting for the failure-streak auto-pause.
-            postNotification(
-                id: "provider-not-configured",
-                title: "Set up an AI provider",
-                body: "Job captured — add an AI provider in Settings to enable extraction & fit scoring.",
-                userInfo: ["navigate": "settings-ai"]
-            )
-
         case let .authenticationFailed(statusCode):
-            // TASK-542: the provider rejected the API key (invalid/expired/deleted). The queue has
-            // paused itself; tell the user what's wrong and deep-link to the AI Provider tab to fix it.
-            // Fixed id → one notification even if several requests failed before the pause took effect.
-            postNotification(
-                id: "auth-failed",
-                title: "AI key rejected",
-                body: "Your AI provider rejected the request (HTTP \(statusCode)). Check your API key in Settings → AI Provider.",
-                userInfo: ["navigate": "settings-ai"]
-            )
-            NSApp.requestUserAttention(.criticalRequest)
             // App-wide banner so it's visible from any screen, not only the LLM Queue (TASK-542).
             router.queueAlert = QueueAlert(
                 message: "API key rejected (HTTP \(statusCode)) — check your AI provider key in Settings → AI Provider.",
@@ -162,17 +148,12 @@ public final class PlatformIntegration: NSObject, ObservableObject {
             )
 
         case let .queueError(message):
-            // Degraded queue state (e.g. a store read/write failure) — background AI work may be
-            // stuck. The LLM Queue view shows an in-view banner, but the user may be on any other
-            // screen, so also post a notification that deep-links to the Queue (TASK-542). The
-            // message is already sanitized (no secrets / file paths). Log for diagnostics too.
+            // Degraded queue state — the notification above surfaces it on any screen; log for
+            // diagnostics too (message is already sanitized — no secrets / file paths).
             NSLog("PlatformIntegration: queue error: \(message)")
-            postNotification(
-                id: "queue-error",
-                title: "AI Queue problem",
-                body: message,
-                userInfo: ["navigate": "llmQueue"]
-            )
+
+        case .providerNotConfigured:
+            break
         }
     }
 

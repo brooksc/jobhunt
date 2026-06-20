@@ -66,8 +66,17 @@ jobs:
       - name: Generate Xcode project
         run: tuist generate --no-open
 
-      - name: Run tests
-        run: nice xcodebuild test -project Jobhunt.xcodeproj -scheme Jobhunt-DMG -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
+      - name: Run fast-gate tests (Core + Server + MCP)
+        # Only the fast gate here — the Jobhunt-DMG scheme's test action also includes AppUITests
+        # (heavy XCUITest suite needing a graphical session + accessibility/screen-recording perms),
+        # which has no place in the release path. AppUITests run separately (ui-tests.yml). The
+        # tagged commit already passed the full fast gate in swift-build.yml.
+        run: |
+          nice xcodebuild test \
+            -project Jobhunt.xcodeproj -scheme Jobhunt-DMG \
+            -destination 'platform=macOS' \
+            -only-testing:CoreTests -only-testing:ServerTests -only-testing:MCPTests \
+            CODE_SIGNING_ALLOWED=NO
 
       - name: Archive
         run: |

@@ -36,7 +36,7 @@ struct ContentView: View {
         .toolbar { serviceStatusMenu }
         .safeAreaInset(edge: .top, spacing: 0) {
             if let alert = router.queueAlert {
-                QueueAlertBanner(alert: alert) { router.queueAlert = nil }
+                QueueAlertBanner(alert: alert, router: router) { router.queueAlert = nil }
             }
         }
         .overlay(alignment: .bottom) {

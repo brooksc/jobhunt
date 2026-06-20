@@ -6,8 +6,11 @@ import SwiftUI
 /// so the user sees it whether they're on Jobs, Dashboard, or anywhere else (not only the LLM Queue).
 struct QueueAlertBanner: View {
     let alert: QueueAlert
+    /// Passed explicitly, NOT read from @Environment: this banner is rendered inside a `.safeAreaInset`
+    /// applied *after* ContentView's `.environment(router)`, so the inset content is outside that
+    /// scope — reading `@Environment(Router.self)` here traps with "Observable not found".
+    let router: Router
     let onDismiss: () -> Void
-    @Environment(Router.self) private var router
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {

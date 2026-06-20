@@ -54,10 +54,14 @@ jobs:
       # instead of curl-installing latest Tuist. mise install fails the job on error
       # (no `|| true` masking).
       - name: Install mise
-        run: curl -Ls https://mise.run | sh && echo "$HOME/.local/bin" >> $GITHUB_PATH
+        run: |
+          curl -Ls https://mise.run | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          # Expose tool shims (tuist) to later steps, not just the mise binary (matches swift-build.yml).
+          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
 
       - name: Install pinned tools (Tuist via .mise.toml)
-        run: mise install
+        run: mise install && mise reshim
 
       - name: Generate Xcode project
         run: tuist generate --no-open

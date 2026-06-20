@@ -129,9 +129,9 @@ extension BackgroundStore {
             let fitStatus: FitStatus
             let note: String?
             let duplicateOfJobID: String?
-            // Optional shared cleaned-hash so a pair of seed jobs is detected as a duplicate pair in
-            // the Duplicates review screen (the detector groups by identical cleanedHash + company).
-            var dupGroupHash: String? = nil
+            /// Optional shared cleaned-hash so a pair of seed jobs is detected as a duplicate pair in
+            /// the Duplicates review screen (the detector groups by identical cleanedHash + company).
+            var dupGroupHash: String?
         }
 
         let jobs: [SeedJob] = [

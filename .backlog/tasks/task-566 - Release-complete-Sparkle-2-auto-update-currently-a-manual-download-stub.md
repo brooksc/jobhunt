@@ -1,9 +1,10 @@
 ---
 id: TASK-566
 title: 'Release: complete Sparkle 2 auto-update (currently a manual-download stub)'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-06-20 04:05'
+updated_date: '2026-06-20 05:06'
 labels:
   - release
   - distribution
@@ -47,3 +48,21 @@ DMG codesign + notarize + staple and the notarization smoke check already exist 
 `release-dmg.yml`; MAS in `release-mas.yml`. If those need a readiness pass (signing identity in
 secrets, a real end-to-end tag → notarized artifact dry run), track that separately.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Code complete (commit 00cdee9). Real Sparkle 2 (resolved 2.9.3) wired DMG-only:
+- app/Platform/SparkleUpdater.swift: SPUStandardUpdaterController owned by JobhuntApp, "Check for Updates…" menu command (#if !MAS_BUILD).
+- Project.swift: Sparkle SPM package + SUFeedURL/SUPublicEDKey Info.plist keys, gated on `includeSparkle = !Environment.masOnly`. MAS generation runs with TUIST_MAS_ONLY=1 → no package/dep/keys.
+- release-dmg.yml: generate_appcast EdDSA-signs the stapled DMG, publishes appcast.xml; smoke check asserts Sparkle.framework embedded+signed.
+- release-mas.yml: TUIST_MAS_ONLY=1 + smoke check asserts Sparkle.framework absent.
+Verified locally: DMG build embeds Sparkle.framework + Downloader/Installer XPC; MAS-only generation omits it; build + swiftlint --strict + swiftformat green; app launches without crash.
+Reuses existing keychain ed25519 key (public M+FYCXWxrdmjRzphUpv5wZMxaDh/ecJU22324+3o4zQ=).
+
+REMAINING (operational, blocks real auto-update):
+1. Set SPARKLE_EDDSA_PRIVATE_KEY CI secret: `generate_keys -x file` (keychain Allow) → `gh secret set`.
+2. Depends on the DMG signing secrets (Developer ID) being set so a tag actually produces a signed+notarized+appcast'd release.
+3. End-to-end: cut a tag, confirm appcast.xml served at /releases/latest/download/appcast.xml and an older install updates.
+4. BLOCKER for update detection: CFBundleVersion is a fixed constant — see follow-up task on build-number monotonicity.
+<!-- SECTION:NOTES:END -->

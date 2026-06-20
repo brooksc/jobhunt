@@ -14,7 +14,7 @@ jobs:
     runs-on: macos-15
     steps:
       # actions/checkout@v4.2.2
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       # TASK-406: record the runner's exact macOS + Xcode so it can be compared against the local
       # Tart VM (scripts/run-ui-tests-in-vm.sh prints the same two lines from inside the VM). The

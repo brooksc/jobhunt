@@ -42,15 +42,6 @@ jobs:
             exit 1
           fi
           echo "All versions match: $TAG_VERSION"
-      - name: Import MAS certificates
-        run: |
-          echo "${{ secrets.MAS_CERT_BASE64 }}" | base64 --decode > mas.p12
-          echo "${{ secrets.MAS_INSTALLER_CERT_BASE64 }}" | base64 --decode > installer.p12
-          security create-keychain -p "" build.keychain
-          security import mas.p12 -k build.keychain -P "${{ secrets.MAS_CERT_PASSWORD }}" -T /usr/bin/codesign
-          security import installer.p12 -k build.keychain -P "${{ secrets.MAS_INSTALLER_CERT_PASSWORD }}" -T /usr/bin/productbuild
-          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
-          security list-keychains -d user -s build.keychain
 
       # TASK-399: use the same pinned toolchain as normal CI (.mise.toml: Tuist 4.196.1)
       # instead of curl-installing latest Tuist. mise install fails the job on error
@@ -72,6 +63,18 @@ jobs:
 
       - name: Run tests
         run: nice xcodebuild test -project Jobhunt.xcodeproj -scheme Jobhunt-MAS -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
+
+      # Import AFTER tests: `security list-keychains -s build.keychain` replaces the keychain search
+      # list, which breaks the SettingsStore Keychain round-trip unit tests if they run afterward.
+      - name: Import MAS certificates
+        run: |
+          echo "${{ secrets.MAS_CERT_BASE64 }}" | base64 --decode > mas.p12
+          echo "${{ secrets.MAS_INSTALLER_CERT_BASE64 }}" | base64 --decode > installer.p12
+          security create-keychain -p "" build.keychain
+          security import mas.p12 -k build.keychain -P "${{ secrets.MAS_CERT_PASSWORD }}" -T /usr/bin/codesign
+          security import installer.p12 -k build.keychain -P "${{ secrets.MAS_INSTALLER_CERT_PASSWORD }}" -T /usr/bin/productbuild
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+          security list-keychains -d user -s build.keychain
 
       - name: Archive (MAS)
         run: |

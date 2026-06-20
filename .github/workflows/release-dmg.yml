@@ -42,14 +42,6 @@ jobs:
           fi
           echo "All versions match: $TAG_VERSION"
 
-      - name: Import Developer ID certificate
-        run: |
-          echo "${{ secrets.DEVELOPER_ID_CERT_BASE64 }}" | base64 --decode > cert.p12
-          security create-keychain -p "" build.keychain
-          security import cert.p12 -k build.keychain -P "${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
-          security list-keychains -d user -s build.keychain
-
       # TASK-399: use the same pinned toolchain as normal CI (.mise.toml: Tuist 4.196.1)
       # instead of curl-installing latest Tuist. mise install fails the job on error
       # (no `|| true` masking).
@@ -77,6 +69,17 @@ jobs:
             -destination 'platform=macOS' \
             -only-testing:CoreTests -only-testing:ServerTests -only-testing:MCPTests \
             CODE_SIGNING_ALLOWED=NO
+
+      # Import AFTER tests: `security list-keychains -s build.keychain` replaces the keychain search
+      # list, which breaks the SettingsStore Keychain round-trip unit tests if they run afterward.
+      # Archive (signing) is the first step that actually needs the identity.
+      - name: Import Developer ID certificate
+        run: |
+          echo "${{ secrets.DEVELOPER_ID_CERT_BASE64 }}" | base64 --decode > cert.p12
+          security create-keychain -p "" build.keychain
+          security import cert.p12 -k build.keychain -P "${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+          security list-keychains -d user -s build.keychain
 
       - name: Archive
         run: |

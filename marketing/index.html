@@ -4,8 +4,20 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Jobhunt — Local-first job tracker</title>
-  <meta name="description" content="Capture job postings, let AI extract the details, and track your pipeline — all on your Mac. No subscriptions. No cloud. Your data stays yours." />
+  <meta name="description" content="Capture job postings, let AI extract the details, and track your pipeline — all in a native Mac app. No subscriptions. No cloud. Your data stays yours." />
   <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="apple-touch-icon" href="/favicon.png" />
+
+  <!-- Open Graph / Twitter -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://jobhunt-app.com/" />
+  <meta property="og:title" content="Jobhunt — Local-first job tracker for Mac" />
+  <meta property="og:description" content="Capture job postings, let AI extract the details and score them against your resume, and track your pipeline — all in a native Mac app. No subscriptions. No cloud." />
+  <meta property="og:image" content="https://jobhunt-app.com/screenshots/jobs-detail.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Jobhunt — Local-first job tracker for Mac" />
+  <meta name="twitter:description" content="Capture, extract, score against your resume, and track your job pipeline — all in a native Mac app. Free & open source." />
+  <meta name="twitter:image" content="https://jobhunt-app.com/screenshots/jobs-detail.png" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -366,7 +378,7 @@
   <section class="hero">
     <div class="hero-badge">Free &amp; Open Source</div>
     <h1>Your job search,<br><span>without the spreadsheet</span></h1>
-    <p>Capture job postings with one click, let a local AI extract the details, and track your pipeline — all on your Mac. No subscriptions. No cloud. Your data stays yours.</p>
+    <p>Capture job postings with one click, let AI extract the details, and track your pipeline — all in a fast, native Mac app. No subscriptions. No cloud. Your data stays yours.</p>
     <div class="hero-actions">
       <a href="https://github.com/brooksc/jobhunt/releases" target="_blank" rel="noopener" class="btn btn-primary">
         Download for Mac
@@ -422,12 +434,12 @@
       <div class="step">
         <div class="step-num">3</div>
         <h3>Score</h3>
-        <p>Paste your resume once. Jobhunt scores every job against it and explains what's missing, so you know where to focus your applications.</p>
+        <p>Add one or more resumes — upload a PDF or paste text. Every job is scored against each active resume and explains what's missing, so you know which roles, and which resume, fit best.</p>
       </div>
       <div class="step">
         <div class="step-num">4</div>
         <h3>Track</h3>
-        <p>Move jobs through your pipeline — Saved → Applied → Interview → Offer. Set follow-up reminders and log notes on every interaction.</p>
+        <p>Move jobs through your pipeline — Interested → Applied → Interview → Offer. Set follow-up reminders and log notes on every interaction.</p>
       </div>
     </div>
   </section>
@@ -446,7 +458,7 @@
       <div class="feature">
         <div class="feature-icon">🤖</div>
         <h3>AI extraction</h3>
-        <p>Works with LM Studio, Ollama, OpenAI, Anthropic, or any OpenAI-compatible endpoint. Run a free local model or use a cloud API — your choice.</p>
+        <p>Works with LM Studio, Ollama, OpenAI, Anthropic, Google, OpenRouter, or any OpenAI-compatible endpoint. Run a free local model, round-robin OpenRouter's free models at $0, or use a paid cloud API — your choice.</p>
       </div>
       <div class="feature">
         <div class="feature-icon">⚡</div>
@@ -456,7 +468,7 @@
       <div class="feature">
         <div class="feature-icon">📊</div>
         <h3>Fit scoring</h3>
-        <p>Every job is scored against your resume with a 0–100 fit score and a plain-English explanation of gaps. See at a glance which roles are worth pursuing.</p>
+        <p>Every job is scored against each of your resumes with a 0–100 fit score and a plain-English explanation of gaps. See at a glance which roles — and which resume — are worth pursuing.</p>
       </div>
       <div class="feature">
         <div class="feature-icon">🔍</div>
@@ -477,6 +489,11 @@
         <div class="feature-icon">🗂️</div>
         <h3>MCP server</h3>
         <p>A built-in Model Context Protocol server lets AI assistants like Claude read and update your job pipeline directly.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">🖥️</div>
+        <h3>Native Mac app <span class="pill">New</span></h3>
+        <p>Built in SwiftUI for macOS — fast, lightweight, and a good Mac citizen. Developer ID signed, notarized, and updates itself automatically.</p>
       </div>
     </div>
   </section>
@@ -510,7 +527,7 @@
     const SLIDES = [
       { title: "Jobs", desc: "Filter, sort, and open any job for a full detail view with fit score, salary, and extracted fields." },
       { title: "Dashboard", desc: "Your pipeline at a glance — top-scored opportunities, stage counts, recent captures, and daily activity." },
-      { title: "Duplicate review", desc: "Automatically surfaces jobs posted across multiple boards. Compare side-by-side and merge with one click." },
+      { title: "Duplicate review", desc: "Automatically surfaces the same job posted across multiple boards. Compare them side-by-side and resolve in one click." },
       { title: "Sites", desc: "Track which job boards you're monitoring and schedule periodic reviews so no board goes stale." },
     ];
 

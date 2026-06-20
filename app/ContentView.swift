@@ -21,6 +21,18 @@ struct ContentView: View {
     @State private var isCheckingAvailability = false
 
     var body: some View {
+        VStack(spacing: 0) {
+            // App-wide queue alert lives ABOVE the split view (not as a `.safeAreaInset` on it) so it
+            // can't render under the unified title bar and overlap the toolbar / sidebar (TASK-542).
+            // When there's no alert this `if` produces nothing, so the layout is unchanged.
+            if let alert = router.queueAlert {
+                QueueAlertBanner(alert: alert, router: router) { router.queueAlert = nil }
+            }
+            splitView
+        }
+    }
+
+    private var splitView: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             Sidebar(router: router)
                 .navigationSplitViewColumnWidth(min: 170, ideal: 210)
@@ -34,11 +46,6 @@ struct ContentView: View {
         .environment(\.jobService, appServices.jobService)
         .environment(\.queueActor, appServices.queueActor)
         .toolbar { serviceStatusMenu }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if let alert = router.queueAlert {
-                QueueAlertBanner(alert: alert, router: router) { router.queueAlert = nil }
-            }
-        }
         .overlay(alignment: .bottom) {
             ToastOverlay(store: appServices.toastStore)
         }

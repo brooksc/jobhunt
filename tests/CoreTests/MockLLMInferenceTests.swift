@@ -117,10 +117,16 @@ final class MockLLMInferenceTests: XCTestCase {
         let extractAttempt = try XCTUnwrap(
             attempts.first { $0.requestType == .extract && $0.status == .succeeded }
         )
-        XCTAssertEqual(extractAttempt.modelRequested, "mock-model",
-                       "modelRequested must be the configured model, not the provider id")
-        XCTAssertNotEqual(extractAttempt.modelRequested, provider.id,
-                          "modelRequested must not be the provider id (\(provider.id))")
+        XCTAssertEqual(
+            extractAttempt.modelRequested,
+            "mock-model",
+            "modelRequested must be the configured model, not the provider id"
+        )
+        XCTAssertNotEqual(
+            extractAttempt.modelRequested,
+            provider.id,
+            "modelRequested must not be the provider id (\(provider.id))"
+        )
     }
 
     /// TASK-491 regression: a capture must kick the drain loop on its own. Previously the extraction

@@ -61,10 +61,25 @@ jobs:
       - name: Install pinned tools (Tuist via .mise.toml)
         run: mise install && mise reshim
 
+      # Install the provisioning profile and read its name BEFORE generation so Project.swift can pin
+      # the app target (only) to it. Installing a profile doesn't touch the keychain search list, so
+      # this is safe to run before the tests — unlike the cert import below. (TASK-566)
+      - name: Install provisioning profile
+        run: |
+          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILE_DIR"
+          echo "${{ secrets.MAS_PROVISIONING_PROFILE_BASE64 }}" | base64 --decode > "$PROFILE_DIR/jobhunt-mas.provisionprofile"
+          security cms -D -i "$PROFILE_DIR/jobhunt-mas.provisionprofile" > /tmp/mas-profile.plist
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" /tmp/mas-profile.plist)
+          echo "MAS_PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "Installed provisioning profile: $PROFILE_NAME"
+
       - name: Generate Xcode project
         # TASK-566: TUIST_MAS_ONLY=1 omits Sparkle (package, dependency, Info.plist keys) so the
         # App Store binary never links a third-party updater. See Project.swift `includeSparkle`.
-        run: TUIST_MAS_ONLY=1 tuist generate --no-open
+        # TUIST_MAS_PROFILE_NAME pins the app target (only) to that profile + manual signing, so the
+        # global archive override doesn't hit frameworks/MCP, which reject a profile.
+        run: TUIST_MAS_ONLY=1 TUIST_MAS_PROFILE_NAME="$MAS_PROFILE_NAME" tuist generate --no-open
 
       - name: Run tests
         # -retry-tests-on-failure tolerates the intermittent ServerTests NWListener flake
@@ -73,7 +88,8 @@ jobs:
 
       # Import AFTER tests: `security list-keychains -s build.keychain` replaces the keychain search
       # list, which breaks the SettingsStore Keychain round-trip unit tests if they run afterward.
-      - name: Import MAS cert + provisioning profile
+      # (The provisioning profile was installed earlier — it doesn't touch the keychain.)
+      - name: Import MAS cert
         run: |
           # One p12 holds both the "Apple Distribution" (app) and "3rd Party Mac Developer Installer"
           # (pkg) certs, so import it once with both tool authorizations.
@@ -84,15 +100,6 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
           security list-keychains -d user -s build.keychain
 
-          # Install the Mac App Store provisioning profile and read its name for manual signing.
-          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
-          mkdir -p "$PROFILE_DIR"
-          echo "${{ secrets.MAS_PROVISIONING_PROFILE_BASE64 }}" | base64 --decode > "$PROFILE_DIR/jobhunt-mas.provisionprofile"
-          security cms -D -i "$PROFILE_DIR/jobhunt-mas.provisionprofile" > /tmp/mas-profile.plist
-          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" /tmp/mas-profile.plist)
-          echo "MAS_PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
-          echo "Installed provisioning profile: $PROFILE_NAME"
-
       # TASK-571 (MAS half): a uint32-safe monotonic build number. The DMG's YYYYMMDDHHMM timestamp
       # exceeds the App Store's CFBundleVersion uint32 limit (4294967295); yymmddHHMM (~2.6e9) fits,
       # and App Store Connect enforces its own monotonicity on top.
@@ -101,8 +108,11 @@ jobs:
 
       - name: Archive (MAS)
         run: |
-          # Manual signing with the Apple Distribution cert + the installed Mac App Store profile
-          # (Project.swift uses automaticCodeSigning, which conflicts with a manual identity).
+          # Manual signing with the Apple Distribution cert. The provisioning profile is NOT passed
+          # here — a global override hits the frameworks + MCP tool, which reject a profile. Instead
+          # Project.swift sets PROVISIONING_PROFILE_SPECIFIER on the app target only (via the
+          # TUIST_MAS_PROFILE_NAME injected at generate time). CODE_SIGN_IDENTITY is safe globally:
+          # frameworks sign with the identity and no profile, exactly like the DMG archive.
           nice xcodebuild archive \
             -project Jobhunt.xcodeproj \
             -scheme Jobhunt-MAS \
@@ -111,7 +121,6 @@ jobs:
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE_SPECIFIER="$MAS_PROFILE_NAME" \
             DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }}
 
       - name: Export .pkg

@@ -12,6 +12,13 @@ let deploymentTarget: DeploymentTargets = .macOS("15.0")
 // The default generation (local dev + `release-dmg.yml`) includes it.
 let includeSparkle = !Environment.masOnly.getBoolean(default: false)
 
+// TASK-566: the Mac App Store profile name, injected by release-mas.yml at generate time
+// (TUIST_MAS_PROFILE_NAME). It's set as PROVISIONING_PROFILE_SPECIFIER on the *app target's* MAS
+// configs only — never globally on the xcodebuild command line, because frameworks and the MCP
+// command-line tool reject a manually-specified profile ("does not support provisioning profiles").
+// Empty for local dev / DMG generation, which leaves the app on automatic signing.
+let masProfileName = Environment.masProfileName.getString(default: "")
+
 // EdDSA public key matching the private key used to sign DMGs in `release-dmg.yml`. Generated once
 // via Sparkle's `generate_keys`; the private half lives only in the SPARKLE_EDDSA_PRIVATE_KEY CI
 // secret. Replacing this invalidates every previously signed update.
@@ -167,17 +174,25 @@ let appInfoPlist: [String: Plist.Value] = [
 let dmgEntitlements: Path = "config/entitlements/Jobhunt-DMG.entitlements"
 let masEntitlements: Path = "config/entitlements/Jobhunt-MAS.entitlements"
 
+// When a MAS profile name is injected (CI archive), pin the app target to manual signing with that
+// profile. Scoped to the app target only — the global xcodebuild override would also hit the
+// frameworks/MCP tool, which reject a profile. Empty in dev → key absent → automatic signing.
+let masAppSigning: SettingsDictionary = masProfileName.isEmpty ? [:] : [
+    "CODE_SIGN_STYLE": "Manual",
+    "PROVISIONING_PROFILE_SPECIFIER": .string(masProfileName),
+]
+
 let appConfigurations: [Configuration] = [
     .debug(name: "Debug-DMG", settings: ["CODE_SIGN_ENTITLEMENTS": .string("config/entitlements/Jobhunt-DMG.entitlements")]),
     .release(name: "Release-DMG", settings: ["CODE_SIGN_ENTITLEMENTS": .string("config/entitlements/Jobhunt-DMG.entitlements")]),
     .debug(name: "Debug-MAS", settings: [
         "CODE_SIGN_ENTITLEMENTS": .string("config/entitlements/Jobhunt-MAS.entitlements"),
         "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "MAS_BUILD",
-    ]),
+    ].merging(masAppSigning) { _, new in new }),
     .release(name: "Release-MAS", settings: [
         "CODE_SIGN_ENTITLEMENTS": .string("config/entitlements/Jobhunt-MAS.entitlements"),
         "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "MAS_BUILD",
-    ]),
+    ].merging(masAppSigning) { _, new in new }),
 ]
 
 let appTarget = Target.target(

@@ -125,31 +125,41 @@ jobs:
 
       - name: Export .pkg
         run: |
-          # Unquoted heredoc so $MAS_PROFILE_NAME expands; the team id is substituted by Actions.
-          cat > export-options-mas.plist << EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0"><dict>
-            <key>method</key><string>app-store-connect</string>
-            <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
-            <key>signingStyle</key><string>manual</string>
-            <key>signingCertificate</key><string>Apple Distribution</string>
-            <key>installerSigningCertificate</key><string>3rd Party Mac Developer Installer</string>
-            <key>provisioningProfiles</key>
-            <dict><key>com.jobhunt-app.jobhunt</key><string>$MAS_PROFILE_NAME</string></dict>
-          </dict></plist>
-          EOF
-          xcodebuild -exportArchive \
-            -archivePath build/Jobhunt-MAS.xcarchive \
-            -exportPath build/export-mas \
-            -exportOptionsPlist export-options-mas.plist
+          APP_PATH="build/Jobhunt-MAS.xcarchive/Products/Applications/Jobhunt.app"
+          test -d "$APP_PATH" || { echo "ERROR: Jobhunt.app missing from archive"; exit 1; }
+          mkdir -p build/export-mas
+
+          # macos-latest's `xcodebuild -exportArchive` can't enumerate distribution methods on this
+          # runner ("IDEDistribution: Unknown Distribution Error" → empty allowed-method set, so the
+          # 'method' key is rejected whatever its value) — the same flaky IDEDistribution path the DMG
+          # release abandoned. The archived app is ALREADY signed with Apple Distribution + the embedded
+          # MAS provisioning profile (manual signing in the Archive step), so wrap it directly in an App
+          # Store installer with productbuild — the canonical MAS packaging command — instead.
+          INSTALLER_ID=$(security find-identity -v build.keychain \
+            | grep -o '3rd Party Mac Developer Installer: [^"]*' | head -1)
+          [ -z "$INSTALLER_ID" ] && INSTALLER_ID="3rd Party Mac Developer Installer"
+          echo "Installer identity: $INSTALLER_ID"
+
+          productbuild --component "$APP_PATH" /Applications \
+            --sign "$INSTALLER_ID" \
+            build/export-mas/Jobhunt.pkg
+          test -f build/export-mas/Jobhunt.pkg || { echo "ERROR: productbuild produced no .pkg"; exit 1; }
+          echo "Built $(ls -la build/export-mas/Jobhunt.pkg)"
       - name: Smoke check MAS artifact
         run: |
-          APP_PATH="build/export-mas/Jobhunt.app"
+          # Inspect the archived app — the exact bundle productbuild wrapped into the .pkg.
+          APP_PATH="build/Jobhunt-MAS.xcarchive/Products/Applications/Jobhunt.app"
           HELPER="$APP_PATH/Contents/Helpers/jobhunt-mcp"
 
           # App must exist
-          test -d "$APP_PATH" || { echo "ERROR: Jobhunt.app missing from MAS export"; exit 1; }
+          test -d "$APP_PATH" || { echo "ERROR: Jobhunt.app missing from archive"; exit 1; }
+
+          # The signed installer pkg must exist
+          test -f build/export-mas/Jobhunt.pkg || { echo "ERROR: Jobhunt.pkg missing"; exit 1; }
+
+          # App Store builds must embed the provisioning profile (proves manual signing took effect)
+          test -f "$APP_PATH/Contents/embedded.provisionprofile" \
+            || { echo "ERROR: embedded.provisionprofile missing — app not provisioned for App Store"; exit 1; }
 
           # MAS build must NOT include the MCP helper (not allowed in sandbox)
           if [ -f "$HELPER" ]; then

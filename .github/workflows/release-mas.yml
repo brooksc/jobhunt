@@ -1,11 +1,11 @@
 name: Release MAS
 
 on:
-  # MAS release is deferred until App Store signing is configured: MAS_CERT_BASE64 /
-  # MAS_INSTALLER_CERT_BASE64 / MAS_CERT_PASSWORD / MAS_INSTALLER_CERT_PASSWORD are NOT set, and
-  # MAS needs an App Store Connect app record. Manual-dispatch only so a `v*` tag yields a clean
-  # DMG-only release (release-dmg.yml) instead of a guaranteed MAS failure. Re-add
-  # `push: { tags: ['v*'] }` here once MAS signing exists. (TASK-566)
+  # Manual-dispatch only (not on tags) until the MAS pipeline has had a green end-to-end run.
+  # Signing IS now configured: MAS_CERT_BASE64/PASSWORD (one p12 = Apple Distribution + installer
+  # certs) are set and the App Store Connect record exists; the remaining secret is
+  # MAS_PROVISIONING_PROFILE_BASE64 (the Mac App Store profile). Once a dispatch produces an
+  # uploadable .pkg, re-add `push: { tags: ['v*'] }` here to release MAS alongside the DMG. (TASK-566)
   workflow_dispatch:
 
 # TASK-353: least-privilege permissions — job-level write only for the release job
@@ -70,34 +70,62 @@ jobs:
 
       # Import AFTER tests: `security list-keychains -s build.keychain` replaces the keychain search
       # list, which breaks the SettingsStore Keychain round-trip unit tests if they run afterward.
-      - name: Import MAS certificates
+      - name: Import MAS cert + provisioning profile
         run: |
+          # One p12 holds both the "Apple Distribution" (app) and "3rd Party Mac Developer Installer"
+          # (pkg) certs, so import it once with both tool authorizations.
           echo "${{ secrets.MAS_CERT_BASE64 }}" | base64 --decode > mas.p12
-          echo "${{ secrets.MAS_INSTALLER_CERT_BASE64 }}" | base64 --decode > installer.p12
           security create-keychain -p "" build.keychain
-          security import mas.p12 -k build.keychain -P "${{ secrets.MAS_CERT_PASSWORD }}" -T /usr/bin/codesign
-          security import installer.p12 -k build.keychain -P "${{ secrets.MAS_INSTALLER_CERT_PASSWORD }}" -T /usr/bin/productbuild
+          security import mas.p12 -k build.keychain -P "${{ secrets.MAS_CERT_PASSWORD }}" \
+            -T /usr/bin/codesign -T /usr/bin/productbuild
           security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
           security list-keychains -d user -s build.keychain
 
+          # Install the Mac App Store provisioning profile and read its name for manual signing.
+          PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILE_DIR"
+          echo "${{ secrets.MAS_PROVISIONING_PROFILE_BASE64 }}" | base64 --decode > "$PROFILE_DIR/jobhunt-mas.provisionprofile"
+          security cms -D -i "$PROFILE_DIR/jobhunt-mas.provisionprofile" > /tmp/mas-profile.plist
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" /tmp/mas-profile.plist)
+          echo "MAS_PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "Installed provisioning profile: $PROFILE_NAME"
+
+      # TASK-571 (MAS half): a uint32-safe monotonic build number. The DMG's YYYYMMDDHHMM timestamp
+      # exceeds the App Store's CFBundleVersion uint32 limit (4294967295); yymmddHHMM (~2.6e9) fits,
+      # and App Store Connect enforces its own monotonicity on top.
+      - name: Compute build number
+        run: echo "BUILD_NUMBER=$(date -u +%y%m%d%H%M)" >> "$GITHUB_ENV"
+
       - name: Archive (MAS)
         run: |
+          # Manual signing with the Apple Distribution cert + the installed Mac App Store profile
+          # (Project.swift uses automaticCodeSigning, which conflicts with a manual identity).
           nice xcodebuild archive \
             -project Jobhunt.xcodeproj \
             -scheme Jobhunt-MAS \
             -configuration Release-MAS \
             -archivePath build/Jobhunt-MAS.xcarchive \
-            CODE_SIGN_IDENTITY="3rd Party Mac Developer Application" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$MAS_PROFILE_NAME" \
             DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }}
 
       - name: Export .pkg
         run: |
-          cat > export-options-mas.plist << 'EOF'
+          # Unquoted heredoc so $MAS_PROFILE_NAME expands (the ${{ }} team id was already substituted
+          # by Actions before the shell ran).
+          cat > export-options-mas.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0"><dict>
             <key>method</key><string>app-store</string>
             <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>installerSigningCertificate</key><string>3rd Party Mac Developer Installer</string>
+            <key>provisioningProfiles</key>
+            <dict><key>com.jobhunt-app.jobhunt</key><string>$MAS_PROFILE_NAME</string></dict>
           </dict></plist>
           EOF
           xcodebuild -exportArchive \
@@ -143,7 +171,7 @@ jobs:
       - name: Clean up signing certificates
         if: always()
         run: |
-          rm -f mas.p12 installer.p12
+          rm -f mas.p12
           security lock-keychain build.keychain 2>/dev/null || true
           security delete-keychain build.keychain 2>/dev/null || true
           echo "Signing material cleaned up"

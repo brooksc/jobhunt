@@ -67,7 +67,9 @@ jobs:
         run: TUIST_MAS_ONLY=1 tuist generate --no-open
 
       - name: Run tests
-        run: nice xcodebuild test -project Jobhunt.xcodeproj -scheme Jobhunt-MAS -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
+        # -retry-tests-on-failure tolerates the intermittent ServerTests NWListener flake
+        # (localhost connection drops, Code=-1005) that otherwise fails the whole release.
+        run: nice xcodebuild test -project Jobhunt.xcodeproj -scheme Jobhunt-MAS -destination 'platform=macOS' -retry-tests-on-failure -test-iterations 3 CODE_SIGNING_ALLOWED=NO
 
       # Import AFTER tests: `security list-keychains -s build.keychain` replaces the keychain search
       # list, which breaks the SettingsStore Keychain round-trip unit tests if they run afterward.

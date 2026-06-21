@@ -113,8 +113,7 @@ jobs:
 
       - name: Export .pkg
         run: |
-          # Unquoted heredoc so $MAS_PROFILE_NAME expands (the ${{ }} team id was already substituted
-          # by Actions before the shell ran).
+          # Unquoted heredoc so $MAS_PROFILE_NAME expands; the team id is substituted by Actions.
           cat > export-options-mas.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

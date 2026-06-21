@@ -1,11 +1,13 @@
 name: Release MAS
 
 on:
-  # Manual-dispatch only (not on tags) until the MAS pipeline has had a green end-to-end run.
-  # Signing IS now configured: MAS_CERT_BASE64/PASSWORD (one p12 = Apple Distribution + installer
-  # certs) are set and the App Store Connect record exists; the remaining secret is
-  # MAS_PROVISIONING_PROFILE_BASE64 (the Mac App Store profile). Once a dispatch produces an
-  # uploadable .pkg, re-add `push: { tags: ['v*'] }` here to release MAS alongside the DMG. (TASK-566)
+  # The pipeline had its first green end-to-end run (run 27917845870, sha 5268fa5): a signed,
+  # provisioned App Store installer .pkg was produced and uploaded as an artifact. Tags now build
+  # MAS alongside the DMG. NOTE: the .pkg is signed/provisioned but NOT yet Apple-validated — the
+  # first Transporter upload to App Store Connect is the real acceptance gate. (TASK-566)
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 # TASK-353: least-privilege permissions — job-level write only for the release job

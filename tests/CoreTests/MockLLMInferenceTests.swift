@@ -111,6 +111,16 @@ final class MockLLMInferenceTests: XCTestCase {
         XCTAssertEqual(updated.company, "Acme")
         // Fresh AI results mark the job unread so it counts toward the Dock badge until opened.
         XCTAssertTrue(updated.unread, "a successful extraction should mark the job unread")
+
+        // TASK-535: a new attempt records the requested MODEL id, not the provider id.
+        let attempts = try await store.fetch(FetchDescriptor<LLMRequestAttempt>())
+        let extractAttempt = try XCTUnwrap(
+            attempts.first { $0.requestType == .extract && $0.status == .succeeded }
+        )
+        XCTAssertEqual(extractAttempt.modelRequested, "mock-model",
+                       "modelRequested must be the configured model, not the provider id")
+        XCTAssertNotEqual(extractAttempt.modelRequested, provider.id,
+                          "modelRequested must not be the provider id (\(provider.id))")
     }
 
     /// TASK-491 regression: a capture must kick the drain loop on its own. Previously the extraction

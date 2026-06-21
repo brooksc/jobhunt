@@ -522,9 +522,11 @@ public actor QueueActor {
             return false
         }
 
-        do {
-            let extractSettings = await readExtractionSettings()
+        // Read outside the do/catch so the failed-attempt record (in catch) can also reference the
+        // requested model (TASK-535).
+        let extractSettings = await readExtractionSettings()
 
+        do {
             // Enforce consent immediately before sending data to a cloud provider.
             // Fail the request (not the queue) if consent has been revoked since enqueue.
             let consented = ConsentHelper.isConsented(
@@ -599,7 +601,10 @@ public actor QueueActor {
             try await store.recordAttempt(
                 requestID: itemID, jobID: jobID,
                 requestType: .extract, attempt: item.attempt, status: .succeeded,
-                modelRequested: provider.id, modelReturned: result.extractionModel,
+                // modelRequested = the configured model we sent; modelReturned = what the provider
+                // actually used (they differ under OpenRouter free-model rotation). Provider identity
+                // (provider.id) is intentionally NOT stored here — it's not a model id (TASK-535).
+                modelRequested: extractSettings.llmModel, modelReturned: result.extractionModel,
                 responseFormat: result.responseFormat.wireValue,
                 startedAt: startedAt, finishedAt: Date(), durationMs: durationMs,
                 promptChars: result.promptChars, responseChars: result.responseChars
@@ -639,7 +644,7 @@ public actor QueueActor {
             try await store.recordAttempt(
                 requestID: itemID, jobID: jobID,
                 requestType: .extract, attempt: item.attempt, status: .failed,
-                modelRequested: provider.id, startedAt: startedAt, finishedAt: Date(),
+                modelRequested: extractSettings.llmModel, startedAt: startedAt, finishedAt: Date(),
                 durationMs: durationMs, error: errorStr
             )
 
@@ -715,7 +720,7 @@ public actor QueueActor {
             try? await store.recordAttempt(
                 requestID: itemID, jobID: jobID,
                 requestType: .fit, attempt: item.attempt, status: .failed,
-                modelRequested: provider.id, startedAt: startedAt, finishedAt: Date(), error: errMsg
+                modelRequested: nil, startedAt: startedAt, finishedAt: Date(), error: errMsg
             )
             try await store.update(
                 LLMRequest.self,
@@ -781,7 +786,9 @@ public actor QueueActor {
                 resumeID: resumeID,
                 overall: fitResult.overall,
                 fitJSON: fitJSON,
-                model: provider.id,
+                // Store the model that produced the score: the returned model when the provider
+                // reports one, else the configured model — never the provider id (TASK-535).
+                model: fitOutput.modelReturned ?? fitModel,
                 scoredAt: scoredAt
             )
 
@@ -789,7 +796,7 @@ public actor QueueActor {
             try await store.recordAttempt(
                 requestID: itemID, jobID: jobID,
                 requestType: .fit, attempt: item.attempt, status: .succeeded,
-                modelRequested: provider.id, modelReturned: fitOutput.modelReturned,
+                modelRequested: fitModel, modelReturned: fitOutput.modelReturned,
                 responseFormat: fitOutput.responseFormat.wireValue,
                 startedAt: startedAt, finishedAt: Date(), durationMs: durationMs,
                 promptChars: fitOutput.promptChars, responseChars: fitOutput.responseChars
@@ -824,7 +831,7 @@ public actor QueueActor {
             try await store.recordAttempt(
                 requestID: itemID, jobID: jobID,
                 requestType: .fit, attempt: item.attempt, status: .failed,
-                modelRequested: provider.id, startedAt: startedAt, finishedAt: Date(),
+                modelRequested: fitModel, startedAt: startedAt, finishedAt: Date(),
                 durationMs: durationMs, error: errorStr
             )
 

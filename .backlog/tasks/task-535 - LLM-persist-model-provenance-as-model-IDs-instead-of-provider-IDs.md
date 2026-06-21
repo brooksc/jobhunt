@@ -1,9 +1,10 @@
 ---
 id: TASK-535
 title: 'LLM: persist model provenance as model IDs instead of provider IDs'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 04:56'
+updated_date: '2026-06-21 03:26'
 labels:
   - audit
   - llm
@@ -40,3 +41,9 @@ Suggested implementation: separate provider identity from model identity. Persis
 - [ ] #5 Backfill tests are updated so historical provider-ID fallbacks are treated as legacy data, while new attempts assert real model IDs.
 - [ ] #6 OpenRouter rotation behavior documents and tests what `modelRequested` means when the provider swaps candidate models internally.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Done (commits 88a58e7, d9ee23a). QueueActor no longer writes provider.id into model-provenance fields. modelRequested now = the configured model sent (extractSettings.llmModel / fitModel); modelReturned holds the provider's actual model (they differ under OpenRouter rotation). JobFitScore.model = returned model, falling back to configured. The fit pre-provider failure records nil rather than a provider id. extractSettings hoisted out of the do/catch so the failed-attempt record can reference the requested model. Provider identity is left out of model fields (not relabeled). Added a QueueActor-pipeline assertion in MockLLMInferenceTests (modelRequested == configured model, != provider id); QueueBackfill legacy fixtures unchanged and still pass. All targeted CoreTests green.
+<!-- SECTION:FINAL_SUMMARY:END -->

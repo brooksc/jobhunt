@@ -386,49 +386,69 @@ struct DataSettingsTab: View {
 
     private func performRestore(from backupURL: URL) {
         let storeURL = ModelContainerFactory.productionStoreURL()
-
-        // Auto-backup current data before replacing.
-        // If the safety backup fails, abort — do not proceed with a destructive restore.
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd-HHmmss"
-        let autoBackupURL = storeURL.deletingLastPathComponent()
+        let safetyBackupURL = storeURL.deletingLastPathComponent()
             .appendingPathComponent("pre-restore-\(formatter.string(from: Date())).sqlite")
-
-        do {
-            try BackupService.backup(storeURL: storeURL, to: autoBackupURL)
-        } catch {
-            let alert = NSAlert()
-            alert.messageText = "Safety Backup Failed"
-            alert.informativeText =
-                "Could not create a pre-restore safety backup. Restore aborted. " +
-                "Please free up disk space and try again.\n\nError: \(error.localizedDescription)"
-            alert.alertStyle = .critical
-            alert.addButton(withTitle: "OK")
-            alert.runModal()
-            pendingRestoreURL = nil
-            return
-        }
-
-        do {
-            try BackupService.restore(from: backupURL, to: storeURL)
-        } catch {
-            appServices.toastStore.show("Restore failed: \(error.localizedDescription)", isError: true)
-            pendingRestoreURL = nil
-            return
-        }
-
         pendingRestoreURL = nil
 
-        // Restore is on disk; the live container still sees old data.
-        // Terminate immediately — the user must relaunch to load the restored data.
+        // Restore is async because it must QUIESCE runtime writers before swapping the single-writer
+        // store (TASK-546): RestoreCoordinator stops the LLM queue / availability loop / local server
+        // via appServices.shutdown(), then safety-backs-up, then replaces the store. On success or any
+        // failure the app quits so the next launch opens a known store with a clean runtime — never
+        // left half-restored with a partially-quiesced runtime.
+        Task { @MainActor in
+            do {
+                try await RestoreCoordinator.perform(
+                    backupURL: backupURL,
+                    storeURL: storeURL,
+                    safetyBackupURL: safetyBackupURL,
+                    quiesceRuntime: { await appServices.shutdown() }
+                )
+            } catch let err as RestoreCoordinator.StageError {
+                presentRestoreFailureThenQuit(stage: err.stage, error: err.underlying)
+                return
+            } catch {
+                presentRestoreFailureThenQuit(stage: .restore, error: error)
+                return
+            }
+
+            // Restore is on disk; the live container still sees old data. Quit so the next launch
+            // opens the restored store cleanly (runtime is already quiesced).
+            let alert = NSAlert()
+            alert.messageText = "Restore Complete"
+            alert.informativeText =
+                "Your data has been restored from \(backupURL.lastPathComponent). " +
+                "If your AI provider API keys are missing after relaunch, re-enter them in " +
+                "AI Provider settings — they're kept in the Keychain, not the backup. " +
+                "The app will now quit and must be relaunched to load the restored data."
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: "Quit Now")
+            alert.runModal()
+            NSApp.terminate(nil)
+        }
+    }
+
+    /// Report a restore-stage failure and quit. Runtime is already quiesced, so relaunching restores
+    /// normal operation against a known store (unchanged on a safety-backup failure; the safety backup
+    /// is on disk if the swap itself failed).
+    private func presentRestoreFailureThenQuit(stage: RestoreCoordinator.Stage, error: Error) {
         let alert = NSAlert()
-        alert.messageText = "Restore Complete"
-        alert.informativeText =
-            "Your data has been restored from \(backupURL.lastPathComponent). " +
-            "If your AI provider API keys are missing after relaunch, re-enter them in " +
-            "AI Provider settings — they're kept in the Keychain, not the backup. " +
-            "The app will now quit and must be relaunched to load the restored data."
-        alert.alertStyle = .informational
+        switch stage {
+        case .safetyBackup:
+            alert.messageText = "Safety Backup Failed"
+            alert.informativeText =
+                "Could not create a pre-restore safety backup, so the restore was aborted and your data " +
+                "is unchanged. Free up disk space and try again. The app will now quit; relaunch to " +
+                "resume.\n\nError: \(error.localizedDescription)"
+        case .restore:
+            alert.messageText = "Restore Failed"
+            alert.informativeText =
+                "The restore did not complete. A pre-restore safety backup was saved, so your original " +
+                "data should be intact. The app will now quit; relaunch to resume.\n\nError: " +
+                "\(error.localizedDescription)"
+        }
+        alert.alertStyle = .critical
         alert.addButton(withTitle: "Quit Now")
         alert.runModal()
         NSApp.terminate(nil)

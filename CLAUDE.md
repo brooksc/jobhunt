@@ -183,6 +183,13 @@ keys live in the macOS Keychain**, and the **MCP token** is a transient file (`~
 so neither is in a snapshot. After a restore — especially onto a new Mac — the user re-enters API keys
 in AI Provider settings; the MCP token regenerates on its own.
 
+**In-app restore quiesces the runtime first (TASK-546).** Because the store is single-writer,
+`RestoreCoordinator` (used by the *Restore* button) calls `AppServices.shutdown()` — cancelling the
+LLM queue / availability loop and stopping the local server — **before** the safety backup and the
+destructive swap, so no background actor can write to the store while its files are being replaced.
+On success *or* any failure the app quits, so the next launch opens a known store with a clean
+runtime (it's never left half-restored against a partially-quiesced runtime).
+
 **Restore smoke checklist** (run after any restore/migration before trusting it):
 1. App relaunches and the **job count / list** matches the source.
 2. **Settings → AI Provider**: the selected provider + model are correct (these are store-backed), but

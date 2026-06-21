@@ -56,12 +56,15 @@ final class SchemaEvolutionTests: XCTestCase {
             remoteType: .remote,
             salaryMin: 100_000,
             salaryMax: 150_000,
+            salaryHourlyMin: 48.0,
+            salaryHourlyMax: 72.0,
             salaryCurrency: "USD",
             salaryNote: "Base only",
             employmentType: "full_time",
             seniority: "senior",
             status: .pursuing,
             manualOverridesJSON: "[]",
+            manualFieldOverridesJSON: "[\"title\"]",
             extractedJSON: "{\"title\":\"Senior Engineer\"}",
             extractionStatus: .succeeded,
             fitScore: 88,
@@ -70,6 +73,7 @@ final class SchemaEvolutionTests: XCTestCase {
             extractionModel: "gpt-4o",
             applicationURL: "https://jobs.example.com/apply",
             extractionConfidence: 0.95,
+            meetsCriteria: true,
             unread: true,
             createdAt: Date(timeIntervalSince1970: 1_000_000),
             updatedAt: Date(timeIntervalSince1970: 2_000_000)
@@ -118,6 +122,11 @@ final class SchemaEvolutionTests: XCTestCase {
         XCTAssertEqual(j.createdAt.timeIntervalSince1970, 1_000_000, accuracy: 1)
         XCTAssertEqual(j.updatedAt.timeIntervalSince1970, 2_000_000, accuracy: 1)
         XCTAssertNotNil(j.capturedAtDenormalized)
+        // Newer V1 stored fields (TASK-521): populate + verify so a rename/removal regresses here.
+        XCTAssertEqual(j.salaryHourlyMin ?? 0, 48.0, accuracy: 0.001)
+        XCTAssertEqual(j.salaryHourlyMax ?? 0, 72.0, accuracy: 0.001)
+        XCTAssertEqual(j.manualFieldOverridesJSON, "[\"title\"]")
+        XCTAssertEqual(j.meetsCriteria, true)
 
         let captures = try ctx2.fetch(FetchDescriptor<Capture>())
         XCTAssertEqual(captures.count, 1, "Capture must survive container re-open")
@@ -242,6 +251,10 @@ final class SchemaEvolutionTests: XCTestCase {
     /// When you ADD a new optional property (backward-compatible lightweight migration):
     ///   No new VersionedSchema is needed — just add the property read below.
     // swiftlint:disable:next function_body_length
+    // CHECKLIST when adding a stored property to any V1 @Model: add it to BOTH this name guard AND
+    // the type guard (`testSchemaV1StoredPropertyTypesAreStable`), and — for Job — to the full
+    // round-trip (`testV1FullJobRoundTripIsRegressionGuard`). These compile-time tripwires only pin
+    // the fields they enumerate, so a new field is "protected" only once it's listed here (TASK-521).
     func testSchemaV1StoredPropertyNamesAreStable() throws {
         let container = try ModelContainerFactory.inMemory()
         let ctx = ModelContext(container)
@@ -267,6 +280,8 @@ final class SchemaEvolutionTests: XCTestCase {
         _ = job.extractionConfidence; _ = job.lastOpenedAt; _ = job.unread
         _ = job.createdAt; _ = job.updatedAt; _ = job.rawTextBytes; _ = job.cleanedTextBytes
         _ = job.capturedAtDenormalized
+        _ = job.salaryHourlyMin; _ = job.salaryHourlyMax
+        _ = job.manualFieldOverridesJSON; _ = job.meetsCriteria
         _ = job.capture; _ = job.events; _ = job.actions; _ = job.contacts
         _ = job.coverLetters; _ = job.fitScores; _ = job.llmRequests; _ = job.qualityReview
 

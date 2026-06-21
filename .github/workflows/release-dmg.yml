@@ -84,6 +84,26 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
           security list-keychains -d user -s build.keychain
 
+      # TASK-571: derive a monotonic CFBundleVersion per release instead of the fixed constant in
+      # Project.swift. Sparkle compares CFBundleVersion to decide "is there an update?"; a UTC
+      # YYYYMMDDHHMM timestamp is always greater than the previous release's, so updates are detected
+      # automatically with no manual bump. (DMG channel only — the App Store enforces its own
+      # monotonicity and needs a uint32-sized build number, so MAS will get its own scheme.)
+      - name: Compute build number + guard monotonicity
+        run: |
+          BUILD_NUMBER=$(date -u +%Y%m%d%H%M)
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+          echo "New CFBundleVersion: $BUILD_NUMBER"
+          # Belt-and-suspenders: fail if it isn't strictly greater than the currently published one
+          # (read from the latest release's appcast — sparkle:version IS the CFBundleVersion).
+          PREV=$(curl -fsSL "https://github.com/brooksc/jobhunt/releases/latest/download/appcast.xml" 2>/dev/null \
+            | grep -oE 'sparkle:version="[0-9]+"' | head -1 | grep -oE '[0-9]+' || true)
+          if [ -n "$PREV" ] && [ "$BUILD_NUMBER" -le "$PREV" ]; then
+            echo "ERROR: build number $BUILD_NUMBER is not greater than the published $PREV (Sparkle would not detect the update)." >&2
+            exit 1
+          fi
+          echo "OK: $BUILD_NUMBER > ${PREV:-<no prior release>}"
+
       - name: Archive
         run: |
           # Project.swift's sharedBase uses automaticCodeSigning; Developer ID distribution needs
@@ -95,6 +115,7 @@ jobs:
             -scheme Jobhunt-DMG \
             -configuration Release-DMG \
             -archivePath build/Jobhunt-DMG.xcarchive \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Developer ID Application" \
             PROVISIONING_PROFILE_SPECIFIER="" \

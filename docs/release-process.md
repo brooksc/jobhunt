@@ -60,12 +60,13 @@ Do these **before** tagging:
    - `extension/manifest.json` → `"version": "X.Y.Z"`
    - (The git tag will be `vX.Y.Z`.)
 
-2. **⚠️ Bump `currentProjectVersion` in `Project.swift`** to a value **strictly greater** than the
-   last release's. This is `CFBundleVersion`, which **Sparkle compares to decide if an update is
-   available**. It is a fixed constant today — if you forget to bump it, existing users are **never
-   offered the update** even though `marketingVersion` changed, and nothing flags it (version-parity
-   only checks `marketingVersion`). Use a monotonic value (e.g. a `YYYYMMDDHHMM` timestamp). See
-   TASK-571 for automating this.
+2. **`CFBundleVersion` (build number) is automatic** for the DMG — no manual step (TASK-571).
+   `release-dmg.yml` overrides `CURRENT_PROJECT_VERSION` with a UTC `YYYYMMDDHHMM` timestamp at archive
+   time, which is always greater than the previous release's, so **Sparkle reliably detects the
+   update**. A guard step also fails the release if the new build number isn't strictly greater than
+   the published one (read from the prior `appcast.xml`). The `Project.swift` constant is only used
+   for local/dev builds. *(MAS will need its own uint32-sized build-number scheme when it ships — the
+   timestamp exceeds the App Store's uint32 limit; the App Store also enforces monotonicity itself.)*
 
 3. **Green `main`**: confirm the latest `main` commit passed `Swift Build` (build + fast gate +
    `swiftlint --strict` + `swiftformat`), `gitleaks`, and `Version Parity`.
@@ -127,7 +128,7 @@ Then **edit the GitHub release notes** with the changelog and publish.
 
 ### Confirm auto-update actually works
 On a Mac running the **previous** version: **Check for Updates…** (app menu) should find the new
-build and install it. This is the real test that `currentProjectVersion` was bumped and the appcast
+build and install it. This is the real test that the build number incremented and the appcast
 signature verifies.
 
 ---
@@ -138,8 +139,8 @@ signature verifies.
   which GitHub serves from the newest non-prerelease release.
 - Each release publishes a single-item `appcast.xml` for that version, EdDSA-signed with
   `SPARKLE_EDDSA_PRIVATE_KEY`. A tampered DMG fails signature verification.
-- Update detection compares `CFBundleVersion` (`sparkle:version`) — **bump `currentProjectVersion`**
-  (see §1.2).
+- Update detection compares `CFBundleVersion` (`sparkle:version`), which the release workflow sets to
+  a monotonic UTC timestamp automatically (see §1.2) — no manual bump.
 - If you ever rotate the Sparkle key: regenerate with `generate_keys`, update `sparklePublicEDKey` in
   `Project.swift` **and** the `.gitleaks.toml` allowlist, and reset `SPARKLE_EDDSA_PRIVATE_KEY`. This
   invalidates updates for users on the old key (they re-download manually once).
@@ -249,7 +250,7 @@ recognizable.
 | Notarization `Invalid` on `Sparkle.framework/.../Updater` or `Autoupdate` | Xcode doesn't re-sign Sparkle's nested helpers — the "Re-sign Sparkle nested code" step signs them inside-out with `--options runtime --timestamp`. Fetch the reason: `xcrun notarytool log <submission-id> --apple-id … --password … --team-id …`. |
 | `stapler` Error 65 after notarize | submission was `Invalid` but `notarytool --wait` exited 0 — the step now parses status and requires `Accepted`. |
 | gitleaks fails on a key string | if it's a genuinely public key (e.g. `SUPublicEDKey`), allowlist it in `.gitleaks.toml`; otherwise it's a real leak. |
-| Users not offered the update | `currentProjectVersion` wasn't bumped (see §1.2). |
+| Users not offered the update | build number didn't increase — the timestamp guard in `release-dmg.yml` should catch this (see §1.2); check the appcast `sparkle:version`. |
 
 To inspect a failed run:
 ```bash
@@ -267,6 +268,6 @@ If a release is bad:
 
 1. Delete the GitHub release (or mark it a pre-release so `…/releases/latest` skips it — this also
    stops the appcast from serving it).
-2. Fix forward: bump to the next patch version (and `currentProjectVersion`), re-tag.
+2. Fix forward: bump to the next patch version, re-tag (the build number auto-increments).
 
 Do **not** reuse a version number that users may already have.

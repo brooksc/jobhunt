@@ -174,6 +174,11 @@ final class JobhuntServerTests: XCTestCase {
 
     // TASK-434: MCP routes only accept POST; other methods get 405.
     func testMCPRoute_getMethodRejectedWith405() async throws {
+        // MCP routes are compiled out under MAS_BUILD (no MCP in the App Store sandbox), where these
+        // paths 404 instead of 405 — so this only applies to non-MAS builds.
+        #if MAS_BUILD
+            throw XCTSkip("MCP routes are excluded from MAS builds.")
+        #endif
         for path in ["/mcp/jobs/list", "/mcp/jobs/update"] { // a read route and a write route
             let url = await URL(string: baseURL() + path)!
             var req = URLRequest(url: url)
@@ -527,6 +532,10 @@ final class JobhuntServerTests: XCTestCase {
 
     // TASK-358: Invalid MCP request must return a stable JSON error, not raw localizedDescription.
     func testMCPRoute_invalidRequest_returnsSafeErrorCode() async throws {
+        // MCP routes are excluded from MAS builds (the route 404s there instead of returning 401).
+        #if MAS_BUILD
+            throw XCTSkip("MCP routes are excluded from MAS builds.")
+        #endif
         // Provide a wrong MCP token — server returns 401 with a stable message.
         // swiftlint:disable:next force_unwrapping
         let url = await URL(string: baseURL() + "/mcp/jobs/get")!

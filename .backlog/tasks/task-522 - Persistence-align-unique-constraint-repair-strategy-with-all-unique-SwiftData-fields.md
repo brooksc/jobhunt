@@ -3,10 +3,10 @@ id: TASK-522
 title: >-
   Persistence: align unique-constraint repair strategy with all unique SwiftData
   fields
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 03:56'
-updated_date: '2026-06-19 05:14'
+updated_date: '2026-06-21 03:37'
 labels:
   - audit
   - persistence
@@ -57,3 +57,9 @@ Triage (Claude, opus-4.8): REAL but NARROW — recommend downgrade High→Low, N
 - Site.origin / Setting.key / DuplicateDecision.cleanedHash collisions are pathological for well-formed Electron data (origin and key are the natural identities; settings is a KV store). SavedSearch.id is a UUID (no realistic collision) and isn't imported from Electron.
 Recommendation: leave as-is (fails-closed is acceptable). IF a real migrated store ever fails to open on one of these constraints, add a TARGETED post-hoc repair for that specific field in the RepairJobNumbers style (raw SQLite, pre-open) — cheap to add then, wasteful to build speculatively now. Optionally add a non-destructive --verify check that warns when the Electron source has dupes on a unique field before migration. Did not change code.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Done (commit ad0c20e), scoped per the task's own triage. Did NOT build the 5 speculative pre-open repairs — the app fails CLOSED on a unique-constraint open failure (recovery UI), and only Job.jobNumber has a real collision path (Electron import), already handled by --repair-duplicate-job-numbers with file-backed RepairJobNumbersTests. The ModelContainerFactory uniqueness comment already enumerated every unique field + policy; added a matching per-field recovery table to the migrator README (Capture.rawHash / DuplicateDecision.cleanedHash are source-enforced dedup keys — blind dedup would orphan jobs; Site.origin / Setting.key are natural identities; SavedSearch.id is a UUID). Documents the targeted-repair-when-actually-observed approach. AC #3/#4 satisfied by the existing jobNumber repair+tests; the no-collision fields intentionally have no speculative repair. Recommend downgrading priority (over-rated as High — a recoverability-doc gap, not corruption).
+<!-- SECTION:FINAL_SUMMARY:END -->

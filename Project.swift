@@ -147,7 +147,7 @@ let appInfoPlist: [String: Plist.Value] = [
     "CFBundleVersion": "$(CURRENT_PROJECT_VERSION)",
     "NSPrincipalClass": "NSApplication",
     "LSMinimumSystemVersion": "$(MACOSX_DEPLOYMENT_TARGET)",
-    "NSHumanReadableCopyright": "Copyright © 2025 Jobhunt",
+    "NSHumanReadableCopyright": "Copyright © 2025 Brooks Cutter",
     "LSApplicationCategoryType": "public.app-category.productivity",
     "CFBundleURLTypes": .array([
         .dictionary([

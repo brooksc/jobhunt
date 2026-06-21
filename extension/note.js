@@ -13,7 +13,7 @@ document.getElementById("save").addEventListener("click", async () => {
   });
 
   if (response && response.ok && response.result?.queued) {
-    statusText.textContent = "Queued until Jobhunt is running.";
+    statusText.textContent = "Queued until JobHunt is running.";
   } else if (response && response.ok) {
     statusText.textContent = "Saved.";
     window.setTimeout(() => window.close(), 500);

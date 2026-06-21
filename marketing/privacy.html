@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Privacy Policy — Jobhunt</title>
+  <title>Privacy Policy — JobHunt</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root { --bg: #0f1117; --bg-card: #1a1d27; --border: rgba(255,255,255,.1); --fg: #f0f2f8; --fg-mute: #9ca3af; --accent: #3b82f6; }
@@ -23,25 +23,25 @@
 </head>
 <body>
   <nav>
-    <a class="nav-logo" href="/">Jobhunt</a>
+    <a class="nav-logo" href="/">JobHunt</a>
   </nav>
   <div class="main">
     <h1>Privacy Policy</h1>
     <div class="date">Last updated: June 2026</div>
 
     <h2>Overview</h2>
-    <p>Jobhunt is a local-first application. It does not collect, transmit, or store any personal data on remote servers. Everything stays on your machine.</p>
+    <p>JobHunt is a local-first application. It does not collect, transmit, or store any personal data on remote servers. Everything stays on your machine.</p>
 
     <h2>What the app collects</h2>
-    <p>Jobhunt stores data you explicitly provide: job posting content captured via the Chrome extension, your resume text (pasted during onboarding), and your location preferences and settings. All of this is stored in a local SQLite database on your Mac under <code>~/.config/jobhunt/</code>.</p>
+    <p>JobHunt stores data you explicitly provide: job posting content captured via the Chrome extension, your resume text (pasted during onboarding), and your location preferences and settings. All of this is stored in a local SQLite database on your Mac under <code>~/.config/jobhunt/</code>.</p>
 
     <h2>What the Chrome extension collects</h2>
-    <p>When you click the toolbar button, the extension reads the current tab's URL, page title, visible text, and any structured data (JSON-LD) on the page. This content is sent only to the Jobhunt app running locally on your machine via <code>http://127.0.0.1</code>.</p>
+    <p>When you click the toolbar button, the extension reads the current tab's URL, page title, visible text, and any structured data (JSON-LD) on the page. This content is sent only to the JobHunt app running locally on your machine via <code>http://127.0.0.1</code>.</p>
     <p><strong>Greenhouse job board API:</strong> When capturing a job from a Greenhouse-hosted job board (e.g. <code>boards.greenhouse.io</code> or <code>job-boards.greenhouse.io</code>), the extension makes a direct request to the Greenhouse public API (<code>https://boards-api.greenhouse.io/v1/boards/…/jobs/…</code>) to retrieve structured job data. The request includes a board identifier and job ID extracted from the URL — no credentials, account information, or personal data are sent. This request goes from your browser directly to Greenhouse's servers and is subject to <a href="https://www.greenhouse.com/privacy-policy" target="_blank" rel="noopener">Greenhouse's privacy policy</a>. No other external server is contacted by the extension.</p>
     <p>If the local app is not running, captures are held temporarily in Chrome's local extension storage (<code>chrome.storage.local</code>) on your device until you sync or clear them.</p>
 
     <h2>AI processing</h2>
-    <p>Jobhunt sends job description text to an AI model for extraction and fit scoring. By default this is a local model via LM Studio or Ollama — no data leaves your machine. If you configure a cloud provider (OpenAI, Anthropic, Google, OpenRouter), job description text is sent to that provider under their own privacy policy. Your resume is included in fit-scoring prompts.</p>
+    <p>JobHunt sends job description text to an AI model for extraction and fit scoring. By default this is a local model via LM Studio or Ollama — no data leaves your machine. If you configure a cloud provider (OpenAI, Anthropic, Google, OpenRouter), job description text is sent to that provider under their own privacy policy. Your resume is included in fit-scoring prompts.</p>
 
     <h2>Data sharing</h2>
     <p>We do not sell, share, or transfer any user data to third parties for any purpose. The app has no analytics, no telemetry, and no crash reporting.</p>
@@ -53,7 +53,7 @@
     <p>Questions? Open an issue at <a href="https://github.com/brooksc/jobhunt/issues" target="_blank" rel="noopener">github.com/brooksc/jobhunt/issues</a> or visit <a href="https://jobhunt-app.com">jobhunt-app.com</a>.</p>
   </div>
   <footer>
-    <a href="/">← Back to Jobhunt</a>
+    <a href="/">← Back to JobHunt</a>
   </footer>
 </body>
 </html>

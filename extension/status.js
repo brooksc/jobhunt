@@ -89,14 +89,14 @@
     setStatus("Syncing...");
     const response = await chrome.runtime.sendMessage({ type: "flushCaptureQueue" });
     if (!response?.ok) {
-      setStatus("Could not reach Jobhunt. Open the Mac app and try again.");
+      setStatus("Could not reach JobHunt. Open the Mac app and try again.");
       return;
     }
 
     const result = response.result || {};
     await loadQueue();
     if ((result.submitted || 0) === 0 && (result.remaining || 0) > 0) {
-      setStatus("Could not reach Jobhunt. Open the Mac app and try again.");
+      setStatus("Could not reach JobHunt. Open the Mac app and try again.");
       return;
     }
     setStatus(`${result.submitted || 0} synced, ${result.remaining || 0} still saved locally.`);

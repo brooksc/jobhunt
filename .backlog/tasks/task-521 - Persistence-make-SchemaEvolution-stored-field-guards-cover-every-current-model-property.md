@@ -3,10 +3,10 @@ id: TASK-521
 title: >-
   Persistence: make SchemaEvolution stored-field guards cover every current
   model property
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 03:56'
-updated_date: '2026-06-19 05:07'
+updated_date: '2026-06-21 03:37'
 labels:
   - audit
   - persistence
@@ -46,3 +46,9 @@ Triage (Claude, opus-4.8): appears STALE. There are no runtime stored-field 'gua
 
 Correction to my triage above: re-reading the full description, the finding is about the COMPLETENESS of the existing compile-time tripwire TESTS, not runtime guards. That's a fair (but LOW-severity) point: the type guard already pins every property, but the name guard + full job round-trip don't enumerate all current fields, so a future rename/removal could slip past. It is NOT a data-loss/open-failure risk (SwiftData lightweight migration nil-fills optionals), so it's not a release blocker — a test-hardening task, not Tier-1. Recommend downgrading from High to Low and keeping it as test hygiene. I did not touch it.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Done (commit aa4203a). Scoped per the task's own triage: this is test hygiene, not a data-loss risk (SwiftData lightweight migration nil-fills new optionals). Extended the V1 name guard to include the previously-missing Job stored fields (salaryHourlyMin/Max, manualFieldOverridesJSON, meetsCriteria), populated + verified them in the full job round-trip regression test, and added a checklist comment requiring any new stored property to be added to BOTH guards (and the round-trip). No production schema change. SchemaEvolutionTests (8) green. Recommend leaving priority where the triage put it (this was over-rated as High).
+<!-- SECTION:FINAL_SUMMARY:END -->

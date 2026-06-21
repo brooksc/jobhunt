@@ -65,6 +65,28 @@ JobhuntMigrator \
    `~/Library/Application Support/Jobhunt/jobhunt.store`.
 4. Launch the Jobhunt app — it will open the migrated store.
 
+## Unique constraints & store-open recovery
+
+SwiftData enforces every `@Attribute(.unique)` field with a SQLite unique index, so a store that
+holds duplicate values on a unique column **cannot be opened** (the app then shows the recovery UI —
+it fails *closed*, never silently corrupting data). The full policy lives in
+`core/Models/ModelContainerFactory.swift`; recovery per unique field:
+
+| Unique field | Can a real store collide? | Recovery |
+|---|---|---|
+| `Job.jobNumber` | **Yes** — Electron `job_number` can repeat | `--repair-duplicate-job-numbers` (raw SQLite, pre-open; renumbers duplicates) |
+| `Capture.rawHash` | No — it's the content-dedup key the source already enforces (and blind dedup would orphan jobs referencing a dropped capture) | n/a |
+| `DuplicateDecision.cleanedHash` | No — natural key of the decision | n/a |
+| `Site.origin` | No — natural site identity | n/a |
+| `Setting.key` | No — KV-store key | n/a |
+| `SavedSearch.id` | No — a UUID, not imported from Electron | n/a |
+
+Only `jobNumber` has (and needs) a pre-open repair. For the others, a duplicate could only come from
+an externally-modified store; if that ever happens for a real store, add a targeted, idempotent
+`RepairJobNumbers`-style raw-SQLite repair for that specific field (runs **before** any
+`ModelContainer` open) rather than a speculative one now — and keep recovery fail-closed in the
+meantime.
+
 ## What is migrated
 
 Every legacy SQLite table is mapped to a SwiftData `@Model`:

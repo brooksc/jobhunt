@@ -1,9 +1,10 @@
 ---
 id: TASK-546
 title: 'Restore: quiesce runtime services before replacing the live SwiftData store'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 22:17'
+updated_date: '2026-06-21 03:32'
 labels:
   - audit
   - backup
@@ -40,3 +41,9 @@ Suggested implementation: make the restore flow asynchronous and stop runtime wo
 - [ ] #5 Tests or a seam verify the quiesce method is invoked before the restore operation.
 - [ ] #6 Documentation/comments describe the restore boundary consistently with the single-writer store guidance.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Done (commit 81723d6). Added RestoreCoordinator (core) enforcing quiesce → safety-backup → replace ordering, with injected closures so the sequence/failure behavior is unit-tested without the live app. SettingsTab.performRestore is now async and calls appServices.shutdown() (cancels LLM queue + availability loop, stops the local server) BEFORE the safety backup and the destructive swap, so no background writer can touch the single-writer store during the file replacement. On success or any failure the app quits (reporting the failing stage) so the next launch opens a known store with a clean runtime — never left half-restored against a partially-quiesced runtime. RestoreCoordinatorTests cover ordering + that a safety-backup failure aborts before the swap. Documented in CLAUDE.md. Note: fully awaiting in-flight cancelled task completion is TASK-554/555; this uses the existing shutdown() which cancels + stops the server (best-available quiesce today).
+<!-- SECTION:FINAL_SUMMARY:END -->

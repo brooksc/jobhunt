@@ -46,3 +46,4 @@ build/
 *.profraw
 nohup.out
 .wrangler/
+*.provisionprofile

@@ -254,7 +254,7 @@ struct DebugTab: View {
             // "macOS suppressed it" (Focus / alert style / signing-reset authorization).
             Button("Send Test Notification") { sendTestNotification() }
                 .help("Posts a notification now to verify macOS delivery. If nothing appears, check " +
-                    "System Settings → Notifications → Jobhunt, turn off Do Not Disturb / Focus, and see " +
+                    "System Settings → Notifications → JobHunt, turn off Do Not Disturb / Focus, and see " +
                     "the Console for 'Jobhunt test-notification' lines (auth status + add() result).")
 
             Divider()
@@ -295,7 +295,7 @@ struct DebugTab: View {
             )
         }
         let content = UNMutableNotificationContent()
-        content.title = "Jobhunt test notification"
+        content.title = "JobHunt test notification"
         content.body = "If you can see this, macOS notification delivery is working."
         content.sound = .default
         let request = UNNotificationRequest(identifier: "jobhunt-test-notification", content: content, trigger: nil)

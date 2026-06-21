@@ -106,7 +106,7 @@ struct StoreRecoveryView: View {
     private func restoreFromBackup() {
         let panel = NSOpenPanel()
         panel.title = "Choose a Backup File"
-        panel.message = "Select a Jobhunt SQLite backup (.store or .sqlite)"
+        panel.message = "Select a JobHunt SQLite backup (.store or .sqlite)"
         panel.allowedContentTypes = [
             UTType(filenameExtension: "store") ?? .data,
             UTType(filenameExtension: "sqlite") ?? .database

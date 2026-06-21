@@ -182,7 +182,7 @@ struct HelpView: View {
         HelpSection(title: "About", systemImage: "info.circle") {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("Jobhunt")
+                    Text("JobHunt")
                         .font(.title2)
                         .fontWeight(.semibold)
                     Text(appVersion)

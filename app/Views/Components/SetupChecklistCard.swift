@@ -41,7 +41,7 @@ struct SetupChecklistCard: View {
                 HStack(spacing: 8) {
                     Image(systemName: "checklist")
                         .foregroundStyle(Color.accentColor)
-                    Text("Finish setting up Jobhunt")
+                    Text("Finish setting up JobHunt")
                         .font(.callout.weight(.semibold))
                     Spacer()
                     Button {

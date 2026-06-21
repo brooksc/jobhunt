@@ -352,7 +352,7 @@ struct DataSettingsTab: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         panel.nameFieldStringValue = "jobhunt-backup-\(formatter.string(from: Date())).sqlite"
-        panel.title = "Save Jobhunt Backup"
+        panel.title = "Save JobHunt Backup"
         panel.message = "Choose where to save the backup file."
         guard panel.runModal() == .OK, let dest = panel.url else { return }
         let storeURL = ModelContainerFactory.productionStoreURL()
@@ -368,7 +368,7 @@ struct DataSettingsTab: View {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [UTType(filenameExtension: "sqlite") ?? .data]
         panel.title = "Select Backup to Restore"
-        panel.message = "Choose a .sqlite backup file created by Jobhunt."
+        panel.message = "Choose a .sqlite backup file created by JobHunt."
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }

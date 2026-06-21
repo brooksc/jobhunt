@@ -107,7 +107,7 @@ private struct WelcomeStep: View {
                 .foregroundStyle(Color.accentColor)
 
             VStack(spacing: 8) {
-                Text("Welcome to Jobhunt")
+                Text("Welcome to JobHunt")
                     .font(.largeTitle)
                     .fontWeight(.bold)
 
@@ -188,7 +188,7 @@ private struct ChromeExtensionStep: View {
                     .font(.title2)
                     .fontWeight(.semibold)
 
-                Text("The Jobhunt extension lets you capture job postings with one click from any website.")
+                Text("The JobHunt extension lets you capture job postings with one click from any website.")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -433,7 +433,7 @@ private struct ResumeStep: View {
                 .font(.title2)
                 .fontWeight(.semibold)
 
-            Text("Jobhunt uses your resume to score how well each job fits your background.")
+            Text("JobHunt uses your resume to score how well each job fits your background.")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -589,7 +589,7 @@ private struct FinishStep: View {
 
             Spacer()
 
-            Button("Start Using Jobhunt") {
+            Button("Start Using JobHunt") {
                 onboardingManager.complete(settings: settings)
             }
             .buttonStyle(.borderedProminent)

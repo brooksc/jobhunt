@@ -140,8 +140,8 @@ let migratorTarget = Target.target(
 // MARK: - App target
 
 let appInfoPlist: [String: Plist.Value] = [
-    "CFBundleName": "Jobhunt",
-    "CFBundleDisplayName": "Jobhunt",
+    "CFBundleName": "JobHunt",
+    "CFBundleDisplayName": "JobHunt",
     "CFBundleIdentifier": .string(bundleId),
     "CFBundleShortVersionString": "$(MARKETING_VERSION)",
     "CFBundleVersion": "$(CURRENT_PROJECT_VERSION)",

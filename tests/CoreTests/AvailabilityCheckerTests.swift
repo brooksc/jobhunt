@@ -179,7 +179,47 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
             session: session
         )
         guard case let .gone(reason) = result else { XCTFail("Expected .gone, got \(result)"); return }
-        XCTAssertTrue(reason.contains("this job was removed"), "reason should cite the banner, got: \(reason)")
+        XCTAssertTrue(reason.contains("job was removed"), "reason should cite the banner, got: \(reason)")
+    }
+
+    // MARK: Body "gone" matcher — generalized regex families + false-positive guards
+
+    /// Each of these is a removed/closed/expired posting kept at HTTP 200 with custom wording. The
+    /// regex families (not literal phrases) should catch them so we don't add a literal per site.
+    func testBodyGoneReason_matchesRemovalFamilies() {
+        let goneBodies = [
+            "sorry, this job was removed at 02:24 p.m. (pst) on tuesday", // built in
+            "this position has been filled and is now closed", // <subject> has been filled
+            "we're sorry, but this job posting has expired.", // <subject> posting has expired
+            "we are no longer accepting applications for this role", // no longer accepting applications
+            "unfortunately this posting is no longer available", // <subject> is no longer available
+            "the requisition was closed by the hiring team", // <subject> was closed
+            "error 404: job not found" // <subject> not found
+        ]
+        for body in goneBodies {
+            XCTAssertNotNil(
+                AvailabilityChecker.bodyGoneReason(body),
+                "should be flagged gone: \(body)"
+            )
+        }
+    }
+
+    /// Live or unrelated copy that merely contains words like "no longer", "open", or "removed"
+    /// elsewhere must NOT be flagged — the families are anchored to a job-subject noun + outcome.
+    func testBodyGoneReason_ignoresLiveOrUnrelatedCopy() {
+        let liveBodies = [
+            "apply now — we are actively accepting applications for this role",
+            "candidates no longer need a college degree to apply for this position",
+            "this role offers no longer commutes thanks to fully remote work",
+            "senior product manager. salary 180k. apply today.",
+            "this job has great benefits and is open to all applicants"
+        ]
+        for body in liveBodies {
+            XCTAssertNil(
+                AvailabilityChecker.bodyGoneReason(body),
+                "should NOT be flagged gone: \(body) → \(String(describing: AvailabilityChecker.bodyGoneReason(body)))"
+            )
+        }
     }
 
     // MARK: Redirect heuristics

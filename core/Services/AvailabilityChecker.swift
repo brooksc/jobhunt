@@ -51,12 +51,27 @@ public enum AvailabilityChecker {
         "posting has expired", "job posting has expired", "no longer accepting applications",
         "job listing has expired", "this position has been filled", "this role is no longer",
         "opening is no longer", "requisition is no longer", "job has been closed",
-        "this job has been removed",
-        // Built In sites (builtinseattle/builtin.com/builtinnyc/…) keep the posting at HTTP 200 with
-        // the title still on the page and only show an inline "Sorry, this job was removed at …"
-        // banner — so status/redirect/title heuristics all pass. Match the banner text. Note the
-        // wording is "was removed", not the "has been removed" variant above.
-        "this job was removed"
+        "this job has been removed"
+    ]
+    /// Generalized "posting is gone" families, matched (ICU regex) against the lowercased body.
+    /// These complement the literal `goneBodyPatterns` above so a new site with slightly different
+    /// wording is still caught without adding a literal for each — e.g. Built In keeps a removed
+    /// posting at HTTP 200 with the title still on the page and only an inline "Sorry, this job was
+    /// removed at …" banner, which the status/redirect/title heuristics all miss. Anchored to a
+    /// job-subject noun (job/position/posting/role/listing/opening/requisition/vacancy) so unrelated
+    /// "no longer"/"removed" copy elsewhere on the page doesn't false-positive. Expect to keep
+    /// tuning these as new phrasings surface.
+    static let goneBodyRegexes: [String] = [
+        // … <subject> was|is|has (been)|… removed|closed|filled|taken down|deactivated|…
+        #"\b(job|position|posting|role|listing|opening|requisition|vacancy)\s+(has been|have been|was|were|is|are|has|have)\s+(removed|closed|filled|taken down|deactivated|cancelled|canceled|deleted|withdrawn)\b"#,
+        // … <subject> (is|are|has|…) no longer available|open|active|posted|accepting|live
+        #"\b(job|position|posting|role|listing|opening|requisition|vacancy)\s+(?:is|are|was|were|has|have)?\s*no longer\s+(available|open|active|posted|accepting|live)\b"#,
+        // "no longer accepting applications" — common enough to match without a subject noun
+        #"\bno longer accepting applications\b"#,
+        // … <subject> (posting) (has) expired
+        #"\b(job|position|posting|listing|role|opening|requisition)\s+(?:posting\s+)?(?:has\s+|have\s+)?expired\b"#,
+        // "<subject> not found"
+        #"\b(job|position|posting|page|listing)\s+not\s+found\b"#
     ]
     static let timeoutSeconds: TimeInterval = 12
 
@@ -79,6 +94,22 @@ public enum AvailabilityChecker {
         if path.isEmpty { path = "/" }
         components.path = path
         return components.url
+    }
+
+    /// Returns a "gone" reason if the page body carries a removal/closure signal, else nil.
+    /// Checks the literal `goneBodyPatterns` first (fast, explicit), then the generalized
+    /// `goneBodyRegexes` families. `body` MUST already be lowercased. The reason cites the actual
+    /// matched text so logs/audit events show exactly what tripped the check.
+    static func bodyGoneReason(_ body: String) -> String? {
+        for pattern in goneBodyPatterns where body.contains(pattern) {
+            return "body: \(pattern)"
+        }
+        for pattern in goneBodyRegexes {
+            if let range = body.range(of: pattern, options: .regularExpression) {
+                return "body: \(body[range])"
+            }
+        }
+        return nil
     }
 
     /// True when `title` has ≥3 meaningful words (mirrors isMeaningfulTitle).
@@ -193,10 +224,10 @@ public enum AvailabilityChecker {
                 return .gone(reason: "HTTP \(statusCode)")
             }
 
-            // 2. Body pattern matching.
+            // 2. Body pattern matching (literal phrases + generalized regex families).
             let body = String(data: data, encoding: .utf8)?.lowercased() ?? ""
-            for pattern in goneBodyPatterns where body.contains(pattern) {
-                return .gone(reason: "body: \(pattern)")
+            if let reason = bodyGoneReason(body) {
+                return .gone(reason: reason)
             }
 
             // 2.5 Login / auth wall (e.g. LinkedIn redirecting an un-authenticated check to a

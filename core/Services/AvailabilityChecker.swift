@@ -51,7 +51,12 @@ public enum AvailabilityChecker {
         "posting has expired", "job posting has expired", "no longer accepting applications",
         "job listing has expired", "this position has been filled", "this role is no longer",
         "opening is no longer", "requisition is no longer", "job has been closed",
-        "this job has been removed"
+        "this job has been removed",
+        // Built In sites (builtinseattle/builtin.com/builtinnyc/…) keep the posting at HTTP 200 with
+        // the title still on the page and only show an inline "Sorry, this job was removed at …"
+        // banner — so status/redirect/title heuristics all pass. Match the banner text. Note the
+        // wording is "was removed", not the "has been removed" variant above.
+        "this job was removed"
     ]
     static let timeoutSeconds: TimeInterval = 12
 

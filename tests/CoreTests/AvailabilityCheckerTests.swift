@@ -160,6 +160,28 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
         XCTAssertTrue(reason.hasPrefix("body:"), "reason should start with 'body:', got: \(reason)")
     }
 
+    /// Built In keeps a removed posting at HTTP 200 with the job TITLE still rendered (breadcrumb +
+    /// H1) plus a "Similar Jobs" list, so the status/redirect/title heuristics all pass — only the
+    /// inline "Sorry, this job was removed at …" banner reveals it's gone. Regression for that miss.
+    func testReturnsGoneForBuiltInRemovedBanner_at200WithTitlePresent() async throws {
+        let title = "Senior Technical Program Manager FUB Engineering"
+        let body = """
+        <h1>\(title)</h1>
+        <p>Sorry, this job was removed at 02:24 p.m. (PST) on Tuesday, Jun 23, 2026</p>
+        <section>Similar Jobs</section>
+        """
+        MockURLProtocol.handlers = [("builtinseattle.com/job/", { _ in
+            makeResponse(url: "https://builtinseattle.com/job/x/8696567", status: 200, body: body)
+        })]
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: "https://builtinseattle.com/job/x/8696567")),
+            title: title,
+            session: session
+        )
+        guard case let .gone(reason) = result else { XCTFail("Expected .gone, got \(result)"); return }
+        XCTAssertTrue(reason.contains("this job was removed"), "reason should cite the banner, got: \(reason)")
+    }
+
     // MARK: Redirect heuristics
 
     func testGoneWhenRedirectedToCompanyPage() async throws {

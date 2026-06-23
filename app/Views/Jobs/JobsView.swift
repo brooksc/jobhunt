@@ -31,6 +31,11 @@ struct JobsView: View {
     @State private var showFilterPopover = false
     @State private var showSaveSheet = false
     @State private var showAddJobSheet = false
+    // Availability check (Actions menu) — finds Pursuing jobs whose postings appear gone, then offers
+    // to mark them Expired (same confirmation flow as Settings → Availability).
+    @State private var goneJobs: [GoneJobResult] = []
+    @State private var showingExpiredConfirmation = false
+    @State private var isCheckingAvailability = false
     @State private var jobIDsToDelete: [String] = []
     /// Mirror of router.sidebarJobFilter as @State so SwiftUI reliably re-renders.
     @State private var localSidebarFilter: JobStatus?
@@ -54,6 +59,13 @@ struct JobsView: View {
             .sheet(isPresented: $showAddJobSheet) { AddJobSheet() }
             .sheet(isPresented: $showSaveSheet) {
                 SaveSearchSheet(filterState: filterState, searchText: searchText, searchTokens: searchTokens)
+            }
+            .sheet(isPresented: $showingExpiredConfirmation) {
+                ExpiredConfirmationSheet(
+                    goneJobs: goneJobs,
+                    onConfirm: { markExpired($0) },
+                    onDismiss: { showingExpiredConfirmation = false }
+                )
             }
             .confirmationDialog(
                 "Delete \(jobIDsToDelete.count == 1 ? "Job" : "\(jobIDsToDelete.count) Jobs")?",
@@ -286,6 +298,15 @@ struct JobsView: View {
                     }
                     Divider()
                 }
+                Button {
+                    Task { await runAvailabilityCheck() }
+                } label: {
+                    Label(
+                        isCheckingAvailability ? "Checking availability…" : "Check Job Description Availability",
+                        systemImage: "checkmark.seal"
+                    )
+                }
+                .disabled(isCheckingAvailability)
                 Button {
                     exportCSV()
                 } label: {
@@ -937,6 +958,42 @@ struct JobsView: View {
     }
 
     /// TASK-464: open the source/display page for every selected job in the browser.
+    private func runAvailabilityCheck() async {
+        let pursuing = allJobs.filter { $0.status == .pursuing }
+        guard !pursuing.isEmpty else {
+            appServices.toastStore.show("No pursuing jobs to check")
+            return
+        }
+        isCheckingAvailability = true
+        defer { isCheckingAvailability = false }
+
+        let found = await AvailabilityChecker.findGoneJobs(pursuing)
+        appServices.settings.set(
+            ISO8601DateFormatter().string(from: Date()),
+            forKey: SettingsKey.availabilityLastAutoCheckAt
+        )
+        if found.isEmpty {
+            appServices.toastStore.show("All \(pursuing.count) pursuing jobs are still available")
+        } else {
+            goneJobs = found
+            showingExpiredConfirmation = true
+        }
+    }
+
+    private func markExpired(_ jobs: [GoneJobResult]) {
+        showingExpiredConfirmation = false
+        let ids = jobs.map(\.jobID)
+        let count = ids.count
+        Task {
+            do {
+                try await appServices.jobService.markExpired(jobIDs: ids)
+                appServices.toastStore.show("\(count) job(s) marked expired")
+            } catch {
+                appServices.toastStore.show("Couldn't mark jobs expired: \(error.localizedDescription)", isError: true)
+            }
+        }
+    }
+
     private func openSelectedPages() {
         let selected = filteredJobs.filter { selectedJobIDs.contains($0.id) }
         for job in selected {

@@ -152,7 +152,7 @@ struct ContentView: View {
                         Task { await runAvailabilityCheck() }
                     } label: {
                         Label(
-                            isCheckingAvailability ? "Checking availability…" : "Check Pursuing Availability",
+                            isCheckingAvailability ? "Checking availability…" : "Check Job Description Availability",
                             systemImage: "checkmark.seal"
                         )
                     }

@@ -18,4 +18,8 @@ regexes = [
   # Sparkle EdDSA PUBLIC key (SUPublicEDKey, Project.swift) — public by design: it ships in the app
   # Info.plist to verify update signatures. The private half lives only in a CI secret (TASK-566).
   '''M\+FYCXWxrdmjRzphUpv5wZMxaDh/ecJU22324\+3o4zQ=''',
+  # Chrome extension PUBLIC key (extension/manifest.json "key") — public by design: it pins the
+  # unpacked extension's id so a release build can be dogfooded with the locally-loaded extension.
+  # The Web Store publishes this key, and it's stripped from the uploaded zip (package-extension.sh).
+  '''vkl/1pnj2/gBXaeQnxaLq6096tz6P6coEAC''',
 ]

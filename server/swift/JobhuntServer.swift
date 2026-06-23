@@ -383,7 +383,19 @@ public actor JobhuntServer {
     // Published CWS extension ID (from chromewebstore.google.com/detail/jobhunt-capture/<id>).
     public static let productionExtensionOrigin = "chrome-extension://jekcbebhfeidkpapienoflbcaeeknlch"
 
-    public static let defaultAllowedExtensionOrigins: Set<String> = [productionExtensionOrigin]
+    /// The repo's unpacked/dev extension, pinned to this stable id by the `key` in
+    /// extension/manifest.json (whose matching public key hashes to this id). Allowlisted so a RELEASE
+    /// build can be dogfooded with the locally-loaded extension without a settings toggle. The `key` is
+    /// stripped from the published CWS zip (scripts/package-extension.sh), so the Web Store copy keeps
+    /// its own id and this dev id only ever matches an unpacked load of this repo. Low-risk by design:
+    /// the worst a forged-id extension can do over loopback is inject job captures / focus the app
+    /// (no route exposes job content, résumés, or keys), and the published id is already clonable.
+    public static let developmentExtensionOrigin = "chrome-extension://jbgompgalchfnhooogpblmfecocehdci"
+
+    public static let defaultAllowedExtensionOrigins: Set<String> = [
+        productionExtensionOrigin,
+        developmentExtensionOrigin
+    ]
 
     /// Permit arbitrary chrome-extension origins only in debug builds — never in release.
     public static var defaultAllowArbitraryExtensionOrigins: Bool {

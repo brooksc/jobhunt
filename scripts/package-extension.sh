@@ -24,6 +24,11 @@ trap 'rm -rf "$STAGING"' EXIT
 
 # Allowlisted files and directories
 cp "$EXT_DIR/manifest.json"         "$STAGING/manifest.json"
+# Strip the dev-only `key`: it pins the *unpacked* extension id so a release app build can be
+# dogfooded with a locally-loaded extension (see JobhuntServer.developmentExtensionOrigin). The Web
+# Store assigns the published id itself and rejects a non-matching manifest key, so the uploaded zip
+# must not carry it.
+node -e "const fs=require('fs'),p='$STAGING/manifest.json',m=JSON.parse(fs.readFileSync(p));delete m.key;fs.writeFileSync(p,JSON.stringify(m,null,2)+'\n')"
 cp "$EXT_DIR/popup.html"            "$STAGING/popup.html"  2>/dev/null || true
 cp "$EXT_DIR/Readability.js"        "$STAGING/Readability.js"
 cp "$EXT_DIR/capture.js"            "$STAGING/capture.js"

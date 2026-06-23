@@ -659,5 +659,14 @@ final class JobhuntServerOriginTests: XCTestCase {
             ),
             "the published CWS extension origin must be approved"
         )
+        XCTAssertTrue(
+            JobhuntServer.isApprovedExtensionOrigin(
+                JobhuntServer.developmentExtensionOrigin,
+                allowlist: JobhuntServer.defaultAllowedExtensionOrigins,
+                allowArbitrary: false
+            ),
+            "the repo's pinned unpacked/dev extension origin must be approved so a release build can be "
+                + "dogfooded with the locally-loaded extension"
+        )
     }
 }

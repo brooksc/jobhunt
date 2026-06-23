@@ -201,10 +201,16 @@ struct ContentView: View {
                     Label("Extension: linked", systemImage: "puzzlepiece")
                 }
             } label: {
-                Image(systemName: aiConfigured ? "circle.grid.2x2" : "exclamationmark.circle")
-                    .foregroundStyle(aiConfigured ? Color.secondary : Color.orange)
+                HStack(spacing: 4) {
+                    Image(systemName: aiConfigured ? "circle.grid.2x2" : "exclamationmark.circle")
+                    Text("Status")
+                        .font(.caption.weight(.medium))
+                }
+                .foregroundStyle(aiConfigured ? Color.secondary : Color.orange)
             }
-            .help(aiConfigured ? "Service status" : "AI provider not set up — open to configure")
+            .help(aiConfigured
+                ? "Status: AI provider, local server, extension, and availability check"
+                : "Status: AI provider needs setup — also local server, extension, availability check")
         }
     }
 

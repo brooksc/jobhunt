@@ -201,6 +201,8 @@ struct JobsView: View {
             Button { showFilterPopover.toggle() } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "line.3.horizontal.decrease")
+                    Text("Filter")
+                        .font(.caption.weight(.medium))
                     if filterState.activeFilterCount > 0 {
                         Text("\(filterState.activeFilterCount)")
                             .font(.caption2.weight(.semibold))
@@ -302,7 +304,11 @@ struct JobsView: View {
                     }
                 }
             } label: {
-                Image(systemName: "ellipsis.circle")
+                HStack(spacing: 4) {
+                    Image(systemName: "ellipsis.circle")
+                    Text("Actions")
+                        .font(.caption.weight(.medium))
+                }
             }
             .help("More actions")
         }

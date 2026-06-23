@@ -297,44 +297,16 @@ jobs:
           security delete-keychain build.keychain 2>/dev/null || true
           echo "Signing material cleaned up"
 
-      # TASK-351: Generate SHA256 checksums for release artifacts
-      - name: Generate checksums
-        run: |
-          shasum -a 256 build/Jobhunt-${{ github.ref_name }}.dmg > build/Jobhunt-${{ github.ref_name }}.dmg.sha256
-          cat build/Jobhunt-${{ github.ref_name }}.dmg.sha256
-
-      # TASK-351: Record build provenance
-      - name: Record provenance
-        run: |
-          echo "Build provenance:" > provenance.txt
-          echo "  Runner: $RUNNER_OS" >> provenance.txt
-          echo "  Commit: ${{ github.sha }}" >> provenance.txt
-          echo "  Tag: ${{ github.ref_name }}" >> provenance.txt
-          echo "  Workflow: ${{ github.workflow }}" >> provenance.txt
-          cat provenance.txt
-
-      # TASK-400: package the Chrome extension zip (allowlisted contents, version-stamped from
-      # extension/manifest.json) and attach it to the same release as the DMG.
-      - name: Package Chrome extension
-        id: ext
-        run: |
-          ./scripts/package-extension.sh
-          EXT_VERSION=$(node -e "console.log(require('./extension/manifest.json').version)")
-          ZIP="chromestore/jobhunt-capture-${EXT_VERSION}.zip"
-          test -f "$ZIP" || { echo "ERROR: extension zip not produced at $ZIP"; exit 1; }
-          shasum -a 256 "$ZIP" > "$ZIP.sha256"
-          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
-
+      # Publish only the two assets that matter: the DMG users download, and appcast.xml — the
+      # Sparkle auto-update feed the shipped app polls at releases/latest/download/appcast.xml.
+      # (Dropped the checksum, provenance, and extension zip to keep the release uncluttered; the
+      # extension is published separately to the Chrome Web Store by release-extension.yml.)
       - name: Upload to GitHub Release
         # softprops/action-gh-release@v2
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
         with:
           files: |
             build/Jobhunt-${{ github.ref_name }}.dmg
-            build/Jobhunt-${{ github.ref_name }}.dmg.sha256
             build/appcast.xml
-            provenance.txt
-            ${{ steps.ext.outputs.zip }}
-            ${{ steps.ext.outputs.zip }}.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

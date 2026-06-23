@@ -196,12 +196,24 @@ jobs:
 
           echo "DMG smoke check passed"
 
-      - name: Create DMG
+      - name: Create DMG (styled, with Applications drop-link)
         run: |
-          hdiutil create -volname Jobhunt \
-            -srcfolder build/export-dmg/Jobhunt.app \
-            -ov -format UDZO \
-            build/Jobhunt-${{ github.ref_name }}.dmg
+          set -euo pipefail
+          # Multi-resolution background (1x + 2x) → crisp on Retina, fills the window on standard
+          # displays. tiffutil ships with macOS.
+          tiffutil -cathidpicheck config/dmg/background.png config/dmg/background@2x.png \
+            -out build/dmg-background.tiff
+          # dmgbuild writes the .DS_Store icon layout DIRECTLY (no Finder/AppleScript), so it works on
+          # the headless runner — create-dmg's AppleScript path fails here with
+          # "-1743 Not authorized to send Apple events to Finder". Pinned for reproducibility.
+          python3 -m venv build/dmgvenv
+          build/dmgvenv/bin/pip install --quiet dmgbuild==1.6.7
+          DMG_APP="build/export-dmg/Jobhunt.app" \
+          DMG_BACKGROUND="build/dmg-background.tiff" \
+            build/dmgvenv/bin/dmgbuild -s config/dmg/dmg-settings.py \
+              "JobHunt" "build/Jobhunt-${{ github.ref_name }}.dmg"
+          test -f "build/Jobhunt-${{ github.ref_name }}.dmg" \
+            || { echo "ERROR: DMG not created"; exit 1; }
 
       - name: Notarize
         run: |

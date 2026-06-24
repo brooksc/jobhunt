@@ -596,6 +596,11 @@ private struct FinishStep: View {
             .controlSize(.large)
             .keyboardShortcut(.defaultAction)
 
+            if let helpURL = URL(string: "https://jobhunt-app.com/help/") {
+                Link("Visit the help guide", destination: helpURL)
+                    .font(.callout)
+            }
+
             Spacer()
         }
         .padding(32)

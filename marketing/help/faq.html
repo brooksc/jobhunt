@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FAQ — JobHunt Help</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --bg: #0f1117; --bg-card: #1a1d27; --border: rgba(255,255,255,.1); --fg: #f0f2f8; --fg-mute: #9ca3af; --accent: #3b82f6; }
+    body { background: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.7; -webkit-font-smoothing: antialiased; }
+    nav { display: flex; align-items: center; justify-content: space-between; padding: 18px 40px; border-bottom: 1px solid var(--border); }
+    .nav-logo { font-size: 17px; font-weight: 700; color: var(--fg); text-decoration: none; }
+    .main { max-width: 720px; margin: 0 auto; padding: 56px 24px; }
+    .crumb { color: var(--fg-mute); font-size: 14px; margin-bottom: 16px; }
+    .crumb a { color: var(--accent); }
+    h1 { font-size: 32px; font-weight: 800; letter-spacing: -.02em; margin-bottom: 8px; }
+    .lede { color: var(--fg-mute); font-size: 16px; margin-bottom: 40px; }
+    h2 { font-size: 18px; font-weight: 700; margin: 32px 0 8px; scroll-margin-top: 24px; }
+    p { color: var(--fg-mute); margin-bottom: 14px; }
+    strong { color: var(--fg); font-weight: 600; }
+    code { background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 13px; color: var(--fg); }
+    a { color: var(--accent); }
+    footer { border-top: 1px solid var(--border); padding: 28px 40px; font-size: 13px; color: var(--fg-mute); }
+    footer a { color: var(--fg-mute); }
+  </style>
+</head>
+<body>
+  <nav>
+    <a class="nav-logo" href="/">JobHunt</a>
+  </nav>
+  <div class="main">
+    <div class="crumb"><a href="./">← Help</a></div>
+    <h1>Frequently Asked Questions</h1>
+    <p class="lede">Quick answers to the most common questions. For the full walkthrough, see the <a href="./">help guide</a>.</p>
+
+    <h2>Is JobHunt free?</h2>
+    <p>Yes. JobHunt is free and open source. There are no subscriptions and no accounts. If you use a cloud AI provider for extraction, you pay that provider directly for usage — but you can avoid that entirely with a local model (see below).</p>
+
+    <h2>Does my data leave my Mac?</h2>
+    <p>All your data is stored locally on your Mac. When you use a <strong>local</strong> AI model (LM Studio, Ollama, or a custom endpoint on localhost), nothing leaves your machine. When you choose a <strong>cloud</strong> provider, job description text is sent for extraction, and your resume text is sent along with it for fit scoring — only after you grant consent. See the <a href="/privacy">Privacy Policy</a> for details.</p>
+
+    <h2>Do I have to pay for AI?</h2>
+    <p>No. JobHunt works with free local models via <a href="https://lmstudio.ai/download" target="_blank" rel="noopener">LM Studio</a> or Ollama — everything runs on your own machine at no cost. Cloud providers (OpenAI, Anthropic, Google, OpenRouter) are optional and typically cost a fraction of a cent per job. Google's Gemini Flash is a good low-cost default.</p>
+
+    <h2>Which AI provider and model should I use?</h2>
+    <p>For privacy and zero cost, use a local model through LM Studio or Ollama. For the best quality with minimal setup, a cloud model like Gemini Flash offers strong results at very low cost. You can switch any time in <strong>Settings → AI Provider</strong> and use <strong>Test Connection</strong> to confirm it works.</p>
+
+    <h2>Do I need to keep the app open?</h2>
+    <p>Yes — the app runs the local connection (localhost) that the Chrome extension talks to. If the app isn't running, the extension queues your captures and retries them automatically once the app is open again.</p>
+
+    <h2>Why isn't the extension connecting?</h2>
+    <p>Make sure the JobHunt app is open, then reopen the extension popup. If it still can't connect, restart the app. Captures made while disconnected are held in the extension and sync once the connection is restored.</p>
+
+    <h2>Do I need a resume?</h2>
+    <p>Only for fit scoring. Extraction (title, company, location, salary, etc.) works without one. To get a 0–100 fit score, add your resume in <strong>Settings → Resumes</strong>, then re-run scoring on existing jobs.</p>
+
+    <h2>Why is a fit score low or missing?</h2>
+    <p>Fit is scored across skills, seniority, location, and work arrangement against your resume and preferences. A low score usually means a genuine mismatch on one of those dimensions — open the job's <strong>Fit</strong> tab to see the breakdown. A missing score means no resume is configured, or scoring hasn't run yet; use <strong>Score against resume</strong> on the Fit tab.</p>
+
+    <h2>How do I re-run AI on a job?</h2>
+    <p>New captures are extracted automatically. To reprocess one, use <strong>Re-run AI</strong> on the job's detail pane, or on a selection in <strong>Jobs</strong> or <strong>Data Quality</strong>. To recompute fit after editing your resume without re-extracting, use <strong>Score against resume</strong> on the Fit tab.</p>
+
+    <h2>What happens to duplicate jobs?</h2>
+    <p>JobHunt groups likely duplicates (by title, company, and URL similarity) in the <strong>Duplicates</strong> screen, where you can keep, merge, archive, or ignore them. A job marked <strong>Duplicate</strong> is hidden from default views but kept in history.</p>
+
+    <h2>How do I back up my data?</h2>
+    <p>Use <strong>Settings → Data → Back Up</strong> to save a snapshot of your job database. Note that AI provider API keys are stored separately in the macOS Keychain and are <em>not</em> included in a backup — after restoring on a new Mac, re-enter your API key in AI Provider settings.</p>
+
+    <h2>Does JobHunt work on Windows or Linux?</h2>
+    <p>No. JobHunt is a native macOS app (macOS 15 and later). The Chrome extension works in any Chromium browser, but it only sends captures to the macOS app.</p>
+
+    <h2>How do I update the app?</h2>
+    <p>The app checks for updates automatically. You can also check manually from the application menu (<strong>JobHunt → Check for Updates</strong>) or download the latest build from <a href="https://github.com/brooksc/jobhunt/releases" target="_blank" rel="noopener">GitHub Releases</a>.</p>
+
+    <h2>Still stuck?</h2>
+    <p>Open an issue at <a href="https://github.com/brooksc/jobhunt/issues" target="_blank" rel="noopener">github.com/brooksc/jobhunt/issues</a> and we'll help.</p>
+  </div>
+  <footer>
+    <a href="./">← Back to Help</a>
+  </footer>
+</body>
+</html>

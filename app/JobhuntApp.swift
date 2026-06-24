@@ -308,7 +308,7 @@ struct JobhuntApp: App {
                 // which stay current independent of the app build.
                 CommandGroup(replacing: .help) {
                     Button("JobHunt Help") {
-                        if let url = URL(string: "https://jobhunt-app.com/help") {
+                        if let url = URL(string: "https://jobhunt-app.com/help/") {
                             NSWorkspace.shared.open(url)
                         }
                     }

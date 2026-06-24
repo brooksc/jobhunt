@@ -78,7 +78,7 @@ struct SetupChecklistCard: View {
                     hint: "Capture job postings from any site with one click",
                     actionLabel: "How"
                 ) {
-                    if let url = URL(string: "https://jobhunt-app.com/help") {
+                    if let url = URL(string: "https://jobhunt-app.com/help/") {
                         openURL(url)
                     }
                 }

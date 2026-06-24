@@ -173,13 +173,6 @@ struct Sidebar: View {
                 // Settings is the standard macOS preferences window (⌘,), not an in-window
                 // section — this row just opens it.
                 settingsRow
-
-                sidebarRow(
-                    .help,
-                    id: "sidebar.help",
-                    label: Label("Help", systemImage: "questionmark.circle")
-                )
-                .help("Help and documentation")
             }
         }
         .listStyle(.sidebar)
@@ -376,7 +369,6 @@ struct Sidebar: View {
         case .duplicates: router.navigateToSection(.duplicates)
         case .llmQueue: router.navigateToSection(.llmQueue)
         case .dataQuality: router.navigateToSection(.dataQuality)
-        case .help: router.navigateToSection(.help)
         case let .savedSearch(id):
             router.activeSavedSearchID = id
             router.sidebarJobFilter = nil
@@ -402,7 +394,6 @@ struct Sidebar: View {
         case .duplicates: item = .duplicates
         case .llmQueue: item = .llmQueue
         case .dataQuality: item = .dataQuality
-        case .help: item = .help
         }
         if listSelection != item { listSelection = item }
         // Remember the current view so the next launch restores it. Gated on didRestore so the

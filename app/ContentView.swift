@@ -97,9 +97,6 @@ struct ContentView: View {
         case .duplicates:
             DuplicatesView()
                 .navigationSplitViewColumnWidth(min: 600, ideal: 900)
-        case .help:
-            HelpView()
-                .navigationSplitViewColumnWidth(min: 600, ideal: 900)
         case .resumes:
             ResumesTab(settings: appServices.settings)
                 .navigationTitle("Resumes")

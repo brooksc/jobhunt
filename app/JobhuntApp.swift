@@ -302,6 +302,18 @@ struct JobhuntApp: App {
                         }
                     }
                 #endif
+
+                // HIG: Help belongs in the menu bar's Help menu, not the sidebar. Replaces the
+                // empty system default ("Help isn't available") with a link to the online docs,
+                // which stay current independent of the app build.
+                CommandGroup(replacing: .help) {
+                    Button("JobHunt Help") {
+                        if let url = URL(string: "https://jobhunt-app.com/help") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .keyboardShortcut("?", modifiers: .command)
+                }
             }
         }
 

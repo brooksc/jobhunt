@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Help — JobHunt</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --bg: #0f1117; --bg-card: #1a1d27; --border: rgba(255,255,255,.1); --fg: #f0f2f8; --fg-mute: #9ca3af; --accent: #3b82f6; }
+    body { background: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.7; -webkit-font-smoothing: antialiased; }
+    nav { display: flex; align-items: center; justify-content: space-between; padding: 18px 40px; border-bottom: 1px solid var(--border); }
+    .nav-logo { font-size: 17px; font-weight: 700; color: var(--fg); text-decoration: none; }
+    .main { max-width: 720px; margin: 0 auto; padding: 56px 24px; }
+    h1 { font-size: 32px; font-weight: 800; letter-spacing: -.02em; margin-bottom: 8px; }
+    .lede { color: var(--fg-mute); font-size: 16px; margin-bottom: 16px; }
+    .toc { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 18px 22px; margin: 24px 0 48px; }
+    .toc-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-mute); margin-bottom: 10px; }
+    .toc ul { list-style: none; columns: 2; column-gap: 24px; }
+    .toc li { margin-bottom: 6px; }
+    h2 { font-size: 20px; font-weight: 700; margin: 44px 0 12px; scroll-margin-top: 24px; }
+    h3 { font-size: 15px; font-weight: 700; margin: 20px 0 4px; }
+    p { color: var(--fg-mute); margin-bottom: 14px; }
+    ol, ul.steps { color: var(--fg-mute); margin: 0 0 16px 22px; }
+    ol li, ul.steps li { margin-bottom: 6px; }
+    strong { color: var(--fg); font-weight: 600; }
+    code { background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 13px; color: var(--fg); }
+    a { color: var(--accent); }
+    .dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 8px 0 16px; }
+    .dl dt { color: var(--fg); font-weight: 600; font-size: 14px; }
+    .dl dd { color: var(--fg-mute); font-size: 14px; }
+    table.keys { width: 100%; border-collapse: collapse; margin: 8px 0 16px; }
+    table.keys td { padding: 7px 0; border-bottom: 1px solid var(--border); color: var(--fg-mute); font-size: 14px; }
+    table.keys td:first-child { width: 140px; }
+    kbd { display: inline-block; background: var(--bg-card); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 2px 7px; font-family: -apple-system, sans-serif; font-size: 13px; color: var(--fg); }
+    footer { border-top: 1px solid var(--border); padding: 28px 40px; font-size: 13px; color: var(--fg-mute); }
+    footer a { color: var(--fg-mute); }
+  </style>
+</head>
+<body>
+  <nav>
+    <a class="nav-logo" href="/">JobHunt</a>
+  </nav>
+  <div class="main">
+    <h1>Help</h1>
+    <p class="lede">Everything you need to capture, extract, score, and track job applications with JobHunt.</p>
+
+    <div class="toc">
+      <div class="toc-title">On this page</div>
+      <ul>
+        <li><a href="#getting-started">Getting Started</a></li>
+        <li><a href="#how-it-works">How It Works</a></li>
+        <li><a href="#extraction-scoring">Extraction &amp; Scoring</a></li>
+        <li><a href="#sites">Sites &amp; Availability</a></li>
+        <li><a href="#duplicates">Duplicates</a></li>
+        <li><a href="#troubleshooting">Troubleshooting</a></li>
+        <li><a href="#settings">Settings Reference</a></li>
+        <li><a href="#shortcuts">Keyboard Shortcuts</a></li>
+        <li><a href="#privacy">Privacy</a></li>
+      </ul>
+    </div>
+
+    <h2 id="getting-started">Getting Started</h2>
+    <p><strong>JobHunt</strong> is a local-first job tracker. The Chrome extension captures job pages and sends them to the native macOS app over a local connection; the app stores them and helps you extract structured fields, track follow-ups, review data quality, and manage your pipeline.</p>
+    <h3>Typical workflow</h3>
+    <ol>
+      <li>Install the <a href="https://chromewebstore.google.com/detail/jobhunt-capture/jekcbebhfeidkpapienoflbcaeeknlch" target="_blank" rel="noopener">Chrome extension</a> (see instructions in the extension's popup).</li>
+      <li>Open a job posting and click the JobHunt extension button to capture it.</li>
+      <li>Open the app — the captured job appears in <strong>Jobs</strong>.</li>
+      <li>Run AI extraction to fill in structured fields and a fit score.</li>
+      <li>Use <strong>Data Quality</strong> to find gaps, <strong>Needs Action</strong> for follow-ups.</li>
+    </ol>
+
+    <h2 id="how-it-works">How It Works</h2>
+    <p><strong>Capture</strong> → The Chrome extension sends the page text and any selected text to the JobHunt app over a local connection (localhost) on your machine.</p>
+    <p><strong>Extraction</strong> → An AI model (local via LM Studio/Ollama, or a cloud API) reads the captured text and fills structured fields: title, company, location, salary, work arrangement, and more.</p>
+    <p><strong>Fit Scoring</strong> → The model rates each job 0–100 against your resume and breaks the score down by dimension (skills, seniority, location, work arrangement).</p>
+    <p><strong>Local-first</strong> → All data is stored locally on your Mac by the app. When you use a local model (LM Studio, Ollama, or a custom endpoint on localhost), all AI processing stays on-device and nothing leaves your machine. When you use a cloud provider — or a custom endpoint that isn't local — job description text is sent for extraction and, for fit scoring, your resume text is sent along with the job text. These remote providers require your consent before any data is sent.</p>
+
+    <h2 id="extraction-scoring">Extraction &amp; Scoring</h2>
+    <p><strong>Extracted fields</strong> include: job title, company name, location, remote/hybrid/onsite arrangement, salary range, required skills, seniority level, application deadline, and a plain-text summary.</p>
+    <h3>Fit dimensions (scored 0–100)</h3>
+    <ul class="steps">
+      <li><strong>Skills match</strong> — overlap between required skills and your resume</li>
+      <li><strong>Seniority</strong> — how well the level matches your experience</li>
+      <li><strong>Location</strong> — proximity or remote preference match</li>
+      <li><strong>Work arrangement</strong> — remote vs. onsite vs. hybrid preference</li>
+    </ul>
+    <p>New captures are extracted automatically. To re-process a job, use <strong>Re-run AI</strong> (on a job's detail pane, or on a selection in <strong>Jobs</strong> / <strong>Data Quality</strong>). To recompute fit after updating your resume without re-extracting, use <strong>Score against resume</strong> on the job's <strong>Fit</strong> tab.</p>
+
+    <h2 id="sites">Sites &amp; Availability</h2>
+    <p><strong>Sites</strong> tracks company or job-board pages you want to review periodically — even when no specific posting is captured.</p>
+    <p>Add a site URL from the <strong>Sites</strong> screen. New sites inherit the review interval from Settings.</p>
+    <p>Reviewing a site updates its <em>last-reviewed</em> and <em>next-review</em> dates so recurring prospecting stays in your workflow.</p>
+    <p>The app periodically checks whether captured job postings are still live and marks unavailable postings as <strong>Not Available</strong> automatically.</p>
+
+    <h2 id="duplicates">Duplicates</h2>
+    <p>JobHunt detects duplicate captures by comparing title, company, and URL similarity. Likely duplicates are grouped in the <strong>Duplicates</strong> screen.</p>
+    <p>Compare a group to decide which record to keep, merge, archive, or ignore. Use duplicate review after large capture sessions or after retry queues flush several saved postings at once.</p>
+    <p>A job marked <strong>Duplicate</strong> is hidden from default views but preserved in history.</p>
+
+    <h2 id="troubleshooting">Troubleshooting</h2>
+    <p><strong>LM Studio not running</strong> — Make sure LM Studio is open and a model is loaded before queuing extraction. Use <strong>Test connection</strong> in Settings → AI Provider to verify.</p>
+    <p><strong>Extension not connecting</strong> — The JobHunt app must be open — it runs the local connection (localhost) the extension talks to. Restart the app if the extension can't reach it.</p>
+    <p><strong>Extraction fails silently</strong> — Check the LLM Queue for error details and attempt history.</p>
+    <p><strong>Captures not appearing</strong> — The extension queues captures if the service is unavailable and retries. Reopen the extension popup to see the queue state.</p>
+    <p><strong>Fit scores missing</strong> — Add your resume in Settings → Resumes and re-run <strong>Fit score only</strong> mode for existing jobs.</p>
+
+    <h2 id="settings">Settings Reference</h2>
+    <dl class="dl">
+      <dt>AI Provider</dt><dd>AI backend: LM Studio, Ollama, OpenAI, Anthropic, Google, or any OpenAI-compatible endpoint.</dd>
+      <dt>Model</dt><dd>The model used for extraction and fit scoring. Gemini Flash is a good cost/quality default.</dd>
+      <dt>Resume</dt><dd>Plain text of your resume, used to compute fit scores.</dd>
+      <dt>Preferred Locations</dt><dd>Your preferred work locations, used in fit scoring.</dd>
+      <dt>Work Arrangement</dt><dd>Remote, hybrid, or onsite preference for fit scoring.</dd>
+      <dt>Follow-up Interval</dt><dd>Default number of days used to pre-fill a follow-up reminder when you apply. You are offered (not automatically scheduled) a follow-up when you mark a job applied.</dd>
+      <dt>Review Interval</dt><dd>Default interval (days) for site review reminders.</dd>
+    </dl>
+
+    <h2 id="shortcuts">Keyboard Shortcuts</h2>
+    <table class="keys">
+      <tr><td><kbd>⌘K</kbd></td><td>Open search / jump to Jobs</td></tr>
+      <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td>Previous / next job in list</td></tr>
+      <tr><td><kbd>↩</kbd></td><td>Open selected job detail</td></tr>
+      <tr><td><kbd>⎋</kbd></td><td>Close panel / clear search</td></tr>
+      <tr><td><kbd>⌘N</kbd></td><td>Add Job</td></tr>
+      <tr><td><kbd>⌘F</kbd></td><td>Find</td></tr>
+      <tr><td><kbd>⌘⇧E</kbd></td><td>Export current list to CSV</td></tr>
+      <tr><td><kbd>⌃⌘1</kbd>–<kbd>8</kbd></td><td>Go to section (Dashboard … Resumes)</td></tr>
+      <tr><td><kbd>⌘,</kbd></td><td>Open Settings</td></tr>
+      <tr><td><kbd>⌘?</kbd></td><td>Open this Help page</td></tr>
+    </table>
+
+    <h2 id="privacy">Privacy</h2>
+    <p>All data is stored locally on your Mac by the app. When you use a local model (LM Studio, Ollama, or a custom endpoint on localhost), all AI processing stays on-device and nothing leaves your machine. When you use a cloud provider — or a custom endpoint that isn't local — job description text is sent for extraction and, for fit scoring, your resume text is sent along with the job text. These remote providers require your consent before any data is sent.</p>
+    <p>The Chrome extension only communicates with the local JobHunt service running on your machine (localhost). See the full <a href="/privacy">Privacy Policy</a>.</p>
+    <p>Still stuck? Open an issue at <a href="https://github.com/brooksc/jobhunt/issues" target="_blank" rel="noopener">github.com/brooksc/jobhunt/issues</a>.</p>
+  </div>
+  <footer>
+    <a href="/">← Back to JobHunt</a>
+  </footer>
+</body>
+</html>

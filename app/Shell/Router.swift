@@ -10,7 +10,6 @@ public enum SidebarSection: String, CaseIterable, Hashable {
     case llmQueue
     case sites
     case duplicates
-    case help
 
     var title: String {
         switch self {
@@ -22,7 +21,6 @@ public enum SidebarSection: String, CaseIterable, Hashable {
         case .llmQueue: "LLM Queue"
         case .sites: "Sites"
         case .duplicates: "Duplicates"
-        case .help: "Help"
         }
     }
 
@@ -36,7 +34,6 @@ public enum SidebarSection: String, CaseIterable, Hashable {
         case .llmQueue: "cpu"
         case .sites: "globe"
         case .duplicates: "doc.on.doc"
-        case .help: "questionmark.circle"
         }
     }
 }
@@ -52,7 +49,6 @@ public enum SidebarItem: Hashable, Sendable {
     case duplicates
     case llmQueue
     case dataQuality
-    case help
     case savedSearch(String)
 
     /// The display label shown in the sidebar row (matches NSTextField text for AppKit selection).
@@ -67,7 +63,6 @@ public enum SidebarItem: Hashable, Sendable {
         case .duplicates: return "Duplicates"
         case .llmQueue: return "LLM Queue"
         case .dataQuality: return "Data Quality"
-        case .help: return "Help"
         case .savedSearch: return nil // dynamic name — caller handles
         }
     }
@@ -85,7 +80,6 @@ public enum SidebarItem: Hashable, Sendable {
         case .duplicates: return "duplicates"
         case .llmQueue: return "llmQueue"
         case .dataQuality: return "dataQuality"
-        case .help: return "help"
         case let .savedSearch(id): return "savedSearch:\(id)"
         }
     }
@@ -101,7 +95,6 @@ public enum SidebarItem: Hashable, Sendable {
         case "duplicates": self = .duplicates
         case "llmQueue": self = .llmQueue
         case "dataQuality": self = .dataQuality
-        case "help": self = .help
         default:
             if raw.hasPrefix("jobs:"), let status = JobStatus(rawValue: String(raw.dropFirst("jobs:".count))) {
                 self = .jobs(status)

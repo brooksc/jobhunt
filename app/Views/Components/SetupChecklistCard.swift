@@ -11,6 +11,7 @@ struct SetupChecklistCard: View {
     let settings: SettingsStore
     @Environment(Router.self) private var router
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openURL) private var openURL
 
     @Query private var resumes: [Resume]
     /// Captures only exist once the browser extension has successfully reached the app, so their
@@ -77,7 +78,9 @@ struct SetupChecklistCard: View {
                     hint: "Capture job postings from any site with one click",
                     actionLabel: "How"
                 ) {
-                    router.selectedSection = .help
+                    if let url = URL(string: "https://jobhunt-app.com/help") {
+                        openURL(url)
+                    }
                 }
             }
             .padding(12)

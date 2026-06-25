@@ -18,12 +18,10 @@ final class AppServices: @unchecked Sendable {
     let toastStore = ToastStore()
     var serverRunning: Bool = false
     var serverError: String?
-    /// Long-lived tasks started by `startRuntime()` so `shutdown()` can cancel them (TASK-430).
-    private var runtimeTasks: [Task<Void, Never>] = []
-    /// Guards `startRuntime()` against duplicate starts; reset by `shutdown()` so a restart is
-    /// explicit (TASK-556). Mirrors `PlatformIntegration.isStarted`. Accessed only on the main actor
-    /// (start runs on the launch path, shutdown is `@MainActor`).
-    private var runtimeStarted = false
+    /// Owns the long-lived runtime tasks' lifecycle: idempotent start, and a shutdown that cancels
+    /// and AWAITS their exit before stopping the server (TASK-430/554/555/556). Extracted to
+    /// JobhuntCore so the invariants are unit-tested (`RuntimeTaskControllerTests`).
+    private let runtime = RuntimeTaskController()
 
     /// Builds the service graph ONLY — no runtime side effects (TASK-425). The HTTP server,
     /// crash recovery, availability checks, and launch observers are started by `startRuntime()`,
@@ -72,66 +70,73 @@ final class AppServices: @unchecked Sendable {
     /// recovery, the availability-check loop, and the availability-completion observer. Call once,
     /// from the launch owner, for interactive modes — fixture generation skips this so it never
     /// starts a server or touches user-machine state.
+    @MainActor
     func startRuntime() {
-        // Idempotent: a second call (retry/restart/restore/test) must not spawn duplicate server,
-        // crash-recovery, or availability tasks (TASK-556). Mirrors PlatformIntegration.start's guard.
-        guard !runtimeStarted else { return }
-        runtimeStarted = true
-        let localServer = server
-        runtimeTasks.append(Task { @MainActor [weak self] in
-            do {
-                try await localServer.start()
-                self?.serverRunning = true
-            } catch {
-                self?.serverError = error.localizedDescription
-            }
-        })
-        // Crash recovery: reset requests stuck in "running" back to "queued" and prune old history.
-        // One-time data repairs (re-clean captures, backfill request models) are NOT run here — they
-        // live in JobhuntMigrator (--reclean / --backfill-models), run out-of-band with the app quit.
-        let queue = queueActor
-        runtimeTasks.append(Task { @MainActor [weak self] in
-            do {
-                try await queue.requeueRunningOnLaunch()
-                // TASK-383: automatically resume the drain after recovery so requests recovered from
-                // a crash (reset running → queued) and any other pending work don't sit idle until a
-                // UI action. startProcessing() breaks immediately when the queue is paused, so this
-                // respects the user's paused setting.
-                await queue.startProcessing()
-            } catch {
-                // TASK-382: don't swallow crash-recovery failure — running requests would be left
-                // stuck with no signal. Surface via the toast (also recorded in the Debug tab's
-                // recent-errors log) so the user can re-run the queue.
-                NSLog("AppServices: requeueRunningOnLaunch failed: \(error)")
-                self?.toastStore.show(
-                    "Couldn't recover the LLM queue on launch — some requests may be stuck. " +
-                        "\(error.localizedDescription)",
-                    isError: true
-                )
-            }
-        })
+        // Idempotent via RuntimeTaskController: a second call (retry/restart/restore/test) returns
+        // without re-running the factory, so it can't spawn duplicate server, crash-recovery, or
+        // availability tasks (TASK-556).
+        runtime.start {
+            var tasks: [Task<Void, Never>] = []
 
-        // Persist the last-check timestamp through an explicit callback (TASK-428) rather than a
-        // global notification observer: the checker hands us the completion time, we write the
-        // setting on the main actor.
-        let settingsStore = settings
-        let store = backgroundStore
-        runtimeTasks.append(Task {
-            // Run on launch, then re-check hourly (Electron parity: AUTO_AVAILABILITY_INTERVAL_MS).
-            // maybeRunStaleCheck gates on the configured interval internally, so this only does real
-            // work when a check is actually due — a long-running session no longer stops re-checking.
-            while true {
-                await AvailabilityChecker.maybeRunStaleCheck(store: store, settings: settingsStore) { date in
-                    await MainActor.run {
-                        settingsStore.set(
-                            ISO8601DateFormatter().string(from: date),
-                            forKey: SettingsKey.availabilityLastAutoCheckAt
-                        )
-                    }
+            let localServer = server
+            tasks.append(Task { @MainActor [weak self] in
+                do {
+                    try await localServer.start()
+                    self?.serverRunning = true
+                } catch {
+                    self?.serverError = error.localizedDescription
                 }
-                do { try await Task.sleep(for: .seconds(3600)) } catch { break }
-            }
-        })
+            })
+
+            // Crash recovery: reset requests stuck in "running" back to "queued" and prune old
+            // history. One-time data repairs (re-clean captures, backfill request models) are NOT run
+            // here — they live in JobhuntMigrator (--reclean / --backfill-models), run out-of-band.
+            let queue = queueActor
+            tasks.append(Task { @MainActor [weak self] in
+                do {
+                    try await queue.requeueRunningOnLaunch()
+                    // TASK-383: automatically resume the drain after recovery so requests recovered
+                    // from a crash (reset running → queued) and any other pending work don't sit idle
+                    // until a UI action. startProcessing() breaks immediately when the queue is
+                    // paused, so this respects the user's paused setting.
+                    await queue.startProcessing()
+                } catch {
+                    // TASK-382: don't swallow crash-recovery failure — running requests would be left
+                    // stuck with no signal. Surface via the toast (also recorded in the Debug tab's
+                    // recent-errors log) so the user can re-run the queue.
+                    NSLog("AppServices: requeueRunningOnLaunch failed: \(error)")
+                    self?.toastStore.show(
+                        "Couldn't recover the LLM queue on launch — some requests may be stuck. " +
+                            "\(error.localizedDescription)",
+                        isError: true
+                    )
+                }
+            })
+
+            // Persist the last-check timestamp through an explicit callback (TASK-428) rather than a
+            // global notification observer: the checker hands us the completion time, we write the
+            // setting on the main actor.
+            let settingsStore = settings
+            let store = backgroundStore
+            tasks.append(Task {
+                // Run on launch, then re-check hourly (Electron parity: AUTO_AVAILABILITY_INTERVAL_MS).
+                // maybeRunStaleCheck gates on the configured interval internally, so this only does
+                // real work when a check is actually due — a long session keeps re-checking.
+                while true {
+                    await AvailabilityChecker.maybeRunStaleCheck(store: store, settings: settingsStore) { date in
+                        await MainActor.run {
+                            settingsStore.set(
+                                ISO8601DateFormatter().string(from: date),
+                                forKey: SettingsKey.availabilityLastAutoCheckAt
+                            )
+                        }
+                    }
+                    do { try await Task.sleep(for: .seconds(3600)) } catch { break }
+                }
+            })
+
+            return tasks
+        }
     }
 
     /// Explicit, app-owned shutdown (TASK-430): cancel runtime tasks, wait for them to actually exit,
@@ -143,21 +148,15 @@ final class AppServices: @unchecked Sendable {
     /// returns (TASK-555).
     @MainActor
     func shutdown() async {
-        // Take the handles synchronously (before any await) so concurrent/repeated shutdown() calls
-        // can't cancel or await the same task set twice (TASK-555).
-        let tasks = runtimeTasks
-        runtimeTasks.removeAll()
-        runtimeStarted = false
-
-        for task in tasks { task.cancel() }
-        // Await each task so crash recovery and the availability loop have actually observed
-        // cancellation and exited before shutdown reports complete. Tasks are Task<Void, Never>, so
-        // .value can't throw. The availability loop exits immediately when cancelled during its
-        // hourly sleep; if cancelled mid-check it finishes that check first (bounded by URLSession
-        // timeouts) — which is exactly the quiescing restore needs before swapping the store.
-        for task in tasks { await task.value }
-
-        await server.stop()
+        // RuntimeTaskController cancels every runtime task and AWAITS its exit before running the
+        // finalize step, so no background work (crash recovery, the availability loop) can write
+        // through BackgroundStore/SettingsStore after shutdown returns — the quiescing contract both
+        // termination (TASK-554) and store-restore (TASK-546) depend on (TASK-555). The availability
+        // loop exits immediately when cancelled during its hourly sleep; if cancelled mid-check it
+        // finishes that check first (bounded by URLSession timeouts). Idempotent under repeated calls.
+        await runtime.shutdown {
+            await self.server.stop()
+        }
         serverRunning = false
     }
 }

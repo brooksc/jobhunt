@@ -5,11 +5,12 @@ How to ship a new version of Jobhunt. There are two distribution channels:
 | Channel | Artifact | Workflow | Status |
 |---|---|---|---|
 | **Developer ID / DMG** (direct download) | notarized `.dmg` + Sparkle `appcast.xml` | `.github/workflows/release-dmg.yml` | **Live** — primary channel |
-| **Mac App Store (MAS)** | `.pkg` for App Store Connect | `.github/workflows/release-mas.yml` | **Deferred** — needs setup (see below) |
+| **Mac App Store (MAS)** | `.pkg` for App Store Connect | `.github/workflows/release-mas.yml` | **Live** — tag-triggered + on-demand; first submission under review |
 | **Chrome extension** | `jobhunt-capture-<v>.zip` | `release-extension.yml` (auto-publish to CWS on tag) | Live once `CWS_*` secrets set |
 
-Both app channels share the **same source and version**. A `vX.Y.Z` tag drives the DMG release and
-(in parallel) the Chrome extension publish; MAS is built on demand.
+Both app channels share the **same source and version**. A `vX.Y.Z` tag drives the DMG release, the
+Chrome extension publish, and the MAS `.pkg` build (all in parallel); MAS can also be built on
+demand via `workflow_dispatch` (e.g. to resubmit a fix without bumping the version).
 
 > First native release was **v1.0.1 (2026-06-20)**. The earlier `v0.2.x` GitHub releases were the
 > legacy Electron app.
@@ -37,16 +38,14 @@ set it as job env so `mise` authenticates GitHub API calls).
 Creating the Developer ID cert: Xcode → Settings → Accounts → Manage Certificates → **+** →
 **Developer ID Application** (requires being the team **Account Holder** with a paid membership).
 
-### MAS (App Store) — NOT yet configured
-Needed only when enabling the MAS channel (see §5):
+### MAS (App Store) — configured
 | Secret | What it is |
 |---|---|
-| `MAS_CERT_BASE64` / `MAS_CERT_PASSWORD` | "3rd Party Mac Developer Application" cert `.p12` (signs the app) |
-| `MAS_INSTALLER_CERT_BASE64` / `MAS_INSTALLER_CERT_PASSWORD` | "3rd Party Mac Developer Installer" / "Mac Installer Distribution" cert `.p12` (signs the `.pkg`) |
+| `MAS_CERT_BASE64` / `MAS_CERT_PASSWORD` | a single `.p12` holding **both** the "Apple Distribution" cert (signs the app) and the "3rd Party Mac Developer Installer" cert (signs the `.pkg`) — imported once with both `codesign` + `productbuild` authorizations |
+| `MAS_PROVISIONING_PROFILE_BASE64` | the App Store provisioning profile for `com.jobhunt-app.jobhunt`; pinned to the app target at generate time via `TUIST_MAS_PROFILE_NAME` |
 | `APPLE_TEAM_ID` | shared with DMG (already set) |
 
-You also need an **App Store Connect app record** (bundle id `com.jobhunt-app.jobhunt`) before the
-first `.pkg` can be uploaded.
+The **App Store Connect app record** (bundle id `com.jobhunt-app.jobhunt`) exists.
 
 ---
 
@@ -198,28 +197,20 @@ After the **first** publish of a new extension id, add it to `JobhuntServer.allo
 
 ---
 
-## 5. Mac App Store (MAS) release — deferred
+## 5. Mac App Store (MAS) release
 
-MAS is **not** wired to tags yet: `release-mas.yml` is `workflow_dispatch`-only and the `MAS_*`
-secrets aren't set. To enable it:
-
-### One-time
-1. Create the two certs in the Apple Developer portal / Xcode and export each as `.p12`:
-   - **3rd Party Mac Developer Application** (signs the app)
-   - **3rd Party Mac Developer Installer** / **Mac Installer Distribution** (signs the `.pkg`)
-2. Load the four `MAS_*` secrets (see §0).
-3. Create the **App Store Connect** app record for `com.jobhunt-app.jobhunt`.
-4. (Optional) Re-enable the tag trigger in `release-mas.yml` by restoring:
-   ```yaml
-   on:
-     push:
-       tags: ['v*']
-   ```
-   Leave it on `workflow_dispatch` if you prefer to release MAS on demand rather than every tag.
+MAS is **live**. `release-mas.yml` runs on every `vX.Y.Z` tag (alongside the DMG) **and** via
+`workflow_dispatch` for on-demand builds; the `MAS_*` secrets are set (see §0) and the App Store
+Connect app record exists. Each run produces a signed, provisioned `.pkg` uploaded as a workflow
+artifact — the workflow **never auto-submits** to Apple; you upload via Transporter. The first
+submission has been made and is under review.
 
 ### Each MAS release
-- Trigger manually: **Actions → Release MAS → Run workflow** on the `vX.Y.Z` tag, or push the tag if
-  you re-enabled the trigger.
+- **On a version release**: pushing the `vX.Y.Z` tag builds MAS automatically (parallel to the DMG).
+- **On demand** (e.g. resubmitting a rejection fix without a version bump): **Actions → Release MAS →
+  Run workflow** on `main`. The version-consistency check is skipped for `workflow_dispatch`, and the
+  build number auto-increments (UTC `yymmddHHMM`), so the new `.pkg` is always accepted by App Store
+  Connect's monotonicity check.
 - `release-mas.yml` generates the project with **`TUIST_MAS_ONLY=1`** (excludes Sparkle — the App
   Store bans third-party updaters), archives `Release-MAS` (App Sandbox, no MCP helper), exports an
   App-Store `.pkg`, smoke-checks (sandbox entitlements present, no MCP helper, **no Sparkle**), and

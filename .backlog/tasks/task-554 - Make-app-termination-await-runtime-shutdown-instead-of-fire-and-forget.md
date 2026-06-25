@@ -1,9 +1,10 @@
 ---
 id: TASK-554
 title: Make app termination await runtime shutdown instead of fire-and-forget
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 23:49'
+updated_date: '2026-06-25 21:03'
 labels:
   - audit
   - lifecycle
@@ -34,7 +35,13 @@ Suggested implementation: move termination ownership to an `NSApplicationDelegat
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Termination shutdown is owned by an app-level coordinator rather than a fire-and-forget SwiftUI `.onReceive` task.
-- [ ] #2 The shutdown sequence awaits local server stop before considering teardown complete in the testable coordinator path.
-- [ ] #3 The shutdown sequence provides a clear hook for MCP token deletion from `TASK-530`.
+- [x] #1 Termination shutdown is owned by an app-level coordinator rather than a fire-and-forget SwiftUI `.onReceive` task.
+- [x] #2 The shutdown sequence awaits local server stop before considering teardown complete in the testable coordinator path.
+- [x] #3 The shutdown sequence provides a clear hook for MCP token deletion from `TASK-530`.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Termination is now owned by `AppTerminationCoordinator` (NSApplicationDelegate, wired via @NSApplicationDelegateAdaptor in JobhuntApp.swift): `applicationShouldTerminate` returns `.terminateLater`, runs one app-owned shutdown sequence, then quits — replacing the fire-and-forget `.onReceive(willTerminate)` Task. The shutdown sequence (`integration.stop()` → `await services.shutdown()`) is the single hook where MCP token deletion (TASK-530) plugs in (marked with a comment). The await-ordering is testable: `AppServices.shutdown` delegates to `RuntimeTaskController.shutdown(finalize:)`, which runs `finalize` (server stop) only after all runtime tasks have exited — verified by `RuntimeTaskControllerTests.testFinalizeRunsAfterTasksExit`. Commits 31c6d4b, 09062e6.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -20,6 +20,10 @@ final class AppServices: @unchecked Sendable {
     var serverError: String?
     /// Long-lived tasks started by `startRuntime()` so `shutdown()` can cancel them (TASK-430).
     private var runtimeTasks: [Task<Void, Never>] = []
+    /// Guards `startRuntime()` against duplicate starts; reset by `shutdown()` so a restart is
+    /// explicit (TASK-556). Mirrors `PlatformIntegration.isStarted`. Accessed only on the main actor
+    /// (start runs on the launch path, shutdown is `@MainActor`).
+    private var runtimeStarted = false
 
     /// Builds the service graph ONLY — no runtime side effects (TASK-425). The HTTP server,
     /// crash recovery, availability checks, and launch observers are started by `startRuntime()`,
@@ -69,6 +73,10 @@ final class AppServices: @unchecked Sendable {
     /// from the launch owner, for interactive modes — fixture generation skips this so it never
     /// starts a server or touches user-machine state.
     func startRuntime() {
+        // Idempotent: a second call (retry/restart/restore/test) must not spawn duplicate server,
+        // crash-recovery, or availability tasks (TASK-556). Mirrors PlatformIntegration.start's guard.
+        guard !runtimeStarted else { return }
+        runtimeStarted = true
         let localServer = server
         runtimeTasks.append(Task { @MainActor [weak self] in
             do {
@@ -126,16 +134,29 @@ final class AppServices: @unchecked Sendable {
         })
     }
 
-    /// Explicit, app-owned shutdown (TASK-430): cancel runtime tasks and stop the local HTTP server
-    /// so the bound port is released. Idempotent — safe to call from a termination hook even if the
-    /// server never started. Production relies on this for clean restart/teardown; process exit also
-    /// reclaims the port, so it's best-effort on hard termination.
+    /// Explicit, app-owned shutdown (TASK-430): cancel runtime tasks, wait for them to actually exit,
+    /// then stop the local HTTP server so the bound port is released. Idempotent and safe under
+    /// repeated/concurrent calls — the task handles are taken synchronously before the first
+    /// suspension point, so a second call sees an empty set. Both termination (TASK-554) and
+    /// store-restore (TASK-546) rely on this as the quiescing boundary; awaiting task completion
+    /// guarantees no background work writes through `BackgroundStore`/`SettingsStore` after shutdown
+    /// returns (TASK-555).
     @MainActor
     func shutdown() async {
-        for task in runtimeTasks {
-            task.cancel()
-        }
+        // Take the handles synchronously (before any await) so concurrent/repeated shutdown() calls
+        // can't cancel or await the same task set twice (TASK-555).
+        let tasks = runtimeTasks
         runtimeTasks.removeAll()
+        runtimeStarted = false
+
+        for task in tasks { task.cancel() }
+        // Await each task so crash recovery and the availability loop have actually observed
+        // cancellation and exited before shutdown reports complete. Tasks are Task<Void, Never>, so
+        // .value can't throw. The availability loop exits immediately when cancelled during its
+        // hourly sleep; if cancelled mid-check it finishes that check first (bounded by URLSession
+        // timeouts) — which is exactly the quiescing restore needs before swapping the store.
+        for task in tasks { await task.value }
+
         await server.stop()
         serverRunning = false
     }

@@ -31,10 +31,35 @@ struct ReopenMainWindowCommands: Commands {
     }
 }
 
+/// App-owned termination coordinator (TASK-554). Replaces the fire-and-forget `willTerminate`
+/// observer: `applicationShouldTerminate` defers quit (`.terminateLater`), runs the single shutdown
+/// sequence (stop PlatformIntegration → `await AppServices.shutdown()`), then lets the app quit —
+/// so teardown ordering is owned by the app lifecycle, not raced against process exit. The
+/// `shutdownSequence` closure is also the clear hook where MCP token cleanup (TASK-530) will plug in.
+@MainActor
+final class AppTerminationCoordinator: NSObject, NSApplicationDelegate {
+    /// Set by `JobhuntApp` once the service graph exists.
+    var shutdownSequence: (() async -> Void)?
+    private var isTerminating = false
+
+    func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
+        guard shutdownSequence != nil, !isTerminating else { return .terminateNow }
+        isTerminating = true
+        Task { @MainActor [self] in
+            await shutdownSequence?()
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+}
+
 @main
 struct JobhuntApp: App {
     /// Scene id for the single main window — targeted by `openWindow` from the reopen command.
     static let mainWindowID = "main"
+
+    /// Owns app termination so shutdown is awaited, not fire-and-forget (TASK-554).
+    @NSApplicationDelegateAdaptor(AppTerminationCoordinator.self) private var terminationCoordinator
 
     /// Non-nil when ModelContainer failed to open — shows recovery UI instead of main window.
     let storeFailure: StoreFailure?
@@ -226,12 +251,15 @@ struct JobhuntApp: App {
                     .onOpenURL { url in
                         integration.handleDeepLink(url)
                     }
-                    // App-owned shutdown on termination (TASK-430): stop the local HTTP server and
-                    // cancel runtime tasks. Best-effort — the process exit also releases the port.
-                    .onReceive(NotificationCenter.default
-                        .publisher(for: NSApplication.willTerminateNotification)) { _ in
+                    // App-owned shutdown on termination (TASK-430/554): hand the teardown sequence to
+                    // the NSApplicationDelegate so quit AWAITS server stop + runtime-task cancellation
+                    // (via AppServices.shutdown) instead of racing process exit.
+                    .onAppear {
+                        terminationCoordinator.shutdownSequence = {
                             integration.stop()
-                            Task { await services.shutdown() }
+                            await services.shutdown()
+                            // TASK-530 hook: delete the transient MCP token file here once wired.
+                        }
                     }
                     // TASK-464: Settings → Debug "Reopen Onboarding".
                     .onReceive(NotificationCenter.default.publisher(for: .reopenOnboarding)) { _ in

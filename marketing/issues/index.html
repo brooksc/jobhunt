@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Support &amp; Bug Reports — JobHunt</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --bg: #0f1117; --bg-card: #1a1d27; --border: rgba(255,255,255,.1); --fg: #f0f2f8; --fg-mute: #9ca3af; --accent: #3b82f6; }
+    body { background: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.7; -webkit-font-smoothing: antialiased; }
+    nav { display: flex; align-items: center; justify-content: space-between; padding: 18px 40px; border-bottom: 1px solid var(--border); }
+    .nav-logo { font-size: 17px; font-weight: 700; color: var(--fg); text-decoration: none; }
+    .main { max-width: 680px; margin: 0 auto; padding: 56px 24px; }
+    h1 { font-size: 32px; font-weight: 800; letter-spacing: -.02em; margin-bottom: 8px; }
+    .lede { color: var(--fg-mute); font-size: 16px; margin-bottom: 40px; }
+    h2 { font-size: 20px; font-weight: 700; margin: 36px 0 10px; }
+    p { color: var(--fg-mute); margin-bottom: 14px; }
+    ul { color: var(--fg-mute); margin: 0 0 16px 22px; }
+    li { margin-bottom: 6px; }
+    strong { color: var(--fg); font-weight: 600; }
+    a { color: var(--accent); }
+    .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0 8px; }
+    @media (max-width: 560px) { .cards { grid-template-columns: 1fr; } }
+    .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 22px; }
+    .card h2 { margin-top: 0; font-size: 17px; }
+    .card p { font-size: 14px; }
+    .btn { display: inline-block; margin-top: 6px; background: var(--accent); color: #fff; text-decoration: none; font-size: 14px; font-weight: 600; padding: 9px 16px; border-radius: 8px; }
+    .btn.ghost { background: transparent; border: 1px solid var(--border); color: var(--fg); }
+    code { background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 13px; color: var(--fg); }
+    footer { border-top: 1px solid var(--border); padding: 28px 40px; font-size: 13px; color: var(--fg-mute); }
+    footer a { color: var(--fg-mute); }
+  </style>
+</head>
+<body>
+  <nav>
+    <a class="nav-logo" href="/">JobHunt</a>
+  </nav>
+  <div class="main">
+    <h1>Support &amp; Bug Reports</h1>
+    <p class="lede">Something not working, or have a question? Here's how to get help. Many answers are already in the <a href="/help/">help guide</a> and <a href="/help/faq">FAQ</a>.</p>
+
+    <div class="cards">
+      <div class="card">
+        <h2>Report on GitHub</h2>
+        <p>Best for bugs and feature requests — it's public, searchable, and tracked. Check existing issues first; someone may have already reported it.</p>
+        <a class="btn" href="https://github.com/brooksc/jobhunt/issues/new" target="_blank" rel="noopener">Open a GitHub issue →</a>
+      </div>
+      <div class="card">
+        <h2>Email us</h2>
+        <p>Prefer email, or have something private to share (such as logs or screenshots)? Write to us directly and we'll get back to you.</p>
+        <a class="btn ghost" href="mailto:bug@jobhunt-app.com?subject=JobHunt%20bug%20report">bug@jobhunt-app.com</a>
+      </div>
+    </div>
+
+    <h2>What to include</h2>
+    <p>To help us resolve your issue quickly, please include:</p>
+    <ul>
+      <li>The <strong>app version</strong> (find it in <strong>Settings → General</strong>).</li>
+      <li>Your <strong>macOS version</strong>.</li>
+      <li>A clear description of <strong>what happened</strong> and <strong>what you expected</strong>.</li>
+      <li><strong>Steps to reproduce</strong> the problem, if you can.</li>
+      <li>A <strong>screenshot</strong> if there's a visible error.</li>
+    </ul>
+    <p>Please don't include sensitive personal data (such as API keys or full resume text) in a public GitHub issue — use email for anything private.</p>
+
+    <h2>Browser extension issues</h2>
+    <p>If captures aren't reaching the app, make sure the JobHunt app is open (it runs the local connection the extension talks to), then reopen the extension popup. See <a href="/help/#troubleshooting">Troubleshooting</a> for more.</p>
+  </div>
+  <footer>
+    <a href="/">← Back to JobHunt</a>
+  </footer>
+</body>
+</html>

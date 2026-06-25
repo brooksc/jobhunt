@@ -1,9 +1,10 @@
 ---
 id: TASK-555
 title: Await runtime task cancellation during AppServices shutdown
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 23:49'
+updated_date: '2026-06-25 21:03'
 labels:
   - audit
   - lifecycle
@@ -33,7 +34,13 @@ Suggested implementation: after cancelling runtime tasks, await their completion
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 `AppServices.shutdown()` waits for all previously started runtime tasks to complete after cancellation.
-- [ ] #2 Concurrent or repeated `shutdown()` calls remain idempotent and do not await the same task set twice unsafely.
-- [ ] #3 A focused test or testable helper verifies that shutdown does not return before a cancellable runtime task has observed cancellation and exited.
+- [x] #1 `AppServices.shutdown()` waits for all previously started runtime tasks to complete after cancellation.
+- [x] #2 Concurrent or repeated `shutdown()` calls remain idempotent and do not await the same task set twice unsafely.
+- [x] #3 A focused test or testable helper verifies that shutdown does not return before a cancellable runtime task has observed cancellation and exited.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+`AppServices.shutdown()` now delegates to `RuntimeTaskController.shutdown(finalize:)`, which takes the task handles synchronously (before any await), cancels each, then `await task.value` on each before running finalize (server stop) — so crash recovery and the availability loop have provably exited before shutdown returns. Handles are cleared synchronously, so repeated/concurrent calls don't await the same set twice. Verified by `RuntimeTaskControllerTests.testShutdownAwaitsTaskExit` (task sets a flag only after observing cancellation) and `testRepeatedShutdownIsSafe`. Commits 31c6d4b, 09062e6.
+<!-- SECTION:FINAL_SUMMARY:END -->

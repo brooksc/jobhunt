@@ -331,6 +331,12 @@ struct JobhuntApp: App {
                         }
                     }
                     .keyboardShortcut("?", modifiers: .command)
+
+                    Button("Report an Issue…") {
+                        if let url = URL(string: "https://jobhunt-app.com/issues/") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
                 }
             }
         }

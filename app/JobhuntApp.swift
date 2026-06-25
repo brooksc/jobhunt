@@ -17,8 +17,25 @@ enum FixtureOutputError: LocalizedError {
     }
 }
 
+/// Adds a Window-menu command to reopen the single main window after the user closes it
+/// (App Review Guideline 4: a closed main window must be reopenable from a menu). Unconditional so
+/// it works even in the store-recovery state. Clicking the Dock icon also reopens the window.
+struct ReopenMainWindowCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some Commands {
+        CommandGroup(after: .singleWindowList) {
+            Button("JobHunt Window") { openWindow(id: JobhuntApp.mainWindowID) }
+                .keyboardShortcut("0", modifiers: .command)
+        }
+    }
+}
+
 @main
 struct JobhuntApp: App {
+    /// Scene id for the single main window — targeted by `openWindow` from the reopen command.
+    static let mainWindowID = "main"
+
     /// Non-nil when ModelContainer failed to open — shows recovery UI instead of main window.
     let storeFailure: StoreFailure?
 
@@ -185,7 +202,7 @@ struct JobhuntApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        Window("JobHunt", id: Self.mainWindowID) {
             if let failure = storeFailure {
                 StoreRecoveryView(failure: failure)
             } else if let container = modelContainer,
@@ -225,6 +242,7 @@ struct JobhuntApp: App {
         }
         .defaultSize(width: 1200, height: 750)
         .commands {
+            ReopenMainWindowCommands()
             if let r = router {
                 QueueMenuCommands()
                 QualityMenuCommands()

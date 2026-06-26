@@ -146,6 +146,34 @@ final class AppServices: @unchecked Sendable {
     /// store-restore (TASK-546) rely on this as the quiescing boundary; awaiting task completion
     /// guarantees no background work writes through `BackgroundStore`/`SettingsStore` after shutdown
     /// returns (TASK-555).
+    /// The redacted diagnostics blob users copy when reporting an issue (Debug tab and Help → Copy
+    /// Diagnostics both call this, so there's one format and one redaction path). Queue counts are
+    /// fetched on the store actor; everything else is read on the main actor.
+    @MainActor
+    func diagnosticsText() async -> String {
+        let info = Bundle.main.infoDictionary ?? [:]
+        let counts = (try? await backgroundStore.llmQueueCounts())
+            ?? LLMQueueCounts(queued: 0, running: 0, failed: 0)
+        let recent = toastStore.recentErrors.map {
+            DiagnosticsReport.ErrorLine(timestamp: $0.timestamp, message: $0.message)
+        }
+        return DiagnosticsReport.text(
+            appVersion: info["CFBundleShortVersionString"] as? String ?? "unknown",
+            buildNumber: info["CFBundleVersion"] as? String ?? "unknown",
+            osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+            provider: settings.llmProvider,
+            model: settings.llmModel,
+            consentGranted: ConsentHelper.isConsented(provider: settings.llmProvider, settings: settings),
+            queuePaused: settings.llmQueuePaused,
+            serverRunning: serverRunning,
+            serverError: serverError,
+            queued: counts.queued,
+            processing: counts.running,
+            failed: counts.failed,
+            recentErrors: recent
+        )
+    }
+
     @MainActor
     func shutdown() async {
         // RuntimeTaskController cancels every runtime task and AWAITS its exit before running the

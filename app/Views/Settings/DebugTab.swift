@@ -309,59 +309,11 @@ struct DebugTab: View {
     }
 
     private func copyDiagnostics() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(buildDiagnosticsText(), forType: .string)
-    }
-
-    private func buildDiagnosticsText() -> String {
-        let info = Bundle.main.infoDictionary ?? [:]
-        let appVersion = info["CFBundleShortVersionString"] as? String ?? "unknown"
-        let buildNumber = info["CFBundleVersion"] as? String ?? "unknown"
-        let macOSVersion = ProcessInfo.processInfo.operatingSystemVersionString
-
-        let settings = appServices.settings
-        let providerType = settings.llmProvider
-        let modelName = settings.llmModel
-        let consentGranted = ConsentHelper.isConsented(provider: providerType, settings: settings)
-        let queuePaused = settings.llmQueuePaused
-
-        let serverStatus = appServices.serverRunning ? "running" : "stopped"
-        let serverError = appServices.serverError.map { " (error: \(DiagnosticsRedactor.redact($0)))" } ?? ""
-
-        let queued = llmRequests.count(where: { $0.status == .queued })
-        let processing = llmRequests.count(where: { $0.status == .running })
-        let failed = llmRequests.count(where: { $0.status == .failed || $0.status == .retryExhausted })
-
-        let errors = appServices.toastStore.recentErrors
-        let errorLines = errors.isEmpty
-            ? "  (none)"
-            : errors.map {
-                "  [\($0.timestamp.formatted(date: .omitted, time: .standard))] " +
-                    "\(DiagnosticsRedactor.redact($0.message))"
-            }
-            .joined(separator: "\n")
-
-        return """
-        === Jobhunt Diagnostics ===
-        App version:        \(appVersion) (\(buildNumber))
-        macOS:              \(macOSVersion)
-
-        === LLM ===
-        Provider:           \(providerType)
-        Model:              \(modelName)
-        Consent granted:    \(consentGranted)
-        Queue paused:       \(queuePaused)
-
-        === Server ===
-        Status:             \(serverStatus)\(serverError)
-
-        === LLM Queue ===
-        Queued:             \(queued)
-        Processing:         \(processing)
-        Failed:             \(failed)
-
-        === Recent Errors ===
-        \(errorLines)
-        """
+        Task { @MainActor in
+            let text = await appServices.diagnosticsText()
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            appServices.toastStore.show("Diagnostics copied to clipboard")
+        }
     }
 }

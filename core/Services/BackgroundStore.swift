@@ -39,6 +39,18 @@ public struct AtomicIngestResult: Sendable {
     public let isDuplicate: Bool
 }
 
+/// Sendable tally of LLM-queue request statuses (for diagnostics).
+public struct LLMQueueCounts: Sendable {
+    public let queued: Int
+    public let running: Int
+    public let failed: Int
+    public init(queued: Int, running: Int, failed: Int) {
+        self.queued = queued
+        self.running = running
+        self.failed = failed
+    }
+}
+
 // MARK: - BackgroundStore
 
 /// All background writes (extraction, availability, bulk ops, demo seeding) funnel through here.
@@ -585,6 +597,17 @@ public actor BackgroundStore {
     // @Model fetched from this @ModelActor (models aren't Sendable, and a lazy relationship faulted
     // off-actor is a data race). These helpers do all model access ON the store actor and hand back
     // only Sendable snapshots / scalars, or take ids and do the linking internally.
+
+    /// LLM-queue status tallies, counted on the store actor and returned as Sendable scalars (used by
+    /// the diagnostics report — the menu/Help path has no SwiftData `@Query` to count from).
+    public func llmQueueCounts() throws -> LLMQueueCounts {
+        let all = try modelContext.fetch(FetchDescriptor<LLMRequest>())
+        return LLMQueueCounts(
+            queued: all.count(where: { $0.status == .queued }),
+            running: all.count(where: { $0.status == .running }),
+            failed: all.count(where: { $0.status == .failed || $0.status == .retryExhausted })
+        )
+    }
 
     /// The (Sendable) status of a request, read on the store actor.
     public func requestStatus(id: String) throws -> LLMRequestStatus? {

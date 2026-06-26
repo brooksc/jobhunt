@@ -365,6 +365,19 @@ struct JobhuntApp: App {
                             NSWorkspace.shared.open(url)
                         }
                     }
+
+                    // Diagnostics live at the point of reporting, not buried in the Debug tab most
+                    // users never open. Copies the same redacted blob and confirms with a toast.
+                    Button("Copy Diagnostics") {
+                        if let services = appServices {
+                            Task { @MainActor in
+                                let text = await services.diagnosticsText()
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(text, forType: .string)
+                                services.toastStore.show("Diagnostics copied — paste it into your report")
+                            }
+                        }
+                    }
                 }
             }
         }

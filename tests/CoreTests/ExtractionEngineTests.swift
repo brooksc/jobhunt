@@ -1032,6 +1032,61 @@ final class ExtractionEngineTests: XCTestCase {
         let requests = try await store.fetch(FetchDescriptor<LLMRequest>())
         let req = try XCTUnwrap(requests.first)
         XCTAssertEqual(req.status, .failed, "Fit request without consent must be marked failed")
+
+        // TASK-536: a consent-blocked request records a failed attempt with the sanitized consent
+        // error and the endpoint that triggered the decision (TASK-537 AC#3).
+        let attempts = try await store.fetch(FetchDescriptor<LLMRequestAttempt>())
+        let blocked = try XCTUnwrap(
+            attempts.first { $0.requestType == .fit && $0.status == .failed },
+            "consent-blocked fit must record a failed attempt"
+        )
+        XCTAssertTrue((blocked.error ?? "").localizedCaseInsensitiveContains("consent"))
+        XCTAssertEqual(blocked.baseURL, "https://api.openai.com")
+    }
+
+    func testExtractRequest_consentMissing_marksRequestFailedAndRecordsAttempt() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        let failProvider = AlwaysFailProvider(error: LLMProviderError.unavailable(reason: "should not reach"))
+        let noConsentSettings = ExtractionSettings(
+            llmModel: "gpt-4o",
+            llmProvider: "openai",
+            llmBaseURL: "https://api.openai.com",
+            consentGranted: false,
+            preferredLocations: "",
+            locationFilterEnabled: false,
+            locationAllowRemote: true,
+            locationAllowHybrid: true,
+            locationAllowOnsite: true
+        )
+        var paused = false
+        let queue = QueueActor(
+            store: store,
+            isPaused: { paused },
+            onSetPaused: { paused = $0 },
+            readExtractionSettings: { noConsentSettings },
+            providerFactory: { failProvider }
+        )
+
+        let capture = Capture(url: "https://example.com/job", pageTitle: "Engineer", rawHash: "h-extract")
+        let job = Job(jobNumber: 2, title: "Engineer")
+        job.capture = capture
+        try await store.insert(job)
+
+        try await queue.enqueue(jobIDs: [job.id], mode: .extract)
+        await queue.startProcessing()
+
+        let reqs = try await store.fetch(FetchDescriptor<LLMRequest>())
+        let req = try XCTUnwrap(reqs.first)
+        XCTAssertEqual(req.status, .failed, "consent-blocked extraction must be marked failed")
+
+        let attempts = try await store.fetch(FetchDescriptor<LLMRequestAttempt>())
+        let blocked = try XCTUnwrap(
+            attempts.first { $0.requestType == .extract && $0.status == .failed },
+            "consent-blocked extraction must record a failed attempt (TASK-536)"
+        )
+        XCTAssertTrue((blocked.error ?? "").localizedCaseInsensitiveContains("consent"))
+        XCTAssertEqual(blocked.baseURL, "https://api.openai.com")
     }
 
     func testFitRequest_consentGranted_succeeds() async throws {

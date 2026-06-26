@@ -538,6 +538,11 @@ public actor QueueActor {
                 consentGranted: extractSettings.consentGranted
             )
             guard consented else {
+                await recordConsentBlockedAttempt(
+                    requestID: itemID, jobID: jobID, requestType: .extract,
+                    attempt: item.attempt, model: extractSettings.llmModel,
+                    baseURL: extractBaseURL, startedAt: startedAt
+                )
                 await markRequestFailed(item: item, error: ConsentError.notConsented, startedAt: startedAt)
                 return false
             }
@@ -752,6 +757,11 @@ public actor QueueActor {
             consentGranted: fitSettings.consentGranted
         )
         guard consented else {
+            await recordConsentBlockedAttempt(
+                requestID: itemID, jobID: jobID, requestType: .fit,
+                attempt: item.attempt, model: fitSettings.llmModel,
+                baseURL: fitBaseURL, startedAt: startedAt
+            )
             await markRequestFailed(item: item, error: ConsentError.notConsented, startedAt: startedAt)
             // TASK-520: keep the fit record's state consistent with the failed request.
             try? await store.markFitScoreFailed(
@@ -871,6 +881,23 @@ public actor QueueActor {
             }
             throw error
         }
+    }
+
+    /// Record a failed pre-provider attempt for a consent-blocked request (TASK-536), so diagnostics
+    /// show the request was blocked BEFORE any data was sent — with the same structured context
+    /// (request/job link, type, attempt, sanitized error, and the endpoint that triggered the consent
+    /// decision, TASK-537 AC#3) as other failures. Shared by the extraction and fit consent gates.
+    private func recordConsentBlockedAttempt(
+        requestID: String, jobID: String?, requestType: LLMRequestType,
+        attempt: Int, model: String?, baseURL: String, startedAt: Date
+    ) async {
+        try? await store.recordAttempt(
+            requestID: requestID, jobID: jobID,
+            requestType: requestType, attempt: attempt, status: .failed,
+            modelRequested: model, baseURL: baseURL,
+            startedAt: startedAt, finishedAt: Date(),
+            error: ConsentError.notConsented.localizedDescription
+        )
     }
 
     private func markRequestFailed(item: QueuedItem, error: Error, startedAt _: Date) async {

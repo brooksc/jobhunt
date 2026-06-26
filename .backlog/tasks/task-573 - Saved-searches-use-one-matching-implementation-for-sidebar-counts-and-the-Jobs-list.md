@@ -3,9 +3,10 @@ id: TASK-573
 title: >-
   Saved searches: use one matching implementation for sidebar counts and the
   Jobs list
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-20 05:12'
+updated_date: '2026-06-26 02:01'
 labels:
   - audit
   - saved-searches
@@ -33,8 +34,14 @@ Suggested implementation: Promote the live Jobs list filtering semantics into a 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Saved-search sidebar badge counts and opened saved-search row counts are computed from the same matcher.
-- [ ] #2 Text search behavior is identical for saved searches and the live Jobs list, including display title/company fallbacks and cleaned description matching where intended.
-- [ ] #3 Job-number matching rules are identical between saved searches and live search.
-- [ ] #4 Tests cover a saved search whose match depends on display title/host fallback or cleaned description, and assert count/list matcher parity.
+- [x] #1 Saved-search sidebar badge counts and opened saved-search row counts are computed from the same matcher.
+- [x] #2 Text search behavior is identical for saved searches and the live Jobs list, including display title/company fallbacks and cleaned description matching where intended.
+- [x] #3 Job-number matching rules are identical between saved searches and live search.
+- [x] #4 Tests cover a saved search whose match depends on display title/host fallback or cleaned description, and assert count/list matcher parity.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Introduced SavedSearchCriteria.textNumberMatch — the single text/number matcher now called by both SavedSearchCriteria.matches (sidebar badge counts) and JobsView.computeFilteredJobs (live list). JobMatchFields was extended to snapshot displayCompany/displayTitle + cleanedDescription (built on the main actor in refreshBadgeCounts) so the count path consults exactly the fields the live list does: display title/company fallbacks (un-extracted jobs findable by page title/host) and cleaned description. Number matching is substring with `#` prefix stripped on both. Session-only filters (search tokens, advanced filterState, extraction/meetsCriteria) remain outside SavedSearchCriteria. Tests: SavedSearchCriteriaTests.testSharedTextNumberMatcher (display/location/desc/number/empty) and testSavedSearchCountUsesCaptureFallbacksAndCleanedDescription (count path matches by page title, host, cleaned description). Full CoreTests (916) green; lint clean.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,9 +1,10 @@
 ---
 id: TASK-564
 title: Validate extracted application_url before persisting or opening it
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-20 00:56'
+updated_date: '2026-06-26 01:50'
 labels:
   - audit
   - llm
@@ -40,7 +41,13 @@ Suggested implementation: add a value-level URL validation path for extracted/ap
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Only absolute `http`/`https` extracted application URLs are persisted into `job.applicationURL`.
-- [ ] #2 Invalid extracted application URLs do not shadow capture/canonical URLs in apply, display, or availability-check precedence.
-- [ ] #3 Tests cover valid, schemeless, non-http(s), and malformed extracted application URL outputs.
+- [x] #1 Only absolute `http`/`https` extracted application URLs are persisted into `job.applicationURL`.
+- [x] #2 Invalid extracted application URLs do not shadow capture/canonical URLs in apply, display, or availability-check precedence.
+- [x] #3 Tests cover valid, schemeless, non-http(s), and malformed extracted application URL outputs.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ExtractionEngine.validatedApplicationURL runs the extracted application_url through URLNormalizer.validatedForIngestion (absolute http/https only) at the point it enters ExtractionResult, so job.applicationURL is always a normalized valid URL or nil. Invalid values (schemeless, javascript:, ftp:, malformed, empty) become nil, and JobURLPolicy.applicationURL/displayURL/availabilityCheckURL use firstUsable() which skips nil — so an invalid extracted URL never shadows the capture/canonical URL. Tests (ExtractionEngineTests) cover https normalization plus rejection of nil/empty/schemeless/javascript:/ftp/malformed. Lint clean; CoreTests pass. Commit 5e7df65.
+<!-- SECTION:FINAL_SUMMARY:END -->

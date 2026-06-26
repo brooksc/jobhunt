@@ -1,9 +1,10 @@
 ---
 id: TASK-550
 title: Expand diagnostics redaction for named secret headers and provider key formats
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 22:59'
+updated_date: '2026-06-26 00:50'
 labels:
   - audit
   - privacy
@@ -31,7 +32,13 @@ Suggested implementation: extend `DiagnosticsRedactor` with case-insensitive pat
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Copied diagnostics redact named secret fields and headers in colon and equals forms.
-- [ ] #2 Existing redaction cases for file paths, URL query strings, Bearer tokens, `sk-` keys, and `AIza` keys continue to pass.
-- [ ] #3 Regression tests prove benign HTTP/status text remains intact.
+- [x] #1 Copied diagnostics redact named secret fields and headers in colon and equals forms.
+- [x] #2 Existing redaction cases for file paths, URL query strings, Bearer tokens, `sk-` keys, and `AIza` keys continue to pass.
+- [x] #3 Regression tests prove benign HTTP/status text remains intact.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+DiagnosticsRedactor now redacts named secret fields/headers (authorization, x-api-key, api[-_]key, access_token, refresh_token, client_secret, token) in both `name: value` and `name=value` forms (case-insensitive, field name preserved, value stops at structural delimiters incl. `&`), plus full `Basic <base64>` credentials (base64 charset added to the scheme-prefix pattern). Existing file-path/URL-query/Bearer/sk-/AIza cases still pass; benign HTTP/status text verified intact. Tests: DiagnosticsRedactorTests (named colon+equals forms, Basic auth, benign HTTP). Commit 456ec97.
+<!-- SECTION:FINAL_SUMMARY:END -->

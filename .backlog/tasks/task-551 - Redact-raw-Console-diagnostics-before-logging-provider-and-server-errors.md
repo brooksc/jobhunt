@@ -1,9 +1,10 @@
 ---
 id: TASK-551
 title: Redact raw Console diagnostics before logging provider and server errors
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 22:59'
+updated_date: '2026-06-26 00:50'
 labels:
   - audit
   - privacy
@@ -33,7 +34,13 @@ Suggested implementation: introduce a small privacy-safe logging helper that run
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 `safeServerError` no longer writes unredacted free-form error text to Console.
-- [ ] #2 Model catalog failure logging redacts URL query strings and provider response snippets before logging.
-- [ ] #3 Tests or focused coverage demonstrate Console-oriented diagnostic strings redact the same classes of sensitive data as copied diagnostics.
+- [x] #1 `safeServerError` no longer writes unredacted free-form error text to Console.
+- [x] #2 Model catalog failure logging redacts URL query strings and provider response snippets before logging.
+- [x] #3 Tests or focused coverage demonstrate Console-oriented diagnostic strings redact the same classes of sensitive data as copied diagnostics.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Console-bound diagnostics now pass through DiagnosticsRedactor: `safeServerError` redacts the raw error text before `print` (ServerErrors.swift now imports JobhuntCore), and ModelCatalog's failed model-fetch log redacts `url.absoluteString` and the response body excerpt (the key was already a safe fingerprint). Redaction classes match Copy Diagnostics (shared redactor), covered by DiagnosticsRedactorTests. Commit 456ec97.
+<!-- SECTION:FINAL_SUMMARY:END -->

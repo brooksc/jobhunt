@@ -2,6 +2,30 @@ import SwiftData
 import XCTest
 @testable import JobhuntCore
 
+// MARK: - DataQualityScope (TASK-580)
+
+/// The inclusion policy shared by the Data Quality view and the dashboard quality count.
+final class DataQualityScopeTests: XCTestCase {
+    func testEligibleStatusesExcludeTerminalAndDuplicate() {
+        XCTAssertTrue(DataQualityScope.isEligible(.new))
+        XCTAssertTrue(DataQualityScope.isEligible(.pursuing))
+        for terminal in [JobStatus.passed, .archived, .closed, .duplicate] {
+            XCTAssertFalse(DataQualityScope.isEligible(terminal), "\(terminal) must be excluded")
+        }
+    }
+
+    func testIncludedMatchesDefaultViewSemantics() {
+        // Active, unreviewed job with issues → included in the default (showReviewed = false) view.
+        XCTAssertTrue(DataQualityScope.isIncluded(status: .new, hasReview: false, showReviewed: false))
+        // Terminal status → never included.
+        XCTAssertFalse(DataQualityScope.isIncluded(status: .archived, hasReview: false, showReviewed: false))
+        XCTAssertFalse(DataQualityScope.isIncluded(status: .duplicate, hasReview: false, showReviewed: false))
+        // Reviewed job → hidden by default, shown when showReviewed is on.
+        XCTAssertFalse(DataQualityScope.isIncluded(status: .new, hasReview: true, showReviewed: false))
+        XCTAssertTrue(DataQualityScope.isIncluded(status: .new, hasReview: true, showReviewed: true))
+    }
+}
+
 final class QualityCheckerTests: XCTestCase {
     // MARK: - testMissingCompany
 

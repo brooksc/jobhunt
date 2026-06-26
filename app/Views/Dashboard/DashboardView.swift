@@ -600,7 +600,12 @@ private struct DashboardDerived {
         )
 
         duplicateCount = jobs.count(where: { $0.duplicateOfJobID != nil })
-        qualityIssueCount = jobs.count(where: { !QualityChecker.issues(for: $0).isEmpty })
+        // Match the Data Quality screen's default view so the card doesn't promise issues that vanish
+        // on open: eligible status, not already reviewed, and actually has issues (TASK-580).
+        qualityIssueCount = jobs.count(where: {
+            DataQualityScope.isIncluded(status: $0.status, hasReview: $0.qualityReview != nil, showReviewed: false)
+                && !QualityChecker.issues(for: $0).isEmpty
+        })
     }
 }
 

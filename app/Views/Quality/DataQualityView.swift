@@ -12,15 +12,6 @@ struct DataQualityView: View {
     @Query(sort: \Job.createdAt, order: .reverse)
     private var allJobs: [Job]
 
-    private var activeJobs: [Job] {
-        allJobs.filter {
-            $0.status != .passed &&
-                $0.status != .archived &&
-                $0.status != .closed &&
-                $0.status != .duplicate
-        }
-    }
-
     @State private var selectedJobIDs: Set<String> = []
     @State private var filterKind: QualityIssueKind? // nil = all
     @State private var showReviewed = false
@@ -29,10 +20,13 @@ struct DataQualityView: View {
     // MARK: - Derived data
 
     private var issueRows: [(job: Job, issue: QualityIssue)] {
-        activeJobs.compactMap { job in
+        // Shared inclusion policy with the dashboard quality count (TASK-580).
+        allJobs.compactMap { job in
+            guard DataQualityScope.isIncluded(
+                status: job.status, hasReview: job.qualityReview != nil, showReviewed: showReviewed
+            ) else { return nil }
             let kinds = QualityChecker.issues(for: job)
             guard !kinds.isEmpty else { return nil }
-            if !showReviewed && job.qualityReview != nil { return nil }
             return (job, QualityIssue(jobID: job.id, kinds: kinds))
         }
     }

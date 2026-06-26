@@ -62,6 +62,24 @@ public struct QualityIssue: Identifiable, Sendable {
     }
 }
 
+// MARK: - DataQualityScope
+
+/// Single policy for which jobs the Data Quality view — and the dashboard's quality count — include,
+/// so the dashboard card can't promise issues that vanish when the user opens the screen (TASK-580).
+public enum DataQualityScope {
+    /// Terminal/duplicate statuses aren't actionable for quality review.
+    public static func isEligible(_ status: JobStatus) -> Bool {
+        status != .passed && status != .archived && status != .closed && status != .duplicate
+    }
+
+    /// Whether a job appears in the Data Quality view / count. A job with an existing quality review
+    /// is hidden unless `showReviewed` is on (the screen's default is off).
+    public static func isIncluded(status: JobStatus, hasReview: Bool, showReviewed: Bool) -> Bool {
+        guard isEligible(status) else { return false }
+        return showReviewed || !hasReview
+    }
+}
+
 // MARK: - QualityChecker
 
 public enum QualityChecker: Sendable {

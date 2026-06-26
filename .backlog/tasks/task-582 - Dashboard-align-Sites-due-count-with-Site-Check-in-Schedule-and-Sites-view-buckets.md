@@ -3,9 +3,10 @@ id: TASK-582
 title: >-
   Dashboard: align Sites due count with Site Check-in Schedule and Sites view
   buckets
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-21 03:11'
+updated_date: '2026-06-26 02:46'
 labels:
   - audit
   - dashboard
@@ -32,8 +33,14 @@ Suggested implementation: Extract a shared site review bucket policy with catego
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A site with `state == .notReviewed` and `nextReviewAt == nil` is not counted as a scheduled due site unless the dashboard labels it as not reviewed.
-- [ ] #2 Dashboard Site Check-in Schedule and SitesView use the same bucket policy for overdue/due/not-reviewed/excluded states.
-- [ ] #3 The dashboard card count and the rows visible after navigating to Sites reconcile for due scheduled sites.
-- [ ] #4 Tests cover new nil-nextReviewAt sites, overdue reviewed sites, due-soon reviewed sites, and excluded sites.
+- [x] #1 A site with `state == .notReviewed` and `nextReviewAt == nil` is not counted as a scheduled due site unless the dashboard labels it as not reviewed.
+- [x] #2 Dashboard Site Check-in Schedule and SitesView use the same bucket policy for overdue/due/not-reviewed/excluded states.
+- [x] #3 The dashboard card count and the rows visible after navigating to Sites reconcile for due scheduled sites.
+- [x] #4 Tests cover new nil-nextReviewAt sites, overdue reviewed sites, due-soon reviewed sites, and excluded sites.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added SiteReviewBucket.classify(state:nextReviewAt:now:dueSoonDays:) → overdue / dueSoon / scheduledLater / notYetReviewed / excluded. Dashboard "Sites due" now counts only .overdue, so a brand-new site (nil nextReviewAt → notYetReviewed) is no longer counted as due (AC#1). The dashboard Site Check-in Schedule and all SitesView sections (overdue/dueSoon/reviewed→scheduledLater/notYetReviewed/excluded) derive from the same classifier (AC#2), so the card count reconciles with the Overdue rows shown after navigating (AC#3). Tests (SiteReviewBucketTests) cover nil-date, overdue, due-soon, scheduled-later, and excluded (AC#4). Build + lint clean; SiteReviewBucketTests pass.
+<!-- SECTION:FINAL_SUMMARY:END -->

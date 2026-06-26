@@ -1,9 +1,10 @@
 ---
 id: TASK-538
 title: 'LLM: persist actual provider token usage for cost and diagnostics'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 04:57'
+updated_date: '2026-06-26 07:27'
 labels:
   - audit
   - llm
@@ -35,10 +36,16 @@ Suggested implementation: add optional `promptTokens` and `completionTokens` fie
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 `ExtractionResult` and `FitScoreOutput` carry optional prompt/completion token counts from `ChatResponse`.
-- [ ] #2 `LLMRequestAttempt` persists optional prompt/completion token counts with schema evolution coverage.
-- [ ] #3 Successful extraction and fit attempts save token counts when the provider returns usage metadata.
-- [ ] #4 Character counts remain persisted and are used as fallback when token usage is unavailable.
-- [ ] #5 Debug or cost diagnostics can show actual token usage totals/averages when present.
-- [ ] #6 Provider and queue tests cover at least one OpenAI-compatible response and one non-OpenAI provider response with token metadata.
+- [x] #1 `ExtractionResult` and `FitScoreOutput` carry optional prompt/completion token counts from `ChatResponse`.
+- [x] #2 `LLMRequestAttempt` persists optional prompt/completion token counts with schema evolution coverage.
+- [x] #3 Successful extraction and fit attempts save token counts when the provider returns usage metadata.
+- [x] #4 Character counts remain persisted and are used as fallback when token usage is unavailable.
+- [x] #5 Debug or cost diagnostics can show actual token usage totals/averages when present.
+- [x] #6 Provider and queue tests cover at least one OpenAI-compatible response and one non-OpenAI provider response with token metadata.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ExtractionResult and FitScoreOutput now carry optional promptTokens/completionTokens populated from ChatResponse (AC#1). LLMRequestAttempt gained promptTokens/completionTokens — additive optional fields, so a lightweight SwiftData migration (no new VersionedSchema); both schema-stability guards (name + type) updated per the checklist (AC#2). QueueActor passes them on successful extract and fit recordAttempt calls (AC#3). promptChars/responseChars remain persisted as the fallback for providers that don't report usage (AC#4). The Debug tab LLM Stats section shows prompt/completion token avg/max when any attempt has usage (AC#5). Tests: testExtractionPropagatesProviderTokenUsage (engine), OpenAI + Anthropic ChatResponse token assertions (AC#6), and the schema guards pin the new fields. Full fast gate (Core/Server/MCP) green; lint clean. Commit 4bd8ec5.
+<!-- SECTION:FINAL_SUMMARY:END -->

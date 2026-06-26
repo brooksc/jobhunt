@@ -3,9 +3,10 @@ id: TASK-533
 title: >-
   Server: add explicit header-size and malformed Content-Length limits to the
   HTTP parser
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 04:51'
+updated_date: '2026-06-26 01:46'
 labels:
   - audit
   - security
@@ -33,9 +34,15 @@ Suggested implementation: define a modest max header size, reject headers that e
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Requests whose header block exceeds the configured header limit are rejected with a clear 400/431-style response before body routing.
-- [ ] #2 Malformed, negative, or conflicting duplicate `Content-Length` headers are rejected instead of being interpreted as an empty body.
-- [ ] #3 Body-bearing POST routes without a valid `Content-Length` fail with an explicit framing error.
-- [ ] #4 Existing valid requests with UTF-8 JSON bodies and normal Content-Length continue to parse correctly.
-- [ ] #5 Focused parser tests cover oversized headers, malformed length, duplicate/conflicting length, missing length on POST, and valid multi-byte JSON body framing.
+- [x] #1 Requests whose header block exceeds the configured header limit are rejected with a clear 400/431-style response before body routing.
+- [x] #2 Malformed, negative, or conflicting duplicate `Content-Length` headers are rejected instead of being interpreted as an empty body.
+- [x] #3 Body-bearing POST routes without a valid `Content-Length` fail with an explicit framing error.
+- [x] #4 Existing valid requests with UTF-8 JSON bodies and normal Content-Length continue to parse correctly.
+- [x] #5 Focused parser tests cover oversized headers, malformed length, duplicate/conflicting length, missing length on POST, and valid multi-byte JSON body framing.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Replaced peekRequestHeaders with inspectRequestFraming(_:maxHeaderBytes:), called from the receive loop before routing. Enforces a 64 KB header-block cap (→431, whether or not the terminator has arrived), strict Content-Length (non-negative integer; malformed/negative →400), conflicting-duplicate Content-Length rejection (→400), and missing Content-Length on POST/PUT/PATCH (→400 instead of being treated as an empty body). The over-limit 413 check and incremental body accumulation (parse returns nil until the body fully arrives) are preserved, so valid requests — including multi-byte UTF-8 JSON framed by byte count — are unchanged. New RequestFramingTests cover oversized headers, malformed/negative/conflicting length, missing length on POST, and valid multi-byte framing; full ServerTests suite (40, incl. the 413 and all POST routes) passes. Lint clean.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -258,7 +258,11 @@ struct JobhuntApp: App {
                         terminationCoordinator.shutdownSequence = {
                             integration.stop()
                             await services.shutdown()
-                            // TASK-530 hook: delete the transient MCP token file here once wired.
+                            // Remove the transient MCP token now that the server (which accepts it) is
+                            // stopped — only if this launch generated one (TASK-530).
+                            if services.mcpTokenWasGenerated {
+                                MCPTokenManager.delete()
+                            }
                         }
                     }
                     // TASK-464: Settings → Debug "Reopen Onboarding".

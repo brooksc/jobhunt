@@ -16,6 +16,9 @@ final class AppServices: @unchecked Sendable {
     let server: JobhuntServer
     let backgroundStore: BackgroundStore
     let toastStore = ToastStore()
+    /// True when this launch generated and wrote an MCP token file, so normal shutdown should delete
+    /// it (TASK-530). False when no token was generated (fixture/MAS modes, or a failed write).
+    let mcpTokenWasGenerated: Bool
     var serverRunning: Bool = false
     var serverError: String?
     /// Owns the long-lived runtime tasks' lifecycle: idempotent start, and a shutdown that cancels
@@ -64,6 +67,8 @@ final class AppServices: @unchecked Sendable {
         settings = settingsStore
         server = localServer
         backgroundStore = store
+        // A non-empty token means generateAndWrite() succeeded this launch and a file exists on disk.
+        mcpTokenWasGenerated = !mcpToken.isEmpty
     }
 
     /// Starts runtime services and launch-time side effects: the local HTTP server, LLM-queue crash

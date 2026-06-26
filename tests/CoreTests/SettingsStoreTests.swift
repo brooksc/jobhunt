@@ -378,48 +378,45 @@ final class MCPTokenManagerTests: XCTestCase {
         super.tearDown()
     }
 
-    func testGenerateAndWriteProducesNonEmptyToken() throws {
-        let originalURL = MCPTokenManager.tokenURL
-        // Write to temp path by calling low-level write directly
-        let token = UUID().uuidString
-        try token.write(to: testURL, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: testURL.path)
-        let read = try String(contentsOf: testURL, encoding: .utf8)
-        XCTAssertEqual(read, token)
-        _ = originalURL // suppress warning
+    // These exercise the manager through its URL seam so they never touch the real
+    // ~/.jobhunt-mcp-token (TASK-530).
+
+    func testGenerateReadDeleteRoundTrip() throws {
+        let token = try MCPTokenManager.generateAndWrite(at: testURL)
+        XCTAssertFalse(token.isEmpty)
+        XCTAssertEqual(MCPTokenManager.read(at: testURL), token)
+
+        MCPTokenManager.delete(at: testURL)
+        XCTAssertNil(MCPTokenManager.read(at: testURL))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: testURL.path))
+    }
+
+    func testGenerateAndWriteSetsOwnerOnlyPermissions() throws {
+        let token = try MCPTokenManager.generateAndWrite(at: testURL)
+        XCTAssertFalse(token.isEmpty)
+        let perms = try XCTUnwrap(
+            FileManager.default.attributesOfItem(atPath: testURL.path)[.posixPermissions] as? Int
+        )
+        XCTAssertEqual(perms & 0o077, 0, "generated token file must be owner-only (0600)")
+        XCTAssertNotNil(MCPTokenManager.read(at: testURL), "owner-only token should be readable")
     }
 
     func testReadRejectsFilesWithBroadPermissions() throws {
-        // Write a token then open permissions — read() should return nil
-        let token = UUID().uuidString
-        try token.write(to: testURL, atomically: true, encoding: .utf8)
+        try "tok".write(to: testURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: testURL.path)
-
-        let attrs = try FileManager.default.attributesOfItem(atPath: testURL.path)
-        let perms = attrs[.posixPermissions] as? Int ?? 0
-        XCTAssertNotEqual(perms & 0o077, 0, "File should have group/other bits set (test precondition)")
-        // MCPTokenManager.read() checks permissions — simulate the same check
-        XCTAssertNotEqual(perms & 0o077, 0, "Broad permissions should be detectable")
+        XCTAssertNil(MCPTokenManager.read(at: testURL), "group/world-readable token must be rejected")
     }
 
-    func testReadAcceptsFilesWithOwnerOnlyPermissions() throws {
-        let token = UUID().uuidString
-        try token.write(to: testURL, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: testURL.path)
-
-        let attrs = try FileManager.default.attributesOfItem(atPath: testURL.path)
-        let perms = attrs[.posixPermissions] as? Int ?? 0
-        XCTAssertEqual(perms & 0o077, 0, "Owner-only file should pass permission check")
+    // TASK-530 AC#3: a failed write leaves no misleading token file behind.
+    func testFailedGenerationLeavesNoFile() {
+        let bad = testURL.appendingPathComponent("no-such-dir").appendingPathComponent("token")
+        XCTAssertThrowsError(try MCPTokenManager.generateAndWrite(at: bad))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: bad.path))
     }
 
-    func testGenerateAndWriteSetsCorrectPermissions() throws {
-        // Use MCPTokenManager directly and verify permissions
-        let token = try MCPTokenManager.generateAndWrite()
-        XCTAssertFalse(token.isEmpty)
-        let attrs = try FileManager.default.attributesOfItem(atPath: MCPTokenManager.tokenURL.path)
-        let perms = attrs[.posixPermissions] as? Int ?? 0
-        XCTAssertEqual(perms & 0o077, 0, "Generated token file must be owner-only (0600)")
-        XCTAssertNotNil(MCPTokenManager.read(), "Token written with correct permissions should be readable")
+    func testDeleteMissingFileIsNoOp() {
+        MCPTokenManager.delete(at: testURL) // must not crash
+        XCTAssertNil(MCPTokenManager.read(at: testURL))
     }
 
     /// TASK-479/388 AC#4: a settings load failure sets loadError and gates persistence.

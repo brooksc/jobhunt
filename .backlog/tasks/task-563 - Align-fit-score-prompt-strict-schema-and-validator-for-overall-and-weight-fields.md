@@ -3,9 +3,10 @@ id: TASK-563
 title: >-
   Align fit-score prompt, strict schema, and validator for overall and weight
   fields
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-20 00:56'
+updated_date: '2026-06-26 03:39'
 labels:
   - audit
   - llm
@@ -42,7 +43,13 @@ Suggested implementation: choose a single fit-output contract. Prefer removing t
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The fit prompt, strict schema, mock responder, and `FitScorer.validateDimensions` agree on whether `overall` is provider-supplied or locally computed only.
-- [ ] #2 The fit prompt, strict schema, mock responder, and validator agree on whether per-dimension `weight` is required.
-- [ ] #3 Strict-schema and fallback/text-mode fit-score tests cover the chosen contract.
+- [x] #1 The fit prompt, strict schema, mock responder, and `FitScorer.validateDimensions` agree on whether `overall` is provider-supplied or locally computed only.
+- [x] #2 The fit prompt, strict schema, mock responder, and validator agree on whether per-dimension `weight` is required.
+- [x] #3 Strict-schema and fallback/text-mode fit-score tests cover the chosen contract.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Removed top-level `overall` and per-dimension `weight` from StructuredOutputSchemas.fitScore (and from the MockLLMResponder fit output), so the strict schema now matches the prompt (which says "Do not provide an overall score" and lists dimensions as name/score/rationale) and FitScorer.validateDimensions (which validates only name + score and ignores both fields). The app computes overall locally from dimensionWeights; nothing reads overall/weight from the response. Test testFitSchemaOmitsOverallAndWeight asserts overall is absent from properties+required and dimension required == [name,score,rationale]. FitScorerTests (90) and full CoreTests (934) pass.
+<!-- SECTION:FINAL_SUMMARY:END -->

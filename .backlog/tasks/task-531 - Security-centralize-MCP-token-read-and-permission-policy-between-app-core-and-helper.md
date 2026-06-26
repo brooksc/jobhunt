@@ -3,9 +3,10 @@ id: TASK-531
 title: >-
   Security: centralize MCP token read and permission policy between app core and
   helper
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 04:51'
+updated_date: '2026-06-26 01:40'
 labels:
   - audit
   - security
@@ -34,9 +35,15 @@ Suggested implementation: make the MCP helper call `MCPTokenManager.read()` dire
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The MCP helper no longer duplicates the token path or permission-bit policy from `MCPTokenManager`.
-- [ ] #2 Both app and helper use one shared implementation for reading a token and rejecting broad file permissions.
-- [ ] #3 Tests cover successful owner-only token reads and rejection of group/world-readable token files through the helper-facing API.
-- [ ] #4 Existing behavior for missing token files remains unchanged: helper startup fails closed with a clear error.
-- [ ] #5 No production token path is touched by tests.
+- [x] #1 The MCP helper no longer duplicates the token path or permission-bit policy from `MCPTokenManager`.
+- [x] #2 Both app and helper use one shared implementation for reading a token and rejecting broad file permissions.
+- [x] #3 Tests cover successful owner-only token reads and rejection of group/world-readable token files through the helper-facing API.
+- [x] #4 Existing behavior for missing token files remains unchanged: helper startup fails closed with a clear error.
+- [x] #5 No production token path is touched by tests.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+MCPHelpers.readToken now delegates to MCPTokenManager.read(at:) — one shared token path + owner-only (0o077) permission policy. Removed the duplicated stat/permission logic, which had drifted (helper rejected owner-execute via 0o177, core used 0o077). Made the MCPTokenManager URL seams public so the JobhuntMCP target reuses them. readToken(at: = tokenURL) keeps production callers unchanged and still fails closed on a missing token. MCPTests exercise owner-only read, group/world-readable rejection, and missing-file through readToken's seam — none touch the real ~/.jobhunt-mcp-token. Commit: see git log (lint clean, MCPTests 21 + token tests 6 pass).
+<!-- SECTION:FINAL_SUMMARY:END -->

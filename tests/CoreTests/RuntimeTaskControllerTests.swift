@@ -4,13 +4,17 @@ import XCTest
 /// Records an ordered sequence of events from concurrent tasks (Sendable-safe via actor isolation).
 private actor EventLog {
     private(set) var events: [String] = []
-    func record(_ event: String) { events.append(event) }
+    func record(_ event: String) {
+        events.append(event)
+    }
 }
 
 /// A one-shot flag a task can set only after it observes cancellation and exits.
 private actor Flag {
     private(set) var value = false
-    func set() { value = true }
+    func set() {
+        value = true
+    }
 }
 
 /// Verifies the start/shutdown invariants for `RuntimeTaskController` (TASK-554/555/556).
@@ -19,12 +23,14 @@ final class RuntimeTaskControllerTests: XCTestCase {
     /// A task that spins until cancelled, then runs `onExit`. Deterministic — no timeouts/sleeps.
     private func cancellableTask(onExit: @escaping @Sendable () async -> Void) -> Task<Void, Never> {
         Task {
-            while !Task.isCancelled { await Task.yield() }
+            while !Task.isCancelled {
+                await Task.yield()
+            }
             await onExit()
         }
     }
 
-    // TASK-556 #1/#3: duplicate start is a no-op (factory not re-run); restart after shutdown works.
+    /// TASK-556 #1/#3: duplicate start is a no-op (factory not re-run); restart after shutdown works.
     func testStartIsIdempotentAndRestartable() async {
         let controller = RuntimeTaskController()
         var makeCount = 0
@@ -47,8 +53,8 @@ final class RuntimeTaskControllerTests: XCTestCase {
         await controller.shutdown()
     }
 
-    // TASK-555 #1/#3: shutdown does not return before a cancelled task has observed cancellation
-    // and exited.
+    /// TASK-555 #1/#3: shutdown does not return before a cancelled task has observed cancellation
+    /// and exited.
     func testShutdownAwaitsTaskExit() async {
         let controller = RuntimeTaskController()
         let flag = Flag()
@@ -63,7 +69,7 @@ final class RuntimeTaskControllerTests: XCTestCase {
         XCTAssertFalse(controller.isStarted)
     }
 
-    // TASK-554 #2: the finalize step (e.g. server stop) runs only AFTER all runtime tasks have exited.
+    /// TASK-554 #2: the finalize step (e.g. server stop) runs only AFTER all runtime tasks have exited.
     func testFinalizeRunsAfterTasksExit() async {
         let controller = RuntimeTaskController()
         let log = EventLog()
@@ -76,11 +82,14 @@ final class RuntimeTaskControllerTests: XCTestCase {
         }
 
         let events = await log.events
-        XCTAssertEqual(events, ["task-exit", "finalize"],
-                       "finalize (server stop) must run only after runtime tasks have exited")
+        XCTAssertEqual(
+            events,
+            ["task-exit", "finalize"],
+            "finalize (server stop) must run only after runtime tasks have exited"
+        )
     }
 
-    // TASK-555 #2: repeated shutdown is safe — the second call awaits nothing and still runs finalize.
+    /// TASK-555 #2: repeated shutdown is safe — the second call awaits nothing and still runs finalize.
     func testRepeatedShutdownIsSafe() async {
         let controller = RuntimeTaskController()
         var finalizeCount = 0

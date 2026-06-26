@@ -72,7 +72,7 @@ final class DiagnosticsRedactorTests: XCTestCase {
         XCTAssertFalse(out.contains("dXNlcjpwYXNzd29yZA=="), "Basic credential must be redacted")
     }
 
-    // TASK-550 AC#3: benign HTTP/status text is not mangled by the new field patterns.
+    /// TASK-550 AC#3: benign HTTP/status text is not mangled by the new field patterns.
     func testLeavesBenignHTTPStatusTextIntact() {
         for input in [
             "HTTP 401 Unauthorized",

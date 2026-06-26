@@ -407,7 +407,7 @@ final class MCPTokenManagerTests: XCTestCase {
         XCTAssertNil(MCPTokenManager.read(at: testURL), "group/world-readable token must be rejected")
     }
 
-    // TASK-530 AC#3: a failed write leaves no misleading token file behind.
+    /// TASK-530 AC#3: a failed write leaves no misleading token file behind.
     func testFailedGenerationLeavesNoFile() {
         let bad = testURL.appendingPathComponent("no-such-dir").appendingPathComponent("token")
         XCTAssertThrowsError(try MCPTokenManager.generateAndWrite(at: bad))

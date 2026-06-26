@@ -48,8 +48,8 @@ public enum DiagnosticsReport {
             }
             .joined(separator: "\n")
 
-        // Settings/keychain persistence failures explain why a preference or API key didn't stick —
-        // valuable for support, and these fields never carry raw setting values (TASK-552). Redacted.
+        /// Settings/keychain persistence failures explain why a preference or API key didn't stick —
+        /// valuable for support, and these fields never carry raw setting values (TASK-552). Redacted.
         func line(_ label: String, _ value: String?) -> String? {
             value.map { "\(label) \(DiagnosticsRedactor.redact($0))" }
         }
@@ -57,7 +57,7 @@ public enum DiagnosticsReport {
             line("Settings persist:", settingsError),
             line("Keychain write: ", keychainError),
             line("Settings load:  ", loadError)
-        ].compactMap { $0 }
+        ].compactMap(\.self)
         let persistenceText = persistenceLines.isEmpty ? "(none)" : persistenceLines.joined(separator: "\n")
 
         return """

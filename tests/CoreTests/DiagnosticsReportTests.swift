@@ -21,8 +21,8 @@ final class DiagnosticsReportTests: XCTestCase {
         XCTAssertTrue(text.contains("(none)"), "empty recent errors should render (none)")
     }
 
-    // The report must redact secrets in the free-text fields (serverError, recent error messages)
-    // so the copied blob is safe to paste into a public issue (TASK-550–553).
+    /// The report must redact secrets in the free-text fields (serverError, recent error messages)
+    /// so the copied blob is safe to paste into a public issue (TASK-550–553).
     func testRedactsSecretsInFreeTextFields() {
         let text = DiagnosticsReport.text(
             appVersion: "1", buildNumber: "1", osVersion: "macOS",
@@ -32,8 +32,10 @@ final class DiagnosticsReportTests: XCTestCase {
             serverError: "bind failed at /Users/alice/Library/Application Support/secret.store",
             queued: 0, processing: 0, failed: 0,
             recentErrors: [
-                .init(timestamp: Date(timeIntervalSince1970: 0),
-                      message: "auth failed: Bearer sk-ABCD1234EFGH5678")
+                .init(
+                    timestamp: Date(timeIntervalSince1970: 0),
+                    message: "auth failed: Bearer sk-ABCD1234EFGH5678"
+                )
             ]
         )
         XCTAssertFalse(text.contains("/Users/alice/Library"), "file paths must be redacted")

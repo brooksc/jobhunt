@@ -157,7 +157,7 @@ final class AppServices: @unchecked Sendable {
     @MainActor
     func diagnosticsText() async -> String {
         let info = Bundle.main.infoDictionary ?? [:]
-        let counts = (try? await backgroundStore.llmQueueCounts())
+        let counts = await (try? backgroundStore.llmQueueCounts())
             ?? LLMQueueCounts(queued: 0, running: 0, failed: 0)
         let recent = toastStore.recentErrors.map {
             DiagnosticsReport.ErrorLine(timestamp: $0.timestamp, message: $0.message)

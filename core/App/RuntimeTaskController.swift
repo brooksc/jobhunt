@@ -23,7 +23,9 @@ public final class RuntimeTaskController {
     public init() {}
 
     /// True between a successful `start` and the next `shutdown`.
-    public var isStarted: Bool { started }
+    public var isStarted: Bool {
+        started
+    }
 
     /// Start the runtime tasks exactly once. If already started, returns `false` WITHOUT calling
     /// `makeTasks`; otherwise stores the tasks it produces and returns `true`.
@@ -42,8 +44,12 @@ public final class RuntimeTaskController {
         let current = tasks
         tasks = []
         started = false
-        for task in current { task.cancel() }
-        for task in current { await task.value }
+        for task in current {
+            task.cancel()
+        }
+        for task in current {
+            await task.value
+        }
         await finalize()
     }
 }

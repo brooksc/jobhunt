@@ -13,16 +13,23 @@ public enum MCPTokenManager {
     /// file cannot be written or permissions cannot be set — callers must not start MCP routes if
     /// this fails (a partial/over-permissive file is removed before throwing).
     @discardableResult
-    public static func generateAndWrite() throws -> String { try generateAndWrite(at: tokenURL) }
+    public static func generateAndWrite() throws -> String {
+        try generateAndWrite(at: tokenURL)
+    }
 
     /// Read the current token. Returns nil if the file is missing, unreadable, or has permissions
     /// broader than 0600 (e.g. group- or world-readable).
-    public static func read() -> String? { read(at: tokenURL) }
+    public static func read() -> String? {
+        read(at: tokenURL)
+    }
 
     /// Remove the token file (on normal shutdown, logout, or uninstall).
-    public static func delete() { delete(at: tokenURL) }
+    public static func delete() {
+        delete(at: tokenURL)
+    }
 
     // MARK: - Testable seams (operate on an explicit URL so the lifecycle can be unit-tested
+
     // without touching the user's real home directory — TASK-530)
 
     @discardableResult

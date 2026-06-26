@@ -14,9 +14,13 @@ public struct JobMatchFields: Sendable, Hashable {
     public let salaryMin: Int?
     public let salaryMax: Int?
     public let capturedAt: Date
-    public let company: String?
-    public let title: String?
+    // Display fallbacks + cleaned description so saved-search text matching consults exactly the same
+    // fields as the live Jobs list (TASK-573): an un-extracted job is findable by page title / host,
+    // and a search can match cleaned job text.
+    public let displayCompany: String?
+    public let displayTitle: String
     public let location: String?
+    public let cleanedDescription: String?
     public let jobNumber: Int?
 
     public init(job: Job) {
@@ -27,9 +31,10 @@ public struct JobMatchFields: Sendable, Hashable {
         salaryMin = job.salaryMin
         salaryMax = job.salaryMax
         capturedAt = job.capturedAtDenormalized ?? job.createdAt
-        company = job.company
-        title = job.title
+        displayCompany = job.displayCompany
+        displayTitle = job.displayTitle
         location = job.location
+        cleanedDescription = job.capture?.cleanedDescription
         jobNumber = job.jobNumber
     }
 }
@@ -74,14 +79,39 @@ public struct SavedSearchCriteria: Sendable, Hashable {
             let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: now) ?? now
             if f.capturedAt < cutoff { return false }
         }
-        if !searchText.isEmpty {
-            let q = searchText.lowercased().trimmingCharacters(in: .whitespaces)
-            let matchNum = q.hasPrefix("#") ? String(q.dropFirst()) : q
-            let textFields = [f.company, f.title, f.location].compactMap(\.self).joined(separator: " ").lowercased()
-            let textMatch = textFields.contains(q)
-            let numMatch = f.jobNumber.map { String($0).contains(matchNum) } ?? false
-            if !textMatch && !numMatch { return false }
+        if !Self.textNumberMatch(
+            query: searchText,
+            displayCompany: f.displayCompany,
+            displayTitle: f.displayTitle,
+            location: f.location,
+            cleanedDescription: f.cleanedDescription,
+            jobNumber: f.jobNumber
+        ) {
+            return false
         }
         return true
+    }
+
+    /// The text/number matcher shared by saved-search counts and the live Jobs list so a saved
+    /// search's sidebar badge always equals the number of rows it opens (TASK-573). Matches display
+    /// title/company (so un-extracted jobs are findable by page title/host), location, and cleaned
+    /// description; a numeric query matches the job number (substring, `#` prefix stripped). An empty
+    /// query matches everything.
+    public static func textNumberMatch(
+        query rawQuery: String,
+        displayCompany: String?,
+        displayTitle: String,
+        location: String?,
+        cleanedDescription: String?,
+        jobNumber: Int?
+    ) -> Bool {
+        let q = rawQuery.lowercased().trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return true }
+        let matchNum = q.hasPrefix("#") ? String(q.dropFirst()) : q
+        let text = [displayCompany, displayTitle, location]
+            .compactMap(\.self).joined(separator: " ").lowercased()
+        let textMatch = text.contains(q) || (cleanedDescription?.lowercased().contains(q) ?? false)
+        let numMatch = jobNumber.map { String($0).contains(matchNum) } ?? false
+        return textMatch || numMatch
     }
 }

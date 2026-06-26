@@ -763,21 +763,18 @@ struct JobsView: View {
             if filterState.meetsCriteriaOnly {
                 guard job.meetsCriteria == true else { return false }
             }
-            // Text search
-            let q = searchText.trimmingCharacters(in: .whitespaces)
-            if !q.isEmpty {
-                let qLow = q.lowercased()
-                let matchNum = qLow.hasPrefix("#") ? String(qLow.dropFirst()) : qLow
-                // Cheap fields first; fall through to the (larger) cleaned description only if needed.
-                // Display fallbacks so an un-extracted job is still findable by its page title /
-                // capture host (TASK-525).
-                let cheap = [job.displayCompany, job.displayTitle, job.location]
-                    .compactMap(\.self).joined(separator: " ").lowercased()
-                let textMatch = cheap.contains(qLow)
-                    || (job.capture?.cleanedDescription?.lowercased().contains(qLow) ?? false)
-                // Job number: exact match for a plain number ("133" → #133), substring otherwise.
-                let numMatch = job.jobNumber.map { String($0) == matchNum || String($0).contains(matchNum) } ?? false
-                if !textMatch && !numMatch { return false }
+            // Text search — one matcher shared with saved-search badge counts so an opened saved
+            // search shows exactly as many rows as its sidebar badge (TASK-573). Display fallbacks
+            // keep un-extracted jobs findable by page title / capture host (TASK-525).
+            if !SavedSearchCriteria.textNumberMatch(
+                query: searchText,
+                displayCompany: job.displayCompany,
+                displayTitle: job.displayTitle,
+                location: job.location,
+                cleanedDescription: job.capture?.cleanedDescription,
+                jobNumber: job.jobNumber
+            ) {
+                return false
             }
             return true
         }

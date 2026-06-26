@@ -343,6 +343,51 @@ final class SavedSearchCriteriaTests: XCTestCase {
         XCTAssertEqual(count(numSearch, [fields(jobNumber: 42), fields(jobNumber: 7)]), 1)
     }
 
+    // TASK-573: the shared matcher used by both saved-search counts and the live Jobs list consults
+    // display title/company, location, cleaned description, and job number.
+    func testSharedTextNumberMatcher() {
+        func m(
+            _ q: String,
+            company: String? = nil,
+            title: String = "Untitled",
+            location: String? = nil,
+            desc: String? = nil,
+            number: Int? = nil
+        ) -> Bool {
+            SavedSearchCriteria.textNumberMatch(
+                query: q, displayCompany: company, displayTitle: title,
+                location: location, cleanedDescription: desc, jobNumber: number
+            )
+        }
+        XCTAssertTrue(m("swiftui", desc: "We use SwiftUI daily"))
+        XCTAssertTrue(m("acme.example.com", company: "acme.example.com"))
+        XCTAssertTrue(m("staff ios", title: "Staff iOS Engineer"))
+        XCTAssertTrue(m("remote", location: "Remote, US"))
+        XCTAssertTrue(m("#42", number: 42))
+        XCTAssertTrue(m("4", number: 42)) // substring
+        XCTAssertTrue(m("   "), "empty query matches everything")
+        XCTAssertFalse(m("python", company: "Acme", title: "Engineer", location: "NYC", desc: "Swift", number: 7))
+    }
+
+    /// TASK-573 AC#4: the count path finds an un-extracted job by its capture's page title, host, and
+    /// cleaned description — the same fields the live Jobs list searches.
+    func testSavedSearchCountUsesCaptureFallbacksAndCleanedDescription() {
+        let capture = Capture(
+            url: "https://acme.example.com/jobs/1",
+            pageTitle: "Staff iOS Engineer",
+            cleanedDescription: "We build with SwiftUI and Combine.",
+            rawHash: "h"
+        )
+        let job = Job(jobNumber: 42, status: .new) // no extracted title/company
+        job.capture = capture
+        let f = JobMatchFields(job: job)
+
+        XCTAssertEqual(count(SavedSearch(name: "title", searchText: "staff ios"), [f]), 1)
+        XCTAssertEqual(count(SavedSearch(name: "host", searchText: "acme.example.com"), [f]), 1)
+        XCTAssertEqual(count(SavedSearch(name: "desc", searchText: "swiftui"), [f]), 1)
+        XCTAssertEqual(count(SavedSearch(name: "none", searchText: "python"), [f]), 0)
+    }
+
     func testEqualFieldsHashAndCompareEqual() {
         // Stability of the change signal: identical inputs produce equal, equally-hashing snapshots.
         // capturedAt is pinned because a real Job's createdAt is stable across re-snapshots.

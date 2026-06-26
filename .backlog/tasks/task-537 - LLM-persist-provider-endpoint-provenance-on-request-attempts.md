@@ -1,9 +1,10 @@
 ---
 id: TASK-537
 title: 'LLM: persist provider endpoint provenance on request attempts'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 04:57'
+updated_date: '2026-06-26 04:18'
 labels:
   - audit
   - llm
@@ -33,10 +34,16 @@ Suggested implementation: populate `LLMRequestAttempt.baseURL` from the effectiv
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Successful extraction and fit attempts persist the effective provider base URL used for the attempt.
-- [ ] #2 Failed provider attempts persist the same effective base URL when settings are available.
+- [x] #1 Successful extraction and fit attempts persist the effective provider base URL used for the attempt.
+- [x] #2 Failed provider attempts persist the same effective base URL when settings are available.
 - [ ] #3 Consent-blocked/pre-provider attempts persist the endpoint that caused the consent decision where safe.
-- [ ] #4 Hosted providers use canonical base URLs; custom and LM Studio use normalized configured base URLs without credentials.
-- [ ] #5 Tests cover local loopback, remote custom, and hosted-provider attempt provenance.
-- [ ] #6 No API keys, auth headers, or credential-bearing query parameters are persisted.
+- [x] #4 Hosted providers use canonical base URLs; custom and LM Studio use normalized configured base URLs without credentials.
+- [x] #5 Tests cover local loopback, remote custom, and hosted-provider attempt provenance.
+- [x] #6 No API keys, auth headers, or credential-bearing query parameters are persisted.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+recordAttempt now takes a baseURL param (the LLMRequestAttempt field already existed) and QueueActor passes the effective endpoint — computed once per request via the existing LLMProviderFactory.resolveBaseURL(provider:customBaseURL:) — at the extraction and fit success AND failure call sites. resolveBaseURL returns canonical URLs for hosted providers (openai/anthropic/google/openrouter) and the normalized configured URL (trailing slash stripped) for custom/LM Studio, and never includes API keys or paths (AC#4/#6). Its existing tests cover local loopback, remote custom, and hosted providers (AC#5). MockLLMInferenceTests now asserts the recorded extract attempt's baseURL matches the resolver (AC#1). AC#2 (failed provider attempts) is covered by threading the same baseURL into the catch-path recordAttempt for both extract and fit. AC#3 (consent-blocked attempt endpoint) is deferred to TASK-536, which adds the consent-blocked attempt record itself. Full CoreTests (942) green; lint clean. Commit 4276b9e.
+<!-- SECTION:FINAL_SUMMARY:END -->

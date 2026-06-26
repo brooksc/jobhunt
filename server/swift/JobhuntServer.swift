@@ -314,6 +314,10 @@ public actor JobhuntServer {
         }
     }
 
+    /// Header-block size cap (TASK-533). 64 KB is far above any legitimate request's headers and
+    /// bounds resource use from a slow/malformed local client before the body is read.
+    static let maxHeaderBytes = 64 * 1024
+
     // nonisolated: only touches NWConnection and spawns Tasks back onto the actor.
     // Accumulates TCP chunks until a complete HTTP request is available before processing.
     private nonisolated func receiveRequest(on connection: NWConnection, accumulated: Data = Data()) {
@@ -323,33 +327,36 @@ public actor JobhuntServer {
                 buffer.append(data)
             }
 
-            // TASK-435: once the headers are in, reject an over-limit body early (by Content-Length)
-            // with 413 instead of accumulating it up to the hard cap and returning a generic 400.
-            if let peek = peekRequestHeaders(buffer) {
-                let limit = Self.maxBodySize(forPath: peek.path)
-                if peek.contentLength > limit {
-                    let response = HTTPResponse.error(
-                        "Request body too large (\(peek.contentLength) bytes; limit \(limit))", code: 413
-                    )
-                    Task { await self.sendResponse(response, on: connection) }
+            func reject(_ reason: String, _ code: Int) {
+                Task { await self.sendResponse(HTTPResponse.error(reason, code: code), on: connection) }
+            }
+            func readMoreOrFail() {
+                if !isComplete, buffer.count < 2 * 1_048_576 {
+                    receiveRequest(on: connection, accumulated: buffer)
+                } else {
+                    reject("Bad request", 400)
+                }
+            }
+
+            // Validate framing (header size + Content-Length) before routing — fail closed (TASK-533).
+            switch inspectRequestFraming(buffer, maxHeaderBytes: Self.maxHeaderBytes) {
+            case .incomplete:
+                readMoreOrFail()
+            case let .invalid(reason, code):
+                reject(reason, code)
+            case let .valid(_, path, contentLength):
+                // TASK-435: reject an over-limit body early (by Content-Length) with 413.
+                let limit = Self.maxBodySize(forPath: path)
+                if contentLength > limit {
+                    reject("Request body too large (\(contentLength) bytes; limit \(limit))", 413)
                     return
                 }
-            }
-
-            if let request = parseHTTPRequest(buffer) {
-                Task {
-                    await self.processRequest(request, on: connection)
+                if let request = parseHTTPRequest(buffer) {
+                    Task { await self.processRequest(request, on: connection) }
+                } else {
+                    // Headers framed but the body bytes haven't all arrived yet — keep reading.
+                    readMoreOrFail()
                 }
-                return
-            }
-
-            if !isComplete, buffer.count < 2 * 1_048_576 {
-                // Need more data
-                receiveRequest(on: connection, accumulated: buffer)
-            } else {
-                // Connection closed or buffer too large without a parseable request
-                let response = HTTPResponse.error("Bad request", code: 400)
-                Task { await self.sendResponse(response, on: connection) }
             }
         }
     }

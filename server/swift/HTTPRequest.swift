@@ -21,34 +21,75 @@ struct HTTPRequest {
     }
 }
 
-/// Peek the request target path and declared Content-Length once the header block is complete,
-/// WITHOUT waiting for the body. Used to reject oversized requests early (TASK-435) before
-/// accumulating the whole body. Returns nil if the header terminator hasn't arrived yet.
-func peekRequestHeaders(_ data: Data) -> (path: String, contentLength: Int)? {
+/// Outcome of inspecting a (possibly partial) request's header block for framing validity, without
+/// waiting for the body. Lets the parser fail closed on oversized/malformed local clients (TASK-533).
+enum RequestFraming: Equatable {
+    /// Header terminator not seen yet and the buffer is still within the header cap — read more.
+    case incomplete
+    /// Reject now with this status (e.g. 431 oversized headers, 400 bad framing).
+    case invalid(reason: String, statusCode: Int)
+    /// Headers parsed and framing is valid; body (if any) is `contentLength` bytes.
+    case valid(method: String, path: String, contentLength: Int)
+}
+
+/// Inspect the request's header block once it's complete (or detect it's oversized / malformed)
+/// WITHOUT waiting for the body. Enforces a header-block size cap and strict Content-Length rules
+/// (no malformed/negative/conflicting values; body-bearing methods must declare a length) so the
+/// server frames requests deterministically before routing (TASK-533/435).
+func inspectRequestFraming(_ data: Data, maxHeaderBytes: Int) -> RequestFraming {
     let sepBytes = Data([13, 10, 13, 10]) // \r\n\r\n
-    guard let sepRange = data.range(of: sepBytes),
-          let headerString = String(data: data[data.startIndex ..< sepRange.lowerBound], encoding: .ascii)
-    else { return nil }
+    guard let sepRange = data.range(of: sepBytes) else {
+        // No complete header block yet. If we've buffered more than the cap without a terminator,
+        // the headers are oversized — reject instead of accumulating to the hard body cap.
+        if data.count > maxHeaderBytes {
+            return .invalid(reason: "Request header fields too large", statusCode: 431)
+        }
+        return .incomplete
+    }
+
+    let headerByteCount = data.distance(from: data.startIndex, to: sepRange.lowerBound)
+    if headerByteCount > maxHeaderBytes {
+        return .invalid(reason: "Request header fields too large", statusCode: 431)
+    }
+    guard let headerString = String(data: data[data.startIndex ..< sepRange.lowerBound], encoding: .ascii) else {
+        return .invalid(reason: "Malformed request headers", statusCode: 400)
+    }
     var lines = headerString.components(separatedBy: "\r\n")
-    guard !lines.isEmpty else { return nil }
+    guard !lines.isEmpty else { return .invalid(reason: "Malformed request line", statusCode: 400) }
     let requestLine = lines.removeFirst()
     let parts = requestLine.split(separator: " ", maxSplits: 2).map(String.init)
-    guard parts.count >= 2 else { return nil }
+    guard parts.count >= 2 else { return .invalid(reason: "Malformed request line", statusCode: 400) }
+    let method = parts[0].uppercased()
     let rawTarget = parts[1]
     let path = rawTarget.firstIndex(of: "?").map { String(rawTarget[rawTarget.startIndex ..< $0]) } ?? rawTarget
-    var contentLength = 0
+
+    // Collect every Content-Length value so duplicates/conflicts can be detected.
+    var contentLengthValues: [String] = []
     for line in lines {
-        if let colonIdx = line.firstIndex(of: ":") {
-            let key = String(line[line.startIndex ..< colonIdx]).trimmingCharacters(in: .whitespaces).lowercased()
-            if key == "content-length" {
-                contentLength = Int(
-                    String(line[line.index(after: colonIdx)...]).trimmingCharacters(in: .whitespaces)
-                ) ??
-                    0
-            }
+        guard let colonIdx = line.firstIndex(of: ":") else { continue }
+        let key = String(line[line.startIndex ..< colonIdx]).trimmingCharacters(in: .whitespaces).lowercased()
+        if key == "content-length" {
+            contentLengthValues.append(
+                String(line[line.index(after: colonIdx)...]).trimmingCharacters(in: .whitespaces)
+            )
         }
     }
-    return (path, contentLength)
+    if Set(contentLengthValues).count > 1 {
+        return .invalid(reason: "Conflicting Content-Length headers", statusCode: 400)
+    }
+
+    var contentLength = 0
+    if let raw = contentLengthValues.first {
+        guard let parsed = Int(raw), parsed >= 0 else {
+            return .invalid(reason: "Malformed Content-Length", statusCode: 400)
+        }
+        contentLength = parsed
+    } else if method == "POST" || method == "PUT" || method == "PATCH" {
+        // A body-bearing method with no length is unframable — reject rather than treat as empty.
+        return .invalid(reason: "Missing Content-Length on \(method)", statusCode: 400)
+    }
+
+    return .valid(method: method, path: path, contentLength: contentLength)
 }
 
 /// Parse raw HTTP request bytes into an HTTPRequest.

@@ -16,41 +16,33 @@ struct SitesView: View {
 
     // MARK: - Sections
 
-    private var overdueSites: [Site] {
+    /// Shared bucket policy with the dashboard so the schedule, the card count, and these sections
+    /// can't drift (TASK-582).
+    private func sites(in bucket: SiteReviewBucket) -> [Site] {
         let now = Date()
-        return sites.filter { site in
-            guard site.state != .exclude, let next = site.nextReviewAt else { return false }
-            return next < now
+        return sites.filter {
+            SiteReviewBucket.classify(state: $0.state, nextReviewAt: $0.nextReviewAt, now: now) == bucket
         }
+    }
+
+    private var overdueSites: [Site] {
+        sites(in: .overdue)
     }
 
     private var dueSoonSites: [Site] {
-        let now = Date()
-        let sevenDays = Calendar.current.date(byAdding: .day, value: 7, to: now) ?? now
-        return sites.filter { site in
-            guard site.state != .exclude, let next = site.nextReviewAt else { return false }
-            return next >= now && next <= sevenDays
-        }
+        sites(in: .dueSoon)
     }
 
     private var reviewedSites: [Site] {
-        let now = Date()
-        let sevenDays = Calendar.current.date(byAdding: .day, value: 7, to: now) ?? now
-        return sites.filter { site in
-            guard site.state == .reviewed else { return false }
-            if let next = site.nextReviewAt {
-                return next > sevenDays
-            }
-            return false
-        }
+        sites(in: .scheduledLater)
     }
 
     private var notYetReviewedSites: [Site] {
-        sites.filter { $0.state == .notReviewed && $0.nextReviewAt == nil }
+        sites(in: .notYetReviewed)
     }
 
     private var excludedSites: [Site] {
-        sites.filter { $0.state == .exclude }
+        sites(in: .excluded)
     }
 
     var body: some View {

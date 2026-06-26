@@ -82,7 +82,11 @@ struct DashboardView: View {
     private var housekeepingSection: some View {
         let now = Date()
         let dupCount = derived.duplicateCount
-        let sitesDue = sites.count(where: { $0.state != .exclude && ($0.nextReviewAt.map { $0 <= now } ?? true) })
+        // Only sites actually past their scheduled review (overdue) — a brand-new site with no
+        // review date is "not yet reviewed", not due, so it no longer inflates this card (TASK-582).
+        let sitesDue = sites.count(where: {
+            SiteReviewBucket.classify(state: $0.state, nextReviewAt: $0.nextReviewAt, now: now) == .overdue
+        })
         let activeQueueCount = llmRequests.count(where: { $0.status == .queued || $0.status == .running })
         return VStack(alignment: .leading, spacing: 10) {
             Text("Housekeeping").font(.headline)
@@ -481,8 +485,13 @@ struct DashboardView: View {
         let now = Date()
         let upcoming: [(site: Site, overdue: Bool)] = sites
             .compactMap { site -> (site: Site, overdue: Bool)? in
-                guard let reviewAt = site.nextReviewAt, site.state != .exclude else { return nil }
-                return (site: site, overdue: reviewAt < now)
+                // Shared bucket policy with the Sites screen (TASK-582): only scheduled sites appear
+                // here; not-yet-reviewed and excluded sites are omitted.
+                switch SiteReviewBucket.classify(state: site.state, nextReviewAt: site.nextReviewAt, now: now) {
+                case .overdue: return (site: site, overdue: true)
+                case .dueSoon, .scheduledLater: return (site: site, overdue: false)
+                case .notYetReviewed, .excluded: return nil
+                }
             }
             .sorted { $0.site.nextReviewAt ?? now < $1.site.nextReviewAt ?? now }
             .prefix(5)

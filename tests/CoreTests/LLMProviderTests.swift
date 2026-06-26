@@ -324,6 +324,42 @@ final class AnthropicProviderTests: LLMMockProviderTestCase {
         XCTAssertEqual(result.responseFormat, .text)
     }
 
+    // TASK-539: Anthropic 429 maps to a typed rate-limit error with the advised wait (was httpError).
+    func test429WithRetryAfterThrowsRateLimited() async {
+        LLMMockURLProtocol.requestHandler = { req in
+            let resp = HTTPURLResponse(
+                url: req.url!, statusCode: 429, httpVersion: nil, headerFields: ["Retry-After": "30"]
+            )!
+            return (resp, Data("{\"error\":\"rate limited\"}".utf8))
+        }
+        let provider = AnthropicProvider(apiKey: "k", model: "claude-sonnet-4-6", session: session)
+        let req = ChatRequest(messages: [ChatMessage(role: "user", content: "hi")], model: "claude-sonnet-4-6")
+        do {
+            _ = try await provider.complete(req)
+            XCTFail("expected rateLimited")
+        } catch let LLMProviderError.rateLimited(retryAfter) {
+            XCTAssertEqual(retryAfter, 30)
+        } catch {
+            XCTFail("expected rateLimited, got \(error)")
+        }
+    }
+
+    func test429WithoutRetryAfterStillThrowsRateLimited() async {
+        LLMMockURLProtocol.requestHandler = { req in
+            (mockHTTPResponse(url: req.url!, statusCode: 429), Data("{\"error\":\"slow down\"}".utf8))
+        }
+        let provider = AnthropicProvider(apiKey: "k", model: "claude-sonnet-4-6", session: session)
+        let req = ChatRequest(messages: [ChatMessage(role: "user", content: "hi")], model: "claude-sonnet-4-6")
+        do {
+            _ = try await provider.complete(req)
+            XCTFail("expected rateLimited")
+        } catch LLMProviderError.rateLimited {
+            // expected — retryAfter may be nil
+        } catch {
+            XCTFail("expected rateLimited, got \(error)")
+        }
+    }
+
     func testConcurrencyLimit() {
         XCTAssertEqual(AnthropicProvider(apiKey: "").concurrencyLimit, 2)
     }

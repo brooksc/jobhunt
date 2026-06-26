@@ -83,6 +83,16 @@ public final class AnthropicProvider: LLMProvider, @unchecked Sendable {
             throw LLMProviderError.timeout(seconds: timeoutSeconds)
         }
         guard let http = response as? HTTPURLResponse else { throw LLMProviderError.noResponse }
+        if http.statusCode == 429 {
+            // TASK-539/463: surface a typed rate-limit error carrying the server-advised wait so the
+            // queue honors Retry-After, lowers adaptive concurrency, and doesn't count it toward the
+            // auto-pause streak — instead of a generic httpError.
+            let body = String(data: data, encoding: .utf8) ?? ""
+            let retryAfter = RetryAfterParser.parse(
+                header: http.value(forHTTPHeaderField: "Retry-After"), body: body, now: Date()
+            )
+            throw LLMProviderError.rateLimited(retryAfter: retryAfter)
+        }
         guard (200 ..< 300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
             throw LLMProviderError.httpError(statusCode: http.statusCode, body: body)

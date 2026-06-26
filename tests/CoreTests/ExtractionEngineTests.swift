@@ -97,6 +97,31 @@ private final class CountingProvider: LLMProvider, @unchecked Sendable {
 // MARK: - ExtractionEngineTests
 
 final class ExtractionEngineTests: XCTestCase {
+    // MARK: - Extracted application_url validation (TASK-564)
+
+    func testValidatedApplicationURL_acceptsAndNormalizesHTTPS() {
+        XCTAssertEqual(
+            ExtractionEngine.validatedApplicationURL("HTTPS://Jobs.Example.com/apply"),
+            "https://jobs.example.com/apply",
+            "valid https URL is accepted and scheme/host lowercased"
+        )
+    }
+
+    func testValidatedApplicationURL_rejectsUnsafeOrMalformed() {
+        for bad in [
+            nil, "", "   ",
+            "jobs.example.com/apply", // schemeless
+            "javascript:alert(1)", // non-http(s) scheme
+            "ftp://example.com/file", // unsupported scheme
+            "not a url"
+        ] as [String?] {
+            XCTAssertNil(
+                ExtractionEngine.validatedApplicationURL(bad),
+                "must reject \(bad ?? "nil") so it can't shadow the capture URL"
+            )
+        }
+    }
+
     // MARK: - CostEstimator token math
 
     func testCostEstimateTokenMath() {

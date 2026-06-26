@@ -209,7 +209,7 @@ public enum ExtractionEngine {
             salaryNote: extracted["salary_note"] as? String,
             employmentType: extracted["employment_type"] as? String,
             seniority: extracted["seniority"] as? String,
-            applicationURL: extracted["application_url"] as? String,
+            applicationURL: validatedApplicationURL(extracted["application_url"] as? String),
             extractionConfidence: confidence,
             extractionModel: response.model,
             promptChars: promptChars,
@@ -288,6 +288,15 @@ public enum ExtractionEngine {
     }
 
     // MARK: - Private helpers
+
+    /// LLM output is untrusted: only persist an extracted application URL if it's an absolute
+    /// http/https URL (reusing the shared ingestion policy). Schemeless, `javascript:`, or malformed
+    /// values become nil so they can't shadow the safe capture/canonical URL in apply/availability
+    /// precedence (TASK-564). Returns the normalized URL for valid input.
+    static func validatedApplicationURL(_ raw: String?) -> String? {
+        guard let raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return try? URLNormalizer.validatedForIngestion(raw)
+    }
 
     private static func captureText(_ snapshot: JobExtractionSnapshot) -> String {
         snapshot.captureCleanedDescription ?? snapshot.captureVisibleText ?? snapshot.captureSelectedText ?? ""

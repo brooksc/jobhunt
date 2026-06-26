@@ -415,7 +415,7 @@ private struct DetailFooter: View {
     private var pendingAction: JobAction? {
         let now = Date()
         return job.actions
-            .filter { $0.completedAt == nil && (($0.snoozedUntil ?? now) <= now) }
+            .filter { FollowUpVisibility.isActionable($0, now: now) }
             .sorted { $0.dueDate < $1.dueDate }
             .first
     }

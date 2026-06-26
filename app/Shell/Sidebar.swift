@@ -27,6 +27,14 @@ struct Sidebar: View {
     @Environment(AppServices.self) private var appServices
 
     @Query(filter: #Predicate<JobAction> { $0.completedAt == nil }) private var pendingActions: [JobAction]
+
+    /// Badge count = actionable follow-ups only (the @Query can't express snooze/orphan rules, which
+    /// depend on `now` and the `job` relationship), so it matches the Needs Action screen (TASK-576).
+    private var actionableFollowUpCount: Int {
+        let now = Date()
+        return pendingActions.count { FollowUpVisibility.isActionable($0, now: now) }
+    }
+
     /// Non-terminal LLM requests (queued or running) — drives the live "outstanding" badge on the
     /// LLM Queue row, updating as the queue drains (TASK-491).
     @Query(filter: #Predicate<LLMRequest> { $0.finishedAt == nil }) private var outstandingLLMRequests: [LLMRequest]
@@ -72,7 +80,7 @@ struct Sidebar: View {
                 id: "sidebar.needsAction",
                 label: Label("Needs Action", systemImage: "bell")
             )
-            .badge(pendingActions.isEmpty ? 0 : pendingActions.count)
+            .badge(actionableFollowUpCount)
             .help("Jobs with pending follow-up")
 
             sidebarRow(

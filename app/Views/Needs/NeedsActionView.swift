@@ -65,15 +65,11 @@ struct NeedsActionView: View {
     @State private var isSnoozeAllConfirming: Bool = false
     @State private var errorMessage: String?
 
-    /// Actions that are not snoozed into the future
+    /// Actionable follow-ups: incomplete, not snoozed into the future, linked to a job. Uses the
+    /// shared predicate so this list, the sidebar badge, Dashboard, and export can't drift (TASK-576).
     private var activeActions: [JobAction] {
         let now = Date()
-        return actions.filter { action in
-            if let snoozedUntil = action.snoozedUntil, snoozedUntil > now {
-                return false
-            }
-            return true
-        }
+        return actions.filter { FollowUpVisibility.isActionable($0, now: now) }
     }
 
     private var filteredActions: [JobAction] {

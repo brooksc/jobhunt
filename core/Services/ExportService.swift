@@ -14,6 +14,7 @@ public enum ExportService {
     /// Returns a complete CSV string (headers + rows) for the given jobs.
     public static func jobsCSV(jobs: [Job]) -> String {
         let iso = ISO8601DateFormatter()
+        let now = Date()
         var lines: [String] = [columns.joined(separator: ",")]
 
         for job in jobs {
@@ -44,8 +45,12 @@ public enum ExportService {
                 "extracted_at": extractedAt,
                 "fit_score": job.fitScore.map(String.init) ?? "",
                 "fit_status": job.fitStatus.rawValue,
-                "has_pending_actions": job.actions.contains { $0.completedAt == nil } ? "true" : "false",
-                "open_actions_count": String(job.actions.count(where: { $0.completedAt == nil }))
+                // Actionable = incomplete and not snoozed into the future — same predicate as the
+                // Needs Action screen/badge so the export agrees with the UI (TASK-576).
+                "has_pending_actions": job.actions.contains { FollowUpVisibility.isActionable($0, now: now) }
+                    ? "true" : "false",
+                "open_actions_count": String(job.actions
+                    .count(where: { FollowUpVisibility.isActionable($0, now: now) }))
             ]
 
             // TASK-376: sanitize EVERY field for spreadsheet formula injection at this single point,

@@ -355,6 +355,7 @@ final class SchemaEvolutionTests: XCTestCase {
         _ = att.modelRequested; _ = att.modelReturned; _ = att.responseFormat; _ = att.baseURL
         _ = att.startedAt; _ = att.finishedAt; _ = att.durationMs; _ = att.error
         _ = att.responsePreview; _ = att.promptChars; _ = att.responseChars
+        _ = att.promptTokens; _ = att.completionTokens
         _ = att.request; _ = att.job
 
         // Contact
@@ -518,6 +519,8 @@ final class SchemaEvolutionTests: XCTestCase {
         let _: String? = att.responsePreview
         let _: Int? = att.promptChars
         let _: Int? = att.responseChars
+        let _: Int? = att.promptTokens
+        let _: Int? = att.completionTokens
 
         // JobFitScore
         let jfs = JobFitScore()

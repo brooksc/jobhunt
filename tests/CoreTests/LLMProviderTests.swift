@@ -126,6 +126,9 @@ final class OpenAIProviderTests: LLMMockProviderTestCase {
         XCTAssertEqual(captured?.value(forHTTPHeaderField: "Content-Type"), "application/json")
         XCTAssertEqual(result.content, "hello")
         XCTAssertEqual(result.model, "gpt-4o")
+        // TASK-538: provider-reported token usage is surfaced on ChatResponse.
+        XCTAssertEqual(result.promptTokens, 100)
+        XCTAssertEqual(result.completionTokens, 50)
     }
 
     func testConcurrencyLimit() {
@@ -262,6 +265,9 @@ final class AnthropicProviderTests: LLMMockProviderTestCase {
         XCTAssertEqual(captured.value(forHTTPHeaderField: "anthropic-version"), "2023-06-01")
         XCTAssertEqual(result.content, "result")
         XCTAssertEqual(result.responseFormat, .text)
+        // TASK-538: non-OpenAI provider token usage is surfaced too (Anthropic input/output tokens).
+        XCTAssertEqual(result.promptTokens, 80)
+        XCTAssertEqual(result.completionTokens, 40)
     }
 
     func testSystemMessageExtracted() async throws {

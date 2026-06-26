@@ -678,6 +678,8 @@ public actor BackgroundStore {
         durationMs: Int? = nil,
         promptChars: Int? = nil,
         responseChars: Int? = nil,
+        promptTokens: Int? = nil,
+        completionTokens: Int? = nil,
         error: String? = nil
     ) throws {
         let rid = requestID
@@ -686,7 +688,8 @@ public actor BackgroundStore {
             modelRequested: modelRequested, modelReturned: modelReturned, responseFormat: responseFormat,
             baseURL: baseURL,
             startedAt: startedAt, finishedAt: finishedAt, durationMs: durationMs,
-            error: error, promptChars: promptChars, responseChars: responseChars
+            error: error, promptChars: promptChars, responseChars: responseChars,
+            promptTokens: promptTokens, completionTokens: completionTokens
         )
         record.request = try modelContext.fetch(
             FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == rid })

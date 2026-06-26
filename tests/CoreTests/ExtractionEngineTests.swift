@@ -28,6 +28,22 @@ private struct AlwaysFailProvider: LLMProvider {
     }
 }
 
+/// Returns a canned response with provider-reported token usage (TASK-538).
+private struct TokenReportingProvider: LLMProvider {
+    let id = "token-reporting"
+    let concurrencyLimit = 1
+    let response: String
+    let promptTokens: Int?
+    let completionTokens: Int?
+
+    func complete(_ request: ChatRequest) async throws -> ChatResponse {
+        ChatResponse(
+            content: response, model: request.model, responseFormat: .text,
+            promptTokens: promptTokens, completionTokens: completionTokens
+        )
+    }
+}
+
 /// Records the model string from the last ChatRequest it receives.
 private final class CapturingProvider: LLMProvider, @unchecked Sendable {
     let id: String = "capturing"
@@ -137,6 +153,26 @@ final class ExtractionEngineTests: XCTestCase {
         // Absent / unusable → nil (never fails extraction).
         XCTAssertNil(ExtractionEngine.computeConfidence(Any??.none))
         XCTAssertNil(ExtractionEngine.computeConfidence("not a number" as Any?))
+    }
+
+    // TASK-538: provider-reported token usage flows into ExtractionResult (and on to the attempt).
+    func testExtractionPropagatesProviderTokenUsage() async throws {
+        let snapshot = JobExtractionSnapshot(
+            captureURL: "https://example.com/job",
+            captureCanonicalURL: nil,
+            capturePageTitle: "Engineer",
+            captureCleanedDescription: "We need an engineer.",
+            captureVisibleText: nil,
+            captureSelectedText: nil
+        )
+        let provider = TokenReportingProvider(
+            response: "{\"title\":\"Engineer\"}", promptTokens: 1234, completionTokens: 567
+        )
+        let result = try await ExtractionEngine.extract(
+            snapshot: snapshot, provider: provider, settings: makeExtractionSettings()
+        )
+        XCTAssertEqual(result.promptTokens, 1234)
+        XCTAssertEqual(result.completionTokens, 567)
     }
 
     // MARK: - CostEstimator token math

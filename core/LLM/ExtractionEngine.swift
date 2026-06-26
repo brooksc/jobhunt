@@ -82,6 +82,10 @@ public struct ExtractionResult: Sendable {
     public let extractionModel: String
     public let promptChars: Int
     public let responseChars: Int
+    /// Actual provider-reported token usage when available (TASK-538); nil when the provider doesn't
+    /// report usage (char counts are the fallback).
+    public let promptTokens: Int?
+    public let completionTokens: Int?
     /// Format the provider actually used (may be a downgrade from what was requested) — TASK-454.
     public let responseFormat: ResponseFormat
     /// Whether the job passed the user's location/remote criteria (TASK-464).
@@ -216,6 +220,8 @@ public enum ExtractionEngine {
             extractionModel: response.model,
             promptChars: promptChars,
             responseChars: responseChars,
+            promptTokens: response.promptTokens,
+            completionTokens: response.completionTokens,
             responseFormat: response.responseFormat,
             meetsCriteria: meetsCriteria
         )
@@ -284,7 +290,9 @@ public enum ExtractionEngine {
         let mergedJSON = FitScorer.buildMergedJSON(result: score, rawLLMDict: raw)
         return FitScoreOutput(
             score: score, fitScoreJSON: mergedJSON, promptChars: promptChars,
-            responseChars: responseChars, modelReturned: response.model,
+            responseChars: responseChars,
+            promptTokens: response.promptTokens, completionTokens: response.completionTokens,
+            modelReturned: response.model,
             responseFormat: response.responseFormat
         )
     }

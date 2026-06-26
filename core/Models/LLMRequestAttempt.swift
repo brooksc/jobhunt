@@ -18,6 +18,10 @@ public final class LLMRequestAttempt {
     public var responsePreview: String?
     public var promptChars: Int?
     public var responseChars: Int?
+    /// Actual provider-reported token usage when available (TASK-538). Char counts above remain the
+    /// fallback for providers that don't report usage.
+    public var promptTokens: Int?
+    public var completionTokens: Int?
 
     public var request: LLMRequest?
     public var job: Job?
@@ -37,7 +41,9 @@ public final class LLMRequestAttempt {
         error: String? = nil,
         responsePreview: String? = nil,
         promptChars: Int? = nil,
-        responseChars: Int? = nil
+        responseChars: Int? = nil,
+        promptTokens: Int? = nil,
+        completionTokens: Int? = nil
     ) {
         self.id = id
         self.requestType = requestType
@@ -54,5 +60,7 @@ public final class LLMRequestAttempt {
         self.responsePreview = responsePreview
         self.promptChars = promptChars
         self.responseChars = responseChars
+        self.promptTokens = promptTokens
+        self.completionTokens = completionTokens
     }
 }

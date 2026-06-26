@@ -188,11 +188,20 @@ struct DebugTab: View {
         let promptChars = attempts.compactMap(\.promptChars).filter { $0 > 0 }
         let responseChars = attempts.compactMap(\.responseChars).filter { $0 > 0 }
         let durations = attempts.compactMap(\.durationMs).filter { $0 > 0 }
+        // Actual provider-reported tokens, shown only when some provider supplied usage (TASK-538).
+        let promptTokens = attempts.compactMap(\.promptTokens).filter { $0 > 0 }
+        let completionTokens = attempts.compactMap(\.completionTokens).filter { $0 > 0 }
         return Section("LLM Stats") {
             LabeledContent("Attempts recorded") { mono("\(attempts.count)") }
             statRow("Prompt chars (avg / max)", avg: average(promptChars), max: promptChars.max())
             statRow("Response chars (avg / max)", avg: average(responseChars), max: responseChars.max())
             statRow("Processing ms (avg / max)", avg: average(durations), max: durations.max())
+            if !promptTokens.isEmpty {
+                statRow("Prompt tokens (avg / max)", avg: average(promptTokens), max: promptTokens.max())
+            }
+            if !completionTokens.isEmpty {
+                statRow("Completion tokens (avg / max)", avg: average(completionTokens), max: completionTokens.max())
+            }
         }
     }
 

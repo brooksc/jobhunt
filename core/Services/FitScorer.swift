@@ -13,6 +13,9 @@ public struct FitScoreOutput: Sendable {
     public let promptChars: Int
     /// Character count of the raw LLM response.
     public let responseChars: Int
+    /// Actual provider-reported token usage when available (TASK-538); nil when unreported.
+    public let promptTokens: Int?
+    public let completionTokens: Int?
     /// Model identifier reported by the provider (mirrors extraction's `extractionModel`).
     public let modelReturned: String
     /// Format the provider actually used for this response (may be a downgrade) — TASK-454.

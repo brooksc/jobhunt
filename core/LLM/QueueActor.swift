@@ -615,7 +615,8 @@ public actor QueueActor {
                 modelRequested: extractSettings.llmModel, modelReturned: result.extractionModel,
                 responseFormat: result.responseFormat.wireValue, baseURL: extractBaseURL,
                 startedAt: startedAt, finishedAt: Date(), durationMs: durationMs,
-                promptChars: result.promptChars, responseChars: result.responseChars
+                promptChars: result.promptChars, responseChars: result.responseChars,
+                promptTokens: result.promptTokens, completionTokens: result.completionTokens
             )
 
             // Mark request succeeded
@@ -816,7 +817,8 @@ public actor QueueActor {
                 modelRequested: fitModel, modelReturned: fitOutput.modelReturned,
                 responseFormat: fitOutput.responseFormat.wireValue, baseURL: fitBaseURL,
                 startedAt: startedAt, finishedAt: Date(), durationMs: durationMs,
-                promptChars: fitOutput.promptChars, responseChars: fitOutput.responseChars
+                promptChars: fitOutput.promptChars, responseChars: fitOutput.responseChars,
+                promptTokens: fitOutput.promptTokens, completionTokens: fitOutput.completionTokens
             )
 
             try await store.update(

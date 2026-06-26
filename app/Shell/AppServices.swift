@@ -170,7 +170,10 @@ final class AppServices: @unchecked Sendable {
             queued: counts.queued,
             processing: counts.running,
             failed: counts.failed,
-            recentErrors: recent
+            recentErrors: recent,
+            settingsError: settings.lastSettingsError,
+            keychainError: settings.keychainWriteError,
+            loadError: settings.loadError
         )
     }
 

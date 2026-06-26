@@ -41,4 +41,35 @@ final class DiagnosticsReportTests: XCTestCase {
         XCTAssertTrue(text.contains("[redacted]"))
         XCTAssertTrue(text.contains("Status:             stopped"))
     }
+
+    // TASK-552: settings/keychain/load errors appear (redacted) when present; (none) when clean.
+    func testIncludesRedactedSettingsErrorsWhenPresent() {
+        let text = DiagnosticsReport.text(
+            appVersion: "1", buildNumber: "1", osVersion: "macOS",
+            provider: "openai", model: "gpt",
+            consentGranted: false, queuePaused: false,
+            serverRunning: true, serverError: nil,
+            queued: 0, processing: 0, failed: 0,
+            recentErrors: [],
+            settingsError: "persist failed at /Users/bob/Library/Application Support/x.store",
+            keychainError: "keychain error code -34018",
+            loadError: nil
+        )
+        XCTAssertTrue(text.contains("=== Settings / Persistence ==="))
+        XCTAssertTrue(text.contains("Keychain write:  keychain error code -34018"))
+        XCTAssertFalse(text.contains("/Users/bob/Library"), "settings error paths must be redacted")
+        XCTAssertTrue(text.contains("[redacted]"))
+    }
+
+    func testSettingsSectionShowsNoneWhenClean() {
+        let text = DiagnosticsReport.text(
+            appVersion: "1", buildNumber: "1", osVersion: "macOS",
+            provider: "openai", model: "gpt",
+            consentGranted: false, queuePaused: false,
+            serverRunning: true, serverError: nil,
+            queued: 0, processing: 0, failed: 0,
+            recentErrors: []
+        )
+        XCTAssertTrue(text.contains("=== Settings / Persistence ===\n(none)"))
+    }
 }

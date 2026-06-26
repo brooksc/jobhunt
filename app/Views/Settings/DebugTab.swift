@@ -228,7 +228,9 @@ struct DebugTab: View {
             Section("Recent Errors (last \(errors.count))") {
                 ForEach(errors.reversed()) { record in
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(record.message).font(.callout)
+                        // Redact on display so a screenshot/screen-share of this support surface can't
+                        // leak file paths / URLs / tokens — same classes as Copy Diagnostics (TASK-553).
+                        Text(DiagnosticsRedactor.redact(record.message)).font(.callout)
                         Text(record.timestamp.formatted(date: .omitted, time: .standard))
                             .font(.caption2).foregroundStyle(.tertiary)
                     }

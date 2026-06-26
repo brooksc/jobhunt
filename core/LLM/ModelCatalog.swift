@@ -142,12 +142,15 @@ public enum ModelCatalog {
             // secret — plus the server's reason. View in Console.app, filter process "Jobhunt".
             let authHeader = headers["x-goog-api-key"] ?? headers["Authorization"] ?? headers["x-api-key"] ?? ""
             let rawKey = authHeader.hasPrefix("Bearer ") ? String(authHeader.dropFirst(7)) : authHeader
+            // Redact the URL query and the provider body excerpt before logging — Console is a
+            // support surface and the body can echo tokens/paths (TASK-551). The key is already a
+            // safe fingerprint, never the raw secret.
             NSLog(
                 "[jobhunt-llm] model fetch FAILED status=%d url=%@ key=%@ body=%@",
                 http.statusCode,
-                url.absoluteString,
+                DiagnosticsRedactor.redact(url.absoluteString),
                 Self.keyFingerprint(rawKey),
-                String(data: data.prefix(500), encoding: .utf8) ?? "<non-utf8>"
+                DiagnosticsRedactor.redact(String(data: data.prefix(500), encoding: .utf8) ?? "<non-utf8>")
             )
             throw ModelCatalogError.httpError(statusCode: http.statusCode, serverMessage: Self.serverErrorMessage(data))
         }

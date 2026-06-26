@@ -32,7 +32,10 @@ public enum DiagnosticsReport {
         queued: Int,
         processing: Int,
         failed: Int,
-        recentErrors: [ErrorLine]
+        recentErrors: [ErrorLine],
+        settingsError: String? = nil,
+        keychainError: String? = nil,
+        loadError: String? = nil
     ) -> String {
         let serverStatus = serverRunning ? "running" : "stopped"
         let serverErrorText = serverError.map { " (error: \(DiagnosticsRedactor.redact($0)))" } ?? ""
@@ -44,6 +47,18 @@ public enum DiagnosticsReport {
                     "\(DiagnosticsRedactor.redact($0.message))"
             }
             .joined(separator: "\n")
+
+        // Settings/keychain persistence failures explain why a preference or API key didn't stick —
+        // valuable for support, and these fields never carry raw setting values (TASK-552). Redacted.
+        func line(_ label: String, _ value: String?) -> String? {
+            value.map { "\(label) \(DiagnosticsRedactor.redact($0))" }
+        }
+        let persistenceLines = [
+            line("Settings persist:", settingsError),
+            line("Keychain write: ", keychainError),
+            line("Settings load:  ", loadError)
+        ].compactMap { $0 }
+        let persistenceText = persistenceLines.isEmpty ? "(none)" : persistenceLines.joined(separator: "\n")
 
         return """
         === Jobhunt Diagnostics ===
@@ -63,6 +78,9 @@ public enum DiagnosticsReport {
         Queued:             \(queued)
         Processing:         \(processing)
         Failed:             \(failed)
+
+        === Settings / Persistence ===
+        \(persistenceText)
 
         === Recent Errors ===
         \(errorLines)

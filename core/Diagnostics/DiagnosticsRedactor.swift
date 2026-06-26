@@ -16,8 +16,24 @@ public enum DiagnosticsRedactor {
         // URL query strings: strip everything after '?' in http/https URLs (keep the path).
         result = replace(in: result, pattern: #"(https?://[^\s\?]+)\?[^\s]*"#, template: "$1?[redacted]")
 
-        // Common secret prefixes: Bearer tokens, OpenAI-style keys, Google API keys.
-        result = replace(in: result, pattern: #"(Bearer\s+|sk-|AIza)[A-Za-z0-9\-_\.]{8,}"#, template: "[redacted]")
+        // Scheme-prefixed secrets: Bearer/Basic auth, OpenAI-style keys, Google API keys. Allow
+        // base64 chars (=/+) so a full `Basic <base64>` credential is captured, not just the scheme.
+        result = replace(
+            in: result,
+            pattern: #"(Bearer\s+|Basic\s+|sk-|AIza)[A-Za-z0-9\-_\.=/+]{8,}"#,
+            template: "[redacted]"
+        )
+
+        // Named secret fields/headers in `name: value` or `name=value` form (case-insensitive),
+        // single-token value. The name is preserved; only the value is redacted. Scheme-prefixed
+        // values (e.g. `Authorization: Bearer …`) are already handled above; this catches raw tokens
+        // like `x-api-key: abc123` or `client_secret=abc123`.
+        result = replace(
+            in: result,
+            // swiftlint:disable:next line_length
+            pattern: #"(?i)\b(authorization|x-api[-_]?key|api[-_]?key|access[-_]?token|refresh[-_]?token|client[-_]?secret|token)(\s*[:=]\s*)[^\s,;)}"'&]+"#,
+            template: "$1$2[redacted]"
+        )
 
         return result
     }

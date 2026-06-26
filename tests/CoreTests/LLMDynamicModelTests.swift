@@ -125,7 +125,9 @@ final class AnthropicStructuredOutputTests: LLMMockProviderTestCase {
         )
         let response = try await provider.complete(request)
         XCTAssertEqual(response.content, "{\"title\":\"T\"}")
-        XCTAssertEqual(response.responseFormat, .jsonObject)
+        // TASK-565: a successful structured-output call records json_schema, not json_object.
+        let expected = StructuredOutputSchemas.schema(for: .jobExtraction)
+        XCTAssertEqual(response.responseFormat, .jsonSchema(name: expected.name, schema: expected.schema))
 
         let sent = try bodyText(XCTUnwrap(LLMMockURLProtocol.capturedRequests.first))
         XCTAssertTrue(sent.contains("output_config"), "should send output_config")

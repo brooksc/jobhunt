@@ -44,8 +44,10 @@ public final class AnthropicProvider: LLMProvider, @unchecked Sendable {
         ]
         if let sys = systemMsg { payload["system"] = sys.content }
 
-        let schema = structuredOutputSchema(for: request)
-        if let schema {
+        // The effective strict format (with name+schema) when one applies — reported verbatim so
+        // attempt telemetry records json_schema, not json_object, on success (TASK-565).
+        let strictFormat = structuredOutputFormat(for: request)
+        if case let .jsonSchema(_, schema) = strictFormat {
             // Parse the schema string into an object for embedding; the first content block is
             // then guaranteed valid JSON matching the schema. No beta header is required.
             let schemaObj = (try? JSONSerialization.jsonObject(with: Data(schema.utf8))) ?? [String: Any]()
@@ -53,18 +55,18 @@ public final class AnthropicProvider: LLMProvider, @unchecked Sendable {
         }
 
         do {
-            return try await send(payload: payload, usedSchema: schema != nil)
+            return try await send(payload: payload, reportedFormat: strictFormat ?? .text)
         } catch let LLMProviderError.httpError(statusCode, body) where statusCode == 400
-            && schema != nil && isStructuredOutputError(body) {
+            && strictFormat != nil && isStructuredOutputError(body) {
             // Model doesn't support output_config.format — retry as free-form text + JSON repair.
             payload.removeValue(forKey: "output_config")
-            return try await send(payload: payload, usedSchema: false)
+            return try await send(payload: payload, reportedFormat: .text)
         }
     }
 
     // MARK: - Private
 
-    private func send(payload: [String: Any], usedSchema: Bool) async throws -> ChatResponse {
+    private func send(payload: [String: Any], reportedFormat: ResponseFormat) async throws -> ChatResponse {
         let body = try JSONSerialization.data(withJSONObject: payload)
         var urlRequest = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
         urlRequest.httpMethod = "POST"
@@ -98,20 +100,22 @@ public final class AnthropicProvider: LLMProvider, @unchecked Sendable {
         return ChatResponse(
             content: content,
             model: modelName,
-            responseFormat: usedSchema ? .jsonObject : .text,
+            responseFormat: reportedFormat,
             promptTokens: decoded.usage?.inputTokens,
             completionTokens: decoded.usage?.outputTokens
         )
     }
 
-    /// Resolves the JSON Schema to enforce: the structured-output kind takes precedence, falling
-    /// back to an explicit `.jsonSchema` response format if one was supplied.
-    private func structuredOutputSchema(for request: ChatRequest) -> String? {
+    /// Resolves the strict format to enforce + report: the structured-output kind takes precedence,
+    /// falling back to an explicit `.jsonSchema` response format. Returns the full `.jsonSchema`
+    /// (name + schema) so success is recorded as json_schema, not json_object (TASK-565).
+    private func structuredOutputFormat(for request: ChatRequest) -> ResponseFormat? {
         if let kind = request.structuredOutput {
-            return StructuredOutputSchemas.schema(for: kind).schema
+            let (name, schema) = StructuredOutputSchemas.schema(for: kind)
+            return .jsonSchema(name: name, schema: schema)
         }
-        if case let .jsonSchema(_, schema) = request.responseFormat {
-            return schema
+        if case .jsonSchema = request.responseFormat {
+            return request.responseFormat
         }
         return nil
     }

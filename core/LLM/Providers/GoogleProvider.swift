@@ -76,11 +76,13 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
         guard let url = URL(string: urlStr) else { throw LLMProviderError.unavailable(reason: "Invalid Google URL") }
 
         let sentSchema = responseSchema != nil
+        var schemaApplied = sentSchema
         var (data, http) = try await send(makePayload(includeSchema: true), to: url)
         // TASK-481 AC#3: Gemini rejects unsupported schema keywords/dialect with a 400. Rather than
         // fail the whole extraction, retry once in plain JSON mode (no responseSchema) — the prompt
         // still instructs the field contract, so this degrades to the pre-481 behavior.
         if http.statusCode == 400, sentSchema {
+            schemaApplied = false
             (data, http) = try await send(makePayload(includeSchema: false), to: url)
         }
         guard (200 ..< 300).contains(http.statusCode) else {
@@ -97,10 +99,21 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
         }
         let modelName = decoded.modelVersion ?? request.model
 
+        // Report the format actually used so attempt telemetry is accurate (TASK-565): json_schema
+        // when the responseSchema stuck, json_object when JSON mode ran without (or after dropping)
+        // the schema, text otherwise.
+        let effectiveFormat: ResponseFormat = if !wantsJSON {
+            .text
+        } else if schemaApplied, case let .jsonSchema(name, schema) = request.responseFormat {
+            .jsonSchema(name: name, schema: schema)
+        } else {
+            .jsonObject
+        }
+
         return ChatResponse(
             content: content,
             model: modelName,
-            responseFormat: .text,
+            responseFormat: effectiveFormat,
             promptTokens: decoded.usageMetadata?.promptTokenCount,
             completionTokens: decoded.usageMetadata?.candidatesTokenCount
         )

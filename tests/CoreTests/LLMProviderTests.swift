@@ -285,6 +285,45 @@ final class AnthropicProviderTests: LLMMockProviderTestCase {
         _ = try await provider.complete(req)
     }
 
+    // TASK-565: a successful strict-schema call records json_schema (was json_object).
+    func testStrictSchemaSuccessReportsJSONSchema() async throws {
+        LLMMockURLProtocol.requestHandler = { req in
+            (mockHTTPResponse(url: req.url!), self.anthropicResponse(text: "{}"))
+        }
+        let provider = AnthropicProvider(apiKey: "k", model: "claude-sonnet-4-6", session: session)
+        let format = ResponseFormat.jsonSchema(name: "job", schema: "{\"type\":\"object\"}")
+        let req = ChatRequest(
+            messages: [ChatMessage(role: "user", content: "hi")],
+            model: "claude-sonnet-4-6",
+            responseFormat: format
+        )
+        let result = try await provider.complete(req)
+        XCTAssertEqual(result.responseFormat, format)
+    }
+
+    // TASK-565: when the model rejects output_config (400), the text-fallback retry records text.
+    func testStructuredOutputFallbackReportsText() async throws {
+        var calls = 0
+        LLMMockURLProtocol.requestHandler = { req in
+            calls += 1
+            if calls == 1 {
+                return (
+                    mockHTTPResponse(url: req.url!, statusCode: 400),
+                    Data("{\"error\":\"output_config not supported\"}".utf8)
+                )
+            }
+            return (mockHTTPResponse(url: req.url!), self.anthropicResponse(text: "{}"))
+        }
+        let provider = AnthropicProvider(apiKey: "k", model: "claude-sonnet-4-6", session: session)
+        let req = ChatRequest(
+            messages: [ChatMessage(role: "user", content: "hi")],
+            model: "claude-sonnet-4-6",
+            responseFormat: .jsonSchema(name: "job", schema: "{\"type\":\"object\"}")
+        )
+        let result = try await provider.complete(req)
+        XCTAssertEqual(result.responseFormat, .text)
+    }
+
     func testConcurrencyLimit() {
         XCTAssertEqual(AnthropicProvider(apiKey: "").concurrencyLimit, 2)
     }
@@ -358,6 +397,66 @@ final class GoogleProviderTests: LLMMockProviderTestCase {
             model: "gemini-2.5-flash"
         )
         _ = try await provider.complete(req)
+    }
+
+    // TASK-565: Google reported .text regardless of what it sent. Now it reports the effective format.
+    func testStrictSchemaSuccessReportsJSONSchema() async throws {
+        LLMMockURLProtocol.requestHandler = { req in
+            (mockHTTPResponse(url: req.url!), self.googleResponse(text: "{}"))
+        }
+        let provider = GoogleProvider(apiKey: "gkey", model: "gemini-2.5-flash", session: session)
+        let format = ResponseFormat.jsonSchema(name: "job", schema: "{\"type\":\"object\"}")
+        let req = ChatRequest(
+            messages: [ChatMessage(role: "user", content: "hi")],
+            model: "gemini-2.5-flash",
+            responseFormat: format
+        )
+        let result = try await provider.complete(req)
+        XCTAssertEqual(result.responseFormat, format)
+    }
+
+    func testJSONObjectModeReportsJSONObject() async throws {
+        LLMMockURLProtocol.requestHandler = { req in
+            (mockHTTPResponse(url: req.url!), self.googleResponse(text: "{}"))
+        }
+        let provider = GoogleProvider(apiKey: "gkey", model: "gemini-2.5-flash", session: session)
+        let req = ChatRequest(
+            messages: [ChatMessage(role: "user", content: "hi")],
+            model: "gemini-2.5-flash",
+            responseFormat: .jsonObject
+        )
+        let result = try await provider.complete(req)
+        XCTAssertEqual(result.responseFormat, .jsonObject)
+    }
+
+    /// Schema rejected (400) → JSON-mode retry → records json_object, not json_schema.
+    func testSchemaRejected400ReportsJSONObject() async throws {
+        var calls = 0
+        LLMMockURLProtocol.requestHandler = { req in
+            calls += 1
+            if calls == 1 {
+                return (mockHTTPResponse(url: req.url!, statusCode: 400), Data("{\"error\":\"bad schema\"}".utf8))
+            }
+            return (mockHTTPResponse(url: req.url!), self.googleResponse(text: "{}"))
+        }
+        let provider = GoogleProvider(apiKey: "gkey", model: "gemini-2.5-flash", session: session)
+        let req = ChatRequest(
+            messages: [ChatMessage(role: "user", content: "hi")],
+            model: "gemini-2.5-flash",
+            responseFormat: .jsonSchema(name: "job", schema: "{\"type\":\"object\"}")
+        )
+        let result = try await provider.complete(req)
+        XCTAssertEqual(result.responseFormat, .jsonObject)
+    }
+
+    func testPlainTextReportsText() async throws {
+        LLMMockURLProtocol.requestHandler = { req in
+            (mockHTTPResponse(url: req.url!), self.googleResponse(text: "hello"))
+        }
+        let provider = GoogleProvider(apiKey: "gkey", model: "gemini-2.5-flash", session: session)
+        let req = ChatRequest(messages: [ChatMessage(role: "user", content: "hi")], model: "gemini-2.5-flash")
+        let result = try await provider.complete(req)
+        XCTAssertEqual(result.responseFormat, .text)
     }
 
     func testConcurrencyLimit() {

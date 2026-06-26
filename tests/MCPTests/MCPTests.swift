@@ -1,4 +1,5 @@
 // MCPHelpers.swift is compiled directly into this test bundle (JobhuntMCP is a tool, not a framework).
+import JobhuntCore
 import XCTest
 
 final class MCPTests: XCTestCase {
@@ -182,18 +183,32 @@ final class MCPTests: XCTestCase {
         )
     }
 
-    // MARK: - readToken returns nil when file absent
+    // MARK: - readToken (shared policy via MCPTokenManager — TASK-531)
+
+    // Exercised through the helper-facing API via its URL seam, never the production token path.
+
+    private func tokenTempURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("mcp-token-test-\(UUID().uuidString)")
+    }
 
     func testReadToken_returnsNilWhenFileMissing() {
-        // Use a temp directory that definitely has no token file
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("mcp-test-\(UUID().uuidString)")
-        // readToken() reads from ~/.jobhunt-mcp-token — we can only verify it doesn't crash
-        // and returns a String? (nil or valid token)
-        let token = readToken()
-        // If the file exists in the test environment the token will be non-nil; that's fine.
-        // We just verify the return type is correct (compiler check) and it doesn't throw.
-        _ = token as String?
-        _ = tempDir // suppress unused warning
+        let url = tokenTempURL()
+        XCTAssertNil(readToken(at: url), "missing token file must read as nil (helper fails closed)")
+    }
+
+    func testReadToken_returnsTokenForOwnerOnlyFile() throws {
+        let url = tokenTempURL()
+        defer { MCPTokenManager.delete(at: url) }
+        let written = try MCPTokenManager.generateAndWrite(at: url)
+        XCTAssertEqual(readToken(at: url), written, "owner-only (0600) token must be readable")
+    }
+
+    func testReadToken_rejectsGroupOrWorldReadableFile() throws {
+        let url = tokenTempURL()
+        defer { MCPTokenManager.delete(at: url) }
+        try "tok".write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+        XCTAssertNil(readToken(at: url), "group/world-readable token must be rejected")
     }
 }

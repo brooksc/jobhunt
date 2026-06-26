@@ -14,17 +14,10 @@ struct MCPError: Error {
 
 // MARK: - Token & port discovery
 
-func readToken() -> String? {
-    let tokenURL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".jobhunt-mcp-token")
-    let path = tokenURL.path
-    // Refuse to use the token if the file has group or world-readable bits (must be 0600).
-    var st = stat()
-    guard stat(path, &st) == 0,
-          (st.st_mode & 0o177) == 0
-    else { return nil }
-    guard let token = try? String(contentsOf: tokenURL, encoding: .utf8) else { return nil }
-    return token.trimmingCharacters(in: .whitespacesAndNewlines)
+func readToken(at url: URL = MCPTokenManager.tokenURL) -> String? {
+    // Single source of truth for the token path + owner-only permission policy — shared with the app
+    // via JobhuntCore instead of a duplicated stat/permission check that could drift (TASK-531).
+    MCPTokenManager.read(at: url)
 }
 
 func discoverPort() -> Int? {

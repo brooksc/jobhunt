@@ -28,12 +28,14 @@ public enum MCPTokenManager {
         delete(at: tokenURL)
     }
 
-    // MARK: - Testable seams (operate on an explicit URL so the lifecycle can be unit-tested
+    // MARK: - Shared URL-seam implementation
 
-    // without touching the user's real home directory — TASK-530)
+    // Operate on an explicit URL so the lifecycle can be unit-tested without touching the user's real
+    // home directory (TASK-530), and so the MCP command-line helper can share the exact same path +
+    // permission policy instead of duplicating it (TASK-531). Public for the separate JobhuntMCP target.
 
     @discardableResult
-    static func generateAndWrite(at url: URL) throws -> String {
+    public static func generateAndWrite(at url: URL) throws -> String {
         let token = UUID().uuidString
         do {
             // Write atomically then lock down permissions immediately.
@@ -47,7 +49,7 @@ public enum MCPTokenManager {
         return token
     }
 
-    static func read(at url: URL) -> String? {
+    public static func read(at url: URL) -> String? {
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
               let perms = attrs[.posixPermissions] as? Int,
               perms & 0o077 == 0 else {
@@ -58,7 +60,7 @@ public enum MCPTokenManager {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    static func delete(at url: URL) {
+    public static func delete(at url: URL) {
         try? FileManager.default.removeItem(at: url)
     }
 }

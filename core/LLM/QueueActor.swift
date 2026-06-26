@@ -523,8 +523,11 @@ public actor QueueActor {
         }
 
         // Read outside the do/catch so the failed-attempt record (in catch) can also reference the
-        // requested model (TASK-535).
+        // requested model (TASK-535) and the effective endpoint (TASK-537).
         let extractSettings = await readExtractionSettings()
+        let extractBaseURL = LLMProviderFactory.resolveBaseURL(
+            provider: extractSettings.llmProvider, customBaseURL: extractSettings.llmBaseURL
+        )
 
         do {
             // Enforce consent immediately before sending data to a cloud provider.
@@ -605,7 +608,7 @@ public actor QueueActor {
                 // actually used (they differ under OpenRouter free-model rotation). Provider identity
                 // (provider.id) is intentionally NOT stored here — it's not a model id (TASK-535).
                 modelRequested: extractSettings.llmModel, modelReturned: result.extractionModel,
-                responseFormat: result.responseFormat.wireValue,
+                responseFormat: result.responseFormat.wireValue, baseURL: extractBaseURL,
                 startedAt: startedAt, finishedAt: Date(), durationMs: durationMs,
                 promptChars: result.promptChars, responseChars: result.responseChars
             )
@@ -644,7 +647,8 @@ public actor QueueActor {
             try await store.recordAttempt(
                 requestID: itemID, jobID: jobID,
                 requestType: .extract, attempt: item.attempt, status: .failed,
-                modelRequested: extractSettings.llmModel, startedAt: startedAt, finishedAt: Date(),
+                modelRequested: extractSettings.llmModel, baseURL: extractBaseURL,
+                startedAt: startedAt, finishedAt: Date(),
                 durationMs: durationMs, error: errorStr
             )
 
@@ -737,6 +741,9 @@ public actor QueueActor {
         }
 
         let fitSettings = await readExtractionSettings()
+        let fitBaseURL = LLMProviderFactory.resolveBaseURL(
+            provider: fitSettings.llmProvider, customBaseURL: fitSettings.llmBaseURL
+        )
 
         // Enforce consent immediately before sending data to a cloud provider.
         let consented = ConsentHelper.isConsented(
@@ -797,7 +804,7 @@ public actor QueueActor {
                 requestID: itemID, jobID: jobID,
                 requestType: .fit, attempt: item.attempt, status: .succeeded,
                 modelRequested: fitModel, modelReturned: fitOutput.modelReturned,
-                responseFormat: fitOutput.responseFormat.wireValue,
+                responseFormat: fitOutput.responseFormat.wireValue, baseURL: fitBaseURL,
                 startedAt: startedAt, finishedAt: Date(), durationMs: durationMs,
                 promptChars: fitOutput.promptChars, responseChars: fitOutput.responseChars
             )
@@ -831,7 +838,7 @@ public actor QueueActor {
             try await store.recordAttempt(
                 requestID: itemID, jobID: jobID,
                 requestType: .fit, attempt: item.attempt, status: .failed,
-                modelRequested: fitModel, startedAt: startedAt, finishedAt: Date(),
+                modelRequested: fitModel, baseURL: fitBaseURL, startedAt: startedAt, finishedAt: Date(),
                 durationMs: durationMs, error: errorStr
             )
 

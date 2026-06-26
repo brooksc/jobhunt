@@ -672,6 +672,7 @@ public actor BackgroundStore {
         modelRequested: String?,
         modelReturned: String? = nil,
         responseFormat: String? = nil,
+        baseURL: String? = nil,
         startedAt: Date,
         finishedAt: Date,
         durationMs: Int? = nil,
@@ -683,6 +684,7 @@ public actor BackgroundStore {
         let record = LLMRequestAttempt(
             requestType: requestType, attempt: attempt, status: status,
             modelRequested: modelRequested, modelReturned: modelReturned, responseFormat: responseFormat,
+            baseURL: baseURL,
             startedAt: startedAt, finishedAt: finishedAt, durationMs: durationMs,
             error: error, promptChars: promptChars, responseChars: responseChars
         )

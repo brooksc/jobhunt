@@ -127,6 +127,14 @@ final class MockLLMInferenceTests: XCTestCase {
             provider.id,
             "modelRequested must not be the provider id (\(provider.id))"
         )
+        // TASK-537: the attempt records the effective provider endpoint.
+        XCTAssertEqual(
+            extractAttempt.baseURL,
+            LLMProviderFactory.resolveBaseURL(
+                provider: settings().llmProvider, customBaseURL: settings().llmBaseURL
+            ),
+            "attempt must persist the effective base URL"
+        )
     }
 
     /// TASK-491 regression: a capture must kick the drain loop on its own. Previously the extraction

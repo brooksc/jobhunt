@@ -1,9 +1,10 @@
 ---
 id: TASK-562
 title: 'Align extraction confidence across prompt, strict schema, DTO, and persistence'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-20 00:56'
+updated_date: '2026-06-26 03:38'
 labels:
   - audit
   - llm
@@ -38,7 +39,13 @@ Suggested implementation: make one contract authoritative. Either add `confidenc
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The extraction prompt, strict schema, DTO, and persisted `extractionConfidence` behavior agree on whether `confidence` is part of the output contract.
-- [ ] #2 Strict-schema extraction tests prove confidence is either preserved intentionally or no longer requested/expected.
-- [ ] #3 A regression test prevents prompt-listed extraction keys from drifting away from schema/DTO keys.
+- [x] #1 The extraction prompt, strict schema, DTO, and persisted `extractionConfidence` behavior agree on whether `confidence` is part of the output contract.
+- [x] #2 Strict-schema extraction tests prove confidence is either preserved intentionally or no longer requested/expected.
+- [x] #3 A regression test prevents prompt-listed extraction keys from drifting away from schema/DTO keys.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Made confidence a single 0–1 number across the contract: the prompt now asks for "a single number from 0 to 1", and StructuredOutputSchemas.jobExtraction includes confidence in properties + required (so OpenAI/Anthropic strict providers can return it). It's read leniently outside the throwing DTO (ExtractionEngine preserves raw["confidence"]; computeConfidence accepts a single Double/Int, with legacy per-field-object averaging for back-compat) so a soft UI hint never fails extraction. Tests: testExtractionSchemaIncludesConfidence (in props+required), testExtractionSchemaKeysMatchDTO (schema keys == DTO keys ∪ {confidence}, prevents drift), testComputeConfidenceHandlesSingleNumberAndLegacyObject. Commit shares the schema change with TASK-563. Full CoreTests (934) green.
+<!-- SECTION:FINAL_SUMMARY:END -->

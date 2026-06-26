@@ -1,9 +1,10 @@
 ---
 id: TASK-552
 title: Include settings and keychain persistence failures in copied diagnostics
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 22:59'
+updated_date: '2026-06-26 00:50'
 labels:
   - audit
   - diagnostics
@@ -33,7 +34,13 @@ Suggested implementation: add a `Settings` or `Persistence` section to copied di
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Copied diagnostics include settings persist, keychain write, and settings load errors when present.
-- [ ] #2 All included settings/keychain diagnostic text is passed through `DiagnosticsRedactor.redact`.
-- [ ] #3 The diagnostics output still excludes raw setting values, API keys, job descriptions, and resume content.
+- [x] #1 Copied diagnostics include settings persist, keychain write, and settings load errors when present.
+- [x] #2 All included settings/keychain diagnostic text is passed through `DiagnosticsRedactor.redact`.
+- [x] #3 The diagnostics output still excludes raw setting values, API keys, job descriptions, and resume content.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+DiagnosticsReport gained a "Settings / Persistence" section carrying lastSettingsError, keychainWriteError, and loadError when present (each redacted; "(none)" when clean). AppServices.diagnosticsText passes them from SettingsStore. No raw setting values, API keys, job, or resume content are included. Tests: DiagnosticsReportTests.testIncludesRedactedSettingsErrorsWhenPresent / testSettingsSectionShowsNoneWhenClean. Commit 456ec97.
+<!-- SECTION:FINAL_SUMMARY:END -->

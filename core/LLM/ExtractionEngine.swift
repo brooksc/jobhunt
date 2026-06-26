@@ -149,8 +149,10 @@ public enum ExtractionEngine {
 
         // TASK-456: validate provider JSON into the typed extraction schema before normalization.
         // Incompatible field shapes throw (retryable) instead of being silently dropped; the rebuilt
-        // dict carries the same snake_case keys the normalization pipeline reads. `confidence` is not
-        // part of the strict schema, so it's preserved verbatim from the raw payload.
+        // dict carries the same snake_case keys the normalization pipeline reads. `confidence` is in
+        // the schema (a single 0–1 number, TASK-562) but is read leniently outside the throwing DTO —
+        // it's a soft hint, so it's preserved verbatim from the raw payload and must never fail
+        // extraction (a legacy per-field object is still tolerated by computeConfidence).
         let dto = try ExtractionDTO(raw: raw)
         var extracted: [String: Any?] = dto.asDict()
         if let confidence = raw["confidence"] { extracted["confidence"] = confidence }
@@ -306,8 +308,14 @@ public enum ExtractionEngine {
         value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private static func computeConfidence(_ raw: Any??) -> Double? {
+    /// Read the extraction confidence. The contract is a single 0–1 number (TASK-562), but we stay
+    /// lenient: a legacy per-field object (older/non-strict providers) is averaged for back-compat,
+    /// and anything else is treated as absent — confidence is a soft UI hint and must never fail
+    /// extraction.
+    static func computeConfidence(_ raw: Any??) -> Double? {
         guard let outer = raw, let inner = outer else { return nil }
+        if let dbl = inner as? Double { return dbl }
+        if let int = inner as? Int { return Double(int) }
         if let dict = inner as? [String: Any] {
             let values = dict.values.compactMap { val -> Double? in
                 if let dbl = val as? Double { return dbl }

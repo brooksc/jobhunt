@@ -122,6 +122,23 @@ final class ExtractionEngineTests: XCTestCase {
         }
     }
 
+    // MARK: - Extraction confidence (TASK-562)
+
+    func testComputeConfidenceHandlesSingleNumberAndLegacyObject() throws {
+        // New contract: a single 0–1 number.
+        XCTAssertEqual(ExtractionEngine.computeConfidence(0.9 as Any?), 0.9)
+        XCTAssertEqual(ExtractionEngine.computeConfidence(1 as Any?), 1.0)
+        // Legacy per-field object is still averaged (back-compat / non-strict providers).
+        XCTAssertEqual(
+            try XCTUnwrap(ExtractionEngine.computeConfidence(["a": 0.8, "b": 0.6] as Any?)),
+            0.7,
+            accuracy: 0.0001
+        )
+        // Absent / unusable → nil (never fails extraction).
+        XCTAssertNil(ExtractionEngine.computeConfidence(Any??.none))
+        XCTAssertNil(ExtractionEngine.computeConfidence("not a number" as Any?))
+    }
+
     // MARK: - CostEstimator token math
 
     func testCostEstimateTokenMath() {

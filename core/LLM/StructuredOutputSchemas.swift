@@ -38,13 +38,14 @@ public enum StructuredOutputSchemas {
         "nice_to_haves": {"type": "array", "items": {"type": "string"}},
         "benefits": {"type": "array", "items": {"type": "string"}},
         "application_url": {"type": ["string", "null"]},
-        "application_instructions": {"type": ["string", "null"]}
+        "application_instructions": {"type": ["string", "null"]},
+        "confidence": {"type": ["number", "null"]}
       },
       "required": [
         "company", "title", "location", "remote_type", "salary_min", "salary_max",
         "salary_hourly_min", "salary_hourly_max", "salary_currency", "salary_note",
         "employment_type", "seniority", "skills", "summary", "requirements",
-        "nice_to_haves", "benefits", "application_url", "application_instructions"
+        "nice_to_haves", "benefits", "application_url", "application_instructions", "confidence"
       ]
     }
     """
@@ -54,7 +55,6 @@ public enum StructuredOutputSchemas {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "overall": {"type": "integer"},
         "summary": {"type": ["string", "null"]},
         "requirement_assessments": {
           "type": "array",
@@ -77,14 +77,13 @@ public enum StructuredOutputSchemas {
             "properties": {
               "name": {"type": "string"},
               "score": {"type": "integer"},
-              "weight": {"type": "number"},
               "rationale": {"type": "string"}
             },
-            "required": ["name", "score", "weight", "rationale"]
+            "required": ["name", "score", "rationale"]
           }
         }
       },
-      "required": ["overall", "summary", "requirement_assessments", "dimensions"]
+      "required": ["summary", "requirement_assessments", "dimensions"]
     }
     """
 }

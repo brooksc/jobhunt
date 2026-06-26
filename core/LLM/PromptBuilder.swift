@@ -109,7 +109,7 @@ public enum PromptBuilder {
         - benefits: array of strings
         - application_url: string or null
         - application_instructions: string or null — verbatim text of any explicit submission instructions the posting gives about HOW to apply (e.g. "include phrase X at the top of your resume", "submit via this link", "include your salary expectations"). These are submission mechanics, NOT job qualifications. Null when no special submission instructions are present.
-        - confidence: object mapping field names to confidence numbers from 0 to 1
+        - confidence: a single number from 0 to 1 — your overall confidence in this extraction
 
         Salary rules:
         - ALWAYS extract salary_min and salary_max when any numeric pay range appears in the posting.

@@ -107,11 +107,10 @@ enum MockLLMResponder {
         ])
     }
 
-    /// Dimensions match `FitScorer.dimensionWeights` exactly (names + weights) so validation passes;
-    /// the scores weight-average to ~72.
+    /// Dimension names match `FitScorer.dimensionWeights` exactly so validation passes. No `overall`
+    /// or per-dimension `weight` — the app computes those locally; they're not in the contract (TASK-563).
     static func fitContentJSON() -> String {
         jsonString([
-            "overall": 72,
             "summary": "Mock fit assessment.",
             "requirement_assessments": [
                 ["requirement": "5+ years iOS", "status": "met", "evidence": "6 years of Swift/iOS."],
@@ -119,11 +118,11 @@ enum MockLLMResponder {
                 ["requirement": "Kotlin", "status": "missing", "evidence": "No Kotlin on the resume."]
             ],
             "dimensions": [
-                ["name": "required_qualifications", "score": 75, "weight": 0.45, "rationale": "mock"],
-                ["name": "preferred_qualifications", "score": 60, "weight": 0.05, "rationale": "mock"],
-                ["name": "skills", "score": 80, "weight": 0.15, "rationale": "mock"],
-                ["name": "experience_level", "score": 70, "weight": 0.20, "rationale": "mock"],
-                ["name": "domain_fit", "score": 65, "weight": 0.15, "rationale": "mock"]
+                ["name": "required_qualifications", "score": 75, "rationale": "mock"],
+                ["name": "preferred_qualifications", "score": 60, "rationale": "mock"],
+                ["name": "skills", "score": 80, "rationale": "mock"],
+                ["name": "experience_level", "score": 70, "rationale": "mock"],
+                ["name": "domain_fit", "score": 65, "rationale": "mock"]
             ]
         ])
     }

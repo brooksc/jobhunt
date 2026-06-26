@@ -75,4 +75,41 @@ final class StructuredOutputSchemasTests: XCTestCase {
         let statusEnum = (aProps["status"] as? [String: Any])?["enum"] as? [String]
         XCTAssertEqual(Set(statusEnum ?? []), ["met", "partial", "missing"])
     }
+
+    // TASK-562: confidence (a single number) is part of the strict contract.
+    func testExtractionSchemaIncludesConfidence() throws {
+        let schema = try parse(.jobExtraction)
+        let props = try XCTUnwrap(schema["properties"] as? [String: Any])
+        XCTAssertNotNil(props["confidence"], "confidence must be in the schema so strict providers return it")
+        let required = try XCTUnwrap(schema["required"] as? [String])
+        XCTAssertTrue(required.contains("confidence"), "OpenAI strict mode requires every property in `required`")
+    }
+
+    // TASK-562: the schema and the DTO agree — schema properties = DTO keys + confidence (which is
+    // read leniently outside the DTO). Prevents prompt/schema/DTO key drift.
+    func testExtractionSchemaKeysMatchDTO() throws {
+        let props = try XCTUnwrap(parse(.jobExtraction)["properties"] as? [String: Any])
+        let schemaKeys = Set(props.keys)
+        let dtoKeys = try Set(ExtractionDTO(raw: [:]).asDict().keys)
+        XCTAssertEqual(
+            schemaKeys,
+            dtoKeys.union(["confidence"]),
+            "schema properties must equal the DTO keys plus the lenient `confidence`"
+        )
+    }
+
+    // TASK-563: overall + per-dimension weight are computed locally, not provider-supplied, so they
+    // must NOT be in the strict fit schema (the prompt forbids overall; the validator ignores both).
+    func testFitSchemaOmitsOverallAndWeight() throws {
+        let schema = try parse(.fitScore)
+        let required = try XCTUnwrap(schema["required"] as? [String])
+        XCTAssertFalse(required.contains("overall"), "overall is computed locally, not provider-supplied")
+        XCTAssertNil((schema["properties"] as? [String: Any])?["overall"])
+
+        let dimItem = try XCTUnwrap(
+            ((schema["properties"] as? [String: Any])?["dimensions"] as? [String: Any])?["items"] as? [String: Any]
+        )
+        XCTAssertNil((dimItem["properties"] as? [String: Any])?["weight"], "weight is not in the contract")
+        XCTAssertEqual(Set(dimItem["required"] as? [String] ?? []), ["name", "score", "rationale"])
+    }
 }

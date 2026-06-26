@@ -58,7 +58,9 @@ public struct ExtractionDTO {
     }
 
     /// Rebuild the snake_case dict the normalization pipeline + `ExtractionResult` read from.
-    /// `confidence` is not part of the strict schema; the caller re-injects it from the raw payload.
+    /// `confidence` (a single 0–1 number, TASK-562) is in the strict schema but read leniently outside
+    /// this throwing DTO — the caller re-injects it from the raw payload so a soft hint never fails
+    /// extraction.
     public func asDict() -> [String: Any?] {
         [
             "company": company,

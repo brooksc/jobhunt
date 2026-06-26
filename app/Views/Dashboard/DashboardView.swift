@@ -20,6 +20,9 @@ struct DashboardView: View {
     /// Pending follow-up actions — drives the follow-ups recompute so it stays correct when an
     /// action is completed/snoozed without a `jobs` change.
     @Query(filter: #Predicate<JobAction> { $0.completedAt == nil }) private var pendingActions: [JobAction]
+    /// Resolved duplicate decisions — feed the unresolved-pair count so it matches the Duplicates
+    /// screen / sidebar badge (TASK-581).
+    @Query private var duplicateDecisions: [DuplicateDecision]
 
     /// Cached aggregate metrics — recomputed only when `jobs` changes, not on every render.
     @State private var summary: JobStatusSummary = .zero
@@ -63,13 +66,15 @@ struct DashboardView: View {
         .onChange(of: jobs) { _, _ in recomputeMetrics() }
         // Follow-ups depend on action state, which can change without a `jobs` change.
         .onChange(of: pendingActions) { _, _ in recomputeMetrics() }
+        // Resolving a duplicate (a new decision) can change the count without a `jobs` change.
+        .onChange(of: duplicateDecisions) { _, _ in recomputeMetrics() }
     }
 
     // MARK: - Cached metrics (TASK-363)
 
     private func recomputeMetrics() {
         summary = JobStatusSummary(jobs: jobs)
-        derived = DashboardDerived(jobs: jobs, now: Date())
+        derived = DashboardDerived(jobs: jobs, decisions: duplicateDecisions, now: Date())
     }
 
     // MARK: - Stat Cards
@@ -570,7 +575,7 @@ private struct DashboardDerived {
 
     init() {}
 
-    init(jobs: [Job], now: Date) {
+    init(jobs: [Job], decisions: [DuplicateDecision], now: Date) {
         recommended = Array(
             jobs.filter { $0.status == .pursuing && $0.fitStatus == .succeeded && ($0.fitScore ?? 0) > 0 }
                 .sorted { ($0.fitScore ?? 0) > ($1.fitScore ?? 0) }
@@ -599,7 +604,9 @@ private struct DashboardDerived {
                 .map(\.job)
         )
 
-        duplicateCount = jobs.count(where: { $0.duplicateOfJobID != nil })
+        // Unresolved review pairs — same count as the Duplicates screen / sidebar badge, so the card
+        // never opens an empty review queue (TASK-581).
+        duplicateCount = DuplicateDetector.unresolvedPairCount(jobs: jobs, decisions: decisions)
         // Match the Data Quality screen's default view so the card doesn't promise issues that vanish
         // on open: eligible status, not already reviewed, and actually has issues (TASK-580).
         qualityIssueCount = jobs.count(where: {

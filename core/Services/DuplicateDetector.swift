@@ -77,6 +77,27 @@ public struct JobSnapshot: Sendable {
 public struct DuplicateDetector {
     public init() {}
 
+    // MARK: - Shared review-count policy (TASK-581)
+
+    /// Snapshots for duplicate *review*: only jobs not already marked `.duplicate` (those are
+    /// resolved) and that have a capture. The single place the "what's reviewable" rule lives, shared
+    /// by the Duplicates screen, the sidebar badge, and the dashboard card so they can't drift.
+    public static func reviewSnapshots(jobs: [Job]) -> [JobSnapshot] {
+        jobs.compactMap { job in
+            guard job.status != .duplicate, let capture = job.capture else { return nil }
+            return JobSnapshot(job: job, capture: capture)
+        }
+    }
+
+    /// Count of unresolved duplicate-review pairs — the actionable number shown by the Duplicates
+    /// screen, sidebar badge, and dashboard card. Excludes marked-`.duplicate` jobs (via
+    /// `reviewSnapshots`) and pairs whose cleaned hash is already resolved by a `DuplicateDecision`.
+    public static func unresolvedPairCount(jobs: [Job], decisions: [DuplicateDecision]) -> Int {
+        let snapshots = reviewSnapshots(jobs: jobs)
+        let resolvedHashes = Set(decisions.map(\.cleanedHash))
+        return DuplicateDetector().duplicateGroups(snapshots: snapshots, resolvedHashes: resolvedHashes).count
+    }
+
     // MARK: - Public API
 
     /// Returns all unresolved duplicate pairs for the UI, sorted by confidence descending.

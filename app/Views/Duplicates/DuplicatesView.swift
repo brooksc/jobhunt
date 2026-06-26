@@ -203,14 +203,9 @@ struct DuplicatesView: View {
             index[job.id] = job
         }
 
-        // Only surface pairs where BOTH jobs are still un-marked: a job already marked `.duplicate`
-        // is resolved — keeping that record is what blocks the same URL-variation from re-creating a
-        // job — so it shouldn't reappear in the review queue. Dropping marked-duplicate jobs from the
-        // scan means a pair can only form between two un-marked jobs (TASK-497).
-        let snapshots = allJobs.compactMap { job -> JobSnapshot? in
-            guard job.status != .duplicate, let capture = job.capture else { return nil }
-            return JobSnapshot(job: job, capture: capture)
-        }
+        // Only surface pairs where BOTH jobs are still un-marked (a marked `.duplicate` job is
+        // resolved). Shared rule with the sidebar badge and dashboard card (TASK-497/581).
+        let snapshots = DuplicateDetector.reviewSnapshots(jobs: allJobs)
         let resolvedHashes = Set(allDecisions.map(\.cleanedHash))
 
         // Move O(N²) computation off the main thread

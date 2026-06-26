@@ -309,6 +309,46 @@ final class DuplicateDetectorTests: XCTestCase {
         XCTAssertTrue(pairs.isEmpty, "Resolved pair should be excluded from results")
     }
 
+    // TASK-581: the shared count helper used by dashboard, sidebar, and Duplicates screen.
+    @MainActor
+    func testUnresolvedPairCountSharedHelper() throws {
+        let container = try makeTestContainer()
+        let ctx = container.mainContext
+        let desc = "Senior engineer posting at Acme building distributed systems infrastructure reliability"
+        let hash = DuplicateDetector.cleanedHash(from: desc)
+
+        let cap1 = Capture(url: "https://acme.com/jobs/1", pageTitle: "SWE", rawHash: "raw1", cleanedHash: hash)
+        cap1.cleanedDescription = desc
+        let job1 = Job(company: "Acme", title: "SWE", extractionStatus: .succeeded)
+        job1.capture = cap1
+        let cap2 = Capture(
+            url: "https://greenhouse.io/acme/jobs/1",
+            pageTitle: "SWE",
+            rawHash: "raw2",
+            cleanedHash: hash
+        )
+        cap2.cleanedDescription = desc
+        let job2 = Job(company: "Acme", title: "SWE", extractionStatus: .succeeded)
+        job2.capture = cap2
+        ctx.insert(cap1)
+        ctx.insert(cap2)
+        ctx.insert(job1)
+        ctx.insert(job2)
+        try ctx.save()
+
+        // Two un-marked jobs sharing a cleaned hash → one unresolved review pair.
+        XCTAssertEqual(DuplicateDetector.unresolvedPairCount(jobs: [job1, job2], decisions: []), 1)
+
+        // A job already marked `.duplicate` is resolved → excluded by reviewSnapshots.
+        job2.status = .duplicate
+        XCTAssertEqual(DuplicateDetector.unresolvedPairCount(jobs: [job1, job2], decisions: []), 0)
+        job2.status = .new
+
+        // A resolved decision for the hash suppresses the pair.
+        let decision = DuplicateDecision(cleanedHash: hash, decision: "merged", keepJobID: job1.id)
+        XCTAssertEqual(DuplicateDetector.unresolvedPairCount(jobs: [job1, job2], decisions: [decision]), 0)
+    }
+
     @MainActor
     func testNearDuplicateSimilarHashDetected() throws {
         let container = try makeTestContainer()

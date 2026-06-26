@@ -1,9 +1,10 @@
 ---
 id: TASK-565
 title: Report provider responseFormat consistently for strict and JSON-mode LLM calls
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-20 00:57'
+updated_date: '2026-06-26 03:52'
 labels:
   - audit
   - llm
@@ -39,7 +40,13 @@ Suggested implementation: define provider-agnostic semantics for `ChatResponse.r
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Successful strict-schema calls are recorded with the same responseFormat semantics across OpenAI-compatible, Anthropic, and Google providers.
-- [ ] #2 JSON-mode fallback without schema records `.jsonObject`; free-form fallback records `.text`.
-- [ ] #3 Provider tests assert the returned `ChatResponse.responseFormat` for strict success, JSON fallback, and text fallback where supported.
+- [x] #1 Successful strict-schema calls are recorded with the same responseFormat semantics across OpenAI-compatible, Anthropic, and Google providers.
+- [x] #2 JSON-mode fallback without schema records `.jsonObject`; free-form fallback records `.text`.
+- [x] #3 Provider tests assert the returned `ChatResponse.responseFormat` for strict success, JSON fallback, and text fallback where supported.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Provider adapters now report ChatResponse.responseFormat by effective constraint level, consistently across providers. Anthropic returns .jsonSchema(name,schema) on a successful structured call (was .jsonObject) and .text after the 400 output_config fallback. Google returns .jsonSchema when the responseSchema was applied, .jsonObject for JSON-mode without schema or after a 400 schema-downgrade, and .text for free-form (was always .text). OpenAI-compatible already reported the ladder result. Tests (LLMProviderTests Anthropic/Google) assert returned responseFormat for strict success, JSON-mode, schema-downgrade→jsonObject, and text; corrected the stale AnthropicStructuredOutputTests assertion that expected jsonObject. Full CoreTests (940) green; lint clean. Commit a677ddb.
+<!-- SECTION:FINAL_SUMMARY:END -->

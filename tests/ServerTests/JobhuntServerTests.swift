@@ -172,6 +172,52 @@ final class JobhuntServerTests: XCTestCase {
         XCTAssertEqual(http.statusCode, 413, "Over-limit body must be rejected with 413")
     }
 
+    // TASK-560: MCP add-capture is the same semantic operation as /captures (full page text), so it
+    // gets the same 4 MB budget — intentionally, not the generic 1 MB MCP limit. Other MCP routes
+    // (metadata/read) keep the smaller budget.
+    func testMaxBodySize_captureRoutesShareLargeBudget() {
+        XCTAssertEqual(JobhuntServer.maxBodySize(forPath: "/captures"), 4 * 1_048_576)
+        XCTAssertEqual(
+            JobhuntServer.maxBodySize(forPath: "/mcp/captures/add"), 4 * 1_048_576,
+            "MCP add-capture must share the /captures budget"
+        )
+        XCTAssertEqual(
+            JobhuntServer.maxBodySize(forPath: "/mcp/jobs/list"), 1_048_576,
+            "other MCP routes keep the smaller metadata budget"
+        )
+    }
+
+    // AC#2: a full-page capture between 1 MB and 4 MB succeeds through MCP just as it does via /captures
+    // (it would 413 under the old generic 1 MB MCP limit).
+    func testMCPCaptureAdd_acceptsBodyOver1MB() async throws {
+        #if MAS_BUILD
+            throw XCTSkip("MCP routes are excluded from MAS builds.")
+        #endif
+        // swiftlint:disable:next force_unwrapping
+        let url = await URL(string: baseURL() + "/mcp/captures/add")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("test-token-abc123", forHTTPHeaderField: "X-MCP-Token")
+        let bigText = String(repeating: "job description text ", count: 100_000) // ~2.1 MB
+        let payloadObj: [String: Any] = [
+            "url": "https://example.com/jobs/mcp-large-1",
+            "page_title": "Large Capture Engineer",
+            "visible_text": bigText
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payloadObj)
+        XCTAssertGreaterThan(req.httpBody?.count ?? 0, 1_048_576, "payload must exceed the old 1 MB MCP limit")
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+        XCTAssertEqual(http.statusCode, 200, "a 1–4 MB MCP capture must be accepted, not 413")
+        struct MCPCaptureBody: Decodable {
+            let ok: Bool
+            enum CodingKeys: String, CodingKey { case ok }
+        }
+        XCTAssertTrue(try JSONDecoder().decode(MCPCaptureBody.self, from: data).ok)
+    }
+
     // TASK-434: MCP routes only accept POST; other methods get 405.
     func testMCPRoute_getMethodRejectedWith405() async throws {
         // MCP routes are compiled out under MAS_BUILD (no MCP in the App Store sandbox), where these

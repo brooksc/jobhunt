@@ -307,9 +307,12 @@ public actor JobhuntServer {
     /// everything else is small. Oversized requests are rejected with 413 before the body is read.
     static func maxBodySize(forPath path: String) -> Int {
         switch path {
-        case "/captures": return 4 * 1_048_576 // 4 MB — full page text
+        // Capture routes carry full visible page text — the MCP add-capture surface is the same
+        // semantic operation as /captures, so it gets the same 4 MB budget (TASK-560). Listed before
+        // the generic /mcp/ case so it isn't accidentally capped at the smaller metadata limit.
+        case "/captures", "/mcp/captures/add": return 4 * 1_048_576 // 4 MB — full page text
         case "/site-reviews": return 256 * 1024 // 256 KB
-        case _ where path.hasPrefix("/mcp/"): return 1_048_576 // 1 MB
+        case _ where path.hasPrefix("/mcp/"): return 1_048_576 // 1 MB — MCP metadata/read routes
         default: return 64 * 1024 // 64 KB (health/ping/by-url/focus)
         }
     }
@@ -317,6 +320,11 @@ public actor JobhuntServer {
     /// Header-block size cap (TASK-533). 64 KB is far above any legitimate request's headers and
     /// bounds resource use from a slow/malformed local client before the body is read.
     static let maxHeaderBytes = 64 * 1024
+
+    /// Upper bound on total bytes accumulated for one request before giving up: the largest per-route
+    /// body budget (4 MB, captures) plus the header cap. Bounds memory from a slow/oversized client
+    /// while still letting in-budget capture bodies finish arriving (TASK-560).
+    static let maxRequestBytes = 4 * 1_048_576 + maxHeaderBytes
 
     // nonisolated: only touches NWConnection and spawns Tasks back onto the actor.
     // Accumulates TCP chunks until a complete HTTP request is available before processing.
@@ -331,7 +339,11 @@ public actor JobhuntServer {
                 Task { await self.sendResponse(HTTPResponse.error(reason, code: code), on: connection) }
             }
             func readMoreOrFail() {
-                if !isComplete, buffer.count < 2 * 1_048_576 {
+                // Keep accumulating until the largest legitimate request could fit (max body budget +
+                // header cap). A lower ceiling here would silently reject in-budget captures before the
+                // body finished arriving — which previously capped even /captures at 2 MB despite its
+                // 4 MB budget (TASK-560). Over-Content-Length bodies are still rejected with 413 above.
+                if !isComplete, buffer.count < Self.maxRequestBytes {
                     receiveRequest(on: connection, accumulated: buffer)
                 } else {
                     reject("Bad request", 400)

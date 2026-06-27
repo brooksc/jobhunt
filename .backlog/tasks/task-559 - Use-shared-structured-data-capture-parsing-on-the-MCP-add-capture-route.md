@@ -1,9 +1,10 @@
 ---
 id: TASK-559
 title: Use shared structured-data capture parsing on the MCP add-capture route
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-20 00:16'
+updated_date: '2026-06-27 21:49'
 labels:
   - audit
   - capture-ingestion
@@ -17,7 +18,6 @@ references:
   - 'server/swift/MCPBridgeRoutes.swift:725'
 modified_files:
   - server/swift/MCPBridgeRoutes.swift
-  - server/swift/CaptureRequestParsing.swift
   - mcp/swift/MCPHelpers.swift
   - tests/ServerTests/JobhuntServerTests.swift
   - tests/MCPTests/MCPTests.swift
@@ -36,7 +36,18 @@ Suggested implementation: update the MCP add-capture path to call `CaptureReques
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 `/mcp/captures/add` accepts `structured_data_json` exactly as it does today.
-- [ ] #2 `/mcp/captures/add` also accepts a raw `structured_data` array and forwards it into ingestion as structured JSON.
-- [ ] #3 The MCP tool schema or helper documentation reflects every accepted structured-data capture shape.
+- [x] #1 `/mcp/captures/add` accepts `structured_data_json` exactly as it does today.
+- [x] #2 `/mcp/captures/add` also accepts a raw `structured_data` array and forwards it into ingestion as structured JSON.
+- [x] #3 The MCP tool schema or helper documentation reflects every accepted structured-data capture shape.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Aligned the MCP add-capture route with /captures on structured-data parsing.
+
+- `handleMCPCaptureAdd` now resolves structured data via the shared `CaptureRequestParsing.resolveStructuredDataJSON(typed: req.structuredDataJSON, rawBody: request.body)` — so it accepts the typed `structured_data_json` string (AC#1, unchanged) AND a raw `structured_data` array on the body (AC#2), forwarding it into ingestion as structured JSON.
+- The `add_capture` MCP tool schema (MCPHelpers.swift) now declares both `structured_data_json` (string) and `structured_data` (array of objects), and the tool description documents the accepted shapes + precedence (AC#3).
+
+Tests: ServerTests cover both shapes surviving through /mcp/captures/add (200 + job_number); MCPTests assert the schema exposes both fields with the array typed correctly. The shared parser's precedence/fallback/degrade-to-nil behavior was already unit-tested (testResolveStructuredData_*). Full ServerTests + MCPTests green.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -471,7 +471,8 @@ public actor JobhuntServer {
         }
     }
 
-    private func routeRequest(_ request: HTTPRequest) async -> HTTPResponse {
+    /// internal (not private) so framing/routing policy can be unit-tested directly (TASK-532).
+    func routeRequest(_ request: HTTPRequest) async -> HTTPResponse {
         // Answer a CORS preflight only when it targets a real route+method; otherwise 404 with
         // no CORS, so the preflight reflects the actual route table rather than a blanket allow.
         if request.method == "OPTIONS" {
@@ -480,6 +481,14 @@ public actor JobhuntServer {
                 return HTTPResponse.noContent()
             }
             return HTTPResponse.error("Not found", code: 404)
+        }
+
+        // TASK-478/532: the request parser only frames bodies by Content-Length. A request using
+        // Transfer-Encoding (e.g. chunked) would otherwise parse with an empty body and the handlers
+        // would misreport it as invalid JSON. Reject it explicitly as unsupported — uniformly across
+        // all route families, BEFORE MCP dispatch, so framing policy doesn't vary by route.
+        if request.headers["transfer-encoding"] != nil {
+            return HTTPResponse.error("Transfer-Encoding is not supported; send a Content-Length body.", code: 400)
         }
 
         // MCP bridge routes (DMG builds only)
@@ -496,13 +505,6 @@ public actor JobhuntServer {
                 }
             }
         #endif
-
-        // TASK-478: the request parser only frames bodies by Content-Length. A request using
-        // Transfer-Encoding (e.g. chunked) would otherwise parse with an empty body and the POST
-        // handlers would misreport it as invalid JSON. Reject it explicitly as unsupported.
-        if request.headers["transfer-encoding"] != nil {
-            return HTTPResponse.error("Transfer-Encoding is not supported; send a Content-Length body.", code: 400)
-        }
 
         let origin = request.headers["origin"] ?? ""
         let fromExtension = isAllowedExtensionOrigin(origin)

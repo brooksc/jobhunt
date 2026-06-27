@@ -218,6 +218,65 @@ final class JobhuntServerTests: XCTestCase {
         XCTAssertTrue(try JSONDecoder().decode(MCPCaptureBody.self, from: data).ok)
     }
 
+    // TASK-532: the Transfer-Encoding rejection must apply uniformly, BEFORE MCP route dispatch — an
+    // /mcp/* request carrying transfer-encoding gets the explicit 400 framing error, not a
+    // route-specific error (and not a body-decoding attempt).
+    func testRouteRequest_transferEncodingRejectedAcrossAllRouteFamilies() async {
+        let paths = [
+            "/health", // health
+            "/captures", // extension
+            "/mcp/captures/add", // MCP write
+            "/mcp/jobs/list" // MCP read
+        ]
+        for path in paths {
+            #if MAS_BUILD
+                if path.hasPrefix("/mcp/") { continue } // MCP routes excluded from MAS builds
+            #endif
+            let req = HTTPRequest(
+                method: path == "/health" ? "GET" : "POST",
+                path: path,
+                queryItems: [],
+                headers: ["transfer-encoding": "chunked", "x-mcp-token": "test-token-abc123"],
+                body: nil
+            )
+            let resp = await server.routeRequest(req)
+            XCTAssertEqual(resp.statusCode, 400, "\(path) must reject Transfer-Encoding with 400")
+        }
+    }
+
+    // AC#3/#4: a normally-framed MCP request (no transfer-encoding) still passes the token check and
+    // reaches its handler — the framing guard doesn't disturb the happy path.
+    func testRouteRequest_normalMCPRequest_reachesHandler() async throws {
+        #if MAS_BUILD
+            throw XCTSkip("MCP routes are excluded from MAS builds.")
+        #endif
+        let req = HTTPRequest(
+            method: "POST",
+            path: "/mcp/jobs/list",
+            queryItems: [],
+            headers: ["x-mcp-token": "test-token-abc123"],
+            body: nil
+        )
+        let resp = await server.routeRequest(req)
+        XCTAssertEqual(resp.statusCode, 200, "a normally-framed, authenticated MCP request must succeed")
+    }
+
+    func testRouteRequest_mcpRequest_badToken_stillRejected() async throws {
+        #if MAS_BUILD
+            throw XCTSkip("MCP routes are excluded from MAS builds.")
+        #endif
+        let req = HTTPRequest(
+            method: "POST",
+            path: "/mcp/jobs/list",
+            queryItems: [],
+            headers: ["x-mcp-token": "wrong-token"],
+            body: nil
+        )
+        let resp = await server.routeRequest(req)
+        XCTAssertNotEqual(resp.statusCode, 200, "an invalid MCP token must still be rejected")
+        XCTAssertNotEqual(resp.statusCode, 400, "token rejection is not the framing error")
+    }
+
     // TASK-434: MCP routes only accept POST; other methods get 405.
     func testMCPRoute_getMethodRejectedWith405() async throws {
         // MCP routes are compiled out under MAS_BUILD (no MCP in the App Store sandbox), where these

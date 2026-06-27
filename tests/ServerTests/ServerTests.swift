@@ -24,6 +24,30 @@ final class HTTPResponseSerializationTests: XCTestCase {
         let response = HTTPResponse.ok(Payload(ok: true))
         XCTAssertEqual(response.statusCode, 200)
     }
+
+    // TASK-534: every status code the server can emit must map to a real reason phrase, never the
+    // fallback "Unknown" (which would produce misleading raw HTTP diagnostics like "405 Unknown").
+    func testStatusText_coversEveryEmittedCode() {
+        // Mirror the codes emitted across HTTPResponse, MCPBridgeRoutes, and inspectRequestFraming.
+        let emitted = [200, 201, 204, 400, 401, 403, 404, 405, 413, 431, 500, 503]
+        for code in emitted {
+            XCTAssertNotEqual(
+                HTTPResponse.statusText(for: code), "Unknown",
+                "status \(code) must have a reason phrase"
+            )
+        }
+        XCTAssertEqual(HTTPResponse.statusText(for: 405), "Method Not Allowed")
+        XCTAssertEqual(HTTPResponse.statusText(for: 431), "Request Header Fields Too Large")
+    }
+
+    // AC#3: the serialized status line carries the reason phrase (not "Unknown") for codes that
+    // previously fell through — proven against the actual response bytes.
+    func testSerializedStatusLine_includesReasonPhrase() {
+        let response = HTTPResponse.error("Method not allowed", code: 405)
+        let firstLine = String(decoding: response.toHTTPBytes(), as: UTF8.self)
+            .components(separatedBy: "\r\n").first ?? ""
+        XCTAssertEqual(firstLine, "HTTP/1.1 405 Method Not Allowed")
+    }
 }
 
 final class ServerErrorTests: XCTestCase {

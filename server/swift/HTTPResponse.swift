@@ -61,7 +61,9 @@ struct HTTPResponse {
         return result
     }
 
-    private static func statusText(for code: Int) -> String {
+    /// internal (not private) so tests can assert every emitted code maps to a real reason phrase
+    /// rather than silently degrading to "Unknown" (TASK-534).
+    static func statusText(for code: Int) -> String {
         switch code {
         case 200: "OK"
         case 201: "Created"
@@ -70,7 +72,9 @@ struct HTTPResponse {
         case 401: "Unauthorized"
         case 403: "Forbidden"
         case 404: "Not Found"
+        case 405: "Method Not Allowed"
         case 413: "Request Entity Too Large"
+        case 431: "Request Header Fields Too Large"
         case 500: "Internal Server Error"
         case 503: "Service Unavailable"
         default: "Unknown"

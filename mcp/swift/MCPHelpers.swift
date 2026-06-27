@@ -137,7 +137,10 @@ let tools: [[String: Any]] = [
     ],
     [
         "name": "add_capture",
-        "description": "Create or update a job capture from browser content.",
+        "description": "Create or update a job capture from browser content. Structured job metadata " +
+            "(JSON-LD / Greenhouse) may be supplied either as `structured_data_json` (a pre-stringified " +
+            "JSON array) or as `structured_data` (a raw JSON array); `structured_data_json` takes " +
+            "precedence. Both are optional — capture still ingests from visible/selected text without them.",
         "inputSchema": [
             "type": "object",
             "required": ["url", "page_title"],
@@ -148,7 +151,15 @@ let tools: [[String: Any]] = [
                 "selected_text": ["type": "string", "default": ""],
                 "canonical_url": ["type": "string"],
                 "user_note": ["type": "string", "default": ""],
-                "structured_data_json": ["type": "string"]
+                "structured_data_json": [
+                    "type": "string",
+                    "description": "Pre-stringified JSON array of structured-data objects."
+                ] as [String: Any],
+                "structured_data": [
+                    "type": "array",
+                    "items": ["type": "object"] as [String: Any],
+                    "description": "Raw JSON array of structured-data objects (the browser-extension shape)."
+                ] as [String: Any]
             ] as [String: Any]
         ] as [String: Any]
     ],

@@ -450,6 +450,13 @@
             return HTTPResponse.error("url and page_title required")
         }
 
+        // Resolve structured data from either the typed `structured_data_json` field or the raw
+        // `structured_data` array on the body — one shared policy with /captures (TASK-559) so MCP
+        // clients sending the extension's capture shape don't silently lose structured metadata.
+        let structuredJSON = CaptureRequestParsing.resolveStructuredDataJSON(
+            typed: req.structuredDataJSON, rawBody: request.body
+        )
+
         let payload = CapturePayload(
             url: url,
             pageTitle: pageTitle,
@@ -457,7 +464,7 @@
             visibleText: req.visibleText,
             userNote: req.userNote,
             canonicalURL: req.canonicalURL,
-            structuredDataJSON: req.structuredDataJSON
+            structuredDataJSON: structuredJSON
         )
 
         do {

@@ -43,6 +43,17 @@ final class MCPTests: XCTestCase {
         XCTAssertTrue(names.contains("add_capture"), "Missing add_capture tool")
     }
 
+    /// TASK-559 AC#3: the add_capture schema documents every accepted structured-data shape, so MCP
+    /// clients know they can send either the typed string or the raw array (matching /captures).
+    func testAddCapture_schema_exposesBothStructuredDataShapes() {
+        let addCapture = tools.first { $0["name"] as? String == "add_capture" }
+        let props = (addCapture?["inputSchema"] as? [String: Any])?["properties"] as? [String: Any]
+        XCTAssertNotNil(props?["structured_data_json"], "schema must document structured_data_json")
+        XCTAssertNotNil(props?["structured_data"], "schema must document the raw structured_data array")
+        let arraySchema = props?["structured_data"] as? [String: Any]
+        XCTAssertEqual(arraySchema?["type"] as? String, "array")
+    }
+
     func testToolList_allHaveNameAndDescription() {
         for tool in tools {
             XCTAssertNotNil(tool["name"] as? String, "Tool missing name: \(tool)")

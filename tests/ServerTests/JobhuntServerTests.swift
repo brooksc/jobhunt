@@ -272,6 +272,73 @@ final class JobhuntServerTests: XCTestCase {
         XCTAssertGreaterThan(body.jobNumber, 0)
     }
 
+    // TASK-559: the MCP add-capture route must accept the same structured-data shapes as /captures —
+    // both the typed `structured_data_json` string and a raw `structured_data` array — via the shared
+    // CaptureRequestParsing policy, so MCP clients sending the extension shape don't lose metadata.
+    func testMCPCaptureAdd_acceptsStructuredDataArray() async throws {
+        #if MAS_BUILD
+            throw XCTSkip("MCP routes are excluded from MAS builds.")
+        #endif
+        // swiftlint:disable:next force_unwrapping
+        let url = await URL(string: baseURL() + "/mcp/captures/add")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("test-token-abc123", forHTTPHeaderField: "X-MCP-Token")
+        let payloadObj: [String: Any] = [
+            "url": "https://example.com/jobs/mcp-structured-1",
+            "page_title": "MCP Structured Engineer",
+            "visible_text": "We are hiring an engineer.",
+            "structured_data": [
+                ["@type": "JobPosting", "title": "MCP Structured Engineer", "baseSalary": 200_000]
+            ]
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payloadObj)
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+        XCTAssertEqual(http.statusCode, 200, "MCP add-capture must accept a raw structured_data array")
+        struct MCPCaptureBody: Decodable {
+            let ok: Bool
+            let jobNumber: Int
+            enum CodingKeys: String, CodingKey { case ok; case jobNumber = "job_number" }
+        }
+        let body = try JSONDecoder().decode(MCPCaptureBody.self, from: data)
+        XCTAssertTrue(body.ok)
+        XCTAssertGreaterThan(body.jobNumber, 0)
+    }
+
+    func testMCPCaptureAdd_acceptsStructuredDataJSON() async throws {
+        #if MAS_BUILD
+            throw XCTSkip("MCP routes are excluded from MAS builds.")
+        #endif
+        // swiftlint:disable:next force_unwrapping
+        let url = await URL(string: baseURL() + "/mcp/captures/add")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("test-token-abc123", forHTTPHeaderField: "X-MCP-Token")
+        let payloadObj: [String: Any] = [
+            "url": "https://example.com/jobs/mcp-structured-2",
+            "page_title": "MCP Typed Engineer",
+            "visible_text": "We are hiring.",
+            "structured_data_json": "[{\"@type\":\"JobPosting\",\"title\":\"MCP Typed Engineer\"}]"
+        ]
+        req.httpBody = try JSONSerialization.data(withJSONObject: payloadObj)
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+        XCTAssertEqual(http.statusCode, 200, "MCP add-capture must still accept structured_data_json")
+        struct MCPCaptureBody: Decodable {
+            let ok: Bool
+            let jobNumber: Int
+            enum CodingKeys: String, CodingKey { case ok; case jobNumber = "job_number" }
+        }
+        let body = try JSONDecoder().decode(MCPCaptureBody.self, from: data)
+        XCTAssertTrue(body.ok)
+        XCTAssertGreaterThan(body.jobNumber, 0)
+    }
+
     // MARK: - TASK-442: centralized structured-data field resolution
 
     func testResolveStructuredData_prefersTypedField() {

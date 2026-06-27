@@ -1,9 +1,10 @@
 ---
 id: TASK-568
 title: 'Settings: align remote custom provider API-key readiness with the AI form'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-20 04:07'
+updated_date: '2026-06-27 00:58'
 labels:
   - audit
   - settings
@@ -31,8 +32,14 @@ Suggested implementation: Move the custom loopback vs remote key requirement int
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Remote custom providers without an API key are not reported as configured when the form says they need a key.
-- [ ] #2 Custom loopback providers continue to be configurable with only a selected model and no API key.
-- [ ] #3 `AIProviderFormModel.needsAPIKey` and `AIReadiness` use the same shared provider policy instead of duplicating the decision.
-- [ ] #4 Tests cover `custom` loopback and `custom` remote readiness paths.
+- [x] #1 Remote custom providers without an API key are not reported as configured when the form says they need a key.
+- [x] #2 Custom loopback providers continue to be configurable with only a selected model and no API key.
+- [x] #3 `AIProviderFormModel.needsAPIKey` and `AIReadiness` use the same shared provider policy instead of duplicating the decision.
+- [x] #4 Tests cover `custom` loopback and `custom` remote readiness paths.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added LLMProviderFactory.requiresAPIKey(provider:baseURL:) — the single base-URL-aware policy: custom-loopback needs no key, custom-remote does, hosted always do, lmstudio doesn't. AIProviderFormModel.needsAPIKey and AIReadiness.isConfigured both call it, so the form and the readiness/queue gate agree: a remote custom endpoint without a key is now not-configured (AC#1), while custom-loopback stays configurable with just a model (AC#2). Single shared decision, no duplication (AC#3). Tests cover custom loopback (no key → configured) and custom remote (missing key → not configured) plus the shared policy directly (AC#4). Full CoreTests (951) green; lint clean. Commit c7fea75 (shared with TASK-567).
+<!-- SECTION:FINAL_SUMMARY:END -->

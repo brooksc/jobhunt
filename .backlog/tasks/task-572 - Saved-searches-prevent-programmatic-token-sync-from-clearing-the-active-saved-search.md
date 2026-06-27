@@ -3,9 +3,10 @@ id: TASK-572
 title: >-
   Saved searches: prevent programmatic token sync from clearing the active saved
   search
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-20 05:10'
+updated_date: '2026-06-27 21:37'
 labels:
   - audit
   - saved-searches
@@ -13,9 +14,12 @@ labels:
   - workflow
 dependencies: []
 modified_files:
+  - core/Models/SearchTokenID.swift
+  - app/Views/Jobs/JobSearchToken.swift
   - app/Views/Jobs/JobsView.swift
-  - app/Views/Jobs/JobsFilterState.swift
+  - app/Shell/Sidebar.swift
   - tests/CoreTests/SavedSearchTests.swift
+  - tests/AppUITests/SavedSearchUITests.swift
 priority: medium
 ---
 
@@ -31,8 +35,22 @@ Suggested implementation: Replace `applySearchToTokens` with a single `applySave
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Selecting a saved search leaves `router.activeSavedSearchID` set to that search until the user explicitly edits/clears filters or selects another sidebar item.
-- [ ] #2 Applying a saved search clears prior non-saved session filters such as extraction status and meets-criteria-only.
-- [ ] #3 User-initiated token edits still clear the active saved search.
-- [ ] #4 Regression tests or UI-level coverage exercise saved-search selection after an existing token filter and after an advanced session-only filter.
+- [x] #1 Selecting a saved search leaves `router.activeSavedSearchID` set to that search until the user explicitly edits/clears filters or selects another sidebar item.
+- [x] #2 Applying a saved search clears prior non-saved session filters such as extraction status and meets-criteria-only.
+- [x] #3 User-initiated token edits still clear the active saved search.
+- [x] #4 Regression tests or UI-level coverage exercise saved-search selection after an existing token filter and after an advanced session-only filter.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed the saved-search token-sync leak with an atomic apply + a divergence-based observer.
+
+- `JobsView.applySavedSearch` now resets the full `JobsFilterState` first (clearing session-only filters like extraction status / meets-criteria-only — AC#2), then installs the saved criteria as tokens + text + sort atomically.
+- The `.onChange(of: searchTokens)` observer keeps `router.activeSavedSearchID` set while the current token id-set equals `SavedSearch.expectedTokenIDs` (a programmatic apply), and clears it only when the user edits tokens away from the saved set (AC#1, AC#3).
+- Added `SearchTokenID` in core as the single source of truth for token identity, shared by `JobSearchToken.id` and `expectedTokenIDs`, so the apply path and the retain decision can't drift.
+
+Tests (AC#4): SavedSearchTokenIDTests (CoreTests, fast gate) cover the saved-search→token-id mapping and id-format stability (the drift-prone kernel). SavedSearchUITests (AppUITests) exercise end-to-end selection after a token filter and after a session-only filter; they compile and run in the graphical CI/VM harness (not runnable in a headless session). Added `chip.savedSearch` and `sidebar.savedSearch.<name>` accessibility identifiers for the UI test.
+
+Note: the changed logic is app-target view state (no app unit-test target exists), so the end-to-end flow is only coverable via AppUITests; the pure kernel is unit-tested.
+<!-- SECTION:FINAL_SUMMARY:END -->

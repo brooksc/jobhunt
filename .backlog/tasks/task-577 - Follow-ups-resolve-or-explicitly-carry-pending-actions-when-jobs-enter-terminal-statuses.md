@@ -3,9 +3,10 @@ id: TASK-577
 title: >-
   Follow-ups: resolve or explicitly carry pending actions when jobs enter
   terminal statuses
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-20 22:54'
+updated_date: '2026-06-27 19:12'
 labels:
   - audit
   - needs-action
@@ -13,12 +14,9 @@ labels:
   - job-status
 dependencies: []
 modified_files:
-  - core/Services/JobService.swift
-  - app/Views/Jobs/JobsView.swift
-  - app/Views/Detail/JobDetailView.swift
-  - app/Views/Needs/NeedsActionView.swift
-  - core/Services/ExportService.swift
-  - tests/CoreTests/JobServiceTests.swift
+  - core/Models/Enums.swift
+  - core/Models/FollowUpVisibility.swift
+  - tests/CoreTests/FollowUpVisibilityTests.swift
 priority: medium
 ---
 
@@ -34,9 +32,20 @@ Suggested implementation: Decide and encode the invariant in `JobService.setStat
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Moving a job to terminal status has explicit, tested behavior for existing incomplete follow-ups.
-- [ ] #2 Needs Action no longer shows ordinary pending follow-ups for archived/closed/expired jobs unless that is a deliberate labeled category.
-- [ ] #3 Undoing an archive/status change restores follow-up state if the terminal-status transition auto-resolved actions.
-- [ ] #4 Export pending-action fields use the same terminal-status rule as the UI.
-- [ ] #5 Tests cover archive, closed/unavailable, and at least one non-terminal status transition with pending actions.
+- [x] #1 Moving a job to terminal status has explicit, tested behavior for existing incomplete follow-ups.
+- [x] #2 Needs Action no longer shows ordinary pending follow-ups for archived/closed/expired jobs unless that is a deliberate labeled category.
+- [x] #3 Undoing an archive/status change restores follow-up state if the terminal-status transition auto-resolved actions.
+- [x] #4 Export pending-action fields use the same terminal-status rule as the UI.
+- [x] #5 Tests cover archive, closed/unavailable, and at least one non-terminal status transition with pending actions.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Encoded the invariant "terminal-status jobs have no actionable follow-ups" as a non-mutating filter rather than auto-resolving JobAction rows.
+
+- Added `JobStatus.isTerminal` (passed/archived/closed/duplicate/expired). `rejected` intentionally stays active so a feedback follow-up is still allowed; this is the "labeled/filtered as terminal" option (b) from the task, chosen over auto-completing actions.
+- Extended the shared `FollowUpVisibility.isActionable` (TASK-576) to exclude follow-ups whose job is terminal. Since Needs Action + sidebar badge, Dashboard, job detail, and ExportService all already route through that one predicate, every surface suppresses terminal-job follow-ups with no per-surface change (AC#2, AC#4).
+- Because nothing is mutated, un-archiving (terminal → active) restores the follow-up automatically — undo is free (AC#3).
+- Tests in FollowUpVisibilityTests cover all terminal statuses hiding follow-ups, all non-terminal statuses keeping them, a terminal→active transition restoring, and rejected staying actionable (AC#1, AC#5).
+<!-- SECTION:FINAL_SUMMARY:END -->

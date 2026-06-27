@@ -75,6 +75,41 @@ final class JobServiceMutationTests: XCTestCase {
         XCTAssertNil(actions.first?.completedAt)
     }
 
+    // TASK-578: linked-child writes for a missing job must surface jobNotFound, not silently no-op.
+    func testCreateAction_missingJob_throwsJobNotFound() async throws {
+        let (svc, store) = try makeService()
+        do {
+            try await svc.createAction(jobID: "does-not-exist", text: "Follow up", dueAt: nil)
+            XCTFail("expected jobNotFound")
+        } catch JobServiceError.jobNotFound {
+            // expected
+        }
+        let actions = try await store.fetch(FetchDescriptor<JobAction>())
+        XCTAssertTrue(actions.isEmpty, "nothing should be persisted for a missing job")
+    }
+
+    func testAddNote_missingJob_throwsJobNotFound() async throws {
+        let (svc, store) = try makeService()
+        do {
+            try await svc.addNote("note text", to: "does-not-exist")
+            XCTFail("expected jobNotFound")
+        } catch JobServiceError.jobNotFound {
+            // expected
+        }
+        let events = try await store.fetch(FetchDescriptor<JobEvent>())
+        XCTAssertTrue(events.isEmpty)
+    }
+
+    func testRestoreNote_missingJob_throwsJobNotFound() async throws {
+        let (svc, _) = try makeService()
+        do {
+            try await svc.restoreNote(jobID: "does-not-exist", text: "n", occurredAt: Date(), createdAt: Date())
+            XCTFail("expected jobNotFound")
+        } catch JobServiceError.jobNotFound {
+            // expected
+        }
+    }
+
     func testCompleteAction_setsCompletedAt() async throws {
         let (svc, store) = try makeService()
         let jobID = try await seedJob(store)

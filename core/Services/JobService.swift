@@ -258,8 +258,13 @@ public actor JobService {
     }
 
     public func addNote(_ text: String, to jobID: String) async throws {
-        // TASK-526: created + linked inside the store actor (no-op if the job no longer exists).
-        try await store.insertJobEvent(jobID: jobID, eventType: "note", note: text)
+        // TASK-526/578: created + linked inside the store actor. requireJob:true so adding a note to a
+        // job that was deleted (e.g. mid-sheet) surfaces an error instead of silently saving nothing.
+        do {
+            try await store.insertJobEvent(jobID: jobID, eventType: "note", note: text, requireJob: true)
+        } catch BackgroundStoreError.notFound {
+            throw JobServiceError.jobNotFound(jobID)
+        }
     }
 
     /// Edit a note event in place. Saving empty/whitespace-only text deletes the note
@@ -280,13 +285,18 @@ public actor JobService {
     /// toast after a note delete (the deleted event is gone, so this creates an equivalent one
     /// with the same text and timestamps rather than resurrecting the original row).
     public func restoreNote(jobID: String, text: String, occurredAt: Date, createdAt: Date) async throws {
-        try await store.insertJobEvent(
-            jobID: jobID,
-            eventType: "note",
-            note: text,
-            occurredAt: occurredAt,
-            createdAt: createdAt
-        )
+        do {
+            try await store.insertJobEvent(
+                jobID: jobID,
+                eventType: "note",
+                note: text,
+                occurredAt: occurredAt,
+                createdAt: createdAt,
+                requireJob: true
+            )
+        } catch BackgroundStoreError.notFound {
+            throw JobServiceError.jobNotFound(jobID)
+        }
     }
 
     public func archive(jobID: String) async throws {
@@ -335,8 +345,13 @@ public actor JobService {
     // MARK: - Actions
 
     public func createAction(jobID: String, text: String, dueAt: Date?) async throws {
-        // TASK-526: created + linked inside the store actor.
-        try await store.insertJobAction(jobID: jobID, note: text, dueDate: dueAt ?? Date())
+        // TASK-526/578: created + linked inside the store actor; a missing job is a user-visible
+        // error, not a silent no-op.
+        do {
+            try await store.insertJobAction(jobID: jobID, note: text, dueDate: dueAt ?? Date())
+        } catch BackgroundStoreError.notFound {
+            throw JobServiceError.jobNotFound(jobID)
+        }
     }
 
     public func completeAction(actionID: String) async throws {

@@ -704,24 +704,32 @@ public actor BackgroundStore {
     }
 
     /// Append a timeline event to a job, linked on the store actor (TASK-526). No-op if the job is gone.
+    /// Append a timeline event to a job, linked on the store actor (TASK-526). Best-effort by default
+    /// (a missing job is a no-op) for system events like the extraction timeline entry; pass
+    /// `requireJob: true` for user-facing writes (notes) so a deleted job surfaces as an error instead
+    /// of silently persisting nothing (TASK-578).
     public func insertJobEvent(
         jobID: String, eventType: String, note: String? = nil,
-        occurredAt: Date = Date(), createdAt: Date = Date()
+        occurredAt: Date = Date(), createdAt: Date = Date(), requireJob: Bool = false
     ) throws {
         let jid = jobID
         let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))
-        guard let job = jobs.first else { return }
+        guard let job = jobs.first else {
+            if requireJob { throw BackgroundStoreError.notFound(jobID) }
+            return
+        }
         let event = JobEvent(eventType: eventType, note: note, occurredAt: occurredAt, createdAt: createdAt)
         event.job = job
         modelContext.insert(event)
         try modelContext.save()
     }
 
-    /// Create + link a follow-up action to a job by id (TASK-526). No-op if the job is gone.
+    /// Create + link a follow-up action to a job by id (TASK-526). Throws `notFound` if the job is
+    /// gone — a user-facing write must not silently no-op (TASK-578).
     public func insertJobAction(jobID: String, note: String, dueDate: Date) throws {
         let jid = jobID
         let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))
-        guard let job = jobs.first else { return }
+        guard let job = jobs.first else { throw BackgroundStoreError.notFound(jobID) }
         let action = JobAction(note: note, dueDate: dueDate)
         action.job = job
         modelContext.insert(action)

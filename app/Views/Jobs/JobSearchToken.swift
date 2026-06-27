@@ -10,14 +10,16 @@ enum JobSearchToken: Identifiable, Hashable {
     case minRating(Int)
     case recentDays(Int)
 
+    /// IDs come from the shared core builders so they can't drift from `SavedSearch.expectedTokenIDs`,
+    /// which the Jobs view compares against to keep a programmatically-applied saved search active.
     var id: String {
         switch self {
-        case let .status(s): "status:\(s.rawValue)"
-        case let .minFitScore(n): "fitScore:\(n)"
-        case let .minSalary(n): "salary:\(n)"
-        case let .remoteType(rt): "remote:\(rt.rawValue)"
-        case let .minRating(n): "rating:\(n)"
-        case let .recentDays(d): "recent:\(d)"
+        case let .status(s): SearchTokenID.status(s.rawValue)
+        case let .minFitScore(n): SearchTokenID.fitScore(n)
+        case let .minSalary(n): SearchTokenID.salary(n)
+        case let .remoteType(rt): SearchTokenID.remote(rt.rawValue)
+        case let .minRating(n): SearchTokenID.rating(n)
+        case let .recentDays(d): SearchTokenID.recentDays(d)
         }
     }
 

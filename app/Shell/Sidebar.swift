@@ -118,7 +118,7 @@ struct Sidebar: View {
                         let count = savedSearchCounts[search.id] ?? 0
                         sidebarRow(
                             .savedSearch(search.id),
-                            id: nil,
+                            id: "sidebar.savedSearch.\(search.name)",
                             label: Label(search.name, systemImage: "pin")
                         )
                         .badge(count)

@@ -400,3 +400,46 @@ final class SavedSearchCriteriaTests: XCTestCase {
         XCTAssertNotEqual(a, c)
     }
 }
+
+// MARK: - SavedSearchTokenIDTests (TASK-572)
+
+/// The token-identity mapping the Jobs view uses to tell a programmatic saved-search apply (keep the
+/// search active) from a user token edit (clear it). Shared with `JobSearchToken.id` via `SearchTokenID`
+/// so the apply path and the retain decision can't drift.
+final class SavedSearchTokenIDTests: XCTestCase {
+    func testExpectedTokenIDsCoverEveryFilterField() {
+        let search = SavedSearch(
+            name: "all",
+            statusFilterRaw: [JobStatus.pursuing.rawValue, JobStatus.applied.rawValue],
+            remoteFilterRaw: [RemoteType.remote.rawValue],
+            minFitScore: 70,
+            minRating: 4,
+            minSalary: 150_000,
+            recentDays: 30
+        )
+        XCTAssertEqual(search.expectedTokenIDs, [
+            SearchTokenID.status("pursuing"),
+            SearchTokenID.status("applied"),
+            SearchTokenID.remote("remote"),
+            SearchTokenID.fitScore(70),
+            SearchTokenID.rating(4),
+            SearchTokenID.salary(150_000),
+            SearchTokenID.recentDays(30)
+        ])
+    }
+
+    func testEmptySearchHasNoTokenIDs() {
+        XCTAssertTrue(SavedSearch(name: "empty").expectedTokenIDs.isEmpty)
+    }
+
+    /// The identity strings are stable — the Jobs view compares persisted tokens against these, so a
+    /// silent format change would break saved-search retention (the bug this guards).
+    func testTokenIDFormatIsStable() {
+        XCTAssertEqual(SearchTokenID.status("pursuing"), "status:pursuing")
+        XCTAssertEqual(SearchTokenID.remote("remote"), "remote:remote")
+        XCTAssertEqual(SearchTokenID.fitScore(70), "fitScore:70")
+        XCTAssertEqual(SearchTokenID.salary(150_000), "salary:150000")
+        XCTAssertEqual(SearchTokenID.rating(4), "rating:4")
+        XCTAssertEqual(SearchTokenID.recentDays(30), "recent:30")
+    }
+}

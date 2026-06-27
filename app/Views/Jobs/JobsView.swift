@@ -93,7 +93,7 @@ struct JobsView: View {
             }
             .onChange(of: router.activeSavedSearchID) { _, id in
                 if let id, let search = savedSearches.first(where: { $0.id == id }) {
-                    applySearchToTokens(search)
+                    applySavedSearch(search)
                 } else if id == nil {
                     searchTokens = []
                     searchText = ""
@@ -108,7 +108,14 @@ struct JobsView: View {
                 router.activeSavedSearchID = nil
                 searchTokens = []
             }
-            .onChange(of: searchTokens) { _, _ in
+            .onChange(of: searchTokens) { _, newTokens in
+                // Programmatically applying a saved search sets these exact tokens — keep it active.
+                // Any user-initiated token edit diverges from the saved set and clears it (TASK-572).
+                if let id = router.activeSavedSearchID,
+                   let search = savedSearches.first(where: { $0.id == id }),
+                   Set(newTokens.map(\.id)) == search.expectedTokenIDs {
+                    return
+                }
                 router.activeSavedSearchID = nil
             }
             .onChange(of: filteredJobIDs) { _, newIDs in
@@ -651,6 +658,7 @@ struct JobsView: View {
                 HStack(spacing: 6) {
                     if router.activeSavedSearchID != nil {
                         filterChip(savedSearchName, icon: "bookmark.fill") { router.activeSavedSearchID = nil }
+                            .accessibilityIdentifier("chip.savedSearch")
                     }
                     if let status = localSidebarFilter {
                         filterChip(status.displayName, icon: "tag") { router.sidebarJobFilter = nil }
@@ -928,7 +936,9 @@ struct JobsView: View {
 
     // MARK: - Helpers
 
-    private func applySearchToTokens(_ search: SavedSearch) {
+    /// The token list a saved search maps to. Single source of truth so `applySavedSearch` and the
+    /// token-change observer agree on what "the active saved search's tokens" are (TASK-572).
+    private func tokens(for search: SavedSearch) -> [JobSearchToken] {
         var tokens: [JobSearchToken] = []
         for raw in search.statusFilterRaw {
             if let s = JobStatus(rawValue: raw) { tokens.append(.status(s)) }
@@ -940,10 +950,19 @@ struct JobsView: View {
         if let sal = search.minSalary { tokens.append(.minSalary(sal)) }
         if let rating = search.minRating { tokens.append(.minRating(rating)) }
         if let days = search.recentDays { tokens.append(.recentDays(days)) }
-        searchTokens = tokens
-        searchText = search.searchText
+        return tokens
+    }
+
+    /// Apply a saved search atomically: reset the full filter state first (so prior session-only
+    /// filters like extraction status / meets-criteria-only can't keep narrowing — TASK-572), then
+    /// install the saved criteria as tokens + text + sort. The token-change observer recognizes these
+    /// tokens as the active saved search's and leaves `activeSavedSearchID` set.
+    private func applySavedSearch(_ search: SavedSearch) {
+        filterState = JobsFilterState()
         filterState.sortKey = JobsSortKey(rawValue: search.sortKeyRaw) ?? .capturedAt
         filterState.sortAscending = search.sortAscending
+        searchText = search.searchText
+        searchTokens = tokens(for: search)
     }
 
     private func clearAllFilters() {

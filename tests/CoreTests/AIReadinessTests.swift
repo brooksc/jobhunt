@@ -29,4 +29,52 @@ final class AIReadinessTests: XCTestCase {
     func testHostedProvider_withModelAndKey_configured() {
         XCTAssertTrue(AIReadiness.isConfigured(provider: "openai", model: "gpt-4o", apiKey: "sk-test"))
     }
+
+    // TASK-567: cloud consent is part of readiness — a hosted provider with model + key but no
+    // consent is NOT configured (so the queue leaves work queued instead of failing it).
+    func testHostedProvider_missingConsent_notConfigured() {
+        XCTAssertFalse(AIReadiness.isConfigured(
+            provider: "openai", model: "gpt-4o", apiKey: "sk-test", baseURL: "", consented: false
+        ))
+    }
+
+    func testHostedProvider_withConsent_configured() {
+        XCTAssertTrue(AIReadiness.isConfigured(
+            provider: "openai", model: "gpt-4o", apiKey: "sk-test", baseURL: "", consented: true
+        ))
+    }
+
+    func testLocalProvider_configuredWhenConsented() {
+        // Local providers are always consented (resolved by the convenience); model + no key suffices.
+        XCTAssertTrue(AIReadiness.isConfigured(
+            provider: "lmstudio", model: "m", apiKey: "", baseURL: "http://127.0.0.1:1234", consented: true
+        ))
+    }
+
+    // TASK-568: remote custom endpoints need a key; loopback custom does not.
+    func testCustomRemote_missingKey_notConfigured() {
+        XCTAssertFalse(AIReadiness.isConfigured(
+            provider: "custom", model: "m", apiKey: "", baseURL: "https://api.example.com", consented: true
+        ))
+    }
+
+    func testCustomLoopback_noKey_configured() {
+        XCTAssertTrue(AIReadiness.isConfigured(
+            provider: "custom", model: "m", apiKey: "", baseURL: "http://127.0.0.1:1234", consented: true
+        ))
+    }
+
+    func testCustomRemote_withKeyAndConsent_configured() {
+        XCTAssertTrue(AIReadiness.isConfigured(
+            provider: "custom", model: "m", apiKey: "k", baseURL: "https://api.example.com", consented: true
+        ))
+    }
+
+    /// The base-URL-aware key policy is shared between the form and readiness (TASK-568).
+    func testRequiresAPIKeyPolicy_customRemoteVsLoopback() {
+        XCTAssertTrue(LLMProviderFactory.requiresAPIKey(provider: "custom", baseURL: "https://api.example.com"))
+        XCTAssertFalse(LLMProviderFactory.requiresAPIKey(provider: "custom", baseURL: "http://127.0.0.1:1234"))
+        XCTAssertTrue(LLMProviderFactory.requiresAPIKey(provider: "openai", baseURL: ""))
+        XCTAssertFalse(LLMProviderFactory.requiresAPIKey(provider: "lmstudio", baseURL: ""))
+    }
 }

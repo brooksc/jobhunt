@@ -63,6 +63,15 @@ public enum LLMProviderFactory {
         }
     }
 
+    /// Base-URL-aware key requirement: a `custom` provider needs a key only when it's a REMOTE
+    /// endpoint (a loopback / on-device URL like LM Studio doesn't). One policy shared by the AI form
+    /// (`AIProviderFormModel.needsAPIKey`) and the readiness gate (`AIReadiness`) so they can't drift
+    /// (TASK-568).
+    public static func requiresAPIKey(provider: String, baseURL: String) -> Bool {
+        if provider == "custom" { return !ConsentHelper.isLoopbackURL(baseURL) }
+        return requiresAPIKey(provider: provider)
+    }
+
     /// Resolves the effective base URL for a given provider name.
     /// Mirrors resolveProviderBaseUrl() from server/extract.js.
     public static func resolveBaseURL(provider: String, customBaseURL: String) -> String {

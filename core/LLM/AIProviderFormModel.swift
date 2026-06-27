@@ -95,14 +95,8 @@ public final class AIProviderFormModel {
     /// Whether this provider needs an API key. A custom **loopback** endpoint (LM Studio-style) needs
     /// none; a custom **remote** endpoint does. (Onboarding used to require a key for every custom URL.)
     public var needsAPIKey: Bool {
-        switch selectedProviderID {
-        case "openai", "anthropic", "google", "openrouter":
-            return true
-        case "custom":
-            return !ConsentHelper.isLoopbackURL(baseURLText)
-        default:
-            return false
-        }
+        // Shared base-URL-aware policy with the readiness gate so the form and queue agree (TASK-568).
+        LLMProviderFactory.requiresAPIKey(provider: selectedProviderID, baseURL: baseURLText)
     }
 
     public var canFetchModels: Bool {

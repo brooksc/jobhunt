@@ -14,6 +14,16 @@ public enum JobStatus: String, Codable, CaseIterable, Sendable {
     case closed
     case duplicate
     case expired
+
+    /// Statuses where the job is no longer an active pursuit, so it shouldn't surface actionable
+    /// follow-ups (TASK-577). `rejected` is intentionally NOT terminal here — a user may still want a
+    /// follow-up (e.g. ask for feedback). Used by `FollowUpVisibility`.
+    public var isTerminal: Bool {
+        switch self {
+        case .passed, .archived, .closed, .duplicate, .expired: true
+        case .new, .pursuing, .applied, .interview, .offer, .rejected: false
+        }
+    }
 }
 
 public enum ExtractionStatus: String, Codable, CaseIterable, Sendable {

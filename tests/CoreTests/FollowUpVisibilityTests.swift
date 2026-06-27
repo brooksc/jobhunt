@@ -43,4 +43,46 @@ final class FollowUpVisibilityTests: XCTestCase {
         linked.completedAt = now
         XCTAssertFalse(FollowUpVisibility.isActionable(linked, now: now), "completed → not actionable")
     }
+
+    // MARK: - Terminal-status jobs (TASK-577)
+
+    func testTerminalStatusJobHidesFollowUp() {
+        for status in JobStatus.allCases where status.isTerminal {
+            let action = JobAction(dueDate: now)
+            action.job = Job(status: status)
+            XCTAssertFalse(
+                FollowUpVisibility.isActionable(action, now: now),
+                "\(status.rawValue) is terminal → follow-up not actionable"
+            )
+        }
+    }
+
+    func testNonTerminalStatusJobKeepsFollowUp() {
+        for status in JobStatus.allCases where !status.isTerminal {
+            let action = JobAction(dueDate: now)
+            action.job = Job(status: status)
+            XCTAssertTrue(
+                FollowUpVisibility.isActionable(action, now: now),
+                "\(status.rawValue) is active → follow-up stays actionable"
+            )
+        }
+    }
+
+    /// Un-archiving (terminal → active) restores the follow-up with no mutation — undo is free.
+    func testLeavingTerminalStatusRestoresFollowUp() {
+        let action = JobAction(dueDate: now)
+        let job = Job(status: .archived)
+        action.job = job
+        XCTAssertFalse(FollowUpVisibility.isActionable(action, now: now))
+        job.status = .pursuing
+        XCTAssertTrue(FollowUpVisibility.isActionable(action, now: now))
+    }
+
+    /// `rejected` is intentionally NOT terminal — a rejection can still warrant a feedback follow-up.
+    func testRejectedJobKeepsFollowUp() {
+        XCTAssertFalse(JobStatus.rejected.isTerminal)
+        let action = JobAction(dueDate: now)
+        action.job = Job(status: .rejected)
+        XCTAssertTrue(FollowUpVisibility.isActionable(action, now: now))
+    }
 }

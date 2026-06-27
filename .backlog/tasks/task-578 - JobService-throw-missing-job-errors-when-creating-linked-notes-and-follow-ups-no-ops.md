@@ -3,9 +3,10 @@ id: TASK-578
 title: >-
   JobService: throw missing-job errors when creating linked notes and follow-ups
   no-ops
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-20 22:55'
+updated_date: '2026-06-27 19:05'
 labels:
   - audit
   - job-service
@@ -33,8 +34,14 @@ Suggested implementation: Change linked-child creation helpers to return a succe
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Creating a follow-up for a missing job throws a user-visible missing-job error and does not dismiss as saved.
-- [ ] #2 Adding/restoring a user note for a missing job throws a user-visible missing-job error.
-- [ ] #3 Best-effort system event writes, if still needed, are separated from user-facing note/action APIs by name or wrapper.
-- [ ] #4 Tests cover missing-job createAction and addNote/restoreNote behavior.
+- [x] #1 Creating a follow-up for a missing job throws a user-visible missing-job error and does not dismiss as saved.
+- [x] #2 Adding/restoring a user note for a missing job throws a user-visible missing-job error.
+- [x] #3 Best-effort system event writes, if still needed, are separated from user-facing note/action APIs by name or wrapper.
+- [x] #4 Tests cover missing-job createAction and addNote/restoreNote behavior.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+BackgroundStore.insertJobAction now throws BackgroundStoreError.notFound when the parent job is gone (was a silent no-op); insertJobEvent gained a requireJob flag — default false keeps system events (e.g. QueueActor's extraction timeline entry) best-effort, true for user-facing notes. JobService.addNote, restoreNote, and createAction pass requireJob:true / use the throwing action insert and map notFound → JobServiceError.jobNotFound, so a sheet/popover can't dismiss as saved after the job was deleted mid-flow (AC#1/#2). Best-effort system writes stay best-effort via the default (AC#3). Tests: testCreateAction_missingJob_throwsJobNotFound / testAddNote_missingJob_throwsJobNotFound / testRestoreNote_missingJob_throwsJobNotFound, asserting the error and that nothing is persisted (AC#4). Full CoreTests (954) green; lint clean.
+<!-- SECTION:FINAL_SUMMARY:END -->

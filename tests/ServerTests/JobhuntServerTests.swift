@@ -385,6 +385,79 @@ final class JobhuntServerTests: XCTestCase {
         XCTAssertFalse(body.error.isEmpty)
     }
 
+    // TASK-558: a syntactically-present but invalid URL (e.g. a javascript: scheme) passes the route's
+    // empty-field pre-check and fails inside ingestCapture. That's a client error, so it must surface
+    // as 400 — not the catch-all 500 it used to be — on both the extension and MCP routes.
+    func testCaptureValidation_invalidURLScheme_returns400() async throws {
+        // swiftlint:disable:next force_unwrapping
+        let url = await URL(string: baseURL() + "/captures")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("chrome-extension://testextension", forHTTPHeaderField: "Origin")
+        let payload: [String: String] = [
+            "url": "javascript:alert(1)",
+            "page_title": "Engineer",
+            "visible_text": "Some job description text"
+        ]
+        req.httpBody = try JSONEncoder().encode(payload)
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+        XCTAssertEqual(http.statusCode, 400, "invalid URL is a client error, not a 500")
+        struct ErrorBody: Decodable { let error: String }
+        XCTAssertFalse(try JSONDecoder().decode(ErrorBody.self, from: data).error.isEmpty)
+    }
+
+    func testMCPCaptureAdd_invalidURLScheme_returns400() async throws {
+        #if MAS_BUILD
+            throw XCTSkip("MCP routes are excluded from MAS builds.")
+        #endif
+        // swiftlint:disable:next force_unwrapping
+        let url = await URL(string: baseURL() + "/mcp/captures/add")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("test-token-abc123", forHTTPHeaderField: "X-MCP-Token")
+        let payload: [String: String] = [
+            "url": "ftp://example.com/jobs/1",
+            "page_title": "Engineer",
+            "visible_text": "Some job description text"
+        ]
+        req.httpBody = try JSONEncoder().encode(payload)
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+        XCTAssertEqual(http.statusCode, 400, "invalid URL is a client error, not a 500")
+        struct ErrorBody: Decodable { let error: String }
+        XCTAssertFalse(try JSONDecoder().decode(ErrorBody.self, from: data).error.isEmpty)
+    }
+
+    /// TASK-558 AC#2: the MCP route doesn't pre-check text, so a missing-text capture only fails in the
+    /// service — it must still map to 400, not 500.
+    func testMCPCaptureAdd_missingText_returns400() async throws {
+        #if MAS_BUILD
+            throw XCTSkip("MCP routes are excluded from MAS builds.")
+        #endif
+        // swiftlint:disable:next force_unwrapping
+        let url = await URL(string: baseURL() + "/mcp/captures/add")!
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("test-token-abc123", forHTTPHeaderField: "X-MCP-Token")
+        let payload: [String: String] = [
+            "url": "https://example.com/jobs/no-text",
+            "page_title": "Engineer"
+        ]
+        req.httpBody = try JSONEncoder().encode(payload)
+
+        let (data, response) = try await URLSession.shared.data(for: req)
+        let http = try XCTUnwrap(response as? HTTPURLResponse)
+        XCTAssertEqual(http.statusCode, 400, "missing capture text is a client error, not a 500")
+        struct ErrorBody: Decodable { let error: String }
+        XCTAssertFalse(try JSONDecoder().decode(ErrorBody.self, from: data).error.isEmpty)
+    }
+
     // TASK-334: CORS reflected for valid extension origins; blocked for others.
     func testCorsAllowsJobhuntExtensionOrigin() async throws {
         // chrome-extension:// origins are allowed (allowlist empty = permit all during dev)

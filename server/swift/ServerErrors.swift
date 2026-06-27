@@ -19,3 +19,19 @@ func safeServerError(_ error: Error, context: String) -> String {
     print("[JobhuntServer] \(context): \(DiagnosticsRedactor.redact("\(error)"))")
     return ServerErrorCode.internalError.rawValue
 }
+
+/// Boundary mapper for capture ingestion (TASK-558): typed client-input validation failures from
+/// `JobService.ingestCapture` are client errors, so they return HTTP 400 with their stable,
+/// non-leaking message. Everything else (persistence/server faults) falls back to the safe 500 path.
+/// Shared by the extension `/captures` route and the MCP `/mcp/captures/add` route.
+func captureIngestionErrorResponse(_ error: Error, context: String) -> HTTPResponse {
+    if case let svcError as JobServiceError = error {
+        switch svcError {
+        case .missingURL, .invalidURL, .missingPageTitle, .missingText:
+            return HTTPResponse.error(svcError.errorDescription ?? "Invalid capture", code: 400)
+        case .jobNotFound, .actionNotFound, .contactNotFound, .coverLetterNotFound:
+            break // not reachable from ingestion, but treat as unexpected → safe 500
+        }
+    }
+    return HTTPResponse.error(safeServerError(error, context: context), code: 500)
+}

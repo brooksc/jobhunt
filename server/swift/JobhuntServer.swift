@@ -573,7 +573,7 @@ public actor JobhuntServer {
                 duplicate: result.isDuplicate
             ))
         } catch {
-            return HTTPResponse.error(safeServerError(error, context: "handleCapture"), code: 500)
+            return captureIngestionErrorResponse(error, context: "handleCapture")
         }
     }
 

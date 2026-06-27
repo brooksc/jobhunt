@@ -481,7 +481,7 @@
                 duplicate: result.isDuplicate
             ))
         } catch {
-            return HTTPResponse.error(safeServerError(error, context: "handleMCPCaptureAdd"), code: 500)
+            return captureIngestionErrorResponse(error, context: "handleMCPCaptureAdd")
         }
     }
 

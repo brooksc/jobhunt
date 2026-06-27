@@ -3,9 +3,10 @@ id: TASK-558
 title: >-
   Map capture ingestion validation errors to 400 responses on HTTP and MCP
   routes
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-20 00:16'
+updated_date: '2026-06-27 21:46'
 labels:
   - audit
   - capture-ingestion
@@ -20,6 +21,7 @@ references:
   - 'server/swift/MCPBridgeRoutes.swift:444'
   - 'server/swift/MCPBridgeRoutes.swift:485'
 modified_files:
+  - server/swift/ServerErrors.swift
   - server/swift/JobhuntServer.swift
   - server/swift/MCPBridgeRoutes.swift
   - tests/ServerTests/JobhuntServerTests.swift
@@ -38,7 +40,15 @@ Suggested implementation: add a small boundary mapper for `JobServiceError` used
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Invalid capture URLs return HTTP 400, not 500, from both `/captures` and `/mcp/captures/add`.
-- [ ] #2 Missing capture text returns HTTP 400, not 500, from the MCP add-capture route.
-- [ ] #3 Unexpected persistence/server failures still return stable safe 500 errors.
+- [x] #1 Invalid capture URLs return HTTP 400, not 500, from both `/captures` and `/mcp/captures/add`.
+- [x] #2 Missing capture text returns HTTP 400, not 500, from the MCP add-capture route.
+- [x] #3 Unexpected persistence/server failures still return stable safe 500 errors.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Added a shared boundary mapper `captureIngestionErrorResponse(_:context:)` in ServerErrors.swift: typed `JobServiceError` validation cases (.missingURL/.invalidURL/.missingPageTitle/.missingText) return HTTP 400 with their stable, non-leaking message; all other errors fall back to the existing safe 500 path (`safeServerError`). Wired both `handleCapture` (/captures) and `handleMCPCaptureAdd` (/mcp/captures/add) through it.
+
+AC#1: invalid URL schemes (javascript:, ftp:) now 400 on both routes (tested). AC#2: missing text on the MCP route — which has no text pre-check — now 400 via the service error (tested). AC#3: the existing testCaptureRoute_storeError_returnsInternalError still passes (store faults aren't JobServiceError → safe 500). All 43 ServerTests green.
+<!-- SECTION:FINAL_SUMMARY:END -->

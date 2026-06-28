@@ -1888,4 +1888,133 @@ final class ExtractionEngineTests: XCTestCase {
             "Live job must be processed despite 50 older terminal rows"
         )
     }
+
+    // MARK: - Tracked drain lifecycle (TASK-528)
+
+    private func consentedExtractionSettings() -> ExtractionSettings {
+        ExtractionSettings(
+            llmModel: "gpt-4o",
+            llmProvider: "openai",
+            llmBaseURL: "https://api.openai.com",
+            consentGranted: true,
+            preferredLocations: "",
+            locationFilterEnabled: false,
+            locationAllowRemote: true,
+            locationAllowHybrid: true,
+            locationAllowOnsite: true
+        )
+    }
+
+    private func seedExtractJob(_ store: BackgroundStore, n: Int, hash: String) async throws -> String {
+        let cap = Capture(
+            url: "https://example.com/j\(hash)", pageTitle: "Engineer",
+            selectedText: "We need a Swift engineer.", rawHash: hash
+        )
+        let job = Job(jobNumber: n, title: "Engineer")
+        job.capture = cap
+        try await store.insert(job)
+        return job.id
+    }
+
+    /// Rapid enqueue+kick calls must drain the work exactly once (no duplicate loops), and after the
+    /// drain completes a later enqueue must start a fresh drain — proving the tracked task handle is
+    /// cleared on completion rather than wedging the queue (TASK-528 AC#1/#3).
+    func testRapidKicks_drainOnceThenRestartAfterCompletion() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        let provider = DelayedSuccessProvider(delay: 0.02, response: "{\"title\":\"Engineer\"}")
+        let settings = consentedExtractionSettings()
+        let queue = QueueActor(
+            store: store, isPaused: { false }, onSetPaused: { _ in },
+            readExtractionSettings: { settings }, providerFactory: { provider }
+        )
+
+        var ids: [String] = []
+        for i in 0 ..< 3 {
+            try await ids.append(seedExtractJob(store, n: i + 1, hash: "rk-\(i)"))
+        }
+
+        // One enqueue + several extra rapid kicks — the dedup guard must keep this to a single loop.
+        try await queue.enqueue(jobIDs: ids, mode: .extract)
+        await queue.kick()
+        await queue.kick()
+        await queue.kick()
+
+        var firstDrainDone = false
+        for _ in 0 ..< 200 {
+            let reqs = try await store.fetch(FetchDescriptor<LLMRequest>())
+            if reqs.count == 3, reqs.allSatisfy({ $0.status == .succeeded }) {
+                firstDrainDone = true
+                break
+            }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTAssertTrue(firstDrainDone, "rapid enqueue/kick must drain all three requests to success")
+
+        // A new enqueue after the first drain completed must start a fresh drain (handle cleared).
+        let lateID = try await seedExtractJob(store, n: 4, hash: "rk-late")
+        try await queue.enqueue(jobIDs: [lateID], mode: .extract)
+
+        var lateDrained = false
+        for _ in 0 ..< 200 {
+            let reqs = try await store.fetch(FetchDescriptor<LLMRequest>())
+            if reqs.count == 4, reqs.allSatisfy({ $0.status == .succeeded }) {
+                lateDrained = true
+                break
+            }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTAssertTrue(lateDrained, "a kick after completion must restart the drain (tracked handle cleared)")
+    }
+
+    /// A kick on a paused queue must not process anything — the tracked drain spawns, sees the paused
+    /// flag, and exits, leaving work queued and never touching the provider (TASK-528 AC#3).
+    func testPausedQueue_kickLeavesWorkQueued() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        // Would fail (not stay queued) if ever invoked — proves the drain bailed on the paused flag.
+        let provider = AlwaysFailProvider(error: LLMProviderError.unavailable(reason: "should not run"))
+        let queue = QueueActor(
+            store: store, isPaused: { true }, onSetPaused: { _ in },
+            readExtractionSettings: { makeExtractionSettings() }, providerFactory: { provider }
+        )
+
+        let ids = try await [
+            seedExtractJob(store, n: 1, hash: "pq-1"),
+            seedExtractJob(store, n: 2, hash: "pq-2")
+        ]
+        try await queue.enqueue(jobIDs: ids, mode: .extract)
+
+        // Give the spawned drain time to run and exit on the paused check.
+        try await Task.sleep(nanoseconds: 250_000_000)
+
+        let reqs = try await store.fetch(FetchDescriptor<LLMRequest>())
+        XCTAssertEqual(reqs.count, 2)
+        XCTAssertTrue(reqs.allSatisfy { $0.status == .queued }, "a paused queue must leave kicked work queued")
+    }
+
+    /// `cancelProcessing()` cancels the in-flight drain and returns promptly (it awaits the cancelled
+    /// task, which exits as soon as its provider call is cancelled — not after the full delay), and the
+    /// request does not complete successfully (TASK-528 AC#2).
+    func testCancelProcessing_stopsActiveDrain() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        // A long delay so the request is still in-flight when we cancel.
+        let provider = DelayedSuccessProvider(delay: 10, response: "{\"title\":\"Engineer\"}")
+        let settings = consentedExtractionSettings()
+        let queue = QueueActor(
+            store: store, isPaused: { false }, onSetPaused: { _ in },
+            readExtractionSettings: { settings }, providerFactory: { provider }
+        )
+
+        let id = try await seedExtractJob(store, n: 1, hash: "cancel-1")
+        try await queue.enqueue(jobIDs: [id], mode: .extract)
+        // Let the tracked drain start and enter the (10s) provider call.
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        await queue.cancelProcessing() // must return well before the 10s delay elapses
+
+        let reqs = try await store.fetch(FetchDescriptor<LLMRequest>())
+        XCTAssertNotEqual(reqs.first?.status, .succeeded, "a cancelled drain must not complete the request")
+    }
 }

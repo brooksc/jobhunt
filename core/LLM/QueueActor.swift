@@ -80,6 +80,12 @@ public actor QueueActor {
     // MARK: - State
 
     private var isRunning = false
+    /// The tracked drain-loop task spawned by `startProcessingIfNeeded` (TASK-528). Stored so app
+    /// shutdown / queue teardown can cancel it deterministically instead of leaking anonymous
+    /// fire-and-forget tasks. `nil` when no kick-initiated drain is outstanding. (Direct callers of
+    /// `startProcessing()` — the launch crash-recovery task and tests — manage their own awaiting; the
+    /// internal `isRunning` guard still prevents duplicate concurrent loops across both paths.)
+    private var drainTask: Task<Void, Never>?
     /// Consecutive failure count across the whole queue (reset on success).
     private var failureStreak = 0
     /// Debounces the `.providerNotConfigured` event to one per unconfigured episode (TASK-483):
@@ -126,7 +132,7 @@ public actor QueueActor {
         // TASK-526: the fetch + relationship link happens inside the store actor; we pass ids only.
         let inserted = try await store.insertRequests(jobIDs: jobIDs, mode: mode)
         // Kick the drain loop in case it's not yet running (only when something new was queued).
-        if inserted { Task { await startProcessing() } }
+        if inserted { startProcessingIfNeeded() }
     }
 
     /// Enqueue fit-scoring requests for a set of job IDs against a specific resume.
@@ -138,7 +144,7 @@ public actor QueueActor {
         // FitEnqueueError.resumeNotFound from inside insertFitBatch.
         try await store.insertFitBatch(jobIDs: jobIDs, resumeID: resumeID)
         // Kick the drain loop in case it's not yet running.
-        Task { await startProcessing() }
+        startProcessingIfNeeded()
     }
 
     /// Queue fit scoring against all active resumes for the given jobs. No-op for a job
@@ -150,7 +156,7 @@ public actor QueueActor {
             let n = try await store.enqueueFitForActiveResumes(jobID: jobID)
             if n > 0 { anyQueued = true }
         }
-        if anyQueued { Task { await startProcessing() } }
+        if anyQueued { startProcessingIfNeeded() }
     }
 
     /// On app launch, reset any requests stuck in "running" back to "queued",
@@ -189,19 +195,21 @@ public actor QueueActor {
         await onSetPaused(true)
     }
 
-    /// Resume the queue and restart the drain loop.
+    /// Resume the queue and restart the drain loop (as a tracked task, so the resumed drain is also
+    /// cancellable on shutdown — TASK-528).
     public func resumeQueue() async {
         await onSetPaused(false)
         failureStreak = 0
-        await startProcessing()
+        startProcessingIfNeeded()
     }
 
     /// Restart the drain loop WITHOUT enqueuing new work — for callers that inserted queued requests
     /// directly into the store (e.g. atomic capture ingestion) and just need processing to (re)start
-    /// (TASK-491). Fire-and-forget + idempotent: `startProcessing` no-ops if already running and
-    /// respects the paused flag, so this never resumes a deliberately-paused queue.
+    /// (TASK-491). Idempotent: `startProcessing` no-ops if already running and respects the paused
+    /// flag, so this never resumes a deliberately-paused queue. The spawned drain is tracked so it can
+    /// be cancelled on shutdown (TASK-528).
     public func kick() {
-        Task { await startProcessing() }
+        startProcessingIfNeeded()
     }
 
     /// Cancel a specific request by id.
@@ -263,6 +271,35 @@ public actor QueueActor {
     }
 
     // MARK: - Processing loop
+
+    /// Spawn the drain loop as a single tracked task if one isn't already outstanding (TASK-528).
+    /// Replaces the former anonymous `Task { await startProcessing() }` kicks: the handle is stored so
+    /// `cancelProcessing()` (app shutdown / teardown) can cancel it, and `drainTask == nil` plus the
+    /// internal `isRunning` guard keep concurrent kicks from starting duplicate loops. The task clears
+    /// the handle when the loop ends, so a later kick starts a fresh drain.
+    public func startProcessingIfNeeded() {
+        guard drainTask == nil else { return }
+        drainTask = Task { [self] in
+            await startProcessing()
+            finishDrain()
+        }
+    }
+
+    /// Clear the tracked-drain handle once its loop has finished (actor-isolated).
+    private func finishDrain() {
+        drainTask = nil
+    }
+
+    /// Cancel the tracked drain loop and await its exit (app shutdown / queue teardown, TASK-528).
+    /// Idempotent. Awaiting the task's completion upholds the quiescing contract — no drain keeps
+    /// writing through the store after this returns. Drains started by direct `startProcessing()`
+    /// callers (the launch task) are owned/cancelled by those callers instead.
+    public func cancelProcessing() async {
+        guard let task = drainTask else { return }
+        task.cancel()
+        await task.value
+        drainTask = nil
+    }
 
     /// Start the drain loop. Call once after launch.
     public func startProcessing() async {

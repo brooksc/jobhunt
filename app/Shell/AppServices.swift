@@ -191,6 +191,10 @@ final class AppServices: @unchecked Sendable {
         // loop exits immediately when cancelled during its hourly sleep; if cancelled mid-check it
         // finishes that check first (bounded by URLSession timeouts). Idempotent under repeated calls.
         await runtime.shutdown {
+            // Cancel + await any kick-initiated queue drain (enqueue/kick/resume) too — the runtime
+            // only owns the launch crash-recovery drain, so without this a drain started later by a UI
+            // action could still write through the store after shutdown returns (TASK-528).
+            await self.queueActor.cancelProcessing()
             await self.server.stop()
         }
         serverRunning = false

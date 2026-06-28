@@ -6,8 +6,18 @@ import SwiftUI
 
 /// Observable container for app-level services, injected into the SwiftUI environment.
 /// Constructed once in JobhuntApp and passed via .environment(appServices).
+///
+/// `@MainActor`-isolated (TASK-529): the mutable UI-facing state (`serverRunning`, `serverError`) and
+/// the non-Sendable `SettingsStore`/`ToastStore`/`runtime` it owns are all main-actor concerns, and the
+/// SwiftUI views that read it are already on the main actor. This replaces a blanket
+/// `@unchecked Sendable` (which suppressed all isolation checking at the service-composition boundary)
+/// with compiler-enforced isolation. The actor-typed services (`JobService`, `QueueActor`,
+/// `BackgroundStore`, `SiteService`, `ResumeService`, `JobhuntServer`) are immutable `Sendable` `let`s,
+/// so they remain reachable from background contexts without a hop; only `settings`/`toastStore`/UI
+/// state require the main actor. QueueActor closures keep snapshotting `SettingsStore` via `MainActor.run`.
+@MainActor
 @Observable
-final class AppServices: @unchecked Sendable {
+final class AppServices {
     let jobService: JobService
     let siteService: SiteService
     let resumeService: ResumeService

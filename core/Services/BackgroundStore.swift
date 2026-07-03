@@ -240,7 +240,7 @@ public actor BackgroundStore {
     }
 
     /// Fetch items in the background context.
-    public func fetch<T: PersistentModel>(_ descriptor: FetchDescriptor<T>) throws -> [T] {
+    public func fetch<T: PersistentModel>(_ descriptor: FetchDescriptor<T>) throws -> sending [T] {
         if let fetchFault { throw fetchFault } // TASK-479 test seam (nil in production)
         return try modelContext.fetch(descriptor)
     }

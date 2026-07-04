@@ -254,6 +254,45 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
         XCTAssertTrue(reason.contains("missing title"), "reason: \(reason)")
     }
 
+    // MARK: - Greenhouse expired posting + http→https upgrade (TASK-594)
+
+    /// The concrete job-37 case: an expired Greenhouse posting captured as a plain `http://` URL.
+    /// The checker must upgrade the request to https (else ATS blocks it and it's never checked), then
+    /// recognize the `…/{board}?error=true` landing Greenhouse redirects removed postings to.
+    func testGreenhouseExpiredPosting_httpURL_isGone() async throws {
+        let httpURL = "http://job-boards.greenhouse.io/gitlab/jobs/8509676002"
+        let boardError = "https://job-boards.greenhouse.io/gitlab?error=true"
+        MockURLProtocol.handlers = [("job-boards.greenhouse.io/gitlab/jobs", { request in
+            // The request must have been upgraded to https before hitting the network.
+            XCTAssertEqual(request.url?.scheme, "https", "http request URL must be upgraded to https")
+            return makeResponse(url: boardError, status: 200, body: "GitLab is hiring. View all jobs.")
+        })]
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: httpURL)),
+            title: "Senior Director, Technical Program Management",
+            session: session
+        )
+        guard case let .gone(reason) = result else { XCTFail("Expected .gone"); return }
+        XCTAssertTrue(reason.contains("board posting not found"), "reason: \(reason)")
+    }
+
+    func testHTTPSUpgrade_onlyRewritesPlainHTTP() throws {
+        let httpURL = try XCTUnwrap(URL(string: "http://x.com/a?b=1"))
+        XCTAssertEqual(AvailabilityChecker.httpsUpgraded(httpURL).absoluteString, "https://x.com/a?b=1")
+        // Already-secure and non-http(s) schemes are untouched.
+        let httpsURL = try XCTUnwrap(URL(string: "https://x.com/a"))
+        XCTAssertEqual(AvailabilityChecker.httpsUpgraded(httpsURL).absoluteString, "https://x.com/a")
+    }
+
+    func testBoardErrorLanding_detectsGreenhouseErrorQueryOnly() {
+        XCTAssertTrue(AvailabilityChecker.isBoardErrorLandingURL("https://job-boards.greenhouse.io/gitlab?error=true"))
+        XCTAssertTrue(AvailabilityChecker.isBoardErrorLandingURL("https://boards.greenhouse.io/acme?error=true"))
+        // A live Greenhouse posting URL (no error query) is NOT a landing page.
+        XCTAssertFalse(AvailabilityChecker.isBoardErrorLandingURL("https://job-boards.greenhouse.io/gitlab/jobs/123"))
+        // error=true on a non-Greenhouse host doesn't trigger it (avoid over-broad matching).
+        XCTAssertFalse(AvailabilityChecker.isBoardErrorLandingURL("https://example.com/jobs?error=true"))
+    }
+
     func testLinkedInLoginRedirectIsNotGone() async throws {
         // LinkedIn redirects an un-authenticated check to a generic collections page that lacks the
         // job title — a login wall, not a removed listing. Must be treated as available.

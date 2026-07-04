@@ -172,6 +172,31 @@ public enum AvailabilityChecker {
         return false
     }
 
+    /// Upgrade an `http://` URL to `https://` for the availability request. Job boards are
+    /// universally HTTPS and 301-redirect http→https anyway, but macOS App Transport Security blocks
+    /// the initial plain-HTTP request outright (URLSession throws `-1022` before any redirect is
+    /// followed), so an http-only job URL would otherwise never be fetched and never be flagged gone —
+    /// the check would silently resolve to "available" every time (TASK-594). Non-http(s) or
+    /// already-secure URLs are returned unchanged.
+    static func httpsUpgraded(_ url: URL) -> URL {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              components.scheme?.lowercased() == "http" else { return url }
+        components.scheme = "https"
+        return components.url ?? url
+    }
+
+    /// True when the final URL is an applicant-tracking board's "posting not found" landing page.
+    /// Greenhouse 302-redirects a removed posting to `…/{board}?error=true` — an HTTP 200 on the board
+    /// root, so the status-code, body-phrase, and redirect-suffix heuristics all miss it. The
+    /// `error=true` query on a greenhouse.io host is a deterministic gone signal (TASK-594). A live
+    /// posting URL never carries it, so this can't false-positive on an available job.
+    static func isBoardErrorLandingURL(_ urlString: String) -> Bool {
+        guard let components = URLComponents(string: urlString) else { return false }
+        let host = (components.host ?? "").lowercased()
+        guard host.contains("greenhouse.io") else { return false }
+        return components.queryItems?.contains { $0.name == "error" && $0.value == "true" } ?? false
+    }
+
     /// True when a URL is a login / auth wall or an aggregator's "can't show this posting without
     /// login" fallback. Some sites (notably LinkedIn) redirect an un-authenticated availability
     /// check to such a page instead of the posting — that is NOT evidence the job is gone, so the
@@ -208,7 +233,11 @@ public enum AvailabilityChecker {
         title: String,
         session: URLSession = .shared
     ) async -> URLAvailabilityResult {
-        var request = URLRequest(url: url, timeoutInterval: timeoutSeconds)
+        // ATS blocks plain-HTTP external requests, so upgrade http→https for the request (and use the
+        // upgraded URL as the redirect-comparison baseline, so the upgrade isn't itself counted as a
+        // redirect). TASK-594.
+        let requestURL = httpsUpgraded(url)
+        var request = URLRequest(url: requestURL, timeoutInterval: timeoutSeconds)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
 
         do {
@@ -216,12 +245,18 @@ public enum AvailabilityChecker {
             guard let http = response as? HTTPURLResponse else {
                 return .available
             }
-            let finalURLString = http.url?.absoluteString ?? url.absoluteString
+            let finalURLString = http.url?.absoluteString ?? requestURL.absoluteString
             let statusCode = http.statusCode
 
             // 1. Gone status codes.
             if goneStatusCodes.contains(statusCode) {
                 return .gone(reason: "HTTP \(statusCode)")
+            }
+
+            // 1.5 Applicant-tracking board "posting not found" landing (e.g. Greenhouse redirects a
+            // removed posting to `…/{board}?error=true` at HTTP 200). Deterministic gone signal.
+            if isBoardErrorLandingURL(finalURLString) {
+                return .gone(reason: "board posting not found: \(finalURLString)")
             }
 
             // 2. Body pattern matching (literal phrases + generalized regex families).
@@ -238,12 +273,12 @@ public enum AvailabilityChecker {
             }
 
             // 3. Redirect to non-job page.
-            if redirectedToNonJobPage(originalURLString: url.absoluteString, finalURLString: finalURLString) {
+            if redirectedToNonJobPage(originalURLString: requestURL.absoluteString, finalURLString: finalURLString) {
                 return .gone(reason: "redirected to non-job page: \(finalURLString)")
             }
 
             // 4. Redirect with missing title.
-            let origNorm = normalizedURL(url.absoluteString)?.absoluteString ?? url.absoluteString
+            let origNorm = normalizedURL(requestURL.absoluteString)?.absoluteString ?? requestURL.absoluteString
             let finalNorm = normalizedURL(finalURLString)?.absoluteString ?? finalURLString
             if origNorm != finalNorm && !bodyContainsTitle(body, title: title) {
                 return .gone(reason: "redirected page missing title: \(finalURLString)")

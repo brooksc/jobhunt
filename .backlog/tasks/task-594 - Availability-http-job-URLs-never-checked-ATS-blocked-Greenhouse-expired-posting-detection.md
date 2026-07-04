@@ -6,6 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-07-04 02:47'
+updated_date: '2026-07-04 02:47'
 labels:
   - availability
   - expiration
@@ -16,6 +17,9 @@ references:
   - core/Services/AvailabilityChecker.swift
   - core/Services/JobURLPolicy.swift
   - Project.swift
+modified_files:
+  - core/Services/AvailabilityChecker.swift
+  - tests/CoreTests/AvailabilityCheckerTests.swift
 priority: high
 ---
 
@@ -33,11 +37,13 @@ Reference: `curl` of the URL shows `http 301 â†’ https 302 /gitlab?error=true â†
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Availability check upgrades http:// request URLs to https:// so ATS no longer blocks them (redirect comparison uses the upgraded URL)
-- [ ] #2 Greenhouse `?error=true` board-root landing is detected as a deterministic gone signal
-- [ ] #3 Unit tests cover the http-URL Greenhouse-expired case end-to-end, the https-upgrade helper, and the board-error detector (no false positive on live postings or non-Greenhouse hosts)
-- [ ] #4 Full fast gate green
+- [x] #1 Availability check upgrades http:// request URLs to https:// so ATS no longer blocks them (redirect comparison uses the upgraded URL)
+- [x] #2 Greenhouse `?error=true` board-root landing is detected as a deterministic gone signal
+- [x] #3 Unit tests cover the http-URL Greenhouse-expired case end-to-end, the https-upgrade helper, and the board-error detector (no false positive on live postings or non-Greenhouse hosts)
+- [x] #4 Full fast gate green
 <!-- AC:END -->
+
+
 
 ## Final Summary
 

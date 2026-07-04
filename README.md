@@ -1,6 +1,6 @@
 # JobHunt
 
-**[jobhunt-app.com](https://jobhunt-app.com)** · [Issues](https://github.com/brooksc/jobhunt/issues)
+**[jobhunt-app.com](https://jobhunt-app.com)** · [Mac App Store](https://apps.apple.com/us/app/jobhunt-find-your-next-job/id6782679255?mt=12) · [Issues](https://github.com/brooksc/jobhunt/issues)
 
 Local-first job tracking. A Chrome extension captures job postings from any site; a native macOS app stores them in SwiftData, runs AI extraction, and shows a full tracking UI — all on your own machine, no cloud required.
 
@@ -24,8 +24,8 @@ See **[docs/workflow.md](docs/workflow.md)** for the end-to-end normal workflow 
 1. Download the latest `Jobhunt-*.dmg` from [Releases](https://github.com/brooksc/jobhunt/releases/latest).
 2. Open the DMG and drag **JobHunt** to Applications.
 
-**From Mac App Store:**
-- Search for "JobHunt" on the App Store.
+**From the Mac App Store:**
+- [**JobHunt — Find Your Next Job**](https://apps.apple.com/us/app/jobhunt-find-your-next-job/id6782679255?mt=12) (sandboxed; MCP not available).
 
 ### Chrome Extension
 

@@ -1,5 +1,8 @@
 # App Store Connect — JobHunt listing metadata
 
+> **Live on the Mac App Store:** https://apps.apple.com/us/app/jobhunt-find-your-next-job/id6782679255?mt=12 (App ID `6782679255`)
+
+
 Copy-paste source for the Mac App Store listing. Field character limits are noted; the values below
 are within them. **MAS-specific:** the App Store build is sandboxed and omits the MCP server and
 Sparkle self-update (the store handles updates), so the description below intentionally does **not**

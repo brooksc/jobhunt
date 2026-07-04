@@ -154,8 +154,17 @@
       display: flex;
       gap: 12px;
       justify-content: center;
+      align-items: center;
       flex-wrap: wrap;
     }
+
+    /* MAC APP STORE BADGE */
+    .badge-link {
+      display: inline-flex;
+      transition: opacity .15s;
+    }
+    .badge-link:hover { opacity: .85; text-decoration: none; }
+    .badge-link img { height: 44px; width: auto; display: block; }
 
     /* CAROUSEL */
     .carousel-wrap {
@@ -381,8 +390,12 @@
     <h1>Your job search,<br><span>without the spreadsheet</span></h1>
     <p>Capture job postings with one click, let AI extract the details, and track your pipeline — all in a fast, native Mac app. No subscriptions. No cloud. Your data stays yours.</p>
     <div class="hero-actions">
-      <a href="https://github.com/brooksc/jobhunt/releases" target="_blank" rel="noopener" class="btn btn-primary">
-        Download for Mac
+      <a href="https://apps.apple.com/us/app/jobhunt-find-your-next-job/id6782679255?mt=12"
+         target="_blank" rel="noopener" class="badge-link" aria-label="Download JobHunt on the Mac App Store">
+        <img src="/mac-app-store-badge.svg" alt="Download on the Mac App Store" />
+      </a>
+      <a href="https://github.com/brooksc/jobhunt/releases" target="_blank" rel="noopener" class="btn btn-ghost">
+        Download DMG
       </a>
       <a href="https://chromewebstore.google.com/detail/jobhunt-capture/jekcbebhfeidkpapienoflbcaeeknlch"
          target="_blank" rel="noopener" class="btn btn-ghost">
@@ -493,8 +506,8 @@
       </div>
       <div class="feature">
         <div class="feature-icon">🖥️</div>
-        <h3>Native Mac app <span class="pill">New</span></h3>
-        <p>Built in SwiftUI for macOS — fast, lightweight, and a good Mac citizen. Developer ID signed, notarized, and updates itself automatically.</p>
+        <h3>Native Mac app <span class="pill">On the App Store</span></h3>
+        <p>Built in SwiftUI for macOS — fast, lightweight, and a good Mac citizen. Get it on the Mac App Store, or download the Developer ID–signed, notarized DMG that updates itself automatically.</p>
       </div>
     </div>
   </section>
@@ -505,8 +518,9 @@
     <h2>Start tracking smarter</h2>
     <p>Free, open source, and runs entirely on your Mac.</p>
     <div class="hero-actions">
-      <a href="https://github.com/brooksc/jobhunt/releases" target="_blank" rel="noopener" class="btn btn-primary">
-        Download for Mac
+      <a href="https://apps.apple.com/us/app/jobhunt-find-your-next-job/id6782679255?mt=12"
+         target="_blank" rel="noopener" class="badge-link" aria-label="Download JobHunt on the Mac App Store">
+        <img src="/mac-app-store-badge.svg" alt="Download on the Mac App Store" />
       </a>
       <a href="https://github.com/brooksc/jobhunt" target="_blank" rel="noopener" class="btn btn-ghost">
         View source on GitHub
@@ -521,6 +535,7 @@
       <a href="/privacy">Privacy</a>
       <a href="https://github.com/brooksc/jobhunt" target="_blank" rel="noopener">GitHub</a>
       <a href="/issues/">Support</a>
+      <a href="https://apps.apple.com/us/app/jobhunt-find-your-next-job/id6782679255?mt=12" target="_blank" rel="noopener">Mac App Store</a>
       <a href="https://chromewebstore.google.com/detail/jobhunt-capture/jekcbebhfeidkpapienoflbcaeeknlch" target="_blank" rel="noopener">Chrome Extension</a>
     </div>
   </footer>

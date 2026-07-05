@@ -108,7 +108,7 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         var descriptor = FetchDescriptor<Job>(predicate: #Predicate { $0.jobNumber == number })
         descriptor.fetchLimit = 1
         if let job = try? modelContainer.mainContext.fetch(descriptor).first {
-            router.selectJob(id: job.id)
+            router.selectJob(id: job.id, jobStatus: job.status)
         } else {
             router.navigateToSection(.jobs)
         }

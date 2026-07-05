@@ -163,8 +163,19 @@ public final class Router {
     /// Select a job by its `Job.id` and switch to the Jobs section.
     /// Callers that only have a public job number must resolve it to an id first
     /// (the Router has no model access).
-    public func selectJob(id: String) {
+    ///
+    /// When `jobStatus` is supplied and the active sidebar smart-folder filter would *hide* that job
+    /// (a non-nil filter set to a different status), the filter is switched to the job's status so the
+    /// externally-targeted job is actually visible. Without this, selecting a job outside the current
+    /// filter silently lands on an unchanged, empty-looking list — e.g. capturing a `new` job and
+    /// "Open in app" while the Jobs sidebar is on `Interested` (TASK-596). An `All` view (nil filter)
+    /// or a filter already matching the job is left untouched, so a normal in-context open never
+    /// narrows the view.
+    public func selectJob(id: String, jobStatus: JobStatus? = nil) {
         selectedSection = .jobs
+        if let jobStatus, let filter = sidebarJobFilter, filter != jobStatus {
+            sidebarJobFilter = jobStatus
+        }
         selectedJobID = id
         pendingJobScrollID = id
     }

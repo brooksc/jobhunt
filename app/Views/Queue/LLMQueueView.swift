@@ -345,10 +345,10 @@ struct LLMQueueView: View {
     // MARK: - Context menu for table selection
 
     /// The job a single selected request belongs to (nil for a multi-selection or an orphaned request).
-    private func jobID(forSelection ids: Set<String>) -> String? {
+    private func job(forSelection ids: Set<String>) -> Job? {
         guard ids.count == 1, let id = ids.first,
               let request = allRequests.first(where: { $0.id == id }) else { return nil }
-        return request.job?.id
+        return request.job
     }
 
     /// Whether the selection contains any finished-with-error request (a discoverable "Retry").
@@ -361,9 +361,9 @@ struct LLMQueueView: View {
         if ids.isEmpty {
             EmptyView()
         } else {
-            if let jobID = jobID(forSelection: ids) {
+            if let job = job(forSelection: ids) {
                 Button("Open Job") {
-                    router.selectJob(id: jobID)
+                    router.selectJob(id: job.id, jobStatus: job.status)
                 }
                 Divider()
             }

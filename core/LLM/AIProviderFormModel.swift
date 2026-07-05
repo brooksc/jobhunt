@@ -71,6 +71,11 @@ public final class AIProviderFormModel {
 
     public var selectedProviderID: String
     public var apiKeyText: String = ""
+    /// Bumped whenever `onAPIKeyChanged` actually had to strip characters (e.g. a pasted key with a
+    /// trailing newline). The view keys the secure field's `.id()` on this so AppKit re-reads the
+    /// sanitized value — its field editor otherwise keeps showing the pasted whitespace glyph even
+    /// though the stored key is already clean (TASK-599).
+    public private(set) var apiKeySanitizeCount = 0
     public var baseURLText: String = ""
     public var modelText: String = ""
     public var fetchedModels: [String] = []
@@ -141,6 +146,9 @@ public final class AIProviderFormModel {
     /// breaks auth (e.g. Google 401). The cleaned value is stored and persisted.
     public func onAPIKeyChanged(_ new: String) {
         let cleaned = new.filter { !$0.isWhitespace }
+        // Only bump when stripping actually changed the string, so ordinary typing doesn't force the
+        // field to rebuild (and drop focus) — a pasted newline/space does, and the field re-syncs.
+        if cleaned != new { apiKeySanitizeCount += 1 }
         apiKeyText = cleaned
         settings.setAPIKey(cleaned, forProvider: selectedProviderID)
     }

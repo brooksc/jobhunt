@@ -272,6 +272,8 @@ private struct AIProviderStep: View {
                         get: { model.apiKeyText },
                         set: { model.onAPIKeyChanged($0) }
                     ))
+                    // Re-key on whitespace-strip so AppKit re-reads the sanitized value (TASK-599).
+                    .id(model.apiKeySanitizeCount)
                     // TASK-464: per-provider "Get API key" link.
                     if let urlString = AIProviderFormModel.ProviderOption.find(model.selectedProviderID).apiKeyURL,
                        let keyURL = URL(string: urlString) {

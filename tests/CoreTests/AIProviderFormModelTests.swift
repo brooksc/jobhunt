@@ -63,6 +63,25 @@ final class AIProviderFormModelTests: XCTestCase {
         XCTAssertEqual(model.apiKeyText, "sk-abc123")
     }
 
+    // TASK-599: the sanitize count bumps only when characters were actually stripped, so the view can
+    // re-key the secure field to drop a pasted newline glyph — but ordinary clean input never rebuilds
+    // the field (which would drop focus).
+    func testAPIKeySanitizeCountBumpsOnlyWhenStripping() throws {
+        let model = try makeModel()
+        model.selectedProviderID = "openai"
+
+        model.onAPIKeyChanged("sk-clean")
+        XCTAssertEqual(model.apiKeySanitizeCount, 0, "clean input must not bump the count")
+
+        model.onAPIKeyChanged("sk-pasted\n")
+        XCTAssertEqual(model.apiKeyText, "sk-pasted")
+        XCTAssertEqual(model.apiKeySanitizeCount, 1, "a stripped newline must bump the count")
+
+        model.onAPIKeyChanged("  sk with spaces \n")
+        XCTAssertEqual(model.apiKeyText, "skwithspaces")
+        XCTAssertEqual(model.apiKeySanitizeCount, 2, "another strip must bump again")
+    }
+
     // AC#4: a model fetch that resolves AFTER the user switched providers must not clobber the list.
     func testStaleFetchDoesNotClobberNewerProvider() async throws {
         let entered = AsyncStream.makeStream(of: Void.self)

@@ -159,6 +159,9 @@ struct LLMTab: View {
                     get: { model.apiKeyText },
                     set: { model.onAPIKeyChanged($0) }
                 ))
+                // Re-key the field when a pasted key had whitespace stripped so AppKit re-reads the
+                // sanitized value instead of leaving a stray newline glyph in its field editor (TASK-599).
+                .id(model.apiKeySanitizeCount)
                 if let err = settings.keychainWriteError {
                     Label(err, systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)

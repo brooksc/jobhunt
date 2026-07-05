@@ -106,3 +106,85 @@ final class QueueBackfillTests: XCTestCase {
         )
     }
 }
+
+/// TASK-597: when the AI provider isn't configured (e.g. a cleared API key), queued work must
+/// re-surface the `.providerNotConfigured` notice on each new user-initiated enqueue — not just once
+/// per episode — so the app's blocked-state banner reappears instead of the job sitting silently at
+/// "Queued".
+final class QueueNotConfiguredReEmitTests: XCTestCase {
+    private actor Collector {
+        private(set) var events: [QueueEvent] = []
+        func append(_ event: QueueEvent) {
+            events.append(event)
+        }
+
+        func notConfiguredCount() -> Int {
+            events.reduce(0) { count, event in
+                if case .providerNotConfigured = event { return count + 1 }
+                return count
+            }
+        }
+    }
+
+    private func makeUnconfiguredQueue(_ store: BackgroundStore) -> QueueActor {
+        QueueActor(
+            store: store,
+            isPaused: { false },
+            onSetPaused: { _ in },
+            readExtractionSettings: {
+                ExtractionSettings(
+                    llmModel: "", preferredLocations: "", locationFilterEnabled: false,
+                    locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true
+                )
+            },
+            providerFactory: { LMStudioProvider() },
+            isProviderConfigured: { false } // simulate a missing/cleared API key
+        )
+    }
+
+    /// Poll until `predicate` holds or the deadline passes — bounds the async drain without a fixed,
+    /// flaky sleep.
+    private func poll(timeoutMs: Int = 3000, _ predicate: @Sendable () async -> Bool) async {
+        for _ in 0 ..< (timeoutMs / 20) {
+            if await predicate() { return }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+
+    func testProviderNotConfigured_emitsAndReArmsPerEnqueue() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let queue = makeUnconfiguredQueue(store)
+
+        let job1 = Job(title: "One", status: .new)
+        let job2 = Job(title: "Two", status: .new)
+        try await store.insert(job1)
+        try await store.insert(job2)
+        _ = try await store.insertRequests(jobIDs: [job1.id], mode: .extract)
+
+        // Subscribe OUTSIDE the consumer task so registration (now synchronous) completes before any
+        // emit — then the consumer just drains the buffered stream. Reads use `poll` to tolerate the
+        // consumer lagging behind the emit; nothing is dropped (unbounded buffering).
+        let stream = await queue.subscribe()
+        let collector = Collector()
+        let sub = Task { for await event in stream {
+            await collector.append(event)
+        } }
+        defer { sub.cancel() }
+
+        // First drain (awaited → deterministic): unconfigured + queued work → one notice.
+        await queue.startProcessing()
+        await poll { await collector.notConfiguredCount() >= 1 }
+        let firstCount = await collector.notConfiguredCount()
+        XCTAssertEqual(firstCount, 1, "unconfigured queue with work must emit the notice")
+
+        // A NEW enqueue while still unconfigured must re-arm the debounce and re-emit — otherwise the
+        // banner would never reappear and the job sits silent.
+        try await queue.enqueue(jobIDs: [job2.id], mode: .extract)
+        await poll { await collector.notConfiguredCount() >= 2 }
+        let secondCount = await collector.notConfiguredCount()
+        XCTAssertEqual(
+            secondCount, 2,
+            "each new enqueue while unconfigured should re-surface .providerNotConfigured"
+        )
+    }
+}

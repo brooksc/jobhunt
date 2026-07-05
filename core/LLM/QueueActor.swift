@@ -34,20 +34,21 @@ public actor QueueActor {
     /// Supports multiple concurrent consumers without dropping events.
     public func subscribe() -> AsyncStream<QueueEvent> {
         let id = UUID()
-        return AsyncStream { [weak self] continuation in
+        // Register the continuation SYNCHRONOUSLY. `subscribe()` runs on the actor, so writing
+        // `continuations` here means an event emitted immediately after `await subscribe()` returns
+        // can't be dropped before the continuation lands. The old form registered via a detached
+        // `Task`, leaving a window where an emit found an empty `continuations` and was lost — benign
+        // in production (events arrive later) but a real, load-dependent race for a subscriber that
+        // acts right after subscribing. Buffering is `.unbounded`, so a slow consumer never drops
+        // events either (TASK-597).
+        let (stream, continuation) = AsyncStream<QueueEvent>.makeStream()
+        continuations[id] = continuation
+        continuation.onTermination = { [weak self] _ in
             Task { [weak self] in
-                await self?.addContinuation(continuation, for: id)
-            }
-            continuation.onTermination = { [weak self] _ in
-                Task { [weak self] in
-                    await self?.removeContinuation(for: id)
-                }
+                await self?.removeContinuation(for: id)
             }
         }
-    }
-
-    private func addContinuation(_ continuation: AsyncStream<QueueEvent>.Continuation, for id: UUID) {
-        continuations[id] = continuation
+        return stream
     }
 
     private func removeContinuation(for id: UUID) {
@@ -88,8 +89,10 @@ public actor QueueActor {
     private var drainTask: Task<Void, Never>?
     /// Consecutive failure count across the whole queue (reset on success).
     private var failureStreak = 0
-    /// Debounces the `.providerNotConfigured` event to one per unconfigured episode (TASK-483):
-    /// set when emitted, cleared once a drain pass sees a configured provider.
+    /// Debounces the `.providerNotConfigured` event to one per unconfigured episode (TASK-483): set
+    /// when emitted, cleared once a drain pass sees a configured provider — OR when new user-initiated
+    /// work is enqueued (`onWorkEnqueued`, TASK-597), so actively queuing a job while unconfigured
+    /// re-surfaces the notice/banner instead of it sitting silently behind the debounce.
     private var didEmitNotConfigured = false
     /// Active in-flight request count per provider id.
     private var activeCounts: [String: Int] = [:]
@@ -132,7 +135,16 @@ public actor QueueActor {
         // TASK-526: the fetch + relationship link happens inside the store actor; we pass ids only.
         let inserted = try await store.insertRequests(jobIDs: jobIDs, mode: mode)
         // Kick the drain loop in case it's not yet running (only when something new was queued).
-        if inserted { startProcessingIfNeeded() }
+        if inserted { onWorkEnqueued() }
+    }
+
+    /// New user-initiated work was queued: re-arm the one-shot `.providerNotConfigured` notice
+    /// (TASK-597) so that if AI still isn't set up, THIS enqueue re-surfaces the blocked-state banner
+    /// rather than the job sitting silently at "Queued" behind the per-episode debounce — then kick the
+    /// drain if it's idle. (Bulk enqueues pass one array → one re-arm → one notice, not one per job.)
+    private func onWorkEnqueued() {
+        didEmitNotConfigured = false
+        startProcessingIfNeeded()
     }
 
     /// Enqueue fit-scoring requests for a set of job IDs against a specific resume.
@@ -144,7 +156,7 @@ public actor QueueActor {
         // FitEnqueueError.resumeNotFound from inside insertFitBatch.
         try await store.insertFitBatch(jobIDs: jobIDs, resumeID: resumeID)
         // Kick the drain loop in case it's not yet running.
-        startProcessingIfNeeded()
+        onWorkEnqueued()
     }
 
     /// Queue fit scoring against all active resumes for the given jobs. No-op for a job
@@ -156,7 +168,7 @@ public actor QueueActor {
             let n = try await store.enqueueFitForActiveResumes(jobID: jobID)
             if n > 0 { anyQueued = true }
         }
-        if anyQueued { startProcessingIfNeeded() }
+        if anyQueued { onWorkEnqueued() }
     }
 
     /// On app launch, reset any requests stuck in "running" back to "queued",

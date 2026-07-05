@@ -154,7 +154,16 @@ public final class PlatformIntegration: NSObject, ObservableObject {
             NSLog("PlatformIntegration: queue error: \(message)")
 
         case .providerNotConfigured:
-            break
+            // App-wide banner (TASK-597): the queue is blocked because the AI provider isn't usable —
+            // most often a missing/cleared API key. Without this, queued work sits at "Queued" with no
+            // on-screen explanation (the OS notification above is easily missed), looking identical to
+            // an idle queue. Mirror the 401 treatment so the blocked state is visible from any screen
+            // with a one-click jump to fix it. Cleared on dismiss or when the queue next succeeds.
+            router.queueAlert = QueueAlert(
+                message: "AI provider isn't set up — queued jobs can't be processed. " +
+                    "Add your provider and API key in Settings → AI Provider.",
+                showsAISettings: true
+            )
         }
     }
 

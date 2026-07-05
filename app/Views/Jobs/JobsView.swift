@@ -36,6 +36,7 @@ struct JobsView: View {
     @State private var goneJobs: [GoneJobResult] = []
     @State private var showingExpiredConfirmation = false
     @State private var isCheckingAvailability = false
+    @State private var isScanningDuplicates = false
     @State private var jobIDsToDelete: [String] = []
     /// Mirror of router.sidebarJobFilter as @State so SwiftUI reliably re-renders.
     @State private var localSidebarFilter: JobStatus?
@@ -314,6 +315,15 @@ struct JobsView: View {
                     )
                 }
                 .disabled(isCheckingAvailability)
+                Button {
+                    Task { await runDuplicateScan() }
+                } label: {
+                    Label(
+                        isScanningDuplicates ? "Scanning for duplicates…" : "Scan for Duplicates",
+                        systemImage: "doc.on.doc"
+                    )
+                }
+                .disabled(isScanningDuplicates)
                 Button {
                     exportCSV()
                 } label: {
@@ -993,6 +1003,31 @@ struct JobsView: View {
         } else {
             goneJobs = found
             showingExpiredConfirmation = true
+        }
+    }
+
+    /// Manually run the same domain-duplicate scan the LLM queue runs after processing, so the user
+    /// can re-check the existing set on demand instead of waiting for the next AI batch (TASK-600).
+    private func runDuplicateScan() async {
+        isScanningDuplicates = true
+        defer { isScanningDuplicates = false }
+        do {
+            let flagged = try await appServices.backgroundStore.detectAndPersistDomainDuplicates()
+            if flagged == 0 {
+                appServices.toastStore.show("No new duplicates found")
+            } else {
+                appServices.toastStore.show(
+                    "Found \(flagged) new duplicate\(flagged == 1 ? "" : "s")",
+                    actionLabel: "Review"
+                ) {
+                    router.navigateToSection(.duplicates)
+                }
+            }
+        } catch {
+            appServices.toastStore.show(
+                "Couldn't scan for duplicates: \(error.localizedDescription)",
+                isError: true
+            )
         }
     }
 

@@ -117,7 +117,16 @@ let mcpTarget = Target.target(
     sources: ["mcp/swift/**/*.swift"],
     dependencies: [.target(name: "JobhuntCore")],
     settings: .settings(
-        base: sharedBase,
+        // The helper links JobhuntCore.framework but is launched STANDALONE (by the MCP client, as a
+        // bare subprocess), so it needs runpaths to find the framework itself — dyld can't otherwise
+        // resolve `@rpath/JobhuntCore.framework` and the tool crashes on launch before serving
+        // anything (TASK-598). Two locations: `@executable_path` when run from the build-products dir
+        // (framework sits beside it, like the migrator), and `@executable_path/../Frameworks` when run
+        // from inside the app bundle at Contents/Helpers/ (the framework is in Contents/Frameworks/) —
+        // which is how Claude/CWS clients invoke it via the documented Helpers path.
+        base: sharedBase.merging(
+            ["LD_RUNPATH_SEARCH_PATHS": ["$(inherited)", "@executable_path", "@executable_path/../Frameworks"]]
+        ) { _, new in new },
         configurations: projectConfigurations,
         defaultSettings: .recommended(excluding: [])
     )

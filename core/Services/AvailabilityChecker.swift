@@ -185,16 +185,44 @@ public enum AvailabilityChecker {
         return components.url ?? url
     }
 
-    /// True when the final URL is an applicant-tracking board's "posting not found" landing page.
-    /// Greenhouse 302-redirects a removed posting to `…/{board}?error=true` — an HTTP 200 on the board
-    /// root, so the status-code, body-phrase, and redirect-suffix heuristics all miss it. The
-    /// `error=true` query on a greenhouse.io host is a deterministic gone signal (TASK-594). A live
-    /// posting URL never carries it, so this can't false-positive on an available job.
+    /// True when the final URL is a known applicant-tracking board's "posting not found" landing page.
+    /// Some ATSes keep a removed posting at HTTP 200 by redirecting to a board-level error page, so the
+    /// status-code, body-phrase, and redirect-suffix heuristics all miss it. Each rule is scoped to a
+    /// specific ATS host and a marker a *live* posting URL never carries, so none can false-positive on
+    /// an available job. Add a new ATS here as its "gone" landing is confirmed (TASK-594).
+    ///   • Greenhouse — 302 → `…/{board}?error=true` (job #37).
+    ///   • Workable   — 302 → `…/oops` for a removed/unknown posting.
+    /// Boards that instead return a real 404/410 (Lever, SmartRecruiters) are already handled by the
+    /// status-code check and need no rule here. Fully client-rendered boards (e.g. Ashby) serve a
+    /// generic HTML shell at 200 with no server-side gone signal and can't be classified this way.
     static func isBoardErrorLandingURL(_ urlString: String) -> Bool {
         guard let components = URLComponents(string: urlString) else { return false }
         let host = (components.host ?? "").lowercased()
-        guard host.contains("greenhouse.io") else { return false }
-        return components.queryItems?.contains { $0.name == "error" && $0.value == "true" } ?? false
+        let path = components.path.lowercased()
+        // Greenhouse: `?error=true` on the board root.
+        if host.contains("greenhouse.io"),
+           components.queryItems?.contains(where: { $0.name == "error" && $0.value == "true" }) ?? false {
+            return true
+        }
+        // Workable: redirect to the `/oops` error landing.
+        if host.contains("workable.com"), path == "/oops" {
+            return true
+        }
+        return false
+    }
+
+    /// True when a LinkedIn public guest job page carries the structured "closed job" banner LinkedIn
+    /// renders for a posting no longer accepting applications
+    /// (`<figure class="closed-job …"><figcaption class="closed-job__flavor--closed">…`). The visible
+    /// English text ("No longer accepting applications") is already matched by `bodyGoneReason`; this
+    /// markup class is a wording/locale-independent backstop, scoped to LinkedIn hosts so the generic
+    /// class name can't false-positive elsewhere. `body` MUST already be lowercased. NOTE: LinkedIn
+    /// sometimes redirects an un-authenticated check to an auth wall instead of the guest view (see
+    /// `isAuthWallURL`); when it does, this marker is absent and the job is left available, not gone.
+    static func isLinkedInClosedJob(finalURLString: String, body: String) -> Bool {
+        guard let host = URLComponents(string: finalURLString)?.host?.lowercased(),
+              host.contains("linkedin.com") else { return false }
+        return body.contains("closed-job__flavor")
     }
 
     /// True when a URL is a login / auth wall or an aggregator's "can't show this posting without
@@ -263,6 +291,13 @@ public enum AvailabilityChecker {
             let body = String(data: data, encoding: .utf8)?.lowercased() ?? ""
             if let reason = bodyGoneReason(body) {
                 return .gone(reason: reason)
+            }
+
+            // 2.2 LinkedIn structured "closed job" banner (public guest view, HTTP 200, no redirect).
+            // The visible phrase is already covered above; the markup class is a locale-independent
+            // backstop for a closed posting whose banner text isn't English (job #130).
+            if isLinkedInClosedJob(finalURLString: finalURLString, body: body) {
+                return .gone(reason: "linkedin closed-job banner: \(finalURLString)")
             }
 
             // 2.5 Login / auth wall (e.g. LinkedIn redirecting an un-authenticated check to a

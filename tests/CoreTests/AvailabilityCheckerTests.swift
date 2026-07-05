@@ -293,6 +293,90 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
         XCTAssertFalse(AvailabilityChecker.isBoardErrorLandingURL("https://example.com/jobs?error=true"))
     }
 
+    // MARK: - Multi-ATS gone-landing generalization + LinkedIn closed-job banner
+
+    func testBoardErrorLanding_detectsWorkableOopsLanding() {
+        // Workable 302-redirects a removed/unknown posting to `/oops` (HTTP 200).
+        XCTAssertTrue(AvailabilityChecker.isBoardErrorLandingURL("https://apply.workable.com/oops"))
+        // A live Workable posting path is NOT the oops landing.
+        XCTAssertFalse(AvailabilityChecker.isBoardErrorLandingURL("https://apply.workable.com/acme/j/ABC123/"))
+        // `/oops` on a non-Workable host doesn't trigger it.
+        XCTAssertFalse(AvailabilityChecker.isBoardErrorLandingURL("https://example.com/oops"))
+    }
+
+    /// End-to-end: a removed Workable posting redirects to `/oops` at HTTP 200 — status/body/redirect
+    /// heuristics all miss it, so the board-landing rule must flag it gone.
+    func testWorkableRemovedPosting_redirectsToOops_isGone() async throws {
+        let original = "https://apply.workable.com/acme/j/ABC123/"
+        let oops = "https://apply.workable.com/oops"
+        MockURLProtocol.handlers = [("apply.workable.com/acme/j", { _ in
+            makeResponse(url: oops, status: 200, body: "Oops, we couldn't find that page.")
+        })]
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: original)),
+            title: "Principal Product Manager Remote",
+            session: session
+        )
+        guard case let .gone(reason) = result else { XCTFail("Expected .gone, got \(result)"); return }
+        XCTAssertTrue(reason.contains("board posting not found"), "reason: \(reason)")
+    }
+
+    /// Job #130: LinkedIn's public guest view renders a structured `closed-job` banner for a posting no
+    /// longer accepting applications, at HTTP 200 with no redirect. Uses non-English banner text (no
+    /// literal "no longer accepting applications") to prove the structural class — not the phrase — is
+    /// what trips detection.
+    func testLinkedInClosedJobBanner_isGone_evenWithoutEnglishPhrase() async throws {
+        let url = "https://www.linkedin.com/jobs/view/4424422798/"
+        let body = """
+        <figure class="closed-job closed-job__flavor topcard__flavor-row">
+          <span class="closed-job__icon"></span>
+          <figcaption class="closed-job__flavor--closed">Não aceita mais candidaturas</figcaption>
+        </figure>
+        """
+        MockURLProtocol.handlers = [("linkedin.com/jobs/view/4424422798", { _ in
+            makeResponse(url: url, status: 200, body: body)
+        })]
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: url)),
+            title: "Principal Product Manager Remote",
+            session: session
+        )
+        guard case let .gone(reason) = result else { XCTFail("Expected .gone, got \(result)"); return }
+        XCTAssertTrue(reason.contains("closed-job"), "reason should cite the banner, got: \(reason)")
+    }
+
+    /// A live LinkedIn guest posting (Apply CTA, no `closed-job` markup) must stay available — the
+    /// structural marker must not false-positive on an open job.
+    func testLinkedInLiveGuestView_isAvailable() async throws {
+        let url = "https://www.linkedin.com/jobs/view/999999/"
+        MockURLProtocol.handlers = [("linkedin.com/jobs/view/999999", { _ in
+            makeResponse(
+                url: url,
+                status: 200,
+                body: "<h1>Principal Product Manager Remote</h1><button>Apply</button> Actively recruiting"
+            )
+        })]
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: url)),
+            title: "Principal Product Manager Remote",
+            session: session
+        )
+        if case let .gone(reason) = result { XCTFail("Expected .available, got .gone(\(reason))") }
+    }
+
+    /// The `closed-job` class is LinkedIn markup; the same class on a non-LinkedIn host must NOT be
+    /// treated as gone (host-scoped to avoid over-broad matching).
+    func testClosedJobMarkupOnNonLinkedInHost_isNotGone() {
+        XCTAssertFalse(AvailabilityChecker.isLinkedInClosedJob(
+            finalURLString: "https://example.com/jobs/view/1",
+            body: "<figcaption class=\"closed-job__flavor--closed\">no longer accepting applications</figcaption>"
+        ))
+        XCTAssertTrue(AvailabilityChecker.isLinkedInClosedJob(
+            finalURLString: "https://www.linkedin.com/jobs/view/1",
+            body: "<figure class=\"closed-job closed-job__flavor\">"
+        ))
+    }
+
     func testLinkedInLoginRedirectIsNotGone() async throws {
         // LinkedIn redirects an un-authenticated check to a generic collections page that lacks the
         // job title — a login wall, not a removed listing. Must be treated as available.

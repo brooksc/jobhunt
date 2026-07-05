@@ -23,6 +23,12 @@ permissions:
 jobs:
   llm-eval:
     runs-on: macos-latest
+    # mise resolves tool versions via the GitHub API; without auth it hits the 60/hr
+    # unauthenticated limit on the shared runner IP and `mise install` fails with 403
+    # (Tuist/SwiftLint/SwiftFormat downloads). The auto-provided token raises this to 1000/hr.
+    # Same fix as swift-build.yml — this scheduled job kept failing at setup without it.
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       # actions/checkout@v4.2.2
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0

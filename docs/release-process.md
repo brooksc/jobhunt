@@ -225,25 +225,44 @@ After the **first** publish of a new extension id, add it to `JobhuntServer.allo
 ## 5. Mac App Store (MAS) release
 
 MAS is **live**. `release-mas.yml` runs on every `vX.Y.Z` tag (alongside the DMG) **and** via
-`workflow_dispatch` for on-demand builds; the `MAS_*` secrets are set (see §0) and the App Store
-Connect app record exists. Each run produces a signed, provisioned `.pkg` uploaded as a workflow
-artifact — the workflow **never auto-submits** to Apple; you upload via Transporter. The first
-submission has been made and is under review.
+`workflow_dispatch`; the `MAS_*` secrets are set (see §0) and the App Store Connect app record exists.
+The first submission has been made and is under review.
+
+> **MAS delivery is manual and curated — by design.** Unlike the DMG (auto-published on every tag),
+> nothing reaches App Store Connect automatically. A tag build only produces a signed `.pkg` artifact.
+> **Always decide, per release, whether a build should go to the App Store**, and confirm it
+> explicitly (the workflow requires a checkbox — see below). The App Store is a selective channel;
+> not every DMG release needs a matching MAS submission. The workflow **never auto-submits** to
+> review either — you attach the build to a version and submit by hand in App Store Connect.
 
 ### Each MAS release
-- **On a version release**: pushing the `vX.Y.Z` tag builds MAS automatically (parallel to the DMG).
-- **On demand** (e.g. resubmitting a rejection fix without a version bump): **Actions → Release MAS →
-  Run workflow** on `main`. The version-consistency check is skipped for `workflow_dispatch`, and the
-  build number auto-increments (UTC `yymmddHHMM`), so the new `.pkg` is always accepted by App Store
-  Connect's monotonicity check.
-- `release-mas.yml` generates the project with **`TUIST_MAS_ONLY=1`** (excludes Sparkle — the App
-  Store bans third-party updaters), archives `Release-MAS` (App Sandbox, no MCP helper), exports an
-  App-Store `.pkg`, smoke-checks (sandbox entitlements present, no MCP helper, **no Sparkle**), and
-  uploads the `.pkg` as a workflow artifact.
-- **Upload to App Store Connect**: download the `.pkg` artifact and upload via **Transporter** (the
-  workflow does not auto-submit), then submit for review in App Store Connect.
-- Before shipping a MAS build, run the sandbox checks in **`docs/MAS-VALIDATION.md`** (localhost
-  networking, resume PDF import, user-selected file writes) against a real MAS-signed build.
+
+1. **Build the `.pkg`** — happens automatically on the `vX.Y.Z` tag (parallel to the DMG), or run
+   **Actions → Release MAS → Run workflow** on `main` (with the upload box left **unchecked**). The
+   run generates with **`TUIST_MAS_ONLY=1`** (excludes Sparkle — the App Store bans third-party
+   updaters), archives `Release-MAS` (App Sandbox, no MCP helper), exports an App-Store `.pkg`,
+   smoke-checks it (sandbox entitlements present, no MCP helper, **no Sparkle**), and uploads it as a
+   workflow **artifact**. On-demand runs skip the version-consistency check and auto-increment the
+   build number (UTC `yymmddHHMM`), so the `.pkg` always passes App Store Connect's monotonicity check.
+
+2. **Validate the build** — before shipping, run the sandbox checks in **[`docs/MAS-VALIDATION.md`]
+   (MAS-VALIDATION.md)** (localhost networking, resume PDF import, user-selected file writes) against a
+   real MAS-signed build.
+
+3. **Deliver to App Store Connect — only on explicit confirmation.** When you've decided this build
+   should ship to the App Store: **Actions → Release MAS → Run workflow** on `main` and **check
+   `upload_to_app_store_connect`**. That's the confirmation gate — the workflow runs `xcrun altool
+   --upload-app` (reusing the DMG `APPLE_ID` + `APPLE_APP_SPECIFIC_PASSWORD` secrets) to deliver the
+   `.pkg`. A tag build or an unchecked run never uploads. *(Alternatively, download the `.pkg` artifact
+   from step 1 and upload it via **Transporter** by hand — same result.)*
+
+4. **Submit for review (manual, in App Store Connect).** After Apple finishes processing the delivered
+   build (~5–30 min), attach it to a new App Store version, fill in **What's New**, paste the
+   **reviewer/testing notes**, and Submit for Review. The current reviewer notes + demo instructions
+   live in **[`docs/app-store-metadata.md`](app-store-metadata.md)** (the "App Review notes" section —
+   e.g. "no account required", how to exercise AI extraction with a provider, the optional Chrome
+   extension). Keep that file up to date and copy it into the App Store Connect **App Review
+   Information → Notes** field each submission.
 
 ### DMG vs MAS data stores
 They use **separate** stores (MAS is sandboxed). See the "Data store location" section in the root

@@ -146,6 +146,11 @@ Defined in `.github/workflows/ui-tests.yml`. Runs weekly (Monday 8am UTC) or on 
   empty. Keep it short and DMG-user-facing (a few "What's new" highlights + the Sparkle auto-update
   line + the macOS 15 requirement); don't list internal/CI/docs churn. Format + rules:
   [`docs/release-process.md`](docs/release-process.md#release-notes--changelog-required-every-release).
+- **Never deliver a build to the Mac App Store without the user's explicit, per-release confirmation.**
+  MAS is a curated channel — not every DMG release ships there. The DMG auto-publishes on a tag; MAS
+  does **not**. `release-mas.yml` only uploads to App Store Connect on a manual `workflow_dispatch`
+  run with `upload_to_app_store_connect` checked (and never auto-submits for review). See
+  [`docs/release-process.md`](docs/release-process.md#5-mac-app-store-mas-release) §5.
 
 - **Hardened runtime is required and explicit** (TASK-401): `Debug-DMG`/`Release-DMG` set
   `ENABLE_HARDENED_RUNTIME = YES` at the project level in `Project.swift`, so signing emits

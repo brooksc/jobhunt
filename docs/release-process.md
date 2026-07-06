@@ -70,10 +70,35 @@ Do these **before** tagging:
 3. **Green `main`**: confirm the latest `main` commit passed `Swift Build` (build + fast gate +
    `swiftlint --strict` + `swiftformat`), `gitleaks`, and `Version Parity`.
 
-4. **Changelog / release notes**: draft what's new (the GitHub release body). Past releases edited the
-   notes on the GitHub release after the workflow created it.
+4. **Changelog / release notes**: draft what's new (see
+   [Release notes / changelog](#release-notes--changelog-required-every-release) below). This is
+   **required every release** — the workflow creates the GitHub release with an empty body; you edit
+   the notes onto it (before or right after the run).
 
 5. Commit the version bumps to `main` (SSH-signed; 1Password unlocked).
+
+### Release notes / changelog (required every release)
+
+**Never publish a release with an empty body.** Write the notes to match the established style — see
+past releases (`gh release view v1.0.6 --json body -q .body`) — and keep them tight:
+
+- **Audience is the DMG end user**, not a developer. Lead each highlight with a **bold plain-language
+  summary** of the user-visible change, then a sentence of detail. 3–6 highlights is plenty.
+- **List only what a user would notice**: new features, behavior changes, fixes they'd feel. Fold
+  purely internal work (refactors, CI, docs, tests, task numbers) into at most one short "Under the
+  hood:" line, or omit it. Don't enumerate `TASK-xxx`.
+- **Always include the Sparkle auto-update line** so users know existing installs update themselves,
+  e.g. *"Auto-update: existing 1.0.x users will be offered this build automatically via Sparkle. New
+  installs can download the DMG below."* — this is the one operational fact every release must state.
+- **State the OS floor**: *"Requires macOS 15 (Sequoia) or later."*
+- MAS-specific notes don't go here (the App Store listing has its own "What's New" field, entered in
+  App Store Connect at submission time — see §5).
+
+Publish with:
+
+```bash
+gh release edit vX.Y.Z --notes-file notes.md   # or --notes "…"
+```
 
 ---
 

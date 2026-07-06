@@ -142,6 +142,11 @@ Defined in `.github/workflows/ui-tests.yml`. Runs weekly (Monday 8am UTC) or on 
 > cutting a DMG release and the (deferred) MAS release, the version-bump checklist (incl. the
 > `currentProjectVersion` bump Sparkle needs), required CI secrets, and troubleshooting.
 
+- **Every release MUST update the GitHub release notes / changelog** — never leave the release body
+  empty. Keep it short and DMG-user-facing (a few "What's new" highlights + the Sparkle auto-update
+  line + the macOS 15 requirement); don't list internal/CI/docs churn. Format + rules:
+  [`docs/release-process.md`](docs/release-process.md#release-notes--changelog-required-every-release).
+
 - **Hardened runtime is required and explicit** (TASK-401): `Debug-DMG`/`Release-DMG` set
   `ENABLE_HARDENED_RUNTIME = YES` at the project level in `Project.swift`, so signing emits
   `--options runtime` for the app *and* the bundled `jobhunt-mcp` helper — Developer ID apps without

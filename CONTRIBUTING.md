@@ -1,6 +1,11 @@
 # Contributing
 
-Bug reports and pull requests are welcome.
+Contributions are welcome — **including AI-assisted or AI-generated ones.** There's no separate
+process for them; the same quality bar applies (tests pass, change is focused, lint/format clean).
+
+**Before building anything, tell us what you have in mind.** To request or discuss any change — a bug
+fix, a feature, or a design question — please [open an issue](https://github.com/brooksc/jobhunt/issues)
+or open a pull request. That keeps direction visible and avoids duplicated or wasted work.
 
 ## Reporting issues
 
@@ -9,9 +14,24 @@ Open an issue at [github.com/brooksc/jobhunt/issues](https://github.com/brooksc/
 ## Pull requests
 
 1. Fork the repo and create a branch from `main`.
-2. Run the fast test gate before submitting (see below).
+2. Run the fast test gate before submitting (see below); run the full CI-equivalent gate before opening the PR.
 3. Keep changes focused — one fix or feature per PR.
 4. Update the README if your change affects setup or usage.
+
+## Stack
+
+| Layer | Technology |
+|---|---|
+| Language | Swift 6+ |
+| UI | SwiftUI |
+| Persistence | SwiftData |
+| Networking | Network.framework (HTTP server), URLSession (LLM client) |
+| Project | Tuist 4.x (`tuist generate --no-open`) |
+| Extension | Chrome Manifest V3 |
+
+The app stores its SwiftData database under `~/Library/Application Support/Jobhunt/`. See the root
+[`CLAUDE.md`](CLAUDE.md) for the directory layout, actor-isolation conventions, and one-time data
+operations (migrations live in the `JobhuntMigrator` CLI, never the app launch path).
 
 ## Dependency versions
 
@@ -124,5 +144,18 @@ JOBHUNT_LLM_URL=http://127.0.0.1:1234 xcodebuild test \
 
 To enforce a minimum accuracy threshold (e.g. 80%), add `JOBHUNT_LLM_MIN_ACCURACY=80`. See [tests/LLMEval/README.md](tests/LLMEval/README.md) for full details.
 
+## Versioning & releases
 
-See [README.md](README.md#test) for full details on each lane.
+The version lives in `Project.swift` (`.marketingVersion`) and must match `extension/manifest.json`
+(the `version-parity` CI gate enforces this). Bump both with:
+
+```bash
+./scripts/bump-version.sh patch   # z++   (reads the current version from Project.swift)
+./scripts/bump-version.sh minor   # y++, z=0
+./scripts/bump-version.sh major   # x++, y=0, z=0
+./scripts/bump-version.sh 1.2.3   # set an explicit version
+```
+
+The script updates `Project.swift` + `extension/manifest.json` and prints the new version; it does
+**not** commit. Cutting an actual release (tagging, signing, notarization, Sparkle appcast, Mac App
+Store) is maintainer-only and documented in [`docs/release-process.md`](docs/release-process.md).

@@ -231,6 +231,7 @@ public enum PromptBuilder {
         - summary: string — 1-3 sentences explaining the overall fit
         - requirement_assessments: array — assess EVERY qualification listed under "Required qualifications" and "Preferred / nice-to-have" in the job posting below. Output exactly one object per listed qualification: do not skip any, do not merge them, and do not invent qualifications that aren't listed. (This list is the SAME for every candidate scored against this job, so judge each consistently.) Each object has:
           - requirement: the qualification text (verbatim or lightly paraphrased)
+          - kind: "required" if the qualification is listed under "Required qualifications", or "preferred" if it is listed under "Preferred / nice-to-have"
           - status: "met" (clear, direct evidence in the resume), "partial" (some or indirect evidence), or "missing" (no clear evidence in the resume)
           - evidence: one sentence citing the specific resume evidence, or stating what is absent
           Exclude any submission mechanics.

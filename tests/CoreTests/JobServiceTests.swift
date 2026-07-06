@@ -1777,7 +1777,8 @@ final class FitScoringStateTests: XCTestCase {
 
     func testRecomputeAllFitScores_recomputesFromStoredJSONWithoutLLM() async throws {
         // Electron parity (rescore.js): recompute the overall score from stored dimensions using
-        // current weights, no LLM. Dimensions 80/50/70/90/60 → 76 with the standard weights.
+        // current weights, no LLM. Dimensions 80/50/70/90/60 → 71 with the TASK-602 weights
+        // (80*.40 + 50*.20 + 70*.15 + 90*.10 + 60*.15 = 70.5 → 71).
         let container = try ModelContainerFactory.inMemory()
         let store = makeStore(container)
         let job = Job(id: "rescore-job", jobNumber: 1)
@@ -1802,9 +1803,9 @@ final class FitScoringStateTests: XCTestCase {
         let n = try await store.recomputeAllFitScores()
         XCTAssertEqual(n, 1)
         let scores = try await store.fetch(FetchDescriptor<JobFitScore>())
-        XCTAssertEqual(scores.first?.fitScore, 76, "rescore recomputes overall from dimensions with current weights")
+        XCTAssertEqual(scores.first?.fitScore, 71, "rescore recomputes overall from dimensions with current weights")
         let jobs = try await store.fetch(FetchDescriptor<Job>())
-        XCTAssertEqual(jobs.first?.fitScore, 76, "job mirror updates to recomputed best score")
+        XCTAssertEqual(jobs.first?.fitScore, 71, "job mirror updates to recomputed best score")
     }
 
     func testSaveFitScore_activeResume_updatesJobFields() async throws {

@@ -28,7 +28,7 @@ public struct FitScoreResult: Codable, Sendable {
     public let overall: Int
     /// Per-dimension raw scores (0–100 each), keyed by dimension name.
     public let breakdown: [String: Double]
-    /// Points subtracted by the penalty model (0–50).
+    /// Points subtracted by the penalty model (0–60, the cap).
     public let penalty: Int
     /// Human-readable strings describing what triggered each penalty point.
     public let penaltyReasons: [String]
@@ -57,24 +57,68 @@ public struct FitScoreResult: Codable, Sendable {
 public enum FitScorer {
     // MARK: Dimension weights (must total 1.0)
 
+    // TASK-602: preferred qualifications now carry real weight — in a competitive market, missing
+    // nice-to-haves get you filtered out — and experience_level is trimmed because in practice the LLM
+    // scores it near-constant (~98), so it wasted discrimination at 0.20. Weights must total 1.0.
     public static let dimensionWeights: [String: Double] = [
-        "required_qualifications": 0.45,
-        "preferred_qualifications": 0.05,
+        "required_qualifications": 0.40,
+        "preferred_qualifications": 0.20,
         "skills": 0.15,
-        "experience_level": 0.20,
-        "domain_fit": 0.15
+        "domain_fit": 0.15,
+        "experience_level": 0.10
     ]
 
-    // MARK: Domain-gap keywords (case-insensitive substring match)
+    // MARK: - Requirement gaps + penalty model (TASK-602)
 
-    public static let domainGapKeywords: [String] = [
-        "asic", "fpga", "rtl", "tapeout", "tape-out", "silicon", "emulation",
-        "hyperscaler", "cloud service", "soc ", "vlsi", "gds"
-    ]
+    /// A qualification the candidate does not fully satisfy, tagged by whether the job listed it as a
+    /// hard requirement or a preferred/nice-to-have, and how far short the resume falls.
+    public struct RequirementGap: Sendable, Equatable {
+        public enum Kind: String, Sendable { case required, preferred }
+        public enum Status: String, Sendable { case partial, missing }
+        public let requirement: String
+        public let kind: Kind
+        public let status: Status
+        public init(requirement: String, kind: Kind, status: Status) {
+            self.requirement = requirement
+            self.kind = kind
+            self.status = status
+        }
+    }
+
+    /// Points subtracted for one gap, from the kind×status grid. This replaces the old hardware-only
+    /// keyword heuristic: severity now comes from the LLM's per-job judgment (required vs preferred,
+    /// partial vs missing) rather than a fixed word list. Preferred treatment is intentionally
+    /// aggressive — a missing nice-to-have costs nearly as much as a missing must-have (TASK-602).
+    ///
+    ///                 missing   partial
+    ///   required        12        6
+    ///   preferred       10        5
+    public static func penaltyPoints(kind: RequirementGap.Kind, status: RequirementGap.Status) -> Int {
+        switch (kind, status) {
+        case (.required, .missing): 12
+        case (.required, .partial): 6
+        case (.preferred, .missing): 10
+        case (.preferred, .partial): 5
+        }
+    }
 
     // MARK: Penalty cap
 
-    public static let penaltyCap: Int = 50
+    public static let penaltyCap: Int = 60
+
+    /// Build the gap list from the LLM's `requirement_assessments` (raw dicts). Only `partial`/`missing`
+    /// items become gaps (`met` is not a gap). `kind` comes from the assessment; when it's absent
+    /// (legacy scores that predate the tag) it defaults to `.required` so an unknown gap is treated as
+    /// the heavier tier.
+    public static func requirementGaps(fromAssessments assessments: [[String: Any]]) -> [RequirementGap] {
+        assessments.compactMap { item in
+            guard let requirement = item["requirement"] as? String,
+                  let statusRaw = item["status"] as? String,
+                  let status = RequirementGap.Status(rawValue: statusRaw) else { return nil }
+            let kind = RequirementGap.Kind(rawValue: (item["kind"] as? String) ?? "") ?? .required
+            return RequirementGap(requirement: requirement, kind: kind, status: status)
+        }
+    }
 
     // MARK: - Dimension validation (TASK-453)
 
@@ -115,15 +159,16 @@ public enum FitScorer {
 
     // MARK: - Public API
 
-    /// Compute a fit score from per-dimension scores and missing requirements.
+    /// Compute a fit score from per-dimension scores and requirement gaps.
     ///
     /// - Parameters:
     ///   - dimensions: Dictionary mapping dimension name to raw 0–100 score.
-    ///   - requirementsNotMet: Array of requirement strings the candidate does NOT satisfy.
+    ///   - gaps: Qualifications the candidate does not fully satisfy (kind + partial/missing), which
+    ///     drive the severity-weighted penalty.
     /// - Returns: `FitScoreResult` with the final score, breakdown, and penalty details.
     public static func computeScore(
         dimensions: [String: Double],
-        requirementsNotMet: [String] = []
+        gaps: [RequirementGap] = []
     ) -> FitScoreResult {
         // Weighted sum: sum(score * weight) / sum(ALL expected weights)
         // Missing dimensions score 0 so a partial response doesn't inflate the score.
@@ -145,17 +190,15 @@ public enum FitScorer {
             0
         }
 
-        // Penalty
-        var penaltyPoints = 0
+        // Penalty: sum the kind×status cost per gap, capped.
+        var penaltyTotal = 0
         var penaltyReasons: [String] = []
-        for item in requirementsNotMet {
-            let lower = item.lowercased()
-            let isDomainGap = domainGapKeywords.contains { lower.contains($0) }
-            let cost = isDomainGap ? 10 : 5
-            penaltyPoints += cost
-            penaltyReasons.append(item)
+        for gap in gaps {
+            let cost = penaltyPoints(kind: gap.kind, status: gap.status)
+            penaltyTotal += cost
+            penaltyReasons.append("\(gap.requirement) (\(gap.kind.rawValue)/\(gap.status.rawValue), -\(cost))")
         }
-        let penalty = min(penaltyPoints, penaltyCap)
+        let penalty = min(penaltyTotal, penaltyCap)
 
         let overall = max(0, baseScore - penalty)
 
@@ -203,11 +246,17 @@ public enum FitScorer {
 
         guard !dimensionScores.isEmpty else { return nil }
 
-        // Handle both JS (requirements_not_met) and Swift (penaltyReasons) key names.
-        let requirementsNotMet = (raw["requirements_not_met"] as? [String])
-            ?? (raw["penaltyReasons"] as? [String])
-            ?? []
-        return computeScore(dimensions: dimensionScores, requirementsNotMet: requirementsNotMet)
+        // Gaps: prefer the structured per-requirement assessments (kind + partial/missing). Fall back
+        // to the legacy free-form requirements_not_met (treated as missing *required* gaps) for old
+        // scores that predate the assessments array.
+        let gaps: [RequirementGap]
+        if let assessments = raw["requirement_assessments"] as? [[String: Any]], !assessments.isEmpty {
+            gaps = requirementGaps(fromAssessments: assessments)
+        } else {
+            let legacy = (raw["requirements_not_met"] as? [String]) ?? []
+            gaps = legacy.map { RequirementGap(requirement: $0, kind: .required, status: .missing) }
+        }
+        return computeScore(dimensions: dimensionScores, gaps: gaps)
     }
 
     /// Encode a `FitScoreResult` to a JSON string for storage in `Job.fitScoreJSON`

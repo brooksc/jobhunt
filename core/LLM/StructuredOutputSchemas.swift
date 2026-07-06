@@ -63,10 +63,11 @@ public enum StructuredOutputSchemas {
             "additionalProperties": false,
             "properties": {
               "requirement": {"type": "string"},
+              "kind": {"type": "string", "enum": ["required", "preferred"]},
               "status": {"type": "string", "enum": ["met", "partial", "missing"]},
               "evidence": {"type": "string"}
             },
-            "required": ["requirement", "status", "evidence"]
+            "required": ["requirement", "kind", "status", "evidence"]
           }
         },
         "dimensions": {

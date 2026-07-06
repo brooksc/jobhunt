@@ -272,21 +272,20 @@ public enum ExtractionEngine {
         // TASK-453: validate the exact dimension contract before scoring — a malformed dimensions
         // payload throws (retryable) instead of being stored as a misleading low score.
         let dimensions = try FitScorer.validateDimensions(raw["dimensions"])
-        // TASK-490: derive the not-met list (which feeds the domain-gap penalty) from the structured
-        // per-requirement assessments — the "missing" ones. Fall back to the legacy free-form
-        // `requirements_not_met` array for older/other responses that don't send assessments.
+        // TASK-602: build the gap list (kind × partial/missing) from the structured per-requirement
+        // assessments — this drives the severity-weighted penalty (no more hardware-keyword heuristic).
+        // Fall back to the legacy free-form `requirements_not_met` (as missing *required* gaps) for
+        // responses that don't send assessments.
         let assessments = (raw["requirement_assessments"] as? [[String: Any]]) ?? []
-        let derivedNotMet = assessments
-            .filter { ($0["status"] as? String) == "missing" }
-            .compactMap { $0["requirement"] as? String }
-        let requirementsNotMet = derivedNotMet.isEmpty
-            ? ((raw["requirements_not_met"] as? [Any])?.compactMap { $0 as? String } ?? [])
-            : derivedNotMet
+        let gaps: [FitScorer.RequirementGap]
+        if assessments.isEmpty {
+            let legacy = (raw["requirements_not_met"] as? [Any])?.compactMap { $0 as? String } ?? []
+            gaps = legacy.map { .init(requirement: $0, kind: .required, status: .missing) }
+        } else {
+            gaps = FitScorer.requirementGaps(fromAssessments: assessments)
+        }
 
-        let score = FitScorer.computeScore(
-            dimensions: dimensions,
-            requirementsNotMet: requirementsNotMet
-        )
+        let score = FitScorer.computeScore(dimensions: dimensions, gaps: gaps)
         let mergedJSON = FitScorer.buildMergedJSON(result: score, rawLLMDict: raw)
         return FitScoreOutput(
             score: score, fitScoreJSON: mergedJSON, promptChars: promptChars,

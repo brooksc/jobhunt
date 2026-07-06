@@ -15,7 +15,15 @@ final class FitScorerTests: XCTestCase {
         ]
     }
 
-    // MARK: - Weight constants
+    private func gap(
+        _ requirement: String,
+        _ kind: FitScorer.RequirementGap.Kind,
+        _ status: FitScorer.RequirementGap.Status
+    ) -> FitScorer.RequirementGap {
+        .init(requirement: requirement, kind: kind, status: status)
+    }
+
+    // MARK: - Weight constants (TASK-602)
 
     func testWeightsTotalOne() {
         let total = FitScorer.dimensionWeights.values.reduce(0, +)
@@ -23,11 +31,11 @@ final class FitScorerTests: XCTestCase {
     }
 
     func testExpectedWeights() {
-        XCTAssertEqual(FitScorer.dimensionWeights["required_qualifications"], 0.45)
-        XCTAssertEqual(FitScorer.dimensionWeights["preferred_qualifications"], 0.05)
+        XCTAssertEqual(FitScorer.dimensionWeights["required_qualifications"], 0.40)
+        XCTAssertEqual(FitScorer.dimensionWeights["preferred_qualifications"], 0.20)
         XCTAssertEqual(FitScorer.dimensionWeights["skills"], 0.15)
-        XCTAssertEqual(FitScorer.dimensionWeights["experience_level"], 0.20)
         XCTAssertEqual(FitScorer.dimensionWeights["domain_fit"], 0.15)
+        XCTAssertEqual(FitScorer.dimensionWeights["experience_level"], 0.10)
     }
 
     // MARK: - Weighted score (no penalty)
@@ -39,20 +47,18 @@ final class FitScorerTests: XCTestCase {
     }
 
     func testZeroScore() {
-        let result = FitScorer.computeScore(dimensions: allDimensions(0))
-        XCTAssertEqual(result.overall, 0)
+        XCTAssertEqual(FitScorer.computeScore(dimensions: allDimensions(0)).overall, 0)
     }
 
     func testMidpointScore() {
-        // All dimensions = 50 → weighted sum = 50 * (0.45+0.05+0.15+0.20+0.15) = 50
-        let result = FitScorer.computeScore(dimensions: allDimensions(50))
-        XCTAssertEqual(result.overall, 50)
+        // All dimensions = 50 → weighted sum = 50 * 1.0 = 50
+        XCTAssertEqual(FitScorer.computeScore(dimensions: allDimensions(50)).overall, 50)
     }
 
     func testHeterogeneousWeightedScore() {
         // required=80, preferred=60, skills=70, experience=90, domain=50
-        // weighted = 80*0.45 + 60*0.05 + 70*0.15 + 90*0.20 + 50*0.15
-        //          = 36 + 3 + 10.5 + 18 + 7.5 = 75 / 1.0 = 75
+        // weighted = 80*0.40 + 60*0.20 + 70*0.15 + 90*0.10 + 50*0.15
+        //          = 32 + 12 + 10.5 + 9 + 7.5 = 71
         let dims: [String: Double] = [
             "required_qualifications": 80,
             "preferred_qualifications": 60,
@@ -61,185 +67,171 @@ final class FitScorerTests: XCTestCase {
             "domain_fit": 50
         ]
         let result = FitScorer.computeScore(dimensions: dims)
-        XCTAssertEqual(result.overall, 75)
+        XCTAssertEqual(result.overall, 71)
         XCTAssertEqual(result.penalty, 0)
     }
 
     func testPartialDimensionsNormalized() {
         // Only required_qualifications supplied with score 100; missing dimensions score 0.
-        // weightedSum = 100 * 0.45 = 45, totalWeight = 1.0 (all expected dims)
-        // baseScore = round(45 / 1.0) = 45
-        let result = FitScorer.computeScore(dimensions: ["required_qualifications": 100])
-        XCTAssertEqual(result.overall, 45)
+        // weightedSum = 100 * 0.40 = 40, totalWeight = 1.0 → baseScore = 40
+        XCTAssertEqual(FitScorer.computeScore(dimensions: ["required_qualifications": 100]).overall, 40)
     }
 
-    // MARK: - Penalty model
-
-    func testGenericMissingRequirementCosts5() {
-        let result = FitScorer.computeScore(
-            dimensions: allDimensions(100),
-            requirementsNotMet: ["5 years Python experience"]
-        )
-        XCTAssertEqual(result.penalty, 5)
-        XCTAssertEqual(result.overall, 95)
+    func testMissingOneDimension_lowerThanFull() {
+        var partial = allDimensions(100)
+        partial.removeValue(forKey: "domain_fit") // weight 0.15
+        // weightedSum = 100 * 0.85 = 85
+        let result = FitScorer.computeScore(dimensions: partial)
+        XCTAssertEqual(result.overall, 85)
+        XCTAssertLessThan(result.overall, 100)
     }
 
-    func testDomainGapKeywordCosts10() {
-        // ASIC → domain gap keyword
-        let result = FitScorer.computeScore(
-            dimensions: allDimensions(100),
-            requirementsNotMet: ["ASIC design experience required"]
-        )
-        XCTAssertEqual(result.penalty, 10)
-        XCTAssertEqual(result.overall, 90)
+    func testAllDimensionsMissing_scoreIsZero() {
+        XCTAssertEqual(FitScorer.computeScore(dimensions: [:]).overall, 0)
     }
 
-    func testAllDomainGapKeywordsRecognized() {
-        let keywords = [
-            "asic",
-            "fpga",
-            "rtl",
-            "tapeout",
-            "tape-out",
-            "silicon",
-            "emulation",
-            "hyperscaler",
-            "cloud service",
-            "soc ",
-            "vlsi",
-            "gds"
+    // MARK: - Penalty grid (kind × status), TASK-602
+
+    func testPenaltyPointsGrid() {
+        XCTAssertEqual(FitScorer.penaltyPoints(kind: .required, status: .missing), 12)
+        XCTAssertEqual(FitScorer.penaltyPoints(kind: .required, status: .partial), 6)
+        XCTAssertEqual(FitScorer.penaltyPoints(kind: .preferred, status: .missing), 10)
+        XCTAssertEqual(FitScorer.penaltyPoints(kind: .preferred, status: .partial), 5)
+    }
+
+    func testEachGapKindStatusAppliesItsCost() {
+        let cases: [(FitScorer.RequirementGap.Kind, FitScorer.RequirementGap.Status, Int)] = [
+            (.required, .missing, 12), (.required, .partial, 6),
+            (.preferred, .missing, 10), (.preferred, .partial, 5)
         ]
-        for keyword in keywords {
-            let result = FitScorer.computeScore(
-                dimensions: allDimensions(100),
-                requirementsNotMet: ["needs \(keyword) expertise"]
-            )
-            XCTAssertEqual(result.penalty, 10, "keyword '\(keyword)' should cost 10")
+        for (kind, status, cost) in cases {
+            let r = FitScorer.computeScore(dimensions: allDimensions(100), gaps: [gap("x", kind, status)])
+            XCTAssertEqual(r.penalty, cost, "\(kind)/\(status) should cost \(cost)")
+            XCTAssertEqual(r.overall, 100 - cost)
         }
     }
 
-    func testPenaltyCappedAt50() {
-        // 11 generic items × 5 = 55 → capped at 50
-        let notMet = (0 ..< 11).map { "requirement \($0)" }
-        let result = FitScorer.computeScore(
-            dimensions: allDimensions(100),
-            requirementsNotMet: notMet
-        )
-        XCTAssertEqual(result.penalty, 50)
+    func testMixedGapsSum() {
+        // 12 (req/missing) + 5 (pref/partial) + 10 (pref/missing) = 27
+        let gaps = [
+            gap("must-have A", .required, .missing),
+            gap("nice B", .preferred, .partial),
+            gap("nice C", .preferred, .missing)
+        ]
+        let result = FitScorer.computeScore(dimensions: allDimensions(100), gaps: gaps)
+        XCTAssertEqual(result.penalty, 27)
+        XCTAssertEqual(result.overall, 73)
     }
 
-    func testPenaltyCappedAt50WithDomainGaps() {
-        // 6 domain-gap items × 10 = 60 → capped at 50
-        let notMet = (0 ..< 6).map { "requires fpga \($0)" }
-        let result = FitScorer.computeScore(
-            dimensions: allDimensions(100),
-            requirementsNotMet: notMet
-        )
-        XCTAssertEqual(result.penalty, 50)
+    func testPenaltyCappedAt60() {
+        // 6 × required/missing (12) = 72 → capped at 60
+        let gaps = (0 ..< 6).map { gap("req \($0)", .required, .missing) }
+        XCTAssertEqual(FitScorer.computeScore(dimensions: allDimensions(100), gaps: gaps).penalty, 60)
     }
 
     func testOverallFlooredAtZero() {
-        // base = 10, penalty capped at 50 → 10 - 50 = -40 → floored to 0
-        let notMet = (0 ..< 11).map { "requirement \($0)" }
-        let result = FitScorer.computeScore(
-            dimensions: allDimensions(10),
-            requirementsNotMet: notMet
-        )
+        let gaps = (0 ..< 6).map { gap("req \($0)", .required, .missing) } // 60 penalty
+        let result = FitScorer.computeScore(dimensions: allDimensions(10), gaps: gaps)
         XCTAssertEqual(result.overall, 0)
-        XCTAssertGreaterThanOrEqual(result.overall, 0)
     }
 
-    // MARK: - penaltyReasons
+    func testNoPenaltyWhenNoGaps() {
+        let result = FitScorer.computeScore(dimensions: allDimensions(80), gaps: [])
+        XCTAssertEqual(result.penalty, 0)
+        XCTAssertEqual(result.overall, 80)
+    }
 
-    func testPenaltyReasonsListedCorrectly() {
-        let notMet = ["No ML experience", "No FPGA skills"]
+    func testPenaltyReasonsCiteRequirementKindStatus() {
         let result = FitScorer.computeScore(
             dimensions: allDimensions(80),
-            requirementsNotMet: notMet
+            gaps: [gap("Terraform experience", .preferred, .missing)]
         )
-        XCTAssertEqual(result.penaltyReasons.count, 2)
-        XCTAssertTrue(result.penaltyReasons.contains("No ML experience"))
-        XCTAssertTrue(result.penaltyReasons.contains("No FPGA skills"))
+        XCTAssertEqual(result.penaltyReasons.count, 1)
+        let reason = try? XCTUnwrap(result.penaltyReasons.first)
+        XCTAssertTrue(reason?.contains("Terraform experience") == true)
+        XCTAssertTrue(reason?.contains("preferred") == true)
+        XCTAssertTrue(reason?.contains("missing") == true)
     }
 
-    // MARK: - Breakdown dictionary
+    // MARK: - requirementGaps(fromAssessments:)
 
-    func testBreakdownContainsAllDimensions() {
-        let dims = allDimensions(75)
-        let result = FitScorer.computeScore(dimensions: dims)
+    func testRequirementGapsSkipsMetKeepsPartialAndMissing() {
+        let assessments: [[String: Any]] = [
+            ["requirement": "A", "kind": "required", "status": "met"],
+            ["requirement": "B", "kind": "required", "status": "missing"],
+            ["requirement": "C", "kind": "preferred", "status": "partial"]
+        ]
+        let gaps = FitScorer.requirementGaps(fromAssessments: assessments)
+        XCTAssertEqual(gaps, [
+            gap("B", .required, .missing),
+            gap("C", .preferred, .partial)
+        ])
+    }
+
+    func testRequirementGapsDefaultsKindToRequiredWhenAbsent() {
+        let assessments: [[String: Any]] = [["requirement": "X", "status": "missing"]]
+        let gaps = FitScorer.requirementGaps(fromAssessments: assessments)
+        XCTAssertEqual(gaps, [gap("X", .required, .missing)])
+    }
+
+    // MARK: - Breakdown / weights in result
+
+    func testBreakdownContainsAllDimensionsClamped() {
+        let over = FitScorer.computeScore(dimensions: allDimensions(150))
+        let under = FitScorer.computeScore(dimensions: allDimensions(-10))
         for key in FitScorer.dimensionWeights.keys {
-            XCTAssertNotNil(result.breakdown[key], "breakdown missing key: \(key)")
+            XCTAssertNotNil(over.breakdown[key])
+            XCTAssertLessThanOrEqual(over.breakdown[key] ?? 0, 100)
+            XCTAssertGreaterThanOrEqual(under.breakdown[key] ?? -1, 0)
         }
     }
-
-    func testBreakdownClampsScoreTo100() {
-        let result = FitScorer.computeScore(dimensions: allDimensions(150))
-        for (_, score) in result.breakdown {
-            XCTAssertLessThanOrEqual(score, 100)
-        }
-    }
-
-    func testBreakdownClampsScoreToZero() {
-        let result = FitScorer.computeScore(dimensions: allDimensions(-10))
-        for (_, score) in result.breakdown {
-            XCTAssertGreaterThanOrEqual(score, 0)
-        }
-    }
-
-    // MARK: - scoreWeights in result
 
     func testResultContainsScoreWeights() {
         let result = FitScorer.computeScore(dimensions: allDimensions(80))
-        XCTAssertEqual(result.scoreWeights["required_qualifications"], 0.45)
+        XCTAssertEqual(result.scoreWeights["required_qualifications"], 0.40)
         XCTAssertEqual(result.scoreWeights.count, FitScorer.dimensionWeights.count)
     }
 
     // MARK: - rescoreFromJSON
 
-    func testRescoreFromJSONSwiftFormat() throws {
-        let original = FitScorer.computeScore(
-            dimensions: allDimensions(80),
-            requirementsNotMet: ["Python", "FPGA experience"]
-        )
-        let json = try XCTUnwrap(FitScorer.encode(original))
-        let rescored = try XCTUnwrap(FitScorer.rescoreFromJSON(json))
-        XCTAssertEqual(rescored.overall, original.overall)
-        XCTAssertEqual(rescored.penalty, original.penalty)
+    func testRescoreFromJSON_usesStructuredAssessments() throws {
+        // breakdown base: 80*.40 + 60*.20 + 80*.15 + 60*.15 + 100*.10 = 32+12+12+9+10 = 75
+        // gaps: preferred/partial (5) + required/missing (12) = 17 → overall 58
+        let json = """
+        {
+          "breakdown": {"required_qualifications": 80, "preferred_qualifications": 60,
+                        "skills": 80, "domain_fit": 60, "experience_level": 100},
+          "requirement_assessments": [
+            {"requirement": "React", "kind": "preferred", "status": "partial"},
+            {"requirement": "10y management", "kind": "required", "status": "missing"},
+            {"requirement": "Swift", "kind": "required", "status": "met"}
+          ]
+        }
+        """
+        let result = try XCTUnwrap(FitScorer.rescoreFromJSON(json))
+        XCTAssertEqual(result.penalty, 17)
+        XCTAssertEqual(result.overall, 58)
     }
 
-    func testRescoreFromJSONLegacyArrayFormat() throws {
-        // Simulate the JS-produced format stored in the database.
+    func testRescoreFromJSON_legacyArrayFormat_treatedAsRequiredMissing() throws {
+        // No assessments → legacy requirements_not_met treated as missing REQUIRED gaps (12 each).
+        // dims: 80,60,75,70,65 → 80*.40 + 60*.20 + 75*.15 + 70*.10 + 65*.15
+        //     = 32 + 12 + 11.25 + 7 + 9.75 = 72 ; penalty 12 → overall 60
         let legacyJSON = """
         {
-            "overall_score": 70,
-            "requirements_penalty": 5,
-            "requirements_met": ["Python"],
             "requirements_not_met": ["5+ years managing teams"],
-            "summary": "Good fit overall",
-            "score_weights": {
-                "required_qualifications": 0.45,
-                "preferred_qualifications": 0.05,
-                "skills": 0.15,
-                "experience_level": 0.20,
-                "domain_fit": 0.15
-            },
             "dimensions": [
-                {"name": "required_qualifications", "score": 80, "rationale": "Meets most requirements"},
-                {"name": "preferred_qualifications", "score": 60, "rationale": "Some preferred"},
-                {"name": "skills", "score": 75, "rationale": "Good skills"},
-                {"name": "experience_level", "score": 70, "rationale": "Appropriate level"},
-                {"name": "domain_fit", "score": 65, "rationale": "Related domain"}
+                {"name": "required_qualifications", "score": 80, "rationale": "x"},
+                {"name": "preferred_qualifications", "score": 60, "rationale": "x"},
+                {"name": "skills", "score": 75, "rationale": "x"},
+                {"name": "experience_level", "score": 70, "rationale": "x"},
+                {"name": "domain_fit", "score": 65, "rationale": "x"}
             ]
         }
         """
-        // Manually compute expected:
-        // weighted = 80*0.45 + 60*0.05 + 75*0.15 + 70*0.20 + 65*0.15
-        //          = 36 + 3 + 11.25 + 14 + 9.75 = 74 (rounds to 74)
-        // penalty from "5+ years managing teams" → generic → 5
-        // overall = max(0, 74 - 5) = 69
         let result = try XCTUnwrap(FitScorer.rescoreFromJSON(legacyJSON))
-        XCTAssertEqual(result.penalty, 5)
-        XCTAssertEqual(result.overall, 69)
+        XCTAssertEqual(result.penalty, 12)
+        XCTAssertEqual(result.overall, 60)
     }
 
     func testRescoreFromJSONInvalidReturnsNil() {
@@ -253,7 +245,7 @@ final class FitScorerTests: XCTestCase {
     func testEncodeDecodeRoundTrip() throws {
         let result = FitScorer.computeScore(
             dimensions: allDimensions(85),
-            requirementsNotMet: ["RTL design", "Java"]
+            gaps: [gap("RTL design", .required, .missing), gap("Java", .preferred, .partial)]
         )
         let json = try XCTUnwrap(FitScorer.encode(result))
         let decoded = try XCTUnwrap(FitScorer.decode(from: json))
@@ -263,93 +255,7 @@ final class FitScorerTests: XCTestCase {
         XCTAssertEqual(decoded.breakdown.count, result.breakdown.count)
     }
 
-    // MARK: - TASK-254: Missing dimensions are treated as 0, not excluded from normalization
-
-    func testAllDimensionsPresent_sameResultAsExpected() {
-        // With all dims present, result is identical to the heterogeneous test above.
-        let dims: [String: Double] = [
-            "required_qualifications": 80,
-            "preferred_qualifications": 60,
-            "skills": 70,
-            "experience_level": 90,
-            "domain_fit": 50
-        ]
-        let result = FitScorer.computeScore(dimensions: dims)
-        // weighted = 80*0.45 + 60*0.05 + 70*0.15 + 90*0.20 + 50*0.15 = 75
-        XCTAssertEqual(result.overall, 75)
-    }
-
-    func testMissingOneDimension_lowerScoreThanIfPresent() {
-        // With all dims at 100, overall == 100.
-        let full = FitScorer.computeScore(dimensions: allDimensions(100))
-        XCTAssertEqual(full.overall, 100)
-
-        // Drop domain_fit (weight 0.15). Missing dims score 0, so:
-        // weightedSum = 100*(0.45+0.05+0.15+0.20) = 100*0.85 = 85
-        // totalWeight = 1.0 → baseScore = 85
-        var partial = FitScorer.dimensionWeights.keys.reduce(into: [String: Double]()) { d, k in
-            d[k] = 100
-        }
-        partial.removeValue(forKey: "domain_fit")
-        let result = FitScorer.computeScore(dimensions: partial)
-        XCTAssertEqual(result.overall, 85)
-        XCTAssertLessThan(
-            result.overall,
-            full.overall,
-            "A partial response must score lower than a full response with the same values"
-        )
-    }
-
-    func testAllDimensionsMissing_scoreIsZero() {
-        let result = FitScorer.computeScore(dimensions: [:])
-        XCTAssertEqual(result.overall, 0)
-    }
-
-    // MARK: - Empty dimensions
-
-    func testEmptyDimensionsReturnsZero() {
-        let result = FitScorer.computeScore(dimensions: [:])
-        XCTAssertEqual(result.overall, 0)
-        XCTAssertEqual(result.penalty, 0)
-    }
-
-    // MARK: - No missing requirements
-
-    func testNoPenaltyWhenNoRequirementsNotMet() {
-        let result = FitScorer.computeScore(
-            dimensions: allDimensions(80),
-            requirementsNotMet: []
-        )
-        XCTAssertEqual(result.penalty, 0)
-        XCTAssertEqual(result.overall, 80)
-    }
-
-    // MARK: - Case insensitivity of domain gap keywords
-
-    func testDomainGapKeywordCaseInsensitive() {
-        let result = FitScorer.computeScore(
-            dimensions: allDimensions(100),
-            requirementsNotMet: ["FPGA Design", "RTL Coding Required"]
-        )
-        // Both FPGA and RTL are domain gap keywords → 10 + 10 = 20
-        XCTAssertEqual(result.penalty, 20)
-        XCTAssertEqual(result.overall, 80)
-    }
-
-    // MARK: - Mixed generic and domain-gap
-
-    func testMixedPenalty() {
-        // 2 generic × 5 = 10, 1 domain (hyperscaler) × 10 = 10 → total 20
-        let notMet = ["Python required", "Go experience", "hyperscaler background needed"]
-        let result = FitScorer.computeScore(
-            dimensions: allDimensions(100),
-            requirementsNotMet: notMet
-        )
-        XCTAssertEqual(result.penalty, 20)
-        XCTAssertEqual(result.overall, 80)
-    }
-
-    // MARK: - TASK-453: dimension contract validation
+    // MARK: - TASK-453: dimension contract validation (unchanged)
 
     private func validDims() -> [[String: Any]] {
         [

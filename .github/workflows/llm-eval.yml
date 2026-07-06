@@ -1,6 +1,7 @@
 name: LLM Eval
 
-# Manual trigger or weekly schedule (Sunday 02:00 UTC).
+# Manual trigger only (workflow_dispatch). The weekly schedule was removed — the eval hits a
+# real LLM provider (potential cost) and doesn't need to run unattended; dispatch it on demand.
 # Requires repository secrets: JOBHUNT_LLM_URL, JOBHUNT_LLM_API_KEY.
 # Set JOBHUNT_LLM_MIN_ACCURACY (default 75) to fail below that threshold.
 on:
@@ -14,8 +15,6 @@ on:
         description: 'Model override (leave blank to use provider default)'
         required: false
         default: ''
-  schedule:
-    - cron: '0 2 * * 0'
 
 permissions:
   contents: read

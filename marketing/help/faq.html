@@ -20,6 +20,9 @@
     p { color: var(--fg-mute); margin-bottom: 14px; }
     strong { color: var(--fg); font-weight: 600; }
     code { background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 13px; color: var(--fg); }
+    pre { background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; overflow-x: auto; font-size: 12.5px; line-height: 1.5; color: var(--fg); margin: 8px 0 14px; }
+    pre code { background: none; border: none; padding: 0; font-size: inherit; }
+    .mcp-client { font-weight: 600; color: var(--fg); margin: 16px 0 4px; }
     a { color: var(--accent); }
     footer { border-top: 1px solid var(--border); padding: 28px 40px; font-size: 13px; color: var(--fg-mute); }
     footer a { color: var(--fg-mute); }
@@ -75,6 +78,43 @@
 
     <h2>How do I update the app?</h2>
     <p>If you installed from the <a href="https://apps.apple.com/us/app/jobhunt-find-your-next-job/id6782679255?mt=12" target="_blank" rel="noopener">Mac App Store</a>, updates arrive through the App Store automatically. If you installed the DMG, the app checks for updates automatically — you can also check manually from the application menu (<strong>JobHunt → Check for Updates</strong>) or download the latest build from <a href="https://github.com/brooksc/jobhunt/releases" target="_blank" rel="noopener">GitHub Releases</a>.</p>
+
+    <h2>How do I connect JobHunt to an AI assistant (MCP)?</h2>
+    <p>The DMG build ships a small bridge, <code>jobhunt-mcp</code>, that exposes your job database to AI assistants over the <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener">Model Context Protocol</a>. A few things first:</p>
+    <ul class="steps">
+      <li><strong>DMG build only.</strong> The Mac App Store version is sandboxed and does <em>not</em> include the bridge. Install the <a href="https://github.com/brooksc/jobhunt/releases" target="_blank" rel="noopener">DMG</a> if you want MCP.</li>
+      <li><strong>JobHunt must be running</strong> — the bridge talks to the app locally (<code>127.0.0.1</code>) using a per-device token stored in <code>~/.jobhunt-mcp-token</code>. Nothing leaves your Mac.</li>
+      <li>The bridge lives at <code>/Applications/Jobhunt.app/Contents/Helpers/jobhunt-mcp</code> (use that exact path below).</li>
+    </ul>
+
+    <p class="mcp-client">Claude Desktop</p>
+    <p>Open <strong>Settings → Developer → Edit Config</strong> (this opens <code>~/Library/Application Support/Claude/claude_desktop_config.json</code>) and add:</p>
+    <pre><code>{
+  "mcpServers": {
+    "jobhunt": { "command": "/Applications/Jobhunt.app/Contents/Helpers/jobhunt-mcp" }
+  }
+}</code></pre>
+    <p>Then fully quit and reopen Claude Desktop.</p>
+
+    <p class="mcp-client">Claude Code (terminal)</p>
+    <pre><code>claude mcp add jobhunt -- /Applications/Jobhunt.app/Contents/Helpers/jobhunt-mcp</code></pre>
+
+    <p class="mcp-client">Codex CLI</p>
+    <p>Add to <code>~/.codex/config.toml</code>:</p>
+    <pre><code>[mcp_servers.jobhunt]
+command = "/Applications/Jobhunt.app/Contents/Helpers/jobhunt-mcp"</code></pre>
+
+    <p class="mcp-client">Gemini CLI</p>
+    <p>Add to <code>~/.gemini/settings.json</code> (same shape as Claude Desktop):</p>
+    <pre><code>{
+  "mcpServers": {
+    "jobhunt": { "command": "/Applications/Jobhunt.app/Contents/Helpers/jobhunt-mcp" }
+  }
+}</code></pre>
+
+    <p><strong>ChatGPT desktop and the Gemini web/desktop app</strong> currently support only <em>remote</em> MCP connectors (a server URL), not a local command, so JobHunt's on-device bridge can't be added to them yet. Any MCP client that accepts a local command works — point it at the path above. (MCP support in these tools changes quickly; check each tool's own MCP docs if a config key differs.)</p>
+
+    <p>Not seeing the tools? Make sure JobHunt is open, then restart the assistant so it re-reads its config.</p>
 
     <h2>Still stuck?</h2>
     <p>See <a href="/issues/">Support &amp; Bug Reports</a> — report a bug on GitHub or email us at <a href="mailto:bug@jobhunt-app.com">bug@jobhunt-app.com</a>.</p>

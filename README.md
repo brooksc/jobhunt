@@ -52,25 +52,42 @@ Cloud providers require your consent before any data is sent, and you're billed 
 
 ## MCP integration (DMG only)
 
-The DMG build ships a `jobhunt-mcp` helper that bridges stdio JSON-RPC to the running app's HTTP server, exposing your job database as tools for AI assistants.
+The DMG build ships a `jobhunt-mcp` helper that bridges stdio JSON-RPC to the running app's HTTP
+server, exposing your job database as tools for AI assistants. The app must be running, and the
+Mac App Store build doesn't include it (sandbox restriction). The helper lives at
+`/Applications/Jobhunt.app/Contents/Helpers/jobhunt-mcp` — every client below points at that path.
+
+**Claude Code** —
 
 ```bash
 claude mcp add jobhunt -- /Applications/Jobhunt.app/Contents/Helpers/jobhunt-mcp
 ```
 
-**Claude Desktop** — add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+**Claude Desktop** — Settings → Developer → Edit Config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 
 ```json
-{
-  "mcpServers": {
-    "jobhunt": {
-      "command": "/Applications/Jobhunt.app/Contents/Helpers/jobhunt-mcp"
-    }
-  }
-}
+{ "mcpServers": { "jobhunt": { "command": "/Applications/Jobhunt.app/Contents/Helpers/jobhunt-mcp" } } }
 ```
 
-The app must be running for MCP to work. Mac App Store users do not get MCP (sandbox restriction).
+**Codex CLI** — add to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.jobhunt]
+command = "/Applications/Jobhunt.app/Contents/Helpers/jobhunt-mcp"
+```
+
+**Gemini CLI** — add to `~/.gemini/settings.json` (same shape as Claude Desktop):
+
+```json
+{ "mcpServers": { "jobhunt": { "command": "/Applications/Jobhunt.app/Contents/Helpers/jobhunt-mcp" } } }
+```
+
+Restart the client after editing so it re-reads its config. **ChatGPT desktop and the Gemini
+web/desktop app** currently support only *remote* MCP connectors (a server URL), not a local command,
+so JobHunt's on-device bridge can't be registered with them yet — any MCP client that accepts a local
+command works. (MCP client support changes fast; check each tool's MCP docs if a key differs.)
+
+End-user setup is also covered in the [help FAQ](https://jobhunt-app.com/help/faq).
 
 **Trust boundary:** the MCP endpoint is local-only (`127.0.0.1`) and requires a per-device bearer token at `~/.jobhunt-mcp-token` (owner-readable only). The `job_get` tool omits raw captured page text (`selected_text`, `visible_text`) by default; pass `include_raw_text: true` to include it. Do not expose the MCP port or token to remote systems.
 

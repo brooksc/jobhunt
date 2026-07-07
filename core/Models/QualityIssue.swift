@@ -83,7 +83,15 @@ public enum DataQualityScope {
 // MARK: - QualityChecker
 
 public enum QualityChecker: Sendable {
+    /// Data-quality thresholds (heuristic — see docs/tuning.md).
+    ///
+    /// `staleThresholdDays` is INTENTIONALLY independent of the `availability_stale_days` setting: this
+    /// flags an *extraction* that's old enough to be worth re-running (data drift), whereas the
+    /// availability setting decides when to re-check whether the *posting* is still live. They answer
+    /// different questions and happen to share the value 21 — changing one must not silently change the
+    /// other. If per-user tuning of extraction staleness is ever wanted, promote this to a setting.
     private static let staleThresholdDays = 21
+    /// Below these sizes the raw / cleaned capture text is treated as too thin to have extracted well.
     private static let minRawBytes = 1000
     private static let minCleanedBytes = 700
 

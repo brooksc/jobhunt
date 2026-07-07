@@ -211,7 +211,35 @@ public struct DuplicateDetector {
             .joined(separator: " ")
     }
 
-    /// Tokens that carry no signal for company identity (matches db.js COMPANY_STOP_WORDS)
+    // MARK: - Tuning constants (heuristic — see docs/tuning.md)
+
+    //
+    // The duplicate-confidence score is a hand-tuned formula. These name its magic numbers so the
+    // computation in `duplicateGroups` reads intelligibly and can be adjusted in one place. Values are
+    // unchanged from the previous inline literals — behavior is identical.
+
+    /// Base confidence for a same-domain duplicate, before description/field adjustments.
+    static let baseDomainConfidence = 0.65
+    /// How much the keep-vs-candidate domain-score gap (0–100) widens confidence.
+    static let rankSpreadWeight = 0.24
+    /// Token count at which description-similarity evidence reaches full weight.
+    static let descFullWeightTokens = 30.0
+    /// Scale applied to (similarity − midpoint) when adjusting confidence.
+    static let descAdjustmentScale = 0.3
+    /// Similarity midpoint — above it raises confidence, below it lowers it.
+    static let descSimilarityMidpoint = 0.5
+    /// Confidence subtracted per conflicting field (remote / seniority / location / currency).
+    static let fieldConflictPenalty = 0.08
+    /// Confidence clamp bounds.
+    static let confidenceFloor = 0.01
+    static let confidenceCeiling = 0.99
+    /// Salary bands diverging beyond this fraction on BOTH bounds hard-block a match.
+    static let salaryDivergenceThreshold = 0.1
+    /// Default company-name Jaccard similarity to cluster two jobs as the same company.
+    static let companyClusterThreshold = 0.5
+
+    /// Tokens that carry no signal for company identity (matches db.js COMPANY_STOP_WORDS).
+    /// Extend this list as new noise words surface — see docs/tuning.md.
     static let companyStopWords: Set<String> = [
         "the", "a", "an", "of", "for", "and", "or", "in", "at", "by", "to", "its", "with",
         "inc", "corp", "corporation", "co", "ltd", "llc", "llp", "lp", "plc",
@@ -239,6 +267,8 @@ public struct DuplicateDetector {
 
     // MARK: - Internal: description similarity (matches duplicateDescriptionSimilarity in db.js)
 
+    /// Common job-posting boilerplate words that carry no signal for description similarity.
+    /// Extend as new boilerplate surfaces — see docs/tuning.md.
     static let descriptionStopWords: Set<String> = [
         "about", "above", "across", "after", "again", "against", "also", "and", "another", "apply",
         "because", "been", "before", "being", "benefits", "between", "candidate", "careers", "company",
@@ -323,7 +353,7 @@ public struct DuplicateDetector {
            let lMax = left.salaryMax, let rMax = right.salaryMax {
             let minDiff = Double(abs(lMin - rMin)) / Double(max(lMin, rMin))
             let maxDiff = Double(abs(lMax - rMax)) / Double(max(lMax, rMax))
-            if minDiff > 0.1 && maxDiff > 0.1 { return nil }
+            if minDiff > salaryDivergenceThreshold && maxDiff > salaryDivergenceThreshold { return nil }
         }
 
         var fieldConflicts: [String] = []
@@ -352,7 +382,10 @@ public struct DuplicateDetector {
 
     // MARK: - Internal: union-find company clustering (matches clusterByCompany in db.js)
 
-    static func clusterByCompany(_ jobs: [JobSnapshot], threshold: Double = 0.5) -> [[JobSnapshot]] {
+    static func clusterByCompany(
+        _ jobs: [JobSnapshot],
+        threshold: Double = companyClusterThreshold
+    ) -> [[JobSnapshot]] {
         let count = jobs.count
         var parent = Array(0 ..< count)
         func find(_ nodeIdx: Int) -> Int {
@@ -432,16 +465,20 @@ public struct DuplicateDetector {
                     if let hash = candidate.cleanedHash, resolvedHashes.contains(hash) { continue }
                     if let hash = keep.cleanedHash, resolvedHashes.contains(hash) { continue }
 
-                    let domainConfidence = 0.65 + (Double(keepScore - candidateScore) / 100.0) * 0.24
+                    let domainConfidence = Self.baseDomainConfidence
+                        + (Double(keepScore - candidateScore) / 100.0) * Self.rankSpreadWeight
                     let descWeight = evidence.descSimilarity == nil ? 0.0
-                        : min(1.0, Double(evidence.descTokenCount) / 30.0)
+                        : min(1.0, Double(evidence.descTokenCount) / Self.descFullWeightTokens)
                     let descAdj: Double = if let sim = evidence.descSimilarity {
-                        descWeight * (sim - 0.5) * 0.3
+                        descWeight * (sim - Self.descSimilarityMidpoint) * Self.descAdjustmentScale
                     } else {
                         0.0
                     }
-                    let fieldPenalty = Double(evidence.fieldConflicts.count) * 0.08
-                    let confidence = min(0.99, max(0.01, domainConfidence + descAdj - fieldPenalty))
+                    let fieldPenalty = Double(evidence.fieldConflicts.count) * Self.fieldConflictPenalty
+                    let confidence = min(
+                        Self.confidenceCeiling,
+                        max(Self.confidenceFloor, domainConfidence + descAdj - fieldPenalty)
+                    )
 
                     let candidateHostname = DuplicateDetector.sourceHostname(urlString: candidate.sourceURL)
                     var reasonParts = ["preferred \(keepHostname) over \(candidateHostname)"]

@@ -45,6 +45,8 @@ public enum AvailabilityChecker {
 
     static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     static let goneStatusCodes: Set<Int> = [404, 410]
+    /// Heuristic removal-phrase lists — expect to keep extending these as new sites/wording surface.
+    /// Add literal phrases here and generalized families to `goneBodyRegexes` below (see docs/tuning.md).
     static let goneBodyPatterns: [String] = [
         "page not found", "job not found", "job no longer available",
         "this job is no longer", "position is no longer available", "position has been filled",

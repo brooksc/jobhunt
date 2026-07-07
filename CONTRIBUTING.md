@@ -33,6 +33,10 @@ The app stores its SwiftData database under `~/Library/Application Support/Jobhu
 [`CLAUDE.md`](CLAUDE.md) for the directory layout, actor-isolation conventions, and one-time data
 operations (migrations live in the `JobhuntMigrator` CLI, never the app launch path).
 
+**Tunable heuristics** — the opinionated constants you're most likely to tweak (fit-scoring weights &
+penalties, duplicate-detection thresholds, "posting gone" phrase lists, staleness thresholds) are
+indexed in [`docs/tuning.md`](docs/tuning.md).
+
 ## Dependency versions
 
 The whole build toolchain is pinned in `.mise.toml` — **Tuist, SwiftLint, and SwiftFormat** — and CI

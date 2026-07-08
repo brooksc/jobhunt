@@ -46,6 +46,18 @@ Expect to keep extending these as new sites and wording appear:
   `isLinkedInClosedJob`. Add a new ATS as a host-scoped, deterministic rule.
 - `timeoutSeconds`, `userAgent`.
 
+## Outbound job-search links — `core/Services/JobSearchLinks.swift`
+
+The detail pane's "Find a referral" (LinkedIn) and "Find on company site" (Google) buttons.
+
+- `excludedAggregatorDomains` — job boards pushed *out* of the "find on company site" Google results
+  (`-site:` exclusions). ATS domains (greenhouse/lever/workday) are deliberately kept — applying via a
+  company's ATS is "direct." The query itself (`{company} {title} (careers OR jobs) -site:…`) lives in
+  `companySiteSearchURL`; tweak there.
+- `genericCompanyTokens` — company-name words too generic to prove a URL belongs to the company
+  (used by `postingIsOnCompanySite`, which disables the button when the posting is already on the
+  company's site/ATS). Deliberately loose substring matching — accepts occasional false positives.
+
 ## Data quality — `core/Models/QualityIssue.swift`
 
 - `staleThresholdDays` (21) — an *extraction* is old enough to re-run. **Intentionally separate** from

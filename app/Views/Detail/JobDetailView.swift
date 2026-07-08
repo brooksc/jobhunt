@@ -225,6 +225,42 @@ private struct DetailHeader: View {
                     .help("Open the original job posting in your browser")
                 }
 
+                // Outbound research: a referral and the official posting are the two biggest boosts to
+                // getting an application seen (TASK-604).
+                if let referralURL = JobSearchLinks.linkedInConnectionsURL(company: job.company) {
+                    let referralHelp = "Search LinkedIn for connections at "
+                        + "\(job.company ?? "this company") who could refer you"
+                    Button {
+                        NSWorkspace.shared.open(referralURL)
+                    } label: {
+                        Label("Find a referral", systemImage: "person.2.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help(referralHelp)
+                }
+
+                if let siteSearchURL = JobSearchLinks.companySiteSearchURL(company: job.company, title: job.title) {
+                    let alreadyDirect = JobSearchLinks.postingIsOnCompanySite(
+                        company: job.company,
+                        postingURL: JobURLPolicy.displayURL(job: job)
+                    )
+                    let siteHelp = alreadyDirect
+                        ? "This posting already looks like it's on \(job.company ?? "the company")'s own site"
+                        : "Search Google for the official posting on the company's own site"
+                    Button {
+                        NSWorkspace.shared.open(siteSearchURL)
+                    } label: {
+                        Label("Find on company site", systemImage: "magnifyingglass")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(alreadyDirect)
+                    .help(siteHelp)
+                }
+
                 Button {
                     guard !isEnqueuing else { return }
                     isEnqueuing = true

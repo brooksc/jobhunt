@@ -1777,8 +1777,9 @@ final class FitScoringStateTests: XCTestCase {
 
     func testRecomputeAllFitScores_recomputesFromStoredJSONWithoutLLM() async throws {
         // Electron parity (rescore.js): recompute the overall score from stored dimensions using
-        // current weights, no LLM. Dimensions 80/50/70/90/60 → 71 with the TASK-602 weights
-        // (80*.40 + 50*.20 + 70*.15 + 90*.10 + 60*.15 = 70.5 → 71).
+        // current weights, no LLM. Dimensions 80/50/80/90/60 → 72 with the TASK-602 weights
+        // (80*.40 + 50*.20 + 80*.15 + 90*.10 + 60*.15 = 72.0). Chosen off a .5 boundary so the
+        // expected value is unambiguous regardless of float rounding.
         let container = try ModelContainerFactory.inMemory()
         let store = makeStore(container)
         let job = Job(id: "rescore-job", jobNumber: 1)
@@ -1787,7 +1788,7 @@ final class FitScoringStateTests: XCTestCase {
         try await store.insert(resume)
         let json = """
         {"dimensions":[{"name":"required_qualifications","score":80},\
-        {"name":"preferred_qualifications","score":50},{"name":"skills","score":70},\
+        {"name":"preferred_qualifications","score":50},{"name":"skills","score":80},\
         {"name":"experience_level","score":90},{"name":"domain_fit","score":60}],\
         "requirements_not_met":[]}
         """
@@ -1803,9 +1804,9 @@ final class FitScoringStateTests: XCTestCase {
         let n = try await store.recomputeAllFitScores()
         XCTAssertEqual(n, 1)
         let scores = try await store.fetch(FetchDescriptor<JobFitScore>())
-        XCTAssertEqual(scores.first?.fitScore, 71, "rescore recomputes overall from dimensions with current weights")
+        XCTAssertEqual(scores.first?.fitScore, 72, "rescore recomputes overall from dimensions with current weights")
         let jobs = try await store.fetch(FetchDescriptor<Job>())
-        XCTAssertEqual(jobs.first?.fitScore, 71, "job mirror updates to recomputed best score")
+        XCTAssertEqual(jobs.first?.fitScore, 72, "job mirror updates to recomputed best score")
     }
 
     func testSaveFitScore_activeResume_updatesJobFields() async throws {

@@ -172,11 +172,16 @@ public enum FitScorer {
     ) -> FitScoreResult {
         // Weighted sum: sum(score * weight) / sum(ALL expected weights)
         // Missing dimensions score 0 so a partial response doesn't inflate the score.
+        // Iterate in SORTED key order (not raw dictionary order): floating-point addition isn't
+        // associative, and Dictionary iteration order is nondeterministic, so an unordered sum could
+        // land just above/below a .5 boundary and round to a different integer across runs/machines
+        // (bit us in CI: 70 vs 71 for the same input). Sorted order makes the score deterministic.
         var weightedSum: Double = 0
         var totalWeight: Double = 0
         var breakdown: [String: Double] = [:]
 
-        for (name, weight) in dimensionWeights {
+        for name in dimensionWeights.keys.sorted() {
+            let weight = dimensionWeights[name] ?? 0
             totalWeight += weight
             let raw = dimensions[name] ?? 0
             let clamped = min(100, max(0, raw.rounded()))

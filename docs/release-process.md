@@ -226,7 +226,7 @@ After the **first** publish of a new extension id, add it to `JobhuntServer.allo
 
 MAS is **live**. `release-mas.yml` runs on every `vX.Y.Z` tag (alongside the DMG) **and** via
 `workflow_dispatch`; the `MAS_*` secrets are set (see §0) and the App Store Connect app record exists.
-The first submission has been made and is under review.
+The app is published on the App Store.
 
 > **MAS delivery is manual and curated — by design.** Unlike the DMG (auto-published on every tag),
 > nothing reaches App Store Connect automatically. A tag build only produces a signed `.pkg` artifact.
@@ -256,7 +256,23 @@ The first submission has been made and is under review.
    `.pkg`. A tag build or an unchecked run never uploads. *(Alternatively, download the `.pkg` artifact
    from step 1 and upload it via **Transporter** by hand — same result.)*
 
-4. **Submit for review (manual, in App Store Connect).** After Apple finishes processing the delivered
+4. **The delivery self-records as a `mas-vX.Y.Z` tag.** Immediately after a successful `altool`
+   upload, the workflow stamps an annotated tag (marketing version, build number, commit, run URL) and
+   pushes it. It marks *delivered to App Store Connect*, **not** submitted or released. This is the
+   only marker a MAS release leaves in the repo — the DMG's `vX.Y.Z` tag says nothing about the App
+   Store, so without it "what shipped to the App Store?" is guesswork. To see what's landed since:
+
+   ```bash
+   git describe --tags --match 'mas-v*' --abbrev=0                        # last delivered version
+   git log $(git describe --tags --match 'mas-v*' --abbrev=0)..HEAD --oneline
+   git tag -n99 -l 'mas-v*'                                               # full delivery history
+   ```
+
+   Re-delivering the same marketing version force-moves its tag to the newer build. If you deliver by
+   hand via Transporter instead of the workflow, **tag it yourself** (`git tag -a mas-vX.Y.Z -m …`)
+   or the record silently goes stale.
+
+5. **Submit for review (manual, in App Store Connect).** After Apple finishes processing the delivered
    build (~5–30 min), attach it to a new App Store version, fill in **What's New**, paste the
    **reviewer/testing notes**, and Submit for Review. The current reviewer notes + demo instructions
    live in **[`docs/app-store-metadata.md`](app-store-metadata.md)** (the "App Review notes" section —

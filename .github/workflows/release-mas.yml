@@ -226,6 +226,34 @@ jobs:
             --password "$ASC_PASSWORD"
           echo "Uploaded. After Apple finishes processing, attach the build to a version in App Store Connect and Submit for Review."
 
+      # A MAS delivery is a manual dispatch, so — unlike the DMG — it otherwise leaves NO marker in the
+      # repo of what actually reached App Store Connect. Without one, "what changed since the last MAS
+      # release?" can only be guessed at from surrounding commits. Stamping the tag here, immediately
+      # after a successful altool upload, makes the record a byproduct of the delivery rather than a
+      # step someone has to remember. Answer the question with:
+      #     git describe --tags --match 'mas-v*' --abbrev=0     # last delivered version
+      #     git log $(git describe --tags --match 'mas-v*' --abbrev=0)..HEAD --oneline
+      # Re-delivering the same marketing version force-moves its tag: the newest build of a version
+      # supersedes the earlier one, so the tag always points at what's actually in App Store Connect.
+      - name: Tag the delivered build
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.upload_to_app_store_connect }}
+        run: |
+          VERSION=$(grep -o '\.marketingVersion("[0-9.]*")' Project.swift | grep -o '"[0-9.]*"' | tr -d '"')
+          [ -n "$VERSION" ] || { echo "ERROR: could not parse marketingVersion from Project.swift"; exit 1; }
+          TAG="mas-v$VERSION"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f -a "$TAG" -m "Delivered to App Store Connect
+          marketing version: $VERSION
+          build number:      $BUILD_NUMBER
+          commit:            ${{ github.sha }}
+          run:               ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          NOTE: delivered to App Store Connect, NOT necessarily submitted for review or released.
+          Submission is still done by hand in App Store Connect."
+          git push -f origin "refs/tags/$TAG"
+          echo "Tagged $TAG at ${{ github.sha }}"
+
       # TASK-356: Clean up signing certificate material
       - name: Clean up signing certificates
         if: always()

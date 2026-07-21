@@ -57,6 +57,9 @@ public enum SettingsKey {
     /// Persisted Jobs-list sort, so it survives sidebar-selection changes and relaunch.
     public static let jobsSortKey = "jobs_sort_key"
     public static let jobsSortAscending = "jobs_sort_ascending"
+    /// Persisted last-selected job-detail tab (DetailTab rawValue), so opening a job restores the tab
+    /// you last deliberately chose (e.g. "Fit") instead of always resetting to Overview.
+    public static let detailLastTab = "detail_last_tab"
 
     /// API key settings that must live in Keychain, not SwiftData (App Store hygiene).
     public static let keychainKeys: Set<String> = [

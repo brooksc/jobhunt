@@ -13,6 +13,7 @@ struct JobDetailView: View {
     var onClose: () -> Void = {}
 
     @Environment(Router.self) private var router
+    @Environment(AppServices.self) private var appServices
     @Environment(\.jobService) private var jobService
     @Environment(\.queueActor) private var queueActor
     @Environment(\.modelContext) private var modelContext
@@ -49,7 +50,7 @@ struct JobDetailView: View {
             )
             Divider()
             // HIG-5: system segmented Picker replaces hand-rolled tab bar
-            Picker("Tab", selection: $selectedTab) {
+            Picker("Tab", selection: stickyTabSelection) {
                 ForEach(visibleTabs, id: \.self) { tab in
                     Text(tab == .timeline && timelineCount > 0
                         ? "\(tab.rawValue) (\(timelineCount))"
@@ -73,8 +74,36 @@ struct JobDetailView: View {
         // "Add Note" from the Jobs row context menu selects the job and asks us to open its
         // Timeline tab for note entry. The view re-mounts per job (.id(job.id)), so onAppear
         // covers a fresh selection and onChange covers re-triggering on the same job.
-        .onAppear { consumeComposeNoteRequest() }
+        // Restore the sticky tab FIRST so a pending note request still wins for this open.
+        .onAppear {
+            restoreStickyTab()
+            consumeComposeNoteRequest()
+        }
         .onChange(of: router.composeNoteJobID) { _, _ in consumeComposeNoteRequest() }
+    }
+
+    /// Picker binding that persists the choice — but ONLY deliberate segmented-control picks. The
+    /// imperative jumps to `.timeline` (Add Note / overdue badge / header Note button) and the
+    /// Overview "see Fit" button assign `selectedTab` directly and bypass this, so a one-off jump
+    /// doesn't become the sticky default.
+    private var stickyTabSelection: Binding<DetailTab> {
+        Binding(
+            get: { selectedTab },
+            set: { newValue in
+                selectedTab = newValue
+                appServices.settings.detailLastTab = newValue.rawValue
+            }
+        )
+    }
+
+    /// Seed the tab from the last deliberately-chosen one (sticky across jobs + relaunch). Falls back
+    /// to the default `.overview`, and ignores a saved tab that isn't visible for this job (e.g.
+    /// `.compare` on a non-duplicate).
+    private func restoreStickyTab() {
+        if let saved = DetailTab(rawValue: appServices.settings.detailLastTab),
+           visibleTabs.contains(saved) {
+            selectedTab = saved
+        }
     }
 
     private func consumeComposeNoteRequest() {

@@ -34,7 +34,8 @@ private let settingsDefaults: [String: String] = [
     SettingsKey.llmConsentOpenAI: "0",
     SettingsKey.lastSidebarSelection: "",
     SettingsKey.jobsSortKey: "capturedAt",
-    SettingsKey.jobsSortAscending: "false"
+    SettingsKey.jobsSortAscending: "false",
+    SettingsKey.detailLastTab: ""
 ]
 
 @Observable
@@ -160,6 +161,13 @@ public final class SettingsStore {
     public var jobsSortAscending: Bool {
         get { bool(forKey: SettingsKey.jobsSortAscending) }
         set { setBool(newValue, forKey: SettingsKey.jobsSortAscending) }
+    }
+
+    /// Persisted last deliberately-selected job-detail tab (a `DetailTab` rawValue). Empty until the
+    /// user picks a tab; the detail view maps it back to the enum with an Overview fallback.
+    public var detailLastTab: String {
+        get { string(forKey: SettingsKey.detailLastTab) }
+        set { set(newValue, forKey: SettingsKey.detailLastTab) }
     }
 
     /// TASK-462: when on (and provider is OpenRouter), rotate over free structured-output models with

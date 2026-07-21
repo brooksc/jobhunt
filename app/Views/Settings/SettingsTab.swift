@@ -476,8 +476,11 @@ struct ExpiredConfirmationSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Jobs No Longer Available")
                 .font(.headline)
-            Text("\(goneJobs.count) of your Interested or Applied jobs appear to be gone. Select which to mark as Expired.")
-                .font(.subheadline)
+            Text(
+                "\(goneJobs.count) of your Interested or Applied jobs appear to be gone. "
+                    + "Select which to mark as Expired."
+            )
+            .font(.subheadline)
                 .foregroundStyle(.secondary)
 
             VStack(spacing: 0) {

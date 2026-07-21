@@ -13,7 +13,9 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
     public let concurrencyLimit = 3
     /// Bounded 429 retry budget + per-wait clamp (TASK-463, Electron parity ~4 RL retries).
     static let maxRateLimitRetries = 4
-    static let maxRateLimitDelaySeconds: Double = 60
+    /// 180 (was 60): honor a legitimate Retry-After up to a couple of minutes rather than retrying
+    /// early into a still-active rate limit.
+    static let maxRateLimitDelaySeconds: Double = 180
 
     private let apiKey: String
     private let model: String

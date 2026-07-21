@@ -73,6 +73,14 @@ public actor QueueActor {
         return (preview, raw.count)
     }
 
+    /// Best-effort fit-mirror settle write. If it fails the fit row can be stranded "pending"/"running"
+    /// forever (TASK-520), so LOG the failure rather than silently discarding it with `try?`.
+    private func settleFitMirror(_ what: String, _ work: () async throws -> Void) async {
+        do { try await work() } catch {
+            NSLog("QueueActor: \(what) failed — a fit score row may be stuck: \(error)")
+        }
+    }
+
     // MARK: - Dependencies
 
     private let store: BackgroundStore
@@ -119,7 +127,9 @@ public actor QueueActor {
     /// don't count toward it (see ProcessOutcome).
     static let autoPauseThreshold = 4
     /// Clamp for honoring a server Retry-After (seconds) so a hostile/huge value can't stall the queue.
-    static let maxRetryAfterSeconds: Double = 60
+    /// 180 (was 60): providers legitimately ask for up to a couple of minutes, and clamping below the
+    /// requested wait just guarantees a second 429 on retry.
+    static let maxRetryAfterSeconds: Double = 180
 
     // MARK: - Init
 
@@ -757,7 +767,9 @@ public actor QueueActor {
             }
             // TASK-520: a pre-provider failure must move the fit record off .pending too, or the
             // job's fit mirror is stuck "pending" forever.
-            try? await store.markFitScoreFailed(jobID: jobID, resumeID: resumeID, errorMessage: errMsg)
+            await settleFitMirror("markFitScoreFailed (pre-provider)") {
+                try await store.markFitScoreFailed(jobID: jobID, resumeID: resumeID, errorMessage: errMsg)
+            }
             return false
         }
 
@@ -780,11 +792,13 @@ public actor QueueActor {
             )
             await markRequestFailed(item: item, error: ConsentError.notConsented, startedAt: startedAt)
             // TASK-520: keep the fit record's state consistent with the failed request.
-            try? await store.markFitScoreFailed(
-                jobID: jobID,
-                resumeID: resumeID,
-                errorMessage: ConsentError.notConsented.localizedDescription
-            )
+            await settleFitMirror("markFitScoreFailed (consent)") {
+                try await store.markFitScoreFailed(
+                    jobID: jobID,
+                    resumeID: resumeID,
+                    errorMessage: ConsentError.notConsented.localizedDescription
+                )
+            }
             return false
         }
 
@@ -797,7 +811,9 @@ public actor QueueActor {
         let jobSnap = fitInputs.job
         let resumeSnap = ResumeSnapshot(text: fitInputs.resumeText)
 
-        try? await store.markFitScoreRunning(jobID: jobID, resumeID: resumeID)
+        await settleFitMirror("markFitScoreRunning") {
+            try await store.markFitScoreRunning(jobID: jobID, resumeID: resumeID)
+        }
 
         do {
             let fitOutput = try await ExtractionEngine.scoreFit(
@@ -860,7 +876,9 @@ public actor QueueActor {
                     req.finishedAt = Date()
                     req.error = errorStr
                 }
-                try? await store.markFitScoreFailed(jobID: jobID, resumeID: resumeID, errorMessage: errorStr)
+                await settleFitMirror("markFitScoreFailed (post-provider)") {
+                    try await store.markFitScoreFailed(jobID: jobID, resumeID: resumeID, errorMessage: errorStr)
+                }
             } else {
                 let backoffMs = Self.backoffMs(for: error, attempt: item.attempt)
                 try await Task.sleep(nanoseconds: UInt64(backoffMs) * 1_000_000)

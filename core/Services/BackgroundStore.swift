@@ -1246,14 +1246,15 @@ public actor BackgroundStore {
             return AtomicIngestResult(captureID: existing.id, jobNumber: job.jobNumber ?? 0, isDuplicate: false)
         }
 
-        // Cleaned hash: semantic duplicate — fetch only rows matching the hash, filter URL in memory
-        // (typically 0-1 rows match, so full scan never materialises)
+        // Cleaned hash: semantic duplicate — fetch rows matching the hash, filter URL in memory.
+        // No fetchLimit: an exact cleaned-hash match set is bounded by genuinely identical postings
+        // (usually 0-1), and a fixed cap of 10 silently missed a real duplicate at position 11+ when a
+        // boilerplate/templated description collided across many captures.
         var duplicateOfJobID: String?
         if let cHash = input.cleanedHash {
             let url = input.url
             let canonical = input.canonicalURL
-            var cleanedDescriptor = FetchDescriptor<Capture>(predicate: #Predicate { $0.cleanedHash == cHash })
-            cleanedDescriptor.fetchLimit = 10
+            let cleanedDescriptor = FetchDescriptor<Capture>(predicate: #Predicate { $0.cleanedHash == cHash })
             let candidates = try modelContext.fetch(cleanedDescriptor)
             if let dup = candidates.first(where: {
                 $0.url != url && ($0.canonicalURL ?? "") != (canonical ?? "")

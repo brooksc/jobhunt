@@ -89,7 +89,10 @@ public enum AvailabilityChecker {
         // "<subject> not found"
         #"\b(job|position|posting|page|listing)\s+not\s+found\b"#
     ]
-    static let timeoutSeconds: TimeInterval = 12
+    /// 30s (was a legacy 12s): slow-but-alive ATS pages (Workday etc.) were timing out and counting as
+    /// a failed check, so the job never got re-verified until the next interval. A timeout still resolves
+    /// to `.available` (never `.gone`), so a longer wait only costs latency on genuinely slow hosts.
+    static let timeoutSeconds: TimeInterval = 30
 
     // MARK: - URL normalization helpers
 

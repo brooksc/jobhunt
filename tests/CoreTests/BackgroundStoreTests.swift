@@ -159,6 +159,46 @@ final class BackgroundStoreNotFoundTests: XCTestCase {
     }
 }
 
+// MARK: - Incremental duplicate detection + fit guard (TASK-611)
+
+final class BackgroundStoreDuplicateGuardTests: XCTestCase {
+    func testDetectDuplicateForJob_flagsSecondCopy_andBlocksFit() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+
+        let hash = "dup_hash"
+        let desc = "Shared boilerplate duplicate listing carrying sufficient distinct meaningful unique tokens here"
+        func makeJob(id: String, num: Int, url: String) -> (Job, Capture) {
+            let cap = Capture(url: url, pageTitle: "Software Engineer", rawHash: "rh_\(id)", cleanedHash: hash)
+            cap.cleanedDescription = desc
+            let job = Job(id: id, company: "AcmeCorp", title: "Software Engineer", extractionStatus: .succeeded)
+            job.jobNumber = num
+            job.capture = cap
+            return (job, cap)
+        }
+        let (orig, origCap) = makeJob(id: "orig", num: 1, url: "https://acme.com/job")
+        let (cand, candCap) = makeJob(id: "cand", num: 2, url: "https://greenhouse.io/acme/job")
+        for model in [origCap, candCap] as [any PersistentModel] { try await store.insert(model) }
+        for model in [orig, cand] as [any PersistentModel] { try await store.insert(model) }
+
+        // The later copy is flagged a duplicate of the earlier one.
+        let flagged = try await store.detectDuplicateForJob(jobID: "cand")
+        XCTAssertTrue(flagged)
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        let candidate = jobs.first { $0.id == "cand" }
+        XCTAssertEqual(candidate?.status, .duplicate)
+        XCTAssertEqual(candidate?.duplicateOfJobID, "orig")
+
+        // Fit scoring is blocked for the duplicate — no wasted LLM call.
+        let queued = try await store.enqueueFitForActiveResumes(jobID: "cand")
+        XCTAssertEqual(queued, 0, "a duplicate must not enqueue fit work")
+
+        // The canonical original is NOT flagged.
+        let flaggedOrig = try await store.detectDuplicateForJob(jobID: "orig")
+        XCTAssertFalse(flaggedOrig)
+    }
+}
+
 // MARK: - Minimal no-op provider (local to this file)
 
 private struct NoOpLLMProvider: LLMProvider {

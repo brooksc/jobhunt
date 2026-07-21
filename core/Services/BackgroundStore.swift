@@ -584,6 +584,10 @@ public actor BackgroundStore {
         let jid = jobID
         let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))
         guard let job = jobs.first else { return 0 }
+        // A job already flagged as a duplicate doesn't need a fit score — skip it. Guards the manual
+        // "score all active resumes" path and any race where detection flagged the job after fit was
+        // requested, in addition to the post-extraction auto-enqueue (TASK-611).
+        guard job.duplicateOfJobID == nil, job.status != .duplicate else { return 0 }
         let activeResumes = try modelContext.fetch(FetchDescriptor<Resume>(predicate: #Predicate { $0.active == true }))
         guard !activeResumes.isEmpty else { return 0 }
 
@@ -1089,6 +1093,48 @@ public actor BackgroundStore {
         }
         if flagged > 0 { try modelContext.save() }
         return flagged
+    }
+
+    /// Incremental duplicate check for a SINGLE just-extracted job. If it looks like a duplicate of an
+    /// already-captured job, flag it (duplicateOfJobID + confidence + `.duplicate` status + a
+    /// `duplicate_detected` event) and return true. Runs after extraction and BEFORE fit scoring so a
+    /// duplicate never wastes a fit LLM call (TASK-611). Cheaper than `detectAndPersistDomainDuplicates`
+    /// — it compares this one job against same-title/same-hash jobs, not every pair. Returns false when
+    /// the job is missing, not yet extracted, already a duplicate, or not a duplicate of anything.
+    public func detectDuplicateForJob(jobID: String) throws -> Bool {
+        let jid = jobID
+        let matches = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))
+        guard let job = matches.first, let capture = job.capture,
+              job.extractionStatus == .succeeded,
+              job.duplicateOfJobID == nil, job.status != .duplicate else {
+            return false
+        }
+        let candidate = JobSnapshot(job: job, capture: capture)
+
+        let corpus = try modelContext.fetch(FetchDescriptor<Job>()).compactMap { other -> JobSnapshot? in
+            guard other.id != jid, let cap = other.capture else { return nil }
+            return JobSnapshot(job: other, capture: cap)
+        }
+        let decisions = try modelContext.fetch(FetchDescriptor<DuplicateDecision>())
+        let resolvedHashes = Set(decisions.map(\.cleanedHash))
+
+        guard let pair = DuplicateDetector().duplicatePairForCandidate(
+            candidate, among: corpus, resolvedHashes: resolvedHashes
+        ) else { return false }
+
+        job.duplicateOfJobID = pair.original.id
+        job.duplicateConfidence = pair.confidence
+        job.status = .duplicate
+        job.updatedAt = Date()
+        let originalNum = pair.original.jobNumber.map { "#\($0)" } ?? "another job"
+        let event = JobEvent(
+            eventType: "duplicate_detected",
+            note: "Flagged as a possible duplicate of \(originalNum) — \(pair.reason)"
+        )
+        event.job = job
+        modelContext.insert(event)
+        try modelContext.save()
+        return true
     }
 
     /// Record (or update) a duplicate decision so a resolved pair does not resurface in detection.

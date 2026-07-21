@@ -712,6 +712,45 @@ final class DuplicateDetectorTests: XCTestCase {
         let resolved = DuplicateDetector().duplicateGroups(snapshots: snapshots, resolvedHashes: [hash])
         XCTAssertEqual(resolved.count, 0, "Pair must be suppressed when hash is in resolvedHashes")
     }
+
+    // MARK: - duplicatePairForCandidate (incremental per-job check, TASK-611)
+
+    private func hashSnapshot(id: String, jobNumber: Int, url: String, hash: String) -> JobSnapshot {
+        let cap = Capture(url: url, pageTitle: "Software Engineer", rawHash: "rh_\(id)", cleanedHash: hash)
+        cap.cleanedDescription =
+            "Shared boilerplate duplicate listing carrying sufficient distinct meaningful unique tokens here"
+        let job = Job(id: id, company: "AcmeCorp", title: "Software Engineer", extractionStatus: .succeeded)
+        job.jobNumber = jobNumber
+        job.capture = cap
+        return JobSnapshot(job: job, capture: cap)
+    }
+
+    func testDuplicatePairForCandidate_flagsExactHashDuplicate() {
+        let hash = "shared_ch"
+        let original = hashSnapshot(id: "orig", jobNumber: 1, url: "https://acme.com/job", hash: hash)
+        let candidate = hashSnapshot(id: "cand", jobNumber: 2, url: "https://greenhouse.io/acme/job", hash: hash)
+        let pair = DuplicateDetector().duplicatePairForCandidate(candidate, among: [original], resolvedHashes: [])
+        XCTAssertEqual(pair?.candidate.id, "cand")
+        XCTAssertEqual(pair?.original.id, "orig", "the earlier job is the canonical original")
+    }
+
+    func testDuplicatePairForCandidate_returnsNilForUniqueJob() {
+        let candidate = hashSnapshot(id: "a", jobNumber: 1, url: "https://a.com/job", hash: "hash_a")
+        let unrelated = hashSnapshot(id: "b", jobNumber: 2, url: "https://b.com/job", hash: "hash_b")
+        // Different titles would normally differ too, but even with the same title a different hash and
+        // single hostname yields no pair — nothing for the candidate to duplicate.
+        XCTAssertNil(DuplicateDetector().duplicatePairForCandidate(candidate, among: [unrelated], resolvedHashes: []))
+    }
+
+    func testDuplicatePairForCandidate_respectsResolvedHashes() {
+        let hash = "shared_ch"
+        let original = hashSnapshot(id: "orig", jobNumber: 1, url: "https://acme.com/job", hash: hash)
+        let candidate = hashSnapshot(id: "cand", jobNumber: 2, url: "https://greenhouse.io/acme/job", hash: hash)
+        let pair = DuplicateDetector().duplicatePairForCandidate(
+            candidate, among: [original], resolvedHashes: [hash]
+        )
+        XCTAssertNil(pair, "a resolved hash must not re-flag the candidate")
+    }
 }
 
 // MARK: - Test helpers

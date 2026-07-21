@@ -166,6 +166,30 @@ public struct DuplicateDetector {
         return deduped
     }
 
+    /// Incremental single-candidate check: returns the pair flagging `candidate` as a duplicate of an
+    /// existing job, or nil. Reuses the exact batch matching logic (`duplicateGroups`) but only over
+    /// the jobs that could possibly pair with the candidate — those sharing its normalized title or
+    /// its cleaned hash — so it's cheap enough to run after each extraction (before fit scoring)
+    /// instead of an O(N²) full rescan. Under the batch algorithm a candidate can only pair with a
+    /// same-title (heuristic path) or same-cleaned-hash (exact path) job, so the scoped result is
+    /// identical to what the full scan would produce for this candidate.
+    public func duplicatePairForCandidate(
+        _ candidate: JobSnapshot,
+        among corpus: [JobSnapshot],
+        resolvedHashes: Set<String>
+    ) -> DuplicatePair? {
+        let candTitle = candidate.title.map(Self.normalizeDuplicateText) ?? ""
+        let relevant = corpus.filter { snap in
+            guard snap.id != candidate.id else { return false }
+            if let hash = candidate.cleanedHash, snap.cleanedHash == hash { return true }
+            guard let title = snap.title, !candTitle.isEmpty else { return false }
+            return Self.normalizeDuplicateText(title) == candTitle
+        }
+        guard !relevant.isEmpty else { return nil }
+        return duplicateGroups(snapshots: relevant + [candidate], resolvedHashes: resolvedHashes)
+            .first { $0.candidate.id == candidate.id }
+    }
+
     // MARK: - Hash helpers (matches capture pipeline)
 
     /// SHA-256 hex string of the cleaned description text.

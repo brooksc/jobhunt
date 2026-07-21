@@ -628,10 +628,18 @@ public actor QueueActor {
             )
             guard try await store.commitExtractionSuccess(result, metadata: metadata) else { return false }
 
-            // Electron parity: auto-score fit against all active resumes (no-op when none
-            // is active). The drain loop re-fetches queued requests, so the new fit requests
-            // run on the next iteration without an explicit restart.
-            _ = try? await store.enqueueFitForActiveResumes(jobID: jobID)
+            // Catch duplicates BEFORE spending fit LLM calls on them (TASK-611): a job flagged as a
+            // duplicate of an already-captured posting is skipped here — the canonical keeps its fit
+            // score, and later copies in a bulk save cost only the (already-spent) extraction. The
+            // end-of-drain full scan still runs as a backstop for anything this per-job check misses.
+            let isDuplicate = (try? await store.detectDuplicateForJob(jobID: jobID)) ?? false
+
+            // Electron parity: auto-score fit against all active resumes (no-op when none is active,
+            // or when the job was just flagged a duplicate). The drain loop re-fetches queued
+            // requests, so the new fit requests run on the next iteration without an explicit restart.
+            if !isDuplicate {
+                _ = try? await store.enqueueFitForActiveResumes(jobID: jobID)
+            }
 
             emit(.jobReady(jobNumber: item.jobNumber, title: item.jobTitle, fitScore: nil))
             return true

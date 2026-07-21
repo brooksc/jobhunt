@@ -2082,10 +2082,9 @@ struct DescriptionTabView: View {
     let job: Job
 
     @State private var showCleanedSource = false
-
-    private var blocks: [JDBlock] {
-        parseJdBlocks(job.capture?.cleanedDescription ?? job.capture?.visibleText)
-    }
+    /// Parsed once per job (the description is static for a given view) instead of on every render —
+    /// parseJdBlocks scans the full ~10 KB description. The view re-mounts per job (.id(job.id)).
+    @State private var blocks: [JDBlock] = []
 
     private var cleanedBytes: Int {
         (job.capture?.cleanedDescription ?? job.capture?.visibleText ?? "").utf8.count
@@ -2132,6 +2131,7 @@ struct DescriptionTabView: View {
             }
             .padding(14)
         }
+        .onAppear { blocks = parseJdBlocks(job.capture?.cleanedDescription ?? job.capture?.visibleText) }
     }
 
     @ViewBuilder

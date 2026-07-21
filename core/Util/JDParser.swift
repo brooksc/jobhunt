@@ -12,6 +12,17 @@ public enum JDBlock: Equatable {
     case horizontalRule
 }
 
+// MARK: - Compiled regexes (hoisted — these were recompiled on every parse call, and the numbered-list
+
+// one once PER LINE, which showed up as per-render cost when a detail view rebuilt `blocks`).
+
+private let jdHeaderRegex = try? NSRegularExpression(
+    pattern: #"^(overview|about|description|what you|role|position|responsibilities|qualifications|requirements|compensation|benefits|about us|the opportunity|the role|job summary|summary|who we|hiring)"#,
+    options: .caseInsensitive
+)
+private let jdEmojiRegex = try? NSRegularExpression(pattern: #"^\p{Emoji_Presentation}"#)
+private let jdNumberedListRegex = try? NSRegularExpression(pattern: #"^\d+[.)]\s+"#)
+
 // MARK: - Parser
 
 /// Parses a job description plain text into structured blocks.
@@ -22,12 +33,9 @@ public func parseJdBlocks(_ text: String?) -> [JDBlock] {
 
     let lines = text.components(separatedBy: "\n")
 
-    // Skip leading boilerplate: find first "real content" line.
-    let headerRe = try? NSRegularExpression(
-        pattern: #"^(overview|about|description|what you|role|position|responsibilities|qualifications|requirements|compensation|benefits|about us|the opportunity|the role|job summary|summary|who we|hiring)"#,
-        options: .caseInsensitive
-    )
-    let emojiRe = try? NSRegularExpression(pattern: #"^\p{Emoji_Presentation}"#)
+    // Skip leading boilerplate: find first "real content" line. (Regexes are file-level constants.)
+    let headerRe = jdHeaderRegex
+    let emojiRe = jdEmojiRegex
 
     let isProse: (String) -> Bool = { str in
         str.count >= 80 || (str.count >= 50 && (str.contains(",") || str.contains(".")))
@@ -134,10 +142,13 @@ private func extractBulletContent(_ line: String) -> String? {
         let rest = line.dropFirst().trimmingCharacters(in: .whitespaces)
         if !rest.isEmpty { return rest }
     }
-    // Numbered: \d+[.)]\s+...
-    if let match = line.range(of: #"^\d+[.)]\s+"#, options: .regularExpression) {
-        let rest = String(line[match.upperBound...])
-        if !rest.isEmpty { return rest }
+    // Numbered: \d+[.)]\s+... (regex hoisted to a file-level constant — was compiled per line).
+    if let re = jdNumberedListRegex {
+        let ns = line as NSString
+        if let m = re.firstMatch(in: line, range: NSRange(location: 0, length: ns.length)) {
+            let rest = ns.substring(from: m.range.upperBound)
+            if !rest.isEmpty { return rest }
+        }
     }
     return nil
 }

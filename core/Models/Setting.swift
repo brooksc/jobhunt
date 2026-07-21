@@ -43,6 +43,9 @@ public enum SettingsKey {
     public static let availabilityAutoCheckIntervalDays = "availability_auto_check_interval_days"
     public static let availabilityStaleDays = "availability_stale_days"
     public static let availabilityLastAutoCheckAt = "availability_last_auto_check_at"
+    /// ISO-8601 timestamp of the last "jobs may be gone" macOS notification, used to rate-limit it to
+    /// at most once per 24h so a long foreground session can't spam the user.
+    public static let availabilityLastNotifiedAt = "availability_last_notified_at"
     public static let llmPriceInput = "llm_price_input"
     public static let llmPriceOutput = "llm_price_output"
     public static let llmConsentAnthropic = "llm_consent_anthropic"

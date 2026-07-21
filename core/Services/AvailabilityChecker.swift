@@ -19,6 +19,15 @@ public enum URLAvailabilityResult: Sendable {
 
 public extension Notification.Name {
     static let jobUnavailable = Notification.Name("jobhunt.jobUnavailable")
+    /// Posted by the confirm-first background pass when one or more jobs look gone and the user should
+    /// be prompted to review them (userInfo: `count`). No status has been changed — the app surfaces a
+    /// notification and opens the confirmation UI. See `AvailabilityChecker.maybeFindStaleGoneJobs`.
+    static let jobsMaybeUnavailable = Notification.Name("jobhunt.jobsMaybeUnavailable")
+}
+
+/// userInfo keys for the `jobsMaybeUnavailable` notification.
+public enum JobsMaybeUnavailableKey {
+    public static let count = "count"
 }
 
 /// Keys for jobUnavailable notification userInfo.
@@ -622,6 +631,18 @@ public enum AvailabilityChecker {
         limit: Int = 25,
         session: URLSession = .shared
     ) async throws -> (checked: Int, unavailable: Int, marked: Int, failed: Int) {
+        let jobs = try await fetchStaleEligibleJobs(store: store, staleDays: staleDays, limit: limit)
+        return await checkJobs(jobs, store: store, session: session)
+    }
+
+    /// Fetches jobs untouched for `staleDays` days (up to `limit`), excluding terminal statuses.
+    /// Shared by the legacy silent `checkStaleJobs` and the confirm-first `maybeFindStaleGoneJobs`.
+    /// Throws if the underlying store fetch fails — callers must treat that as a failed check.
+    static func fetchStaleEligibleJobs(
+        store: BackgroundStore,
+        staleDays: Int,
+        limit: Int
+    ) async throws -> [Job] {
         let cutoff = Date().addingTimeInterval(-Double(max(1, staleDays)) * 86400)
 
         // Use capturedAtDenormalized (populated on insert since TASK-216) to sort jobs
@@ -652,7 +673,42 @@ public enum AvailabilityChecker {
             return ageDate <= cutoff
         }.prefix(limit).map(\.self)
 
-        return await checkJobs(jobs, store: store, session: session)
+        return jobs
+    }
+
+    /// Confirm-first background pass (TASK-595 follow-up): mirrors `maybeRunStaleCheck`'s enabled +
+    /// interval gates, but returns gone CANDIDATES for the user to confirm instead of auto-expiring
+    /// them. Returns nil when the check is skipped (auto-check disabled, interval not elapsed, or the
+    /// store fetch failed) so the caller leaves the interval gate untouched; otherwise the (possibly
+    /// empty) candidate list. `onChecked` is invoked with the completion time only after a real pass,
+    /// so the caller persists `availabilityLastAutoCheckAt` exactly like the legacy path.
+    public static func maybeFindStaleGoneJobs(
+        store: BackgroundStore,
+        settings: SettingsStore,
+        session: URLSession = .shared,
+        onChecked: (@Sendable (Date) async -> Void)? = nil
+    ) async -> [GoneJobResult]? {
+        guard settings.bool(forKey: SettingsKey.availabilityAutoCheckEnabled) else { return nil }
+
+        let intervalDays = max(1, settings.int(forKey: SettingsKey.availabilityAutoCheckIntervalDays))
+        let lastCheckStr = settings.string(forKey: SettingsKey.availabilityLastAutoCheckAt)
+        if !lastCheckStr.isEmpty, let lastCheck = ISO8601DateFormatter().date(from: lastCheckStr),
+           Date().timeIntervalSince(lastCheck) < Double(intervalDays) * 86400 {
+            return nil
+        }
+
+        let staleDays = max(1, settings.int(forKey: SettingsKey.availabilityStaleDays))
+        let jobs: [Job]
+        do {
+            jobs = try await fetchStaleEligibleJobs(store: store, staleDays: staleDays, limit: 25)
+        } catch {
+            NSLog("AvailabilityChecker: stale fetch failed: \(error)")
+            return nil
+        }
+
+        let found = await findGoneJobs(jobs, session: session)
+        await onChecked?(Date())
+        return found
     }
 
     // MARK: - maybeRunStaleCheck

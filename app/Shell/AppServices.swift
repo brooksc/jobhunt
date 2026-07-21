@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import JobhuntCore
 import JobhuntServer
@@ -134,16 +135,31 @@ final class AppServices {
             let settingsStore = settings
             let store = backgroundStore
             tasks.append(Task {
-                // Run on launch, then re-check hourly (Electron parity: AUTO_AVAILABILITY_INTERVAL_MS).
-                // maybeRunStaleCheck gates on the configured interval internally, so this only does
-                // real work when a check is actually due — a long session keeps re-checking.
+                // Re-check hourly. Two guardrails on the background pass (the manual "Check
+                // Availability" button is unaffected):
+                //   • Only run while Jobhunt is FOREGROUND — no fetching for a backgrounded app.
+                //   • CONFIRM-FIRST — maybeFindStaleGoneJobs returns candidates without expiring
+                //     anything; we surface a single macOS notification (rate-limited to once per 24h)
+                //     and let the user confirm which to expire. Nothing changes status silently.
+                // maybeFindStaleGoneJobs gates on the configured interval internally, so a long
+                // session only does real work when a check is actually due.
                 while true {
-                    await AvailabilityChecker.maybeRunStaleCheck(store: store, settings: settingsStore) { date in
-                        await MainActor.run {
-                            settingsStore.set(
-                                ISO8601DateFormatter().string(from: date),
-                                forKey: SettingsKey.availabilityLastAutoCheckAt
-                            )
+                    let isForeground = await MainActor.run { NSApplication.shared.isActive }
+                    if isForeground {
+                        let candidates = await AvailabilityChecker.maybeFindStaleGoneJobs(
+                            store: store, settings: settingsStore
+                        ) { date in
+                            await MainActor.run {
+                                settingsStore.set(
+                                    ISO8601DateFormatter().string(from: date),
+                                    forKey: SettingsKey.availabilityLastAutoCheckAt
+                                )
+                            }
+                        }
+                        if let candidates, !candidates.isEmpty {
+                            await MainActor.run {
+                                Self.notifyJobsMaybeUnavailable(count: candidates.count, settings: settingsStore)
+                            }
                         }
                     }
                     do { try await Task.sleep(for: .seconds(3600)) } catch { break }
@@ -152,6 +168,26 @@ final class AppServices {
 
             return tasks
         }
+    }
+
+    /// Posts the aggregate "jobs may be gone" event for `PlatformIntegration` to turn into a single
+    /// macOS notification, rate-limited to at most once per 24h via `availabilityLastNotifiedAt` so a
+    /// long foreground session can't spam the user. Main-actor (settings + NotificationCenter).
+    private static func notifyJobsMaybeUnavailable(count: Int, settings: SettingsStore) {
+        let last = settings.string(forKey: SettingsKey.availabilityLastNotifiedAt)
+        if !last.isEmpty, let when = ISO8601DateFormatter().date(from: last),
+           Date().timeIntervalSince(when) < 86400 {
+            return // already notified within the last 24h
+        }
+        settings.set(
+            ISO8601DateFormatter().string(from: Date()),
+            forKey: SettingsKey.availabilityLastNotifiedAt
+        )
+        NotificationCenter.default.post(
+            name: .jobsMaybeUnavailable,
+            object: nil,
+            userInfo: [JobsMaybeUnavailableKey.count: count]
+        )
     }
 
     /// Explicit, app-owned shutdown (TASK-430): cancel runtime tasks, wait for them to actually exit,

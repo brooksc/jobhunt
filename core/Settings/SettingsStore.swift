@@ -25,6 +25,7 @@ private let settingsDefaults: [String: String] = [
     SettingsKey.availabilityAutoCheckIntervalDays: "1",
     SettingsKey.availabilityStaleDays: "21",
     SettingsKey.availabilityLastAutoCheckAt: "",
+    SettingsKey.availabilityLastNotifiedAt: "",
     SettingsKey.llmPriceInput: "0",
     SettingsKey.llmPriceOutput: "0",
     SettingsKey.llmConsentAnthropic: "0",

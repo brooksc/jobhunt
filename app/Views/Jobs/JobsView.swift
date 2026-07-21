@@ -68,6 +68,11 @@ struct JobsView: View {
                     onDismiss: { showingExpiredConfirmation = false }
                 )
             }
+            // Clicking the background "jobs may be gone" macOS notification opens this review.
+            .onReceive(NotificationCenter.default.publisher(for: .runAvailabilityReview)) { _ in
+                guard !isCheckingAvailability else { return }
+                Task { await runAvailabilityCheck() }
+            }
             .confirmationDialog(
                 "Delete \(jobIDsToDelete.count == 1 ? "Job" : "\(jobIDsToDelete.count) Jobs")?",
                 isPresented: .init(get: { !jobIDsToDelete.isEmpty }, set: { if !$0 { jobIDsToDelete = [] } }),

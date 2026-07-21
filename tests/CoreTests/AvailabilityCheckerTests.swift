@@ -935,6 +935,44 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         let count = await recorder.callCount
         XCTAssertEqual(count, 0, "skipped check must not advance the last-check timestamp")
     }
+
+    // MARK: - maybeFindStaleGoneJobs (confirm-first background pass)
+
+    func testMaybeFindStaleGoneJobs_returnsAppliedCandidate_withoutExpiring() async throws {
+        MockURLProtocol.handlers = [("gone.example.com", { _ in
+            makeResponse(url: "https://gone.example.com/job/9", status: 404, body: "not found")
+        })]
+        let old = Date().addingTimeInterval(-60 * 86400)
+        _ = try makeJobWithCapture(
+            url: "https://gone.example.com/job/9", title: "Applied Gone Job",
+            status: .applied, capturedAt: old
+        )
+        let context = ModelContext(container)
+        let settings = SettingsStore(modelContext: context)
+        settings.setBool(true, forKey: SettingsKey.availabilityAutoCheckEnabled)
+        settings.set("2020-01-01T00:00:00Z", forKey: SettingsKey.availabilityLastAutoCheckAt)
+        settings.set("21", forKey: SettingsKey.availabilityStaleDays)
+
+        let found = await AvailabilityChecker.maybeFindStaleGoneJobs(
+            store: store, settings: settings, session: session
+        )
+        XCTAssertEqual(found?.count, 1, "an Applied job that 404s must be returned as a candidate")
+        XCTAssertEqual(found?.first?.title, "Applied Gone Job")
+
+        // Confirm-first: the candidate must NOT be auto-expired.
+        let refetched = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertEqual(refetched.first?.status, .applied, "candidate must not be auto-expired")
+    }
+
+    func testMaybeFindStaleGoneJobs_skipsWhenDisabled() async {
+        let context = ModelContext(container)
+        let settings = SettingsStore(modelContext: context)
+        settings.setBool(false, forKey: SettingsKey.availabilityAutoCheckEnabled)
+        let found = await AvailabilityChecker.maybeFindStaleGoneJobs(
+            store: store, settings: settings, session: session
+        )
+        XCTAssertNil(found, "disabled auto-check must return nil (skipped)")
+    }
 }
 
 // swiftlint:enable force_unwrapping

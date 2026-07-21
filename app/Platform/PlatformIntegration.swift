@@ -3,6 +3,12 @@ import JobhuntCore
 import SwiftData
 import UserNotifications
 
+public extension Notification.Name {
+    /// Fired when the user clicks the "jobs may be gone" notification — JobsView observes it and opens
+    /// the availability review (confirmation sheet).
+    static let runAvailabilityReview = Notification.Name("jobhunt.runAvailabilityReview")
+}
+
 /// Observes engine events + unread count changes; drives macOS integration.
 @MainActor
 public final class PlatformIntegration: NSObject, ObservableObject {
@@ -306,6 +312,33 @@ public final class PlatformIntegration: NSObject, ObservableObject {
             name: .jobUnavailable,
             object: nil
         )
+        // Confirm-first background pass: one aggregate "N jobs may be gone" nudge (already rate-limited
+        // to once/24h by AppServices) → a single macOS notification whose click opens the review UI.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleJobsMaybeUnavailable(_:)),
+            name: .jobsMaybeUnavailable,
+            object: nil
+        )
+    }
+
+    /// Posted by `AppServices` off the main thread — pull the Sendable count out, then hop to the main
+    /// actor to post the notification.
+    @objc private nonisolated func handleJobsMaybeUnavailable(_ note: Notification) {
+        let count = note.userInfo?[JobsMaybeUnavailableKey.count] as? Int ?? 0
+        Task { @MainActor [weak self] in
+            self?.postJobsMaybeUnavailableNotification(count: count)
+        }
+    }
+
+    private func postJobsMaybeUnavailableNotification(count: Int) {
+        let noun = count == 1 ? "job" : "jobs"
+        postNotification(
+            id: "jobs-maybe-unavailable",
+            title: "\(count) \(noun) may no longer be available",
+            body: "Review your Interested and Applied jobs to confirm which to mark Expired.",
+            userInfo: ["navigate": "availabilityReview"]
+        )
     }
 
     /// Posted by `AvailabilityChecker` off the main thread — stay `nonisolated`, pull the Sendable
@@ -352,6 +385,10 @@ extension PlatformIntegration: UNUserNotificationCenterDelegate {
             NSApp.activate(ignoringOtherApps: true)
             if let navigate = userInfo["navigate"] as? String, navigate == "llmQueue" {
                 router.navigateToSection(.llmQueue)
+            } else if let navigate = userInfo["navigate"] as? String, navigate == "availabilityReview" {
+                // Open the Jobs list and kick off the availability review (the confirmation sheet).
+                router.navigateToSection(.jobs)
+                NotificationCenter.default.post(name: .runAvailabilityReview, object: nil)
             } else if let navigate = userInfo["navigate"] as? String, navigate == "settings-ai" {
                 // Deep-link straight to the AI Provider tab so a key/provider fix is one click away
                 // (TASK-542/543). Set the tab before opening so SettingsView lands on it.

@@ -265,6 +265,21 @@ struct JobInspectorView: View {
                 Button {
                     let ids = Array(selectedJobIDs)
                     Task {
+                        do { try await jobService?.setStatusBulk(.pursuing, jobIDs: ids) } catch {
+                            appServices.toastStore.show(
+                                "Couldn't update \(ids.count) job(s): \(error.localizedDescription)",
+                                isError: true
+                            )
+                        }
+                    }
+                } label: {
+                    Label("Mark \(selectedJobIDs.count) as Interested", systemImage: "bookmark").frame(minWidth: 160)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    let ids = Array(selectedJobIDs)
+                    Task {
                         var failed = 0
                         for id in ids {
                             do { try await jobService?.archive(jobID: id) } catch { failed += 1 }

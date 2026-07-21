@@ -1306,6 +1306,18 @@ private struct ResumeScoreCard: View {
                                 .lineSpacing(1)
                         }
                     }
+                    // Flag nice-to-haves so a gap here reads as lower-stakes than a required one.
+                    // Required is the norm and left untagged to keep the list uncluttered.
+                    if item.isPreferred {
+                        Spacer(minLength: 4)
+                        Text("Preferred")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(Theme.accent)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Theme.accent.opacity(0.14)))
+                            .fixedSize()
+                    }
                 }
             }
         }

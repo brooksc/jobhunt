@@ -54,10 +54,17 @@ public struct FitDimension: Sendable {
 /// against the identical set — the gaps are consistent across resumes.
 public struct RequirementAssessment: Sendable, Hashable {
     public let requirement: String
+    /// "required" / "preferred" — whether the job listed this under required vs nice-to-have
+    /// qualifications. "unknown" for legacy fit scores written before `kind` was captured.
+    public let kind: String
     public let status: String
     public let evidence: String
     public var isMet: Bool {
         status == "met"
+    }
+
+    public var isPreferred: Bool {
+        kind == "preferred"
     }
 }
 
@@ -77,6 +84,7 @@ public struct FitScoreProjection {
                       let status = a["status"] as? String else { return nil }
                 return RequirementAssessment(
                     requirement: requirement,
+                    kind: a["kind"] as? String ?? "unknown",
                     status: status,
                     evidence: a["evidence"] as? String ?? ""
                 )

@@ -157,6 +157,24 @@ final class ProjectionsTests: XCTestCase {
         XCTAssertEqual(Set(p.requirementsNotMet), ["SwiftUI", "Kotlin"])
     }
 
+    func testFitProjection_requirementAssessments_parsesKind() {
+        let json = """
+        {
+            "requirement_assessments": [
+                {"requirement": "5+ years iOS", "kind": "required", "status": "met", "evidence": "6 years."},
+                {"requirement": "Kotlin", "kind": "preferred", "status": "missing", "evidence": "Absent."},
+                {"requirement": "Legacy row", "status": "partial", "evidence": "No kind field."}
+            ]
+        }
+        """
+        let p = FitScoreProjection(fitScore: JobFitScore(fitScore: 60, fitStatus: .succeeded, fitScoreJSON: json))
+        XCTAssertEqual(p.requirementAssessments[0].kind, "required")
+        XCTAssertFalse(p.requirementAssessments[0].isPreferred)
+        XCTAssertEqual(p.requirementAssessments[1].kind, "preferred")
+        XCTAssertTrue(p.requirementAssessments[1].isPreferred)
+        XCTAssertEqual(p.requirementAssessments[2].kind, "unknown", "missing kind defaults to unknown (legacy)")
+    }
+
     func testFitProjection_malformedJSON_returnsEmptyDefaults() {
         let fitScore = JobFitScore(fitScore: 50, fitStatus: .failed, fitScoreJSON: "{bad}")
         let p = FitScoreProjection(fitScore: fitScore)

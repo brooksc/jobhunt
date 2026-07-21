@@ -313,7 +313,7 @@ public enum AvailabilityChecker {
         }
         let postings = (json["jobPostings"] as? [[String: Any]]) ?? []
         let idLower = reqId.lowercased()
-        let listed = postings.contains { posting in
+        return postings.contains { posting in
             if let bullets = posting["bulletFields"] as? [String],
                bullets.contains(where: { $0.lowercased() == idLower }) { return true }
             if let path = posting["externalPath"] as? String, path.lowercased().contains(idLower) {
@@ -323,7 +323,6 @@ public enum AvailabilityChecker {
         }
         // Exact-id match required: `searchText` on a requisition id is precise, so no match (empty or
         // only unrelated fuzzy results) means the requisition is gone.
-        return listed
     }
 
     /// True when a URL is a login / auth wall or an aggregator's "can't show this posting without
@@ -666,14 +665,12 @@ public enum AvailabilityChecker {
         let legacyRows = try await store.fetch(legacyDescriptor)
 
         let all = newStyleRows + legacyRows
-        let jobs = all.filter { job in
+        return all.filter { job in
             guard job.status != .passed, job.status != .archived,
                   job.status != .closed, job.status != .expired else { return false }
             let ageDate = job.capturedAtDenormalized ?? job.capture?.capturedAt ?? job.createdAt
             return ageDate <= cutoff
         }.prefix(limit).map(\.self)
-
-        return jobs
     }
 
     /// Confirm-first background pass (TASK-595 follow-up): mirrors `maybeRunStaleCheck`'s enabled +

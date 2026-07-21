@@ -178,8 +178,12 @@ final class BackgroundStoreDuplicateGuardTests: XCTestCase {
         }
         let (orig, origCap) = makeJob(id: "orig", num: 1, url: "https://acme.com/job")
         let (cand, candCap) = makeJob(id: "cand", num: 2, url: "https://greenhouse.io/acme/job")
-        for model in [origCap, candCap] as [any PersistentModel] { try await store.insert(model) }
-        for model in [orig, cand] as [any PersistentModel] { try await store.insert(model) }
+        for model in [origCap, candCap] as [any PersistentModel] {
+            try await store.insert(model)
+        }
+        for model in [orig, cand] as [any PersistentModel] {
+            try await store.insert(model)
+        }
 
         // The later copy is flagged a duplicate of the earlier one.
         let flagged = try await store.detectDuplicateForJob(jobID: "cand")

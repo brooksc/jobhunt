@@ -481,7 +481,7 @@ struct ExpiredConfirmationSheet: View {
                     + "Select which to mark as Expired."
             )
             .font(.subheadline)
-                .foregroundStyle(.secondary)
+            .foregroundStyle(.secondary)
 
             VStack(spacing: 0) {
                 ForEach(goneJobs, id: \.jobID) { job in

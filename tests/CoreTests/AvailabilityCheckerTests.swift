@@ -327,8 +327,10 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
         let url = try XCTUnwrap(URL(string:
             "https://zillow.wd5.myworkdayjobs.com/en-US/Zillow_Group_External/job/Senior-TPM_P750186-2"))
         let cxs = try XCTUnwrap(AvailabilityChecker.workdayCXSQuery(for: url))
-        XCTAssertEqual(cxs.endpoint.absoluteString,
-                       "https://zillow.wd5.myworkdayjobs.com/wday/cxs/zillow/Zillow_Group_External/jobs")
+        XCTAssertEqual(
+            cxs.endpoint.absoluteString,
+            "https://zillow.wd5.myworkdayjobs.com/wday/cxs/zillow/Zillow_Group_External/jobs"
+        )
         XCTAssertEqual(cxs.reqId, "P750186")
     }
 
@@ -354,8 +356,12 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
     func testWorkdayLiveRequisition_listedInCXS_isAvailable() async throws {
         let url = "https://zillow.wd5.myworkdayjobs.com/en-US/Zillow_Group_External/job/Senior-TPM_P750186-2"
         MockURLProtocol.handlers = [("wday/cxs", { _ in
-            makeResponse(url: url, status: 200, body:
-                #"{"total":1,"jobPostings":[{"externalPath":"/job/Remote-USA/Senior-TPM_P750186-2","bulletFields":["P750186"]}]}"#)
+            makeResponse(
+                url: url,
+                status: 200,
+                body:
+                #"{"total":1,"jobPostings":[{"externalPath":"/job/Remote-USA/Senior-TPM_P750186-2","bulletFields":["P750186"]}]}"#
+            )
         })]
         let result = try await AvailabilityChecker.checkURL(
             XCTUnwrap(URL(string: url)), title: "Senior Technical Program Manager", session: session

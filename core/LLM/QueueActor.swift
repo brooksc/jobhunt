@@ -632,7 +632,7 @@ public actor QueueActor {
             // duplicate of an already-captured posting is skipped here — the canonical keeps its fit
             // score, and later copies in a bulk save cost only the (already-spent) extraction. The
             // end-of-drain full scan still runs as a backstop for anything this per-job check misses.
-            let isDuplicate = (try? await store.detectDuplicateForJob(jobID: jobID)) ?? false
+            let isDuplicate = await (try? store.detectDuplicateForJob(jobID: jobID)) ?? false
 
             // Electron parity: auto-score fit against all active resumes (no-op when none is active,
             // or when the job was just flagged a duplicate). The drain loop re-fetches queued

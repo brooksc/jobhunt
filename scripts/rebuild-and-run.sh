@@ -41,6 +41,10 @@ if [ "$SKIP_TESTS" = false ]; then
         echo "→ Running SwiftLint (matches CI)..."
         swiftlint lint --quiet
     fi
+    if command -v swiftformat >/dev/null 2>&1; then
+        echo "→ Running SwiftFormat --lint (matches CI)..."
+        swiftformat app core server/swift mcp/swift tests --lint
+    fi
 
     # Fast gate: CoreTests + ServerTests + MCPTests (~30s). Matches CI.
     # AppUITests and LLMEval are opt-in — run them separately before a release.

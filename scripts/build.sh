@@ -8,6 +8,9 @@ SCHEME="Jobhunt-DMG"
 CONFIG="Debug-DMG"
 DERIVED_DATA="$HOME/Library/Developer/Xcode/DerivedData/Jobhunt-local"
 
+# shellcheck source=scripts/ensure-xcode.sh
+source "$REPO_ROOT/scripts/ensure-xcode.sh"
+
 cd "$REPO_ROOT"
 
 echo "→ Building $SCHEME ($CONFIG)..."

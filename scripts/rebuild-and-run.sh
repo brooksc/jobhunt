@@ -17,6 +17,12 @@ for arg in "$@"; do
     esac
 done
 
+# Make the direct `xcodebuild test` call below resilient to xcode-select pointing at Command Line
+# Tools (build.sh sources this too, but it runs in a child process, so its DEVELOPER_DIR wouldn't
+# reach the test step here).
+# shellcheck source=scripts/ensure-xcode.sh
+source "$REPO_ROOT/scripts/ensure-xcode.sh"
+
 cd "$REPO_ROOT"
 
 # 1. Kill any running instance

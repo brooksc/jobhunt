@@ -432,6 +432,18 @@ final class SavedSearchTokenIDTests: XCTestCase {
         XCTAssertTrue(SavedSearch(name: "empty").expectedTokenIDs.isEmpty)
     }
 
+    func testSavedSearchRemainsActiveForExactTokenSet() {
+        let search = SavedSearch(name: "remote", remoteFilterRaw: [RemoteType.remote.rawValue])
+
+        XCTAssertTrue(search.remainsActive(forTokenIDs: [SearchTokenID.remote("remote")]))
+    }
+
+    func testSavedSearchDoesNotRemainActiveAfterTokenEdit() {
+        let search = SavedSearch(name: "remote", remoteFilterRaw: [RemoteType.remote.rawValue])
+
+        XCTAssertFalse(search.remainsActive(forTokenIDs: []))
+    }
+
     /// The identity strings are stable — the Jobs view compares persisted tokens against these, so a
     /// silent format change would break saved-search retention (the bug this guards).
     func testTokenIDFormatIsStable() {

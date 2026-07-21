@@ -229,31 +229,18 @@ public actor JobService {
     // MARK: - Job mutations
 
     public func setStatus(_ status: JobStatus, for jobID: String) async throws {
-        let id = jobID
-        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == id }))
-        guard let job = jobs.first else { throw JobServiceError.jobNotFound(jobID) }
-        let oldStatus = job.status
-        try await store.update(Job.self, predicate: #Predicate { $0.id == id }) { job in
-            job.status = status
-            // Invariant repair (TASK-370): `duplicateOfJobID != nil` requires `status == .duplicate`.
-            // Moving a flagged duplicate to any other status means it's no longer a duplicate, so
-            // clear the link rather than leave an inconsistent row.
-            if status != .duplicate, job.duplicateOfJobID != nil {
-                job.duplicateOfJobID = nil
-                job.duplicateConfidence = nil
-            }
-            job.updatedAt = Date()
+        do {
+            try await store.setJobStatus(status, jobIDs: [jobID])
+        } catch BackgroundStoreError.notFound(_) {
+            throw JobServiceError.jobNotFound(jobID)
         }
-        // TASK-526: link the event to the job inside the store actor (no live model held here).
-        try await store.insertJobEvent(
-            jobID: jobID, eventType: "status",
-            note: "Status changed from \(oldStatus.rawValue) to \(status.rawValue)"
-        )
     }
 
     public func setStatusBulk(_ status: JobStatus, jobIDs: [String]) async throws {
-        for id in jobIDs {
-            try await setStatus(status, for: id)
+        do {
+            try await store.setJobStatus(status, jobIDs: jobIDs)
+        } catch let BackgroundStoreError.notFound(id) {
+            throw JobServiceError.jobNotFound(id)
         }
     }
 

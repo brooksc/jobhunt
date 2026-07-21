@@ -383,7 +383,7 @@ let project = Project(
         developmentRegion: "en"
     ),
     packages: includeSparkle
-        ? [.remote(url: "https://github.com/sparkle-project/Sparkle", requirement: .upToNextMajor(from: "2.6.4"))]
+        ? [.remote(url: "https://github.com/sparkle-project/Sparkle", requirement: .exact("2.9.3"))]
         : [],
     settings: .settings(
         base: sharedBase,

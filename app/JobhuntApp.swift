@@ -119,7 +119,7 @@ struct JobhuntApp: App {
             if plan.mode == .uiTest, let mockPort = Self.llmMockPort() {
                 services.settings.llmProvider = "lmstudio" // OpenAI-compatible, no key/consent
                 services.settings.llmBaseURL = "http://127.0.0.1:\(mockPort)"
-                services.settings.llmModel = "mock-model"
+                services.settings.setModelForProvider("mock-model", provider: "lmstudio")
                 services.settings.llmQueuePaused = false // let the queue process against the mock
             }
             let mgr = OnboardingManager(settings: services.settings)

@@ -1,4 +1,4 @@
-// swiftlint:disable file_length function_body_length type_body_length cyclomatic_complexity
+// swiftlint:disable file_length function_body_length type_body_length
 import Foundation
 import SwiftData
 
@@ -615,74 +615,18 @@ public actor QueueActor {
                 provider: provider,
                 settings: extractSettings
             )
-            let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
-
-            // Guard: skip writing success if the request was cancelled while we were running.
-            guard try await store.requestStatus(id: itemID) == .running else { return false }
-
-            // Persist extraction result
-            try await store.update(
-                Job.self,
-                predicate: #Predicate { $0.id == jobID }
-            ) { job in
-                // Preserve fields the user manually edited (Electron parity: manual_overrides).
-                let overrides = manualFieldOverrideSet(job.manualFieldOverridesJSON)
-                job.extractedJSON = result.extractedJSON
-                if !overrides.contains("title") { job.title = result.title }
-                if !overrides.contains("company") { job.company = result.company }
-                if !overrides.contains("location") { job.location = result.location }
-                if !overrides.contains("remoteType") { job.remoteType = result.remoteType }
-                if !overrides.contains("salaryMin") { job.salaryMin = result.salaryMin }
-                if !overrides.contains("salaryMax") { job.salaryMax = result.salaryMax }
-                if !overrides.contains("salaryHourlyMin") { job.salaryHourlyMin = result.salaryHourlyMin }
-                if !overrides.contains("salaryHourlyMax") { job.salaryHourlyMax = result.salaryHourlyMax }
-                if !overrides.contains("salaryCurrency") { job.salaryCurrency = result.salaryCurrency }
-                if !overrides.contains("salaryNote") { job.salaryNote = result.salaryNote }
-                if !overrides.contains("employmentType") { job.employmentType = result.employmentType }
-                if !overrides.contains("seniority") { job.seniority = result.seniority }
-                if !overrides.contains("applicationURL") { job.applicationURL = result.applicationURL }
-                job.extractionConfidence = result.extractionConfidence
-                job.meetsCriteria = result.meetsCriteria
-                job.extractionModel = result.extractionModel
-                job.extractionStatus = .succeeded
-                job.extractionError = nil
-                job.extractedAt = Date()
-                // The job now has fresh AI results to review — mark it unread so it counts toward
-                // the Dock badge until the user opens it (markOpened clears it). A re-extraction
-                // re-marks it unread, since the content changed (workflow.md step 4).
-                job.unread = true
-                job.updatedAt = Date()
-            }
-
-            // Persist attempt record — linked to request and job on the store actor (TASK-314/526)
-            try await store.recordAttempt(
-                requestID: itemID, jobID: jobID,
-                requestType: .extract, attempt: item.attempt, status: .succeeded,
-                // modelRequested = the configured model we sent; modelReturned = what the provider
-                // actually used (they differ under OpenRouter free-model rotation). Provider identity
-                // (provider.id) is intentionally NOT stored here — it's not a model id (TASK-535).
-                modelRequested: extractSettings.llmModel, modelReturned: result.extractionModel,
-                responseFormat: result.responseFormat.wireValue, baseURL: extractBaseURL,
-                startedAt: startedAt, finishedAt: Date(), durationMs: durationMs,
-                promptChars: result.promptChars, responseChars: result.responseChars,
-                promptTokens: result.promptTokens, completionTokens: result.completionTokens
+            let finishedAt = Date()
+            let metadata = LLMCompletionMetadata(
+                requestID: itemID,
+                jobID: jobID,
+                attempt: item.attempt,
+                modelRequested: extractSettings.llmModel,
+                baseURL: extractBaseURL,
+                startedAt: startedAt,
+                finishedAt: finishedAt,
+                durationMs: Int(finishedAt.timeIntervalSince(startedAt) * 1000)
             )
-
-            // Mark request succeeded
-            try await store.update(
-                LLMRequest.self,
-                predicate: #Predicate { $0.id == itemID }
-            ) { req in
-                req.status = .succeeded
-                req.finishedAt = Date()
-                req.model = result.extractionModel
-                // Clear any error left over from an earlier failed attempt that was retried —
-                // otherwise a succeeded row still shows a stale error in the queue.
-                req.error = nil
-            }
-
-            // Timeline: record extraction as a system event.
-            try? await store.insertJobEvent(jobID: jobID, eventType: "extraction", note: result.extractionModel)
+            guard try await store.commitExtractionSuccess(result, metadata: metadata) else { return false }
 
             // Electron parity: auto-score fit against all active resumes (no-op when none
             // is active). The drain loop re-fetches queued requests, so the new fit requests
@@ -841,46 +785,26 @@ public actor QueueActor {
                 provider: provider
             )
             let fitResult = fitOutput.score
-            let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
-
-            // Guard: skip writing success if the request was cancelled while we were running.
-            guard try await store.requestStatus(id: itemID) == .running else { return false }
-
             let fitJSON = fitOutput.fitScoreJSON ?? FitScorer.encode(fitResult)
             let scoredAt = Date()
-            try await store.saveFitScore(
+            let metadata = LLMCompletionMetadata(
+                requestID: itemID,
                 jobID: jobID,
-                resumeID: resumeID,
-                overall: fitResult.overall,
+                attempt: item.attempt,
+                modelRequested: fitModel,
+                baseURL: fitBaseURL,
+                startedAt: startedAt,
+                finishedAt: scoredAt,
+                durationMs: Int(scoredAt.timeIntervalSince(startedAt) * 1000)
+            )
+            guard try await store.commitFitSuccess(
+                fitOutput,
                 fitJSON: fitJSON,
-                // Store the model that produced the score: the returned model when the provider
-                // reports one, else the configured model — never the provider id (TASK-535).
-                model: fitOutput.modelReturned ?? fitModel,
-                scoredAt: scoredAt
-            )
-
-            // Persist attempt record — linked on the store actor (TASK-314/526)
-            try await store.recordAttempt(
-                requestID: itemID, jobID: jobID,
-                requestType: .fit, attempt: item.attempt, status: .succeeded,
-                modelRequested: fitModel, modelReturned: fitOutput.modelReturned,
-                responseFormat: fitOutput.responseFormat.wireValue, baseURL: fitBaseURL,
-                startedAt: startedAt, finishedAt: Date(), durationMs: durationMs,
-                promptChars: fitOutput.promptChars, responseChars: fitOutput.responseChars,
-                promptTokens: fitOutput.promptTokens, completionTokens: fitOutput.completionTokens
-            )
-
-            try await store.update(
-                LLMRequest.self,
-                predicate: #Predicate { $0.id == itemID }
-            ) { req in
-                req.status = .succeeded
-                req.finishedAt = Date()
-                // Record the model used (was previously left nil, so Fit rows showed "—")
-                // and clear any error from an earlier retried attempt.
-                req.model = fitOutput.modelReturned
-                req.error = nil
-            }
+                fitModel: fitModel,
+                scoredAt: scoredAt,
+                resumeID: resumeID,
+                metadata: metadata
+            ) else { return false }
 
             emit(.jobReady(
                 jobNumber: item.jobNumber,

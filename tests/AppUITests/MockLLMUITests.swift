@@ -22,41 +22,38 @@ final class MockLLMUITests: XCTestCase {
         super.tearDown()
     }
 
-    func testLLMTestConnection_succeedsAgainstMockServer() throws {
-        // SKIPPED (TASK-540): in the --llm-mock-port launch the app does not surface the ⌘, Settings
-        // window to XCUITest — the Settings tab radio buttons never appear, with neither ⌘,, the app
-        // menu, nor forcing window focus working, while the SAME Settings UI opens reliably in every
-        // non-mock test. This is a test-infra issue specific to the mock launch, not a product bug:
-        // the Settings window + AI tab are covered by ScreenshotTests test16/17 + BehaviorUITests
-        // testCommandCommaOpensSettingsWindow, and the provider→HTTP→parse path by
-        // CoreTests.MockLLMInferenceTests. Re-enable once the mock-mode Settings access is fixed.
-        try XCTSkipIf(true, "mock-mode launch doesn't surface the ⌘, Settings window to XCUITest — see TASK-540")
+    func testLLMTestConnection_succeedsAgainstMockServer() {
+        // Use the app-owned Settings row so this test does not depend on global keyboard focus while
+        // the mock-backed queue starts processing in the background.
+        let settingsRow = app.descendants(matching: .any).matching(identifier: "sidebar.settings").firstMatch
+        XCTAssertTrue(settingsRow.waitForExistence(timeout: 5), "the Settings sidebar row must exist")
+        settingsRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
 
-        // Open Settings (⌘,) and select the AI tab. Key off the tab radio buttons (the Settings
-        // window's a11y title isn't reliably "Settings") and retry the chord — the first ⌘, in a
-        // cold session can be dropped before the app is key.
-        app.activate()
-        let generalTab = app.radioButtons.matching(NSPredicate(format: "label CONTAINS[c] %@", "General")).firstMatch
-        for _ in 0 ..< 5 where !generalTab.exists {
-            app.typeKey(",", modifierFlags: .command)
-            _ = generalTab.waitForExistence(timeout: 3)
+        XCTAssertTrue(waitUntil(timeout: 5) { self.app.windows.count > 1 }, "the Settings window should open")
+        guard let settingsWindow = app.windows.allElementsBoundByIndex.first(where: { $0.identifier != "main" }) else {
+            return XCTFail("the Settings window should be present in the accessibility hierarchy")
         }
-        XCTAssertTrue(generalTab.exists, "⌘, should open the Settings window")
+        XCTAssertTrue(settingsWindow.waitForExistence(timeout: 5), "the Settings window should remain available")
 
-        let aiTab = app.radioButtons.matching(NSPredicate(format: "label CONTAINS[c] %@", "AI")).firstMatch
+        // TabView's accessibility role varies by macOS release, so identify the tab by its label.
+        let aiTab = settingsWindow.descendants(matching: .any)
+            .matching(NSPredicate(format: "label ==[c] %@", "AI"))
+            .firstMatch
         XCTAssertTrue(aiTab.waitForExistence(timeout: 5), "the AI settings tab must exist")
         aiTab.click()
 
-        let testButton = app.buttons["Test Connection"].firstMatch
+        let testButton = settingsWindow.buttons["Test Connection"].firstMatch
         XCTAssertTrue(testButton.waitForExistence(timeout: 5), "Test Connection button must exist")
         testButton.click()
 
         // The app launched with provider=lmstudio pointed at the mock, so the connection must succeed.
-        let success = app.descendants(matching: .any)
+        let success = settingsWindow.descendants(matching: .any)
             .matching(identifier: "llm.connection.success").firstMatch
-        XCTAssertTrue(
-            success.waitForExistence(timeout: 15),
-            "Test Connection should succeed against the localhost mock LLM server"
-        )
+        guard success.waitForExistence(timeout: 15) else {
+            let failure = settingsWindow.descendants(matching: .any)
+                .matching(identifier: "llm.connection.failure").firstMatch
+            let detail = failure.exists ? "the app reported a connection failure" : "no connection result appeared"
+            return XCTFail("Test Connection should succeed against the localhost mock LLM server: \(detail)")
+        }
     }
 }

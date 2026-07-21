@@ -253,20 +253,20 @@ struct JobsSettingsTab: View {
         availabilityCheckMessage = nil
         defer { isRunningAvailabilityCheck = false }
 
-        let pursuing = allJobs.filter { $0.status == .pursuing }
-        guard !pursuing.isEmpty else {
-            availabilityCheckMessage = "No pursuing jobs to check"
+        let eligible = allJobs.filter { $0.status == .pursuing || $0.status == .applied }
+        guard !eligible.isEmpty else {
+            availabilityCheckMessage = "No Interested or Applied jobs to check"
             return
         }
 
-        availabilityCheckMessage = "Checking \(pursuing.count) jobs…"
-        let found = await AvailabilityChecker.findGoneJobs(pursuing)
+        availabilityCheckMessage = "Checking \(eligible.count) jobs…"
+        let found = await AvailabilityChecker.findGoneJobs(eligible)
 
         let now = ISO8601DateFormatter().string(from: Date())
         settings.set(now, forKey: SettingsKey.availabilityLastAutoCheckAt)
 
         if found.isEmpty {
-            availabilityCheckMessage = "All \(pursuing.count) jobs are still available"
+            availabilityCheckMessage = "All \(eligible.count) jobs are still available"
         } else {
             goneJobs = found
             showingExpiredConfirmation = true
@@ -476,7 +476,7 @@ struct ExpiredConfirmationSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Jobs No Longer Available")
                 .font(.headline)
-            Text("\(goneJobs.count) of your pursuing jobs appear to be gone. Select which to mark as Expired.")
+            Text("\(goneJobs.count) of your Interested or Applied jobs appear to be gone. Select which to mark as Expired.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 

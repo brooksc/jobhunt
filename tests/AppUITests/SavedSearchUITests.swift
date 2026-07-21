@@ -2,9 +2,8 @@ import XCTest
 
 /// TASK-572: selecting a saved search must keep it active (the bookmark chip / sidebar selection)
 /// rather than being immediately reinterpreted as an ad hoc token search, and must clear prior
-/// session-only filters. The logic lives in `JobsView`'s token-sync — app-target view state with no
-/// unit-test seam — so the end-to-end behavior is covered here at the UI level (AC#4). The pure
-/// token-identity mapping it relies on is unit-tested in `SavedSearchTokenIDTests`.
+/// session-only filters. The token-retention policy is unit-tested in `SavedSearchTokenIDTests`;
+/// these tests cover the view integration and visible selection state.
 final class SavedSearchUITests: XCTestCase {
     private var app: XCUIApplication!
 

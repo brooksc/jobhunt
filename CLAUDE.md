@@ -74,7 +74,7 @@ The `AppUITests` suite drives the full macOS app via the Accessibility API. It c
 - **BehaviorUITests**: sidebar nav, keyboard shortcuts (⌘K, ⌘,), filter chip state
 - **WorkflowUITests**: seeded data workflows (archive a job, etc.)
 - **JobsScreenUITests**: Jobs filter sidebar, menu bar commands
-- **MockLLMUITests**: end-to-end LLM Test Connection against a localhost mock (currently skipped — see TASK-540)
+- **MockLLMUITests**: end-to-end LLM Test Connection against a localhost mock
 
 ### Launch arguments (set in `AppUITests.swift:launchApp`)
 ```

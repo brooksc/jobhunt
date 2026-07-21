@@ -48,4 +48,9 @@ public extension SavedSearch {
         if let recentDays { ids.insert(SearchTokenID.recentDays(recentDays)) }
         return ids
     }
+
+    /// Whether a token change still represents this saved search exactly.
+    func remainsActive(forTokenIDs tokenIDs: Set<String>) -> Bool {
+        tokenIDs == expectedTokenIDs
+    }
 }

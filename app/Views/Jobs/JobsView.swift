@@ -114,7 +114,7 @@ struct JobsView: View {
                 // Any user-initiated token edit diverges from the saved set and clears it (TASK-572).
                 if let id = router.activeSavedSearchID,
                    let search = savedSearches.first(where: { $0.id == id }),
-                   Set(newTokens.map(\.id)) == search.expectedTokenIDs {
+                   search.remainsActive(forTokenIDs: Set(newTokens.map(\.id))) {
                     return
                 }
                 router.activeSavedSearchID = nil
@@ -252,33 +252,15 @@ struct JobsView: View {
                     }
                     Button {
                         let ids = Array(selectedJobIDs)
-                        let svc = appServices.jobService
-                        let toast = appServices.toastStore
-                        let priors: [(String, JobStatus)] = ids.compactMap { id in
-                            allJobs.first(where: { $0.id == id }).map { (id, $0.status) }
-                        }
-                        Task {
-                            var failed = 0
-                            for id in ids {
-                                do { try await svc.archive(jobID: id) } catch { failed += 1 }
-                            }
-                            await MainActor.run {
-                                selectedJobIDs = []
-                                if failed > 0 {
-                                    toast.show("Archive failed for \(failed) job(s)", isError: true)
-                                } else {
-                                    toast.show(
-                                        "Archived \(ids.count) job\(ids.count == 1 ? "" : "s")",
-                                        actionLabel: "Undo"
-                                    ) {
-                                        Task { for (id, status) in priors {
-                                            try? await svc.setStatus(status, for: id)
-                                        }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        setStatusJobs(.pursuing, ids)
+                        selectedJobIDs = []
+                    } label: {
+                        Label("Mark Selected as Interested", systemImage: "bookmark")
+                    }
+                    Button {
+                        let ids = Array(selectedJobIDs)
+                        archiveJobs(ids)
+                        selectedJobIDs = []
                     } label: {
                         Label("Archive Selected", systemImage: "archivebox")
                     }
@@ -848,19 +830,18 @@ struct JobsView: View {
             allJobs.first(where: { $0.id == id }).map { (id, $0.status) }
         }
         Task {
-            var failed = 0
-            for id in ids {
-                do { try await svc.archive(jobID: id) } catch { failed += 1 }
-            }
-            await MainActor.run {
-                if failed > 0 {
-                    toast.show("Couldn't archive \(failed) of \(ids.count) job(s)", isError: true)
-                } else {
+            do {
+                try await svc.setStatusBulk(.archived, jobIDs: ids)
+                await MainActor.run {
                     toast.show("Archived \(ids.count) job\(ids.count == 1 ? "" : "s")", actionLabel: "Undo") {
                         Task { for (id, status) in priors {
                             try? await svc.setStatus(status, for: id)
                         } }
                     }
+                }
+            } catch {
+                await MainActor.run {
+                    toast.show("Couldn't archive jobs: \(error.localizedDescription)", isError: true)
                 }
             }
         }
@@ -875,14 +856,9 @@ struct JobsView: View {
             allJobs.first(where: { $0.id == id }).map { (id, $0.status) }
         }
         Task {
-            var failed = 0
-            for id in ids {
-                do { try await svc.setStatus(status, for: id) } catch { failed += 1 }
-            }
-            await MainActor.run {
-                if failed > 0 {
-                    toast.show("Couldn't update status for \(failed) of \(ids.count) job(s)", isError: true)
-                } else {
+            do {
+                try await svc.setStatusBulk(status, jobIDs: ids)
+                await MainActor.run {
                     let changed = priors.filter { $0.1 != status }
                     if !changed.isEmpty {
                         toast.show("Status set to \(status.displayName)", actionLabel: "Undo") {
@@ -891,6 +867,10 @@ struct JobsView: View {
                             } }
                         }
                     }
+                }
+            } catch {
+                await MainActor.run {
+                    toast.show("Couldn't update job statuses: \(error.localizedDescription)", isError: true)
                 }
             }
         }
@@ -985,21 +965,21 @@ struct JobsView: View {
 
     /// TASK-464: open the source/display page for every selected job in the browser.
     private func runAvailabilityCheck() async {
-        let pursuing = allJobs.filter { $0.status == .pursuing }
-        guard !pursuing.isEmpty else {
-            appServices.toastStore.show("No pursuing jobs to check")
+        let eligible = allJobs.filter { $0.status == .pursuing || $0.status == .applied }
+        guard !eligible.isEmpty else {
+            appServices.toastStore.show("No Interested or Applied jobs to check")
             return
         }
         isCheckingAvailability = true
         defer { isCheckingAvailability = false }
 
-        let found = await AvailabilityChecker.findGoneJobs(pursuing)
+        let found = await AvailabilityChecker.findGoneJobs(eligible)
         appServices.settings.set(
             ISO8601DateFormatter().string(from: Date()),
             forKey: SettingsKey.availabilityLastAutoCheckAt
         )
         if found.isEmpty {
-            appServices.toastStore.show("All \(pursuing.count) pursuing jobs are still available")
+            appServices.toastStore.show("All \(eligible.count) Interested or Applied jobs are still available")
         } else {
             goneJobs = found
             showingExpiredConfirmation = true

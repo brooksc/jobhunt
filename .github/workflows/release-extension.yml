@@ -79,7 +79,7 @@ jobs:
           echo "Uploading $ZIP to Chrome Web Store item $CWS_EXTENSION_ID (publish=$PUBLISH)…"
           # Note: the Chrome Web Store rejects re-uploading an already-published version, so each
           # release tag must carry a new extension version (enforced by version-parity).
-          npx --yes chrome-webstore-upload-cli@3 upload \
+          npx --yes chrome-webstore-upload-cli@3.5.0 upload \
             --source "$ZIP" \
             --extension-id "$CWS_EXTENSION_ID" \
             --client-id "$CWS_CLIENT_ID" \

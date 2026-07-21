@@ -1,3 +1,4 @@
+import AppKit
 import JobhuntCore
 import SwiftData
 import SwiftUI
@@ -16,6 +17,13 @@ struct SettingsView: View {
                 set: { router.settingsTab = SettingsPane(rawValue: $0) ?? .general }
             )
         )
+        .onAppear {
+            DispatchQueue.main.async {
+                NSApp.windows
+                    .first(where: { $0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" })?
+                    .makeKeyAndOrderFront(nil)
+            }
+        }
     }
 }
 
@@ -314,6 +322,7 @@ struct LLMTab: View {
         case let .success(msg):
             Label(msg, systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green).font(.callout)
+                .accessibilityLabel(msg)
                 .accessibilityIdentifier("llm.connection.success")
         case let .failure(msg):
             Label(msg, systemImage: "xmark.circle.fill")
@@ -321,6 +330,7 @@ struct LLMTab: View {
                 .lineLimit(5)
                 .fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.leading)
+                .accessibilityLabel(msg)
                 .accessibilityIdentifier("llm.connection.failure")
         }
     }

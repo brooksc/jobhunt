@@ -51,6 +51,17 @@ public struct LLMQueueCounts: Sendable {
     }
 }
 
+struct LLMCompletionMetadata {
+    let requestID: String
+    let jobID: String
+    let attempt: Int
+    let modelRequested: String?
+    let baseURL: String?
+    let startedAt: Date
+    let finishedAt: Date
+    let durationMs: Int
+}
+
 // MARK: - BackgroundStore
 
 /// All background writes (extraction, availability, bulk ops, demo seeding) funnel through here.
@@ -61,10 +72,26 @@ public actor BackgroundStore {
     /// the context, so the degraded-state paths in QueueActor / AvailabilityChecker (which SwiftData
     /// can't otherwise be made to error on demand) get real coverage. Nil in production.
     private var fetchFault: Error?
+    private var saveFault: Error?
 
     /// Make the next (and subsequent) `fetch` calls throw `error`, or clear with nil.
     public func setFetchFault(_ error: Error?) {
         fetchFault = error
+    }
+
+    /// Test-only fault injection for atomic transition rollback coverage.
+    public func setSaveFault(_ error: Error?) {
+        saveFault = error
+    }
+
+    private func saveAtomically() throws {
+        do {
+            if let saveFault { throw saveFault }
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
     }
 
     /// Insert a single model and save immediately.
@@ -94,6 +121,37 @@ public actor BackgroundStore {
         let items = try modelContext.fetch(descriptor)
         items.forEach(mutation)
         try modelContext.save()
+    }
+
+    /// Persist status changes and their timeline events as one invariant-sized transaction.
+    public func setJobStatus(_ status: JobStatus, jobIDs: [String]) throws {
+        let uniqueIDs = Array(Set(jobIDs))
+        guard !uniqueIDs.isEmpty else { return }
+
+        let allJobs = try modelContext.fetch(FetchDescriptor<Job>())
+        let jobsByID = Dictionary(uniqueKeysWithValues: allJobs.map { ($0.id, $0) })
+        for id in uniqueIDs where jobsByID[id] == nil {
+            throw BackgroundStoreError.notFound(id)
+        }
+
+        for id in uniqueIDs {
+            guard let job = jobsByID[id] else { continue }
+            let oldStatus = job.status
+            job.status = status
+            if status != .duplicate, job.duplicateOfJobID != nil {
+                job.duplicateOfJobID = nil
+                job.duplicateConfidence = nil
+            }
+            job.updatedAt = Date()
+
+            let event = JobEvent(
+                eventType: "status",
+                note: "Status changed from \(oldStatus.rawValue) to \(status.rawValue)"
+            )
+            event.job = job
+            modelContext.insert(event)
+        }
+        try saveAtomically()
     }
 
     /// One-time re-clean: recompute every capture's `cleanedDescription` with the current cleaner
@@ -261,8 +319,27 @@ public actor BackgroundStore {
         model: String?,
         scoredAt: Date
     ) throws {
+        try applyFitScore(
+            jobID: jobID,
+            resumeID: resumeID,
+            overall: overall,
+            fitJSON: fitJSON,
+            model: model,
+            scoredAt: scoredAt
+        )
+        try modelContext.save()
+    }
+
+    private func applyFitScore(
+        jobID: String,
+        resumeID: String,
+        overall: Int,
+        fitJSON: String?,
+        model: String?,
+        scoredAt: Date
+    ) throws {
         let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
-        guard let job = jobs.first else { return }
+        guard let job = jobs.first else { throw BackgroundStoreError.notFound(jobID) }
 
         let existing = job.fitScores.first { $0.resume?.id == resumeID }
         let record: JobFitScore
@@ -288,8 +365,6 @@ public actor BackgroundStore {
 
         // Job-level mirror reflects the BEST score across all resumes (Electron parity).
         recomputeJobFitSummary(job)
-
-        try modelContext.save()
     }
 
     /// Recompute a job's denormalized fit mirror from the best-scoring resume across ALL its
@@ -661,9 +736,177 @@ public actor BackgroundStore {
         )
     }
 
+    /// Commit the user-visible extraction result, request state, attempt provenance, and timeline
+    /// event together. Returning false means the request was cancelled before the commit began.
+    func commitExtractionSuccess(_ result: ExtractionResult, metadata: LLMCompletionMetadata) throws -> Bool {
+        let requestID = metadata.requestID
+        guard let request = try modelContext.fetch(
+            FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == requestID })
+        ).first else {
+            throw BackgroundStoreError.notFound(requestID)
+        }
+        guard request.status == .running else { return false }
+
+        let jobID = metadata.jobID
+        guard let job = try modelContext.fetch(
+            FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID })
+        ).first else {
+            throw BackgroundStoreError.notFound(jobID)
+        }
+
+        let overrides = manualFieldOverrideSet(job.manualFieldOverridesJSON)
+        job.extractedJSON = result.extractedJSON
+        if !overrides.contains("title") { job.title = result.title }
+        if !overrides.contains("company") { job.company = result.company }
+        if !overrides.contains("location") { job.location = result.location }
+        if !overrides.contains("remoteType") { job.remoteType = result.remoteType }
+        if !overrides.contains("salaryMin") { job.salaryMin = result.salaryMin }
+        if !overrides.contains("salaryMax") { job.salaryMax = result.salaryMax }
+        if !overrides.contains("salaryHourlyMin") { job.salaryHourlyMin = result.salaryHourlyMin }
+        if !overrides.contains("salaryHourlyMax") { job.salaryHourlyMax = result.salaryHourlyMax }
+        if !overrides.contains("salaryCurrency") { job.salaryCurrency = result.salaryCurrency }
+        if !overrides.contains("salaryNote") { job.salaryNote = result.salaryNote }
+        if !overrides.contains("employmentType") { job.employmentType = result.employmentType }
+        if !overrides.contains("seniority") { job.seniority = result.seniority }
+        if !overrides.contains("applicationURL") { job.applicationURL = result.applicationURL }
+        job.extractionConfidence = result.extractionConfidence
+        job.meetsCriteria = result.meetsCriteria
+        job.extractionModel = result.extractionModel
+        job.extractionStatus = .succeeded
+        job.extractionError = nil
+        job.extractedAt = metadata.finishedAt
+        job.unread = true
+        job.updatedAt = metadata.finishedAt
+
+        try insertAttempt(
+            requestID: requestID,
+            jobID: jobID,
+            requestType: .extract,
+            attempt: metadata.attempt,
+            status: .succeeded,
+            modelRequested: metadata.modelRequested,
+            modelReturned: result.extractionModel,
+            responseFormat: result.responseFormat.wireValue,
+            baseURL: metadata.baseURL,
+            startedAt: metadata.startedAt,
+            finishedAt: metadata.finishedAt,
+            durationMs: metadata.durationMs,
+            promptChars: result.promptChars,
+            responseChars: result.responseChars,
+            promptTokens: result.promptTokens,
+            completionTokens: result.completionTokens
+        )
+
+        request.status = .succeeded
+        request.finishedAt = metadata.finishedAt
+        request.model = result.extractionModel
+        request.error = nil
+
+        let event = JobEvent(eventType: "extraction", note: result.extractionModel)
+        event.job = job
+        modelContext.insert(event)
+
+        try saveAtomically()
+        return true
+    }
+
+    /// Commit a fit score, request state, and attempt provenance with one save.
+    func commitFitSuccess(
+        _ output: FitScoreOutput,
+        fitJSON: String?,
+        fitModel: String,
+        scoredAt: Date,
+        resumeID: String,
+        metadata: LLMCompletionMetadata
+    ) throws -> Bool {
+        let requestID = metadata.requestID
+        guard let request = try modelContext.fetch(
+            FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == requestID })
+        ).first else {
+            throw BackgroundStoreError.notFound(requestID)
+        }
+        guard request.status == .running else { return false }
+
+        try applyFitScore(
+            jobID: metadata.jobID,
+            resumeID: resumeID,
+            overall: output.score.overall,
+            fitJSON: fitJSON,
+            model: output.modelReturned,
+            scoredAt: scoredAt
+        )
+        try insertAttempt(
+            requestID: requestID,
+            jobID: metadata.jobID,
+            requestType: .fit,
+            attempt: metadata.attempt,
+            status: .succeeded,
+            modelRequested: fitModel,
+            modelReturned: output.modelReturned,
+            responseFormat: output.responseFormat.wireValue,
+            baseURL: metadata.baseURL,
+            startedAt: metadata.startedAt,
+            finishedAt: metadata.finishedAt,
+            durationMs: metadata.durationMs,
+            promptChars: output.promptChars,
+            responseChars: output.responseChars,
+            promptTokens: output.promptTokens,
+            completionTokens: output.completionTokens
+        )
+
+        request.status = .succeeded
+        request.finishedAt = metadata.finishedAt
+        request.model = output.modelReturned
+        request.error = nil
+
+        try saveAtomically()
+        return true
+    }
+
     /// Create + persist an LLM attempt, linked (by id) to its request and job on the store actor —
     /// so the queue never assigns a live model into a relationship off-actor.
     public func recordAttempt(
+        requestID: String,
+        jobID: String?,
+        requestType: LLMRequestType,
+        attempt: Int,
+        status: LLMRequestStatus,
+        modelRequested: String?,
+        modelReturned: String? = nil,
+        responseFormat: String? = nil,
+        baseURL: String? = nil,
+        startedAt: Date,
+        finishedAt: Date,
+        durationMs: Int? = nil,
+        promptChars: Int? = nil,
+        responseChars: Int? = nil,
+        promptTokens: Int? = nil,
+        completionTokens: Int? = nil,
+        error: String? = nil
+    ) throws {
+        try insertAttempt(
+            requestID: requestID,
+            jobID: jobID,
+            requestType: requestType,
+            attempt: attempt,
+            status: status,
+            modelRequested: modelRequested,
+            modelReturned: modelReturned,
+            responseFormat: responseFormat,
+            baseURL: baseURL,
+            startedAt: startedAt,
+            finishedAt: finishedAt,
+            durationMs: durationMs,
+            promptChars: promptChars,
+            responseChars: responseChars,
+            promptTokens: promptTokens,
+            completionTokens: completionTokens,
+            error: error
+        )
+        try modelContext.save()
+    }
+
+    private func insertAttempt(
         requestID: String,
         jobID: String?,
         requestType: LLMRequestType,
@@ -700,7 +943,6 @@ public actor BackgroundStore {
             ).first
         }
         modelContext.insert(record)
-        try modelContext.save()
     }
 
     /// Append a timeline event to a job, linked on the store actor (TASK-526). No-op if the job is gone.

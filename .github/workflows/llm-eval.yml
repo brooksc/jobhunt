@@ -35,10 +35,15 @@ jobs:
       # TASK-410: install mise first (a fresh runner has no mise), then install the pinned
       # toolchain from .mise.toml — same setup as swift-build.yml.
       - name: Install mise
-        run: curl -Ls https://mise.run | sh && echo "$HOME/.local/bin" >> $GITHUB_PATH
+        run: |
+          curl -fsSL -o /tmp/mise-install.sh https://github.com/jdx/mise/releases/download/v2026.5.3/install.sh
+          echo "76168cc525fc3b209638e88b4c6b707420438a6b7cc428bd468ae08afad432c1  /tmp/mise-install.sh" | shasum -a 256 -c -
+          MISE_VERSION=v2026.5.3 sh /tmp/mise-install.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
 
       - name: Install pinned tools (Tuist via .mise.toml)
-        run: mise install
+        run: mise install && mise reshim
 
       - name: Generate Xcode project
         run: tuist generate --no-open

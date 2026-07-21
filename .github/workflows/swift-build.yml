@@ -53,7 +53,9 @@ jobs:
 
       - name: Install mise
         run: |
-          curl -Ls https://mise.run | sh
+          curl -fsSL -o /tmp/mise-install.sh https://github.com/jdx/mise/releases/download/v2026.5.3/install.sh
+          echo "76168cc525fc3b209638e88b4c6b707420438a6b7cc428bd468ae08afad432c1  /tmp/mise-install.sh" | shasum -a 256 -c -
+          MISE_VERSION=v2026.5.3 sh /tmp/mise-install.sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           # Expose tool shims (tuist/swiftlint/swiftformat) to later steps, not just the mise binary.
           echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"

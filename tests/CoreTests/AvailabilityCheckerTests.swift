@@ -321,6 +321,76 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
         XCTAssertTrue(reason.contains("board posting not found"), "reason: \(reason)")
     }
 
+    // MARK: Workday CXS detection (job #119)
+
+    func testWorkdayCXSQuery_parsesTenantSiteAndReqId() throws {
+        let url = try XCTUnwrap(URL(string:
+            "https://zillow.wd5.myworkdayjobs.com/en-US/Zillow_Group_External/job/Senior-TPM_P750186-2"))
+        let cxs = try XCTUnwrap(AvailabilityChecker.workdayCXSQuery(for: url))
+        XCTAssertEqual(cxs.endpoint.absoluteString,
+                       "https://zillow.wd5.myworkdayjobs.com/wday/cxs/zillow/Zillow_Group_External/jobs")
+        XCTAssertEqual(cxs.reqId, "P750186")
+    }
+
+    func testWorkdayCXSQuery_nonWorkdayHost_isNil() throws {
+        let url = try XCTUnwrap(URL(string: "https://example.com/job/Some-Role_P1"))
+        XCTAssertNil(AvailabilityChecker.workdayCXSQuery(for: url))
+    }
+
+    /// Job #119: a removed Workday requisition still returns a 200 HTML shell, but the CXS API lists
+    /// zero matching postings — that absence is the gone signal.
+    func testWorkdayRemovedRequisition_notInCXS_isGone() async throws {
+        let url = "https://zillow.wd5.myworkdayjobs.com/en-US/Zillow_Group_External/job/Senior-TPM_P750186-2"
+        MockURLProtocol.handlers = [("wday/cxs", { _ in
+            makeResponse(url: url, status: 200, body: #"{"total":0,"jobPostings":[]}"#)
+        })]
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: url)), title: "Senior Technical Program Manager", session: session
+        )
+        guard case let .gone(reason) = result else { XCTFail("Expected .gone, got \(result)"); return }
+        XCTAssertTrue(reason.contains("P750186"), "reason should cite the requisition, got: \(reason)")
+    }
+
+    func testWorkdayLiveRequisition_listedInCXS_isAvailable() async throws {
+        let url = "https://zillow.wd5.myworkdayjobs.com/en-US/Zillow_Group_External/job/Senior-TPM_P750186-2"
+        MockURLProtocol.handlers = [("wday/cxs", { _ in
+            makeResponse(url: url, status: 200, body:
+                #"{"total":1,"jobPostings":[{"externalPath":"/job/Remote-USA/Senior-TPM_P750186-2","bulletFields":["P750186"]}]}"#)
+        })]
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: url)), title: "Senior Technical Program Manager", session: session
+        )
+        guard case .available = result else { XCTFail("Expected .available, got \(result)"); return }
+    }
+
+    /// A Workday CXS API failure is indeterminate — never false-expire the job.
+    func testWorkdayCXSUnreachable_isAvailable() async throws {
+        let url = "https://zillow.wd5.myworkdayjobs.com/en-US/Zillow_Group_External/job/Senior-TPM_P750186-2"
+        MockURLProtocol.handlers = [("wday/cxs", { _ in
+            makeResponse(url: url, status: 500, body: "error")
+        })]
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: url)), title: "Senior Technical Program Manager", session: session
+        )
+        guard case .available = result else { XCTFail("Expected .available, got \(result)"); return }
+    }
+
+    // MARK: Cloudflare / bot-challenge (job #48)
+
+    func testCloudflareChallenge_403_isUnverifiable() async throws {
+        let url = "https://www.pinterestcareers.com/jobs/7562128/technical-program-manager-ii-platforms/"
+        MockURLProtocol.handlers = [("pinterestcareers.com/jobs/7562128", { _ in
+            makeResponse(url: url, status: 403, body: "<title>Just a moment...</title>")
+        })]
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: url)), title: "Technical Program Manager II Platforms", session: session
+        )
+        guard case let .unverifiable(reason) = result else {
+            XCTFail("Expected .unverifiable, got \(result)"); return
+        }
+        XCTAssertTrue(reason.contains("bot challenge"), "reason: \(reason)")
+    }
+
     /// Job #130: LinkedIn's public guest view renders a structured `closed-job` banner for a posting no
     /// longer accepting applications, at HTTP 200 with no redirect. Uses non-English banner text (no
     /// literal "no longer accepting applications") to prove the structural class — not the phrase — is

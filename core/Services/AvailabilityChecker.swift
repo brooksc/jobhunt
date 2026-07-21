@@ -7,6 +7,11 @@ import SwiftData
 public enum URLAvailabilityResult: Sendable {
     case available
     case gone(reason: String)
+    /// The posting could not be verified either way — e.g. the request hit a bot-challenge / login
+    /// wall that never serves the real page (job #48). Distinct from `.available` so callers can
+    /// surface "couldn't check" instead of implying the job is still live, and distinct from `.gone`
+    /// so it never triggers an expiry.
+    case unverifiable(reason: String)
     case error(Error)
 }
 
@@ -227,6 +232,91 @@ public enum AvailabilityChecker {
         return body.contains("closed-job__flavor")
     }
 
+    /// True when the response is a Cloudflare / bot-challenge interstitial rather than the real page.
+    /// Career sites on Phenom (e.g. `pinterestcareers.com`, job #48) sit behind Cloudflare, which
+    /// serves a "Just a moment…" challenge (HTTP 403) to a plain background request — the actual
+    /// posting is never delivered, so its availability is genuinely indeterminate. `body` MUST already
+    /// be lowercased. Scoped to the challenge markers so an ordinary 403 without a challenge falls
+    /// through to the normal heuristics.
+    static func isBotChallenge(_ body: String) -> Bool {
+        if body.contains("just a moment") { return true }
+        if body.contains("challenge-platform") || body.contains("cf-mitigated") ||
+            body.contains("_cf_chl_opt") || body.contains("cf-challenge") { return true }
+        if body.contains("attention required") && body.contains("cloudflare") { return true }
+        return false
+    }
+
+    // MARK: - Workday CXS availability
+
+    /// Workday postings are fully client-rendered: the HTML job URL returns a generic 200 shell
+    /// whether or not the requisition still exists, so the status/body/redirect heuristics can never
+    /// see a removed Workday job (job #119). Workday does expose a public JSON API (CXS) that lists a
+    /// tenant's live requisitions, so for a `*.myworkdayjobs.com` URL we query that by requisition id
+    /// instead. Returns the CXS search endpoint + the requisition id, or nil if the URL isn't a
+    /// parseable Workday job URL.
+    ///
+    /// A Workday job path is `/[locale/]{site}/job/{slug}_{reqId}[-postingIndex]`, e.g.
+    /// `…/en-US/Zillow_Group_External/job/…_P750186-2`; the CXS endpoint is
+    /// `https://{host}/wday/cxs/{tenant}/{site}/jobs` and the requisition id is `P750186`.
+    static func workdayCXSQuery(for url: URL) -> (endpoint: URL, reqId: String)? {
+        guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let host = comps.host?.lowercased(), host.hasSuffix("myworkdayjobs.com"),
+              let tenant = host.split(separator: ".").first.map(String.init), !tenant.isEmpty else {
+            return nil
+        }
+        // The site is the path segment immediately before "job" (handles both with/without a locale
+        // segment, e.g. `/en-US/{site}/job/…` and `/{site}/job/…`).
+        let segments = comps.path.split(separator: "/").map(String.init)
+        guard let jobIdx = segments.firstIndex(of: "job"), jobIdx >= 1, jobIdx + 1 < segments.count else {
+            return nil
+        }
+        let site = segments[jobIdx - 1]
+        // Requisition id: trailing `_P123456` token of the final segment, minus any `-N` posting index.
+        guard let last = segments.last, let underscore = last.lastIndex(of: "_") else { return nil }
+        var reqId = String(last[last.index(after: underscore)...])
+        if let dash = reqId.range(of: #"-\d+$"#, options: .regularExpression) {
+            reqId.removeSubrange(dash)
+        }
+        guard !reqId.isEmpty,
+              let endpoint = URL(string: "https://\(host)/wday/cxs/\(tenant)/\(site)/jobs") else {
+            return nil
+        }
+        return (endpoint, reqId)
+    }
+
+    /// Queries the Workday CXS API for a requisition id. Returns `true` if a live posting matching the
+    /// id is listed, `false` if the tenant returns no matching posting (job removed), or `nil` if the
+    /// API can't be reached / the response is unparseable — nil is treated as indeterminate (not gone)
+    /// so a transient API failure never false-expires a job.
+    static func workdayReqStillListed(endpoint: URL, reqId: String, session: URLSession) async -> Bool? {
+        var request = URLRequest(url: endpoint, timeoutInterval: timeoutSeconds)
+        request.httpMethod = "POST"
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try? JSONSerialization.data(
+            withJSONObject: ["limit": 20, "offset": 0, "searchText": reqId]
+        )
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse, http.statusCode == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        let postings = (json["jobPostings"] as? [[String: Any]]) ?? []
+        let idLower = reqId.lowercased()
+        let listed = postings.contains { posting in
+            if let bullets = posting["bulletFields"] as? [String],
+               bullets.contains(where: { $0.lowercased() == idLower }) { return true }
+            if let path = posting["externalPath"] as? String, path.lowercased().contains(idLower) {
+                return true
+            }
+            return false
+        }
+        // Exact-id match required: `searchText` on a requisition id is precise, so no match (empty or
+        // only unrelated fuzzy results) means the requisition is gone.
+        return listed
+    }
+
     /// True when a URL is a login / auth wall or an aggregator's "can't show this posting without
     /// login" fallback. Some sites (notably LinkedIn) redirect an un-authenticated availability
     /// check to such a page instead of the posting — that is NOT evidence the job is gone, so the
@@ -267,6 +357,17 @@ public enum AvailabilityChecker {
         // upgraded URL as the redirect-comparison baseline, so the upgrade isn't itself counted as a
         // redirect). TASK-594.
         let requestURL = httpsUpgraded(url)
+
+        // Workday: the HTML is a client-rendered 200 shell whether or not the job exists, so the
+        // body/redirect heuristics below can't see a removed requisition. Consult the CXS JSON API by
+        // requisition id instead (job #119). API unreachable/ambiguous → available (never false-expire).
+        if let cxs = workdayCXSQuery(for: requestURL) {
+            switch await workdayReqStillListed(endpoint: cxs.endpoint, reqId: cxs.reqId, session: session) {
+            case .some(false): return .gone(reason: "workday requisition \(cxs.reqId) no longer listed")
+            case .some(true), .none: return .available
+            }
+        }
+
         var request = URLRequest(url: requestURL, timeoutInterval: timeoutSeconds)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
 
@@ -291,6 +392,14 @@ public enum AvailabilityChecker {
 
             // 2. Body pattern matching (literal phrases + generalized regex families).
             let body = String(data: data, encoding: .utf8)?.lowercased() ?? ""
+
+            // 1.9 Cloudflare / bot-challenge interstitial (e.g. Phenom-hosted sites like Pinterest,
+            // job #48): the real page is never served, so availability is indeterminate — surface it
+            // as unverifiable rather than silently "available".
+            if statusCode == 403, isBotChallenge(body) {
+                return .unverifiable(reason: "bot challenge: \(finalURLString)")
+            }
+
             if let reason = bodyGoneReason(body) {
                 return .gone(reason: reason)
             }
@@ -340,7 +449,11 @@ public enum AvailabilityChecker {
         _ jobs: [Job],
         session: URLSession = .shared
     ) async -> [GoneJobResult] {
-        let eligible = jobs.filter { $0.status == .pursuing }
+        // Interested (.pursuing) AND Applied jobs are checked: a role you applied to can be pulled
+        // just as a saved one can. Interview/offer/rejected stay protected — a job you're actively
+        // interviewing for belongs in .interview, not .applied. No status is changed here; results are
+        // returned for user confirmation.
+        let eligible = jobs.filter { $0.status == .pursuing || $0.status == .applied }
         guard !eligible.isEmpty else { return [] }
 
         struct JobSpec: Sendable {

@@ -628,8 +628,8 @@ final class DisplayNormalizerTests: XCTestCase {
 
 final class LLMConstantsTests: XCTestCase {
     func testConstants() {
-        XCTAssertEqual(LLMConstants.maxDescriptionChars, 48000)
-        XCTAssertEqual(LLMConstants.maxResumeChars, 40000)
+        XCTAssertEqual(LLMConstants.maxDescriptionChars, 100_000)
+        XCTAssertEqual(LLMConstants.maxResumeChars, 100_000)
     }
 }
 

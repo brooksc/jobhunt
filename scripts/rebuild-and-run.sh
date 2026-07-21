@@ -34,6 +34,14 @@ pkill -x "$APP_NAME" 2>/dev/null || true
 
 # 3. Tests
 if [ "$SKIP_TESTS" = false ]; then
+    # SwiftLint first — CI's "Swift Build" fails on lint violations, and this gate previously didn't
+    # run the linter, so a lint error could reach main and fail every push. set -o pipefail aborts
+    # here on a violation. Skipped only if swiftlint isn't installed.
+    if command -v swiftlint >/dev/null 2>&1; then
+        echo "→ Running SwiftLint (matches CI)..."
+        swiftlint lint --quiet
+    fi
+
     # Fast gate: CoreTests + ServerTests + MCPTests (~30s). Matches CI.
     # AppUITests and LLMEval are opt-in — run them separately before a release.
     echo "→ Running fast gate (CoreTests + ServerTests + MCPTests)..."

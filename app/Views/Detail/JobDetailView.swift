@@ -580,6 +580,10 @@ struct OverviewTabView: View {
     // pencil tap on another row commits the in-progress edit to the RIGHT field before switching.
     @State private var activeCurrent: String = ""
     @State private var activeCommit: ((String) -> Void)?
+    /// Cached AI-configured check. `AIConfig.isConfigured` reads the Keychain (a syscall), so it must
+    /// not run in `body`; computed once per job in `.onAppear`. Defaults to `true` so neither the
+    /// manual-entry hint nor a neutralized fit ring flashes before the check resolves.
+    @State private var aiConfigured = true
 
     private var projection: JobDetailProjection {
         JobDetailProjection(job: job)
@@ -642,7 +646,10 @@ struct OverviewTabView: View {
                 .padding(14)
             }
         }
-        .onAppear { loadSkills() }
+        .onAppear {
+            loadSkills()
+            aiConfigured = AIConfig.isConfigured(appServices.settings)
+        }
     }
 
     // MARK: Decision strip
@@ -650,13 +657,13 @@ struct OverviewTabView: View {
     /// A fit score can only exist if an AI provider is configured and a résumé is active. When not,
     /// the fit indicator is neutralized rather than implying a forever-pending score (TASK-525).
     private var fitScoringAvailable: Bool {
-        AIConfig.isConfigured(appServices.settings) && resumes.contains(where: \.active)
+        aiConfigured && resumes.contains(where: \.active)
     }
 
     /// Show the "add details manually" hint only when extraction won't fill the job in for them —
     /// no AI provider configured — and the job is still empty. Disappears once either changes.
     private var manualEntryHintVisible: Bool {
-        !AIConfig.isConfigured(appServices.settings) && job.company == nil && job.title == nil
+        !aiConfigured && job.company == nil && job.title == nil
     }
 
     private var decisionStrip: some View {

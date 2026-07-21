@@ -119,6 +119,41 @@ final class SalaryNormalizerTests: XCTestCase {
         XCTAssertEqual(result["salary_max"] as? Int, 200_000)
     }
 
+    func testDoesNotTreat401kBenefitInSourceAsSalary() {
+        // Regression (job #163): a posting with NO salary but a "401k with employer match" benefit
+        // must not be mined into a bogus $401,000 salary during source-text recovery.
+        let result = normalize(
+            note: nil,
+            sourceText: "Benefits: 401k with employer match, unlimited PTO, health and wellness insurance."
+        )
+        XCTAssertNil(result["salary_min"] as? Int)
+        XCTAssertNil(result["salary_max"] as? Int)
+    }
+
+    func testDoesNotTreat401kInNoteAsSalary() {
+        // Same guard on the salary_note path (in case a model parks the benefit line in salary_note).
+        let result = normalize(note: "401k with employer match; competitive compensation package")
+        XCTAssertNil(result["salary_min"] as? Int)
+        XCTAssertNil(result["salary_max"] as? Int)
+    }
+
+    func testCurrencyPrefixed401KSalaryStillParses() {
+        // The benefit-token strip must not swallow a genuine currency-prefixed "$401K" salary.
+        let result = normalize(note: "Compensation: $401K annually.")
+        XCTAssertEqual(result["salary_min"] as? Int, 401_000)
+        XCTAssertEqual(result["salary_max"] as? Int, 401_000)
+    }
+
+    func testMoneyAmountsIgnoresRetirementPlanTokens() {
+        XCTAssertEqual(SalaryNormalizer.moneyAmounts("401k with employer match"), [])
+        XCTAssertEqual(SalaryNormalizer.moneyAmounts("Roth 403(b) and 457(b) available"), [])
+        // A real salary alongside a 401k benefit keeps only the salary.
+        XCTAssertEqual(
+            SalaryNormalizer.moneyAmounts("Base $140k-$200k, plus 401k match"),
+            [140_000, 200_000]
+        )
+    }
+
     func testMultipleBandsUseLowestAndHighest() {
         // Port of: 'uses the lowest and highest values when a note includes multiple annual bands'
         let result = normalize(

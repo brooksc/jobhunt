@@ -122,8 +122,24 @@ public enum SalaryNormalizer {
         return value
     }
 
+    /// Retirement-plan account names — "401k", "401(k)", "403(b)", "457(b)", "457b" — embed a number
+    /// that the bare k-notation money pattern below would otherwise read as a salary: a
+    /// "401k with employer match" benefit line becomes a bogus $401,000 (job #163). These tokens are
+    /// benefits, never pay, so strip them before parsing money. A currency-prefixed "$401K" is left
+    /// intact (negative lookbehind) so a genuine — if rare — "$401K" salary still parses.
+    static func stripRetirementPlanTokens(_ text: String) -> String {
+        let pattern = #"(?<![$€£\d,.])\b(?:401|403|457)\s*\(?\s*[kb]\)?"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return text }
+        return regex.stringByReplacingMatches(
+            in: text,
+            range: NSRange(text.startIndex..., in: text),
+            withTemplate: " "
+        )
+    }
+
     /// Extract all money amounts from text (handles ranges, currency symbols, k notation).
     static func moneyAmounts(_ text: String) -> [Double] {
+        let text = stripRetirementPlanTokens(text)
         var amounts: [Double] = []
 
         // Range patterns (return pairs)

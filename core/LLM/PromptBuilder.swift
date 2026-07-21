@@ -113,6 +113,7 @@ public enum PromptBuilder {
 
         Salary rules:
         - ALWAYS extract salary_min and salary_max when any numeric pay range appears in the posting.
+        - Retirement/benefit plan names are NOT pay: "401k", "401(k)", "403(b)", "457(b)", "529", "RRSP", "pension" — never read the number in these as a salary. If the only numbers in the posting are benefit-plan names, leave salary_min, salary_max and salary_note null.
         - If hourly pay appears, extract the raw hourly rate range into salary_hourly_min and salary_hourly_max.
         - Store values as annual integers (e.g. 119800, not "119,800" or "$119,800").
         - Some job boards (e.g. Workday) express annual salary without a $ sign: "133,400 - 226,600 USD Annual". Treat these as annual USD amounts.

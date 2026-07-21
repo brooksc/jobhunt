@@ -54,6 +54,31 @@ struct ResumesTab: View {
                             .onTapGesture {
                                 editingResume = resume
                             }
+                            .contextMenu {
+                                Button(resume.active ? "Deactivate" : "Activate") {
+                                    let id = resume.id
+                                    let newActive = !resume.active
+                                    Task {
+                                        do {
+                                            try await appServices.resumeService.setResumeActive(
+                                                id: id,
+                                                active: newActive
+                                            )
+                                        } catch {
+                                            appServices.toastStore.show(
+                                                "Couldn't change active resume: \(error.localizedDescription)",
+                                                isError: true
+                                            )
+                                        }
+                                    }
+                                }
+                                Button("Edit…") { editingResume = resume }
+                                Divider()
+                                Button("Delete", role: .destructive) {
+                                    deleteCandidate = resume
+                                    showingDeleteAlert = true
+                                }
+                            }
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
                                     deleteCandidate = resume
@@ -70,7 +95,15 @@ struct ResumesTab: View {
         .padding()
         .sheet(isPresented: $showingAddSheet) {
             ResumeEditSheet(resume: nil, onSave: { name, text in
+                // A new résumé auto-activates only when it's your first; added alongside others it
+                // stays inactive so it doesn't silently start scoring. Tell the user how to turn it on.
+                let wasEmpty = resumes.isEmpty
                 try await appServices.resumeService.addResume(name: name, text: text)
+                if !wasEmpty {
+                    appServices.toastStore.show(
+                        "Added “\(name)” as inactive — click Activate to score new jobs against it."
+                    )
+                }
             })
         }
         .sheet(item: $editingResume) { resume in
@@ -121,30 +154,31 @@ private struct ResumeRow: View {
     let resumeService: ResumeService
     @Environment(AppServices.self) private var appServices
 
+    /// Toggle this résumé's active flag. The checkmark/button reflect `resume.active` (store-backed),
+    /// so a failed write leaves the displayed state correct; just surface the error.
+    private func setActive(_ active: Bool) {
+        let id = resume.id
+        Task {
+            do { try await resumeService.setResumeActive(id: id, active: active) } catch {
+                appServices.toastStore.show(
+                    "Couldn't change active resume: \(error.localizedDescription)",
+                    isError: true
+                )
+            }
+        }
+    }
+
     var body: some View {
         HStack(spacing: 12) {
-            Button {
-                let id = resume.id
-                let newActive = !resume.active
-                // The checkmark reflects resume.active (store-backed), so a failed write leaves the
-                // displayed state correct; just surface the error rather than swallow it.
-                Task {
-                    do { try await resumeService.setResumeActive(id: id, active: newActive) } catch {
-                        appServices.toastStore.show(
-                            "Couldn't change active resume: \(error.localizedDescription)",
-                            isError: true
-                        )
-                    }
-                }
-            } label: {
+            Button { setActive(!resume.active) } label: {
                 Image(systemName: resume.active ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(resume.active ? .green : .secondary)
                     .font(.title3)
             }
             .buttonStyle(.plain)
-            .help(resume
-                .active ? "Active — auto-scored against new jobs. Click to deactivate." :
-                "Inactive. Click to activate (auto-scored against new jobs).")
+            .help(resume.active
+                ? "Active — auto-scored against new jobs. Click to deactivate."
+                : "Inactive. Click to activate (auto-scored against new jobs).")
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(resume.name)
@@ -170,6 +204,11 @@ private struct ResumeRow: View {
                     .foregroundStyle(.green)
                     .clipShape(Capsule())
             }
+
+            // Explicit, labeled control — the circle alone wasn't discoverable.
+            Button(resume.active ? "Deactivate" : "Activate") { setActive(!resume.active) }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
         }
         .padding(.vertical, 4)
     }

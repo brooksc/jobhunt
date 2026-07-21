@@ -1141,7 +1141,7 @@ struct FitTabView: View {
                 if activeResumes.isEmpty && !allResumes.isEmpty {
                     HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                        Text("No active résumé — new jobs won't be fit-scored. Activate one in Settings → Resumes.")
+                        Text("No active résumé — new jobs won't be fit-scored. Activate one in the Resumes sidebar.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()

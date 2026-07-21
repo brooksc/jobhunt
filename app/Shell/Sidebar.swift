@@ -321,8 +321,16 @@ struct Sidebar: View {
     /// changed. O(N+S) per body, versus the old O(N×S) match work that ran in `body` directly.
     private var countsRefreshID: Int {
         var hasher = Hasher()
+        hasher.combine(allJobs.count)
+        // Cheap per-job change signal. Every badge-relevant mutation bumps `updatedAt` — status
+        // changes, field edits, and the denormalized fit mirror (recomputeJobFitSummary bumps it) —
+        // so the counts re-run exactly when they need to. This deliberately does NOT build
+        // `JobMatchFields` here: that faults each job's `Capture` and hashes its ~10 KB cleaned
+        // description, so doing it for all N jobs on every sidebar body render was O(N × 10 KB) and
+        // made the sidebar sluggish after a large import. The off-main `refreshBadgeCounts` still runs
+        // the full JobMatchFields matching.
         for job in allJobs {
-            hasher.combine(JobMatchFields(job: job))
+            hasher.combine(job.updatedAt)
         }
         for search in savedSearches {
             hasher.combine(search.id)

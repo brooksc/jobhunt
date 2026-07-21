@@ -277,7 +277,7 @@ struct JobInspectorView: View {
                         }
                     }
                 } label: {
-                    Label("Archive All", systemImage: "archivebox").frame(minWidth: 160)
+                    Label("Archive \(selectedJobIDs.count)", systemImage: "archivebox").frame(minWidth: 160)
                 }
                 .buttonStyle(.bordered)
 
@@ -292,7 +292,7 @@ struct JobInspectorView: View {
                         }
                     }
                 } label: {
-                    Label("Re-run AI on All", systemImage: "arrow.clockwise").frame(minWidth: 160)
+                    Label("Re-run AI on \(selectedJobIDs.count)", systemImage: "arrow.clockwise").frame(minWidth: 160)
                 }
                 .buttonStyle(.bordered)
             }

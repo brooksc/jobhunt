@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-06-15 06:39'
+updated_date: '2026-07-21 22:59'
 labels:
   - schema
   - migration
@@ -16,6 +17,7 @@ references:
   - core/Models/Schema.swift
   - tests/CoreTests/SchemaEvolutionTests.swift
 priority: medium
+ordinal: 2000
 ---
 
 ## Description

@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-06-19 01:31'
+updated_date: '2026-07-21 22:59'
 labels:
   - workflow
   - notifications
@@ -17,6 +18,7 @@ references:
   - docs/workflow.md
   - tests/CoreTests/ExtractionEngineTests.swift
 priority: medium
+ordinal: 7000
 ---
 
 ## Description

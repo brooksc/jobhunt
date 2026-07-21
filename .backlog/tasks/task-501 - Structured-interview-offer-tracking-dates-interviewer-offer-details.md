@@ -4,12 +4,14 @@ title: 'Structured interview/offer tracking (dates, interviewer, offer details)'
 status: To Do
 assignee: []
 created_date: '2026-06-18 23:06'
+updated_date: '2026-07-21 22:59'
 labels:
   - ux
   - apply-workflow
   - feature
 dependencies: []
 priority: low
+ordinal: 20000
 ---
 
 ## Description

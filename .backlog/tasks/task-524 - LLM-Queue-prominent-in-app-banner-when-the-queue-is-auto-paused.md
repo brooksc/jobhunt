@@ -4,12 +4,14 @@ title: 'LLM Queue: prominent in-app banner when the queue is auto-paused'
 status: To Do
 assignee: []
 created_date: '2026-06-19 04:41'
+updated_date: '2026-07-21 22:59'
 labels:
   - ux
   - llm
   - queue
 dependencies: []
 priority: medium
+ordinal: 10000
 ---
 
 ## Description

@@ -4,6 +4,7 @@ title: 'AI: interview prep — generate likely questions from job description + 
 status: To Do
 assignee: []
 created_date: '2026-07-02 21:52'
+updated_date: '2026-07-21 22:59'
 labels: []
 dependencies:
   - TASK-501
@@ -14,6 +15,7 @@ references:
   - app/Views/Detail/JobDetailView.swift
   - core/Models/Enums.swift
 priority: low
+ordinal: 41000
 ---
 
 ## Description

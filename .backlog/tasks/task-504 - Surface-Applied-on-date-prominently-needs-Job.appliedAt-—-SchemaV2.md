@@ -4,11 +4,13 @@ title: 'Surface "Applied on {date}" prominently (needs Job.appliedAt — SchemaV
 status: To Do
 assignee: []
 created_date: '2026-06-18 23:23'
+updated_date: '2026-07-21 22:59'
 labels:
   - ux
   - schema
 dependencies: []
 priority: low
+ordinal: 22000
 ---
 
 ## Description

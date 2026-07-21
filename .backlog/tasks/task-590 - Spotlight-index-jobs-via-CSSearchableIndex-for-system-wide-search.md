@@ -4,12 +4,14 @@ title: 'Spotlight: index jobs via CSSearchableIndex for system-wide search'
 status: To Do
 assignee: []
 created_date: '2026-07-02 21:52'
+updated_date: '2026-07-21 22:59'
 labels: []
 dependencies: []
 references:
   - app/Platform/PlatformIntegration.swift
   - app/Views/Settings/DataSettingsView.swift
 priority: low
+ordinal: 39000
 ---
 
 ## Description

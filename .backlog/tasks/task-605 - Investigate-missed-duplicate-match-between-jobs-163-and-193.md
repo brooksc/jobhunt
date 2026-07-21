@@ -4,6 +4,7 @@ title: Investigate missed duplicate match between jobs 163 and 193
 status: To Do
 assignee: []
 created_date: '2026-07-21 21:47'
+updated_date: '2026-07-21 22:59'
 labels:
   - bug
   - duplicates
@@ -17,6 +18,7 @@ references:
   - tests/CoreTests/DuplicateDetectorTests.swift
   - tests/CoreTests/BackgroundStoreTests.swift
 priority: medium
+ordinal: 17000
 ---
 
 ## Description

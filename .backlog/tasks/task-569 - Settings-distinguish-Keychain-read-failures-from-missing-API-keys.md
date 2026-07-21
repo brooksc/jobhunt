@@ -4,6 +4,7 @@ title: 'Settings: distinguish Keychain read failures from missing API keys'
 status: To Do
 assignee: []
 created_date: '2026-06-20 04:10'
+updated_date: '2026-07-21 22:59'
 labels:
   - audit
   - settings
@@ -18,6 +19,7 @@ modified_files:
   - app/Views/Settings/DebugTab.swift
   - tests/CoreTests/SettingsStoreTests.swift
 priority: low
+ordinal: 28000
 ---
 
 ## Description

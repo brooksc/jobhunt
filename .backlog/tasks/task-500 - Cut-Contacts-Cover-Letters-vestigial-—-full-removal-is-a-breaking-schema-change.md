@@ -6,12 +6,14 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-06-18 23:05'
+updated_date: '2026-07-21 22:59'
 labels:
   - cleanup
   - schema
   - tech-debt
 dependencies: []
 priority: low
+ordinal: 19000
 ---
 
 ## Description

@@ -4,6 +4,7 @@ title: 'Backup: handle save-panel replacement of an existing backup file'
 status: To Do
 assignee: []
 created_date: '2026-06-19 22:19'
+updated_date: '2026-07-21 22:59'
 labels:
   - audit
   - backup
@@ -15,6 +16,7 @@ references:
   - app/Views/Settings/SettingsTab.swift
   - tests/CoreTests/BackupServiceTests.swift
 priority: medium
+ordinal: 13000
 ---
 
 ## Description

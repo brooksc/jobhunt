@@ -4,6 +4,7 @@ title: 'QueueActor: surface storage errors instead of swallowing with try?'
 status: To Do
 assignee: []
 created_date: '2026-07-02 21:51'
+updated_date: '2026-07-21 22:59'
 labels: []
 dependencies: []
 references:
@@ -12,6 +13,7 @@ references:
   - 'core/LLM/QueueActor.swift:225-249'
   - 'core/LLM/QueueActor.swift:767-822'
 priority: medium
+ordinal: 14000
 ---
 
 ## Description

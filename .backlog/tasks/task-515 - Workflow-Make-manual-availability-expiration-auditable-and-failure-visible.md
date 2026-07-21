@@ -4,6 +4,7 @@ title: 'Workflow: Make manual availability expiration auditable and failure-visi
 status: To Do
 assignee: []
 created_date: '2026-06-19 01:31'
+updated_date: '2026-07-21 22:59'
 labels:
   - workflow
   - availability
@@ -16,6 +17,7 @@ references:
   - core/Services/AvailabilityChecker.swift
   - tests/CoreTests/JobServiceTests.swift
 priority: medium
+ordinal: 9000
 ---
 
 ## Description

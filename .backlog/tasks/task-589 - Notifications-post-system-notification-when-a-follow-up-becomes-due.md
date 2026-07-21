@@ -4,6 +4,7 @@ title: 'Notifications: post system notification when a follow-up becomes due'
 status: To Do
 assignee: []
 created_date: '2026-07-02 21:52'
+updated_date: '2026-07-21 22:59'
 labels: []
 dependencies:
   - TASK-502
@@ -12,6 +13,7 @@ references:
   - core/App/RuntimeTaskController.swift
   - core/Models/JobAction.swift
 priority: low
+ordinal: 38000
 ---
 
 ## Description

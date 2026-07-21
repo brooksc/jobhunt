@@ -4,6 +4,7 @@ title: Clear pre-existing KeyPath-Sendable strict-concurrency warnings
 status: To Do
 assignee: []
 created_date: '2026-07-04 02:40'
+updated_date: '2026-07-21 22:59'
 labels:
   - concurrency
   - warnings
@@ -15,6 +16,7 @@ references:
   - tools/migrator/SQLiteHelpers.swift
   - core/Services/BackgroundStore.swift
 priority: low
+ordinal: 42000
 ---
 
 ## Description

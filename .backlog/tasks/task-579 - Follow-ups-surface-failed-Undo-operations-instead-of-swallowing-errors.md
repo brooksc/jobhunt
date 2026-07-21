@@ -4,6 +4,7 @@ title: 'Follow-ups: surface failed Undo operations instead of swallowing errors'
 status: To Do
 assignee: []
 created_date: '2026-06-20 22:55'
+updated_date: '2026-07-21 22:59'
 labels:
   - audit
   - follow-ups
@@ -17,6 +18,7 @@ modified_files:
   - core/Services/JobService.swift
   - tests/CoreTests/JobServiceMutationTests.swift
 priority: low
+ordinal: 32000
 ---
 
 ## Description

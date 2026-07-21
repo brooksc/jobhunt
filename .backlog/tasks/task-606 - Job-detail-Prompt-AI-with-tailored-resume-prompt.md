@@ -4,7 +4,7 @@ title: 'Job detail: Prompt AI with tailored-resume prompt'
 status: To Do
 assignee: []
 created_date: '2026-07-21 22:22'
-updated_date: '2026-07-21 22:23'
+updated_date: '2026-07-21 22:59'
 labels:
   - workflow
   - resume
@@ -25,6 +25,7 @@ documentation:
   - >-
     https://www.reddit.com/r/ClaudeAI/comments/1kvuz7u/any_way_to_autosubmit_queries_via_url_parameters/
 priority: medium
+ordinal: 18000
 ---
 
 ## Description

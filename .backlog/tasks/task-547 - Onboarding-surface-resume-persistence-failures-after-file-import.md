@@ -4,6 +4,7 @@ title: 'Onboarding: surface resume persistence failures after file import'
 status: To Do
 assignee: []
 created_date: '2026-06-19 22:18'
+updated_date: '2026-07-21 22:59'
 labels:
   - audit
   - ux
@@ -17,6 +18,7 @@ references:
   - core/Services/ResumeService.swift
   - tests/AppUITests/BehaviorUITests.swift
 priority: medium
+ordinal: 11000
 ---
 
 ## Description

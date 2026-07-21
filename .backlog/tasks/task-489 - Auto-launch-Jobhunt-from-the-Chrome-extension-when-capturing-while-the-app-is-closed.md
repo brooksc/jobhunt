@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-06-18 18:53'
+updated_date: '2026-07-21 22:59'
 labels:
   - extension
   - ux
@@ -13,6 +14,7 @@ labels:
   - feature
 dependencies: []
 priority: medium
+ordinal: 3000
 ---
 
 ## Description

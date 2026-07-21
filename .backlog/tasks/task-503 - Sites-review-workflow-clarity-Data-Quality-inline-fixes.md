@@ -4,12 +4,14 @@ title: Sites review workflow clarity + Data Quality inline fixes
 status: To Do
 assignee: []
 created_date: '2026-06-18 23:06'
+updated_date: '2026-07-21 22:59'
 labels:
   - ux
   - sites
   - data-quality
 dependencies: []
 priority: medium
+ordinal: 5000
 ---
 
 ## Description

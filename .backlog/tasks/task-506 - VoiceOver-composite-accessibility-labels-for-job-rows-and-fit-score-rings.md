@@ -4,11 +4,13 @@ title: 'VoiceOver: composite accessibility labels for job rows and fit-score rin
 status: To Do
 assignee: []
 created_date: '2026-06-19 01:12'
+updated_date: '2026-07-21 22:59'
 labels:
   - hig
   - accessibility
 dependencies: []
 priority: medium
+ordinal: 6000
 ---
 
 ## Description

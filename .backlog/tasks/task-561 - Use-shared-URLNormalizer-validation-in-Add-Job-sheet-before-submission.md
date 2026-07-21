@@ -4,6 +4,7 @@ title: Use shared URLNormalizer validation in Add Job sheet before submission
 status: To Do
 assignee: []
 created_date: '2026-06-20 00:17'
+updated_date: '2026-07-21 22:59'
 labels:
   - audit
   - capture-ingestion
@@ -19,6 +20,7 @@ modified_files:
   - core/Services/URLNormalizer.swift
   - tests/CoreTests/URLNormalizerTests.swift
 priority: low
+ordinal: 27000
 ---
 
 ## Description

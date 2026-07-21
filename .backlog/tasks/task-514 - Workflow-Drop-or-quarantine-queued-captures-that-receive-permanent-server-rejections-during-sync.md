@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-06-19 01:31'
+updated_date: '2026-07-21 22:59'
 labels:
   - workflow
   - extension
@@ -19,6 +20,7 @@ references:
   - extension/tests/test_service_worker_contract.js
   - server/swift/JobhuntServer.swift
 priority: medium
+ordinal: 8000
 ---
 
 ## Description

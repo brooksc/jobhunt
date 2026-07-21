@@ -4,6 +4,7 @@ title: 'Dock: initialize unread badge on launch, not only after count changes'
 status: To Do
 assignee: []
 created_date: '2026-06-19 07:30'
+updated_date: '2026-07-21 22:59'
 labels:
   - audit
   - ux
@@ -17,6 +18,7 @@ references:
   - app/Platform/PlatformIntegration.swift
   - tests/CoreTests/JobServiceMutationTests.swift
 priority: low
+ordinal: 25000
 ---
 
 ## Description

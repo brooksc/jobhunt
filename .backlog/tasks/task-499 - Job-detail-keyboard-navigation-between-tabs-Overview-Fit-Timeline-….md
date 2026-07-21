@@ -4,7 +4,7 @@ title: Comprehensive keyboard shortcuts and in-app shortcut reference
 status: To Do
 assignee: []
 created_date: '2026-06-18 22:32'
-updated_date: '2026-07-21 22:15'
+updated_date: '2026-07-21 22:59'
 labels:
   - ux
   - keyboard
@@ -18,6 +18,7 @@ references:
   - app/Views/Jobs/JobsView.swift
   - app/Views/Detail/JobDetailView.swift
 priority: high
+ordinal: 1000
 ---
 
 ## Description

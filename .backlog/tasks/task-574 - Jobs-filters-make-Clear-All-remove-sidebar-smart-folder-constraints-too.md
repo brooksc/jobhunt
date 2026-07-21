@@ -4,6 +4,7 @@ title: 'Jobs filters: make Clear All remove sidebar smart-folder constraints too
 status: To Do
 assignee: []
 created_date: '2026-06-20 05:13'
+updated_date: '2026-07-21 22:59'
 labels:
   - audit
   - jobs
@@ -15,6 +16,7 @@ modified_files:
   - app/Shell/Sidebar.swift
   - tests/AppUITests/BehaviorUITests.swift
 priority: low
+ordinal: 30000
 ---
 
 ## Description

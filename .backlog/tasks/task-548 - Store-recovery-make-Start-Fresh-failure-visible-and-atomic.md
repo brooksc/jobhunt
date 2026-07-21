@@ -4,6 +4,7 @@ title: 'Store recovery: make Start Fresh failure-visible and atomic'
 status: To Do
 assignee: []
 created_date: '2026-06-19 22:18'
+updated_date: '2026-07-21 22:59'
 labels:
   - audit
   - restore
@@ -16,6 +17,7 @@ references:
   - core/Services/BackupService.swift
   - app/JobhuntApp.swift
 priority: medium
+ordinal: 12000
 ---
 
 ## Description

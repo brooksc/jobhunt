@@ -6,12 +6,14 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-07-02 21:51'
+updated_date: '2026-07-21 22:59'
 labels: []
 dependencies:
   - TASK-569
 references:
   - 'core/Settings/SettingsStore.swift:79'
 priority: low
+ordinal: 35000
 ---
 
 ## Description

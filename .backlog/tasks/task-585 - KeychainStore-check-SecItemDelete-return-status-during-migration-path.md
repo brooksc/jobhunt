@@ -4,12 +4,14 @@ title: 'KeychainStore: check SecItemDelete return status during migration path'
 status: To Do
 assignee: []
 created_date: '2026-07-02 21:51'
+updated_date: '2026-07-21 22:59'
 labels: []
 dependencies:
   - TASK-569
 references:
   - 'core/Settings/KeychainStore.swift:26'
 priority: low
+ordinal: 34000
 ---
 
 ## Description

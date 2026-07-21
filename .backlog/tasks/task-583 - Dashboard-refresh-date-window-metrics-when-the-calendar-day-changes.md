@@ -4,6 +4,7 @@ title: 'Dashboard: refresh date-window metrics when the calendar day changes'
 status: To Do
 assignee: []
 created_date: '2026-06-21 03:11'
+updated_date: '2026-07-21 22:59'
 labels:
   - audit
   - dashboard
@@ -15,6 +16,7 @@ modified_files:
   - app/Views/Dashboard/DashboardMetrics.swift
   - tests/CoreTests/JobStatusSummaryTests.swift
 priority: low
+ordinal: 33000
 ---
 
 ## Description

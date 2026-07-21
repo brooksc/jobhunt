@@ -4,6 +4,7 @@ title: 'Jobs search: company and title autocomplete from existing data'
 status: To Do
 assignee: []
 created_date: '2026-07-02 21:52'
+updated_date: '2026-07-21 22:59'
 labels: []
 dependencies: []
 references:
@@ -11,6 +12,7 @@ references:
   - core/Models/SearchTokenID.swift
   - core/Models/SavedSearchCriteria.swift
 priority: low
+ordinal: 40000
 ---
 
 ## Description

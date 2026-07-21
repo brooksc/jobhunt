@@ -4,6 +4,7 @@ title: Expose permanent job deletion alongside Archive actions
 status: To Do
 assignee: []
 created_date: '2026-07-21 21:42'
+updated_date: '2026-07-21 22:59'
 labels:
   - workflow
   - ux
@@ -16,6 +17,7 @@ references:
   - app/Shell/AppCommands.swift
   - core/Services/JobService.swift
 priority: medium
+ordinal: 16000
 ---
 
 ## Description

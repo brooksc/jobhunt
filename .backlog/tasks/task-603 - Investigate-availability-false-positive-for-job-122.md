@@ -4,6 +4,7 @@ title: Investigate availability false positive for job 122
 status: To Do
 assignee: []
 created_date: '2026-07-21 21:41'
+updated_date: '2026-07-21 22:59'
 labels:
   - bug
   - availability
@@ -15,6 +16,7 @@ references:
   - app/Views/Jobs/JobsView.swift
   - app/Views/Settings/SettingsTab.swift
 priority: medium
+ordinal: 15000
 ---
 
 ## Description

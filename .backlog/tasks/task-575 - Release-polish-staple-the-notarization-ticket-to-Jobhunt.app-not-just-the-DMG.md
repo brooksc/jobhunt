@@ -6,12 +6,14 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-06-20 18:19'
+updated_date: '2026-07-21 22:59'
 labels:
   - release
   - distribution
   - dmg
 dependencies: []
 priority: low
+ordinal: 31000
 ---
 
 ## Description

@@ -4,12 +4,14 @@ title: 'Server: add test coverage for /api/jobs/by-url endpoint'
 status: To Do
 assignee: []
 created_date: '2026-07-02 21:51'
+updated_date: '2026-07-21 22:59'
 labels: []
 dependencies: []
 references:
   - 'server/swift/JobhuntServer.swift:638'
   - tests/ServerTests/JobhuntServerTests.swift
 priority: low
+ordinal: 37000
 ---
 
 ## Description

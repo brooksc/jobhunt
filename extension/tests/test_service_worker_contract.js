@@ -67,6 +67,7 @@ global.chrome = {
   },
   runtime: {
     onInstalled: { addListener: () => {} },
+    onStartup: { addListener: () => {} },
     onMessage: { addListener: (fn) => { messageListener = fn; } },
     getURL: (p) => `chrome-extension://test/${p}`
   },
@@ -84,7 +85,10 @@ global.chrome = {
     query: async () => [{ id: 1 }]
   },
   windows: { update: async () => {} },
-  commands: { onCommand: { addListener: (fn) => { commandListener = fn; } } },
+  commands: {
+    onCommand: { addListener: (fn) => { commandListener = fn; } },
+    getAll: async () => [{ name: 'capture-job', shortcut: '⌘⇧Y' }]
+  },
   downloads: { download: async () => {} }
 };
 

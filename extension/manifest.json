@@ -40,7 +40,7 @@
     "capture-job": {
       "suggested_key": {
         "default": "Ctrl+Shift+Y",
-        "mac": "Command+Shift+Y"
+        "mac": "MacCtrl+Shift+Y"
       },
       "description": "Capture the current job posting"
     }

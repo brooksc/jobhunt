@@ -43,6 +43,7 @@ async function serverUrl(path) {
   return `http://127.0.0.1:${port}${path}`;
 }
 
+const CAPTURE_JOB_MENU_ID = "capture-this-job";
 const SAVE_WITH_NOTE_MENU_ID = "save-job-with-note";
 const MARK_SITE_REVIEWED_MENU_ID = "mark-site-reviewed";
 const OPEN_JOB_IN_APP_MENU_ID = "open-job-in-app";
@@ -53,6 +54,11 @@ const CHECK_SERVER_MENU_ID = "check-server";
 const OPEN_APP_MENU_ID = "open-app";
 
 chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: CAPTURE_JOB_MENU_ID,
+    title: "Capture this job",
+    contexts: ["page", "action"]
+  });
   chrome.contextMenus.create({
     id: SAVE_WITH_NOTE_MENU_ID,
     title: "Save job with note",
@@ -103,7 +109,29 @@ chrome.runtime.onInstalled.addListener(() => {
     title: "Open Jobhunt app",
     contexts: ["action"]
   });
+  refreshCaptureShortcutLabel();
 });
+
+// Refresh the label on browser start too (the shortcut is stable per session; onInstalled only fires
+// on install/update).
+chrome.runtime.onStartup.addListener(() => {
+  refreshCaptureShortcutLabel();
+});
+
+// Show the currently-bound keyboard shortcut in the "Capture this job" menu title so it's
+// discoverable. Chrome doesn't render command shortcuts in context menus, and there's no event for a
+// shortcut change, so we refresh on install/startup and whenever the action is used (below).
+async function refreshCaptureShortcutLabel() {
+  try {
+    const commands = await chrome.commands.getAll();
+    const shortcut = commands.find((c) => c.name === "capture-job")?.shortcut;
+    await chrome.contextMenus.update(CAPTURE_JOB_MENU_ID, {
+      title: shortcut ? `Capture this job (${shortcut})` : "Capture this job"
+    }).catch(() => {});
+  } catch (_) {
+    // menus not created yet / commands unavailable — ignore
+  }
+}
 
 // Queue-management items are only useful when the server is unreachable.
 // Hide them when we have a cached server port (i.e. the Mac app is running).
@@ -112,6 +140,7 @@ chrome.runtime.onInstalled.addListener(() => {
 const QUEUE_MENU_IDS = [OPEN_CAPTURE_QUEUE_MENU_ID, SYNC_QUEUE_MENU_ID, EXPORT_CSV_MENU_ID, "sep-queue"];
 
 async function updateQueueMenuVisibility() {
+  await refreshCaptureShortcutLabel(); // keep the shortcut label fresh on each action interaction
   const cached = (await chrome.storage.session.get(PORT_CACHE_KEY))[PORT_CACHE_KEY];
   const visible = !cached;
   await Promise.all(QUEUE_MENU_IDS.map(id =>
@@ -146,6 +175,11 @@ chrome.commands.onCommand.addListener(async (command) => {
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId === CAPTURE_JOB_MENU_ID) {
+    await handleCaptureRequest(tab);
+    return;
+  }
+
   if (info.menuItemId === OPEN_CAPTURE_QUEUE_MENU_ID) {
     await openQueueStatus();
     return;

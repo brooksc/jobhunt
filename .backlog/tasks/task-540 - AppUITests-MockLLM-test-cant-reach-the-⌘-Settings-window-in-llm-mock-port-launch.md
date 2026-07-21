@@ -3,14 +3,23 @@ id: TASK-540
 title: >-
   AppUITests: MockLLM test can't reach the ⌘, Settings window in --llm-mock-port
   launch
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 06:29'
+updated_date: '2026-07-21 21:35'
 labels:
   - test-infra
   - ui-tests
   - llm
 dependencies: []
+modified_files:
+  - app/Views/Settings/SettingsView.swift
+  - app/JobhuntApp.swift
+  - tests/AppUITests/MockLLMUITests.swift
+  - core/Demo/DemoSeeder.swift
+  - tests/CoreTests/DemoSeederTests.swift
+  - CLAUDE.md
+  - docs/test-strategy.md
 priority: low
 ---
 
@@ -30,8 +39,28 @@ References: tests/AppUITests/MockLLMUITests.swift, tests/AppUITests/AppUITests.s
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Root cause of why --llm-mock-port launch prevents reaching the ⌘, Settings window in XCUITest is identified
-- [ ] #2 MockLLMUITests.testLLMTestConnection_succeedsAgainstMockServer reliably opens Settings, selects the AI tab, and asserts Test Connection success against the mock server
-- [ ] #3 The XCTSkipIf guard is removed and the test passes in a full AppUITests run
-- [ ] #4 No regression to the other AppUITests
+- [x] #1 Root cause of why --llm-mock-port launch prevents reaching the ⌘, Settings window in XCUITest is identified
+- [x] #2 MockLLMUITests.testLLMTestConnection_succeedsAgainstMockServer reliably opens Settings, selects the AI tab, and asserts Test Connection success against the mock server
+- [x] #3 The XCTSkipIf guard is removed and the test passes in a full AppUITests run
+- [x] #4 No regression to the other AppUITests
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Open Settings through the app-owned sidebar control and explicitly foreground the SwiftUI Settings window. 2. Scope XCUITest queries to that Settings window and select the AI tab by accessibility label. 3. Persist the mock model through the provider-specific SettingsStore API, remove the skip, and assert the real Test Connection success state. 4. Run the complete AppUITests suite.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Root cause: the SwiftUI Settings scene was created behind the main window in the mock launch, so XCUITest could see but could not interact with its controls. The mock setup also wrote only llmModel rather than the provider-specific model key, allowing form synchronization to clear mock-model.
+
+During full-suite verification, SavedSearchUITests exposed pre-existing demo-fixture drift: they expected saved searches present only in FixtureSeeder. DemoSeeder now seeds and resets those searches, with focused tests.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Re-enabled MockLLMUITests.testLLMTestConnection_succeedsAgainstMockServer and made its Settings workflow deterministic. Settings is foregrounded when shown, the test opens it from the sidebar and scopes queries to its window, and mock launch configuration stores mock-model under the LM Studio provider key. Connection status accessibility was improved and stale documentation was updated. Full verification: 30 AppUITests passed with 0 failures; 18 DemoSeederTests passed; the mock LLM plus saved-search UI subset passed 3/3.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -245,11 +245,18 @@ struct LLMQueueView: View {
 
             TableColumn("Error") { req in
                 if let error = req.error {
+                    // On a JSON-parse failure the raw model response is captured on the attempt;
+                    // surface it on hover so the failure (e.g. an empty or non-JSON response) is
+                    // diagnosable without digging into the store.
+                    let preview = req.attempts
+                        .sorted { $0.attempt < $1.attempt }
+                        .last { !($0.responsePreview ?? "").isEmpty }?
+                        .responsePreview
                     Text(error)
                         .lineLimit(2)
                         .font(.caption)
                         .foregroundStyle(.red)
-                        .help(error)
+                        .help(preview.map { "\(error)\n\nModel response:\n\($0)" } ?? error)
                 } else {
                     Text("—").foregroundStyle(.tertiary)
                 }

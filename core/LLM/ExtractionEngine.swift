@@ -144,11 +144,18 @@ public enum ExtractionEngine {
         let response = try await provider.complete(request)
         let responseChars = response.content.count
 
-        let repairedJSON = try repairJSON(response.content)
-
+        // Carry the VERBATIM model response on any parse failure (repair threw, or repaired to a
+        // non-object) so the queue can persist it into the attempt's responsePreview for debugging.
+        // The error message stays generic — the raw text is never surfaced in errorDescription.
+        let repairedJSON: String
+        do {
+            repairedJSON = try repairJSON(response.content)
+        } catch {
+            throw ExtractionEngineError.invalidJSON(response.content)
+        }
         guard let data = repairedJSON.data(using: .utf8),
               let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw ExtractionEngineError.invalidJSON(repairedJSON)
+            throw ExtractionEngineError.invalidJSON(response.content)
         }
 
         // TASK-456: validate provider JSON into the typed extraction schema before normalization.
@@ -263,10 +270,17 @@ public enum ExtractionEngine {
 
         let responseChars = response.content.count
 
-        let repairedJSON = try repairJSON(response.content)
+        // Carry the VERBATIM model response on any parse failure (see extract() above) so the queue
+        // can persist it for debugging; the error message stays generic.
+        let repairedJSON: String
+        do {
+            repairedJSON = try repairJSON(response.content)
+        } catch {
+            throw ExtractionEngineError.invalidJSON(response.content)
+        }
         guard let data = repairedJSON.data(using: .utf8),
               let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw ExtractionEngineError.invalidJSON(repairedJSON)
+            throw ExtractionEngineError.invalidJSON(response.content)
         }
 
         // TASK-453: validate the exact dimension contract before scoring — a malformed dimensions

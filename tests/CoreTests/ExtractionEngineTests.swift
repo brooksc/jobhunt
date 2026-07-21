@@ -175,6 +175,29 @@ final class ExtractionEngineTests: XCTestCase {
         XCTAssertEqual(result.completionTokens, 567)
     }
 
+    /// On a JSON-parse failure the verbatim model response must be carried on the error so the queue
+    /// can persist it into the attempt's responsePreview for debugging (job #273 class of failure).
+    func testExtractionCarriesRawResponseOnJSONParseFailure() async throws {
+        let snapshot = JobExtractionSnapshot(
+            captureURL: "https://example.com/job",
+            captureCanonicalURL: nil,
+            capturePageTitle: "Engineer",
+            captureCleanedDescription: "We need an engineer.",
+            captureVisibleText: nil,
+            captureSelectedText: nil
+        )
+        let garbage = "Sorry, I can't produce that as JSON."
+        do {
+            _ = try await ExtractionEngine.extract(
+                snapshot: snapshot, provider: CapturingProvider(response: garbage),
+                settings: makeExtractionSettings()
+            )
+            XCTFail("Expected a JSON parse failure")
+        } catch let ExtractionEngineError.invalidJSON(raw) {
+            XCTAssertEqual(raw, garbage, "verbatim model response must be carried for the attempt preview")
+        }
+    }
+
     // MARK: - CostEstimator token math
 
     func testCostEstimateTokenMath() {

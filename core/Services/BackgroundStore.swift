@@ -884,6 +884,7 @@ public actor BackgroundStore {
         durationMs: Int? = nil,
         promptChars: Int? = nil,
         responseChars: Int? = nil,
+        responsePreview: String? = nil,
         promptTokens: Int? = nil,
         completionTokens: Int? = nil,
         error: String? = nil
@@ -903,6 +904,7 @@ public actor BackgroundStore {
             durationMs: durationMs,
             promptChars: promptChars,
             responseChars: responseChars,
+            responsePreview: responsePreview,
             promptTokens: promptTokens,
             completionTokens: completionTokens,
             error: error
@@ -925,6 +927,7 @@ public actor BackgroundStore {
         durationMs: Int? = nil,
         promptChars: Int? = nil,
         responseChars: Int? = nil,
+        responsePreview: String? = nil,
         promptTokens: Int? = nil,
         completionTokens: Int? = nil,
         error: String? = nil
@@ -935,7 +938,7 @@ public actor BackgroundStore {
             modelRequested: modelRequested, modelReturned: modelReturned, responseFormat: responseFormat,
             baseURL: baseURL,
             startedAt: startedAt, finishedAt: finishedAt, durationMs: durationMs,
-            error: error, promptChars: promptChars, responseChars: responseChars,
+            error: error, responsePreview: responsePreview, promptChars: promptChars, responseChars: responseChars,
             promptTokens: promptTokens, completionTokens: completionTokens
         )
         record.request = try modelContext.fetch(

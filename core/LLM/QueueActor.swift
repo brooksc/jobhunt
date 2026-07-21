@@ -61,6 +61,18 @@ public actor QueueActor {
         }
     }
 
+    /// On a JSON-parse failure the engine attaches the VERBATIM model response to
+    /// `ExtractionEngineError.invalidJSON`; capture a truncated copy (and the full length) for the
+    /// attempt's `responsePreview`/`responseChars` so the failure is debuggable — e.g. seeing the
+    /// model returned nothing, prose, or truncated JSON. Returns (nil, nil) for other errors.
+    private nonisolated static func responseDiagnostics(_ error: Error) -> (preview: String?, chars: Int?) {
+        guard case let ExtractionEngineError.invalidJSON(raw) = error else { return (nil, nil) }
+        let preview = raw.isEmpty
+            ? "(empty model response)"
+            : String(raw.prefix(LLMConstants.maxResponsePreviewChars))
+        return (preview, raw.count)
+    }
+
     // MARK: - Dependencies
 
     private let store: BackgroundStore
@@ -649,6 +661,7 @@ public actor QueueActor {
             if error is CancellationError || Task.isCancelled { throw error }
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
             let errorStr = error.localizedDescription
+            let diag = Self.responseDiagnostics(error)
 
             // Record failed attempt — linked on the store actor (TASK-314/526)
             try await store.recordAttempt(
@@ -656,7 +669,8 @@ public actor QueueActor {
                 requestType: .extract, attempt: item.attempt, status: .failed,
                 modelRequested: extractSettings.llmModel, baseURL: extractBaseURL,
                 startedAt: startedAt, finishedAt: Date(),
-                durationMs: durationMs, error: errorStr
+                durationMs: durationMs, responseChars: diag.chars, responsePreview: diag.preview,
+                error: errorStr
             )
 
             if item.attempt >= Self.maxRetries {
@@ -826,13 +840,15 @@ public actor QueueActor {
             if error is CancellationError || Task.isCancelled { throw error }
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
             let errorStr = error.localizedDescription
+            let diag = Self.responseDiagnostics(error)
 
             // Persist attempt record — linked on the store actor (TASK-314/526)
             try await store.recordAttempt(
                 requestID: itemID, jobID: jobID,
                 requestType: .fit, attempt: item.attempt, status: .failed,
                 modelRequested: fitModel, baseURL: fitBaseURL, startedAt: startedAt, finishedAt: Date(),
-                durationMs: durationMs, error: errorStr
+                durationMs: durationMs, responseChars: diag.chars, responsePreview: diag.preview,
+                error: errorStr
             )
 
             if item.attempt >= Self.maxRetries {

@@ -150,7 +150,7 @@ public final class PlatformIntegration: NSObject, ObservableObject {
             // App-wide banner so it's visible from any screen, not only the LLM Queue (TASK-542).
             router.queueAlert = QueueAlert(
                 message: "API key rejected (HTTP \(statusCode)) — check your AI provider key in " +
-                    "Settings → AI Provider.",
+                    "Settings → AI.",
                 showsAISettings: true
             )
 
@@ -167,7 +167,7 @@ public final class PlatformIntegration: NSObject, ObservableObject {
             // with a one-click jump to fix it. Cleared on dismiss or when the queue next succeeds.
             router.queueAlert = QueueAlert(
                 message: "AI provider isn't set up — queued jobs can't be processed. " +
-                    "Add your provider and API key in Settings → AI Provider.",
+                    "Add your provider and API key in Settings → AI.",
                 showsAISettings: true
             )
         }

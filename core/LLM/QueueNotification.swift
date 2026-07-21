@@ -28,7 +28,7 @@ public extension QueueEvent {
                 id: "auth-failed",
                 title: "AI key rejected",
                 body: "Your AI provider rejected the request (HTTP \(code)). " +
-                    "Check your API key in Settings → AI Provider.",
+                    "Check your API key in Settings → AI.",
                 navigate: "settings-ai",
                 requestsAttention: true
             )

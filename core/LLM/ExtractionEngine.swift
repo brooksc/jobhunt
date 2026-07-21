@@ -407,7 +407,7 @@ public enum ExtractionEngineError: Error, LocalizedError {
         case .invalidJSON:
             "LLM response could not be parsed as JSON"
         case .noModelSelected:
-            "No model selected — choose a model in Settings → LLM"
+            "No model selected — choose a model in Settings → AI"
         case let .malformedField(field, reason):
             "LLM response field '\(field)' was invalid: \(reason)"
         }

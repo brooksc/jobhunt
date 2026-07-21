@@ -49,6 +49,7 @@ let badgeColor = '';
 
 let messageListener = null;
 let contextMenuListener = null;
+let commandListener = null;
 
 global.importScripts = () => {}; // deps loaded separately below
 
@@ -76,7 +77,14 @@ global.chrome = {
   scripting: {
     executeScript: async () => [{ result: { url: 'https://example.com/job', page_title: 'Job', preflight: {} } }]
   },
-  tabs: { create: async () => {} },
+  tabs: {
+    create: async () => ({ id: 1 }),
+    get: async () => ({ id: 1, windowId: 1 }),
+    update: async () => {},
+    query: async () => [{ id: 1 }]
+  },
+  windows: { update: async () => {} },
+  commands: { onCommand: { addListener: (fn) => { commandListener = fn; } } },
   downloads: { download: async () => {} }
 };
 
@@ -325,6 +333,33 @@ describe('service_worker: message handler', () => {
           `payload key "${key}" is not in the server SiteReviewRequest model — extension/server contract drift`
         );
       }
+    });
+  });
+
+  // A keyboard shortcut (chrome.commands) captures the active tab, exactly like the toolbar click.
+  describe('keyboard command — capture-job', () => {
+    test('captures the active tab when the capture-job command fires', async () => {
+      assert.ok(commandListener, 'service_worker must register a chrome.commands.onCommand listener');
+
+      let capturePosted = false;
+      global.fetch = async (url) => {
+        if (url.includes('/ping')) return { ok: true, json: async () => ({ app: 'jobhunt' }) };
+        if (url.includes('/captures')) {
+          capturePosted = true;
+          return { ok: true, json: async () => ({ job_number: 1, duplicate: false }) };
+        }
+        return { ok: true, json: async () => ({}) }; // openApp/focus/lookup — not under test
+      };
+
+      await commandListener('capture-job');
+      assert.ok(capturePosted, 'the capture-job command must POST a capture to the server');
+    });
+
+    test('ignores unrelated commands', async () => {
+      let fetched = false;
+      global.fetch = async () => { fetched = true; return { ok: true, json: async () => ({}) }; };
+      await commandListener('unrelated-command');
+      assert.equal(fetched, false, 'unknown commands must not trigger a capture');
     });
   });
 });

@@ -119,13 +119,29 @@ async function updateQueueMenuVisibility() {
   ));
 }
 
-chrome.action.onClicked.addListener(async (tab) => {
+async function handleCaptureRequest(tab) {
   await updateQueueMenuVisibility();
   try {
     await captureCurrentTab(tab);
   } catch (error) {
     console.error("[jobhunt] capture error:", error);
     await showBadge(String(error?.message || "").includes("canceled") ? "CAN" : "ERR", "#b00020");
+  }
+}
+
+chrome.action.onClicked.addListener(async (tab) => {
+  await handleCaptureRequest(tab);
+});
+
+// Keyboard shortcut (chrome://extensions/shortcuts to view/rebind). Like the toolbar click, invoking
+// a command grants activeTab, so the capture can inject into the current page without extra permissions.
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command !== "capture-job") {
+    return;
+  }
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab) {
+    await handleCaptureRequest(tab);
   }
 });
 
@@ -392,13 +408,52 @@ async function showQueuedStatus(queueLength) {
   await chrome.action.setTitle({
     title: `Capture queued (${queueLength}). Open the Jobhunt Mac app to sync.`
   });
-  await openQueueStatus();
+  // Auto path (a save landed offline): open the tab in the BACKGROUND so it doesn't steal focus
+  // from the page the user is on, and reuse/throttle so a burst of saves doesn't spam tabs.
+  await openQueueStatus({ background: true });
 }
 
-async function openQueueStatus() {
-  await chrome.tabs.create({
-    url: chrome.runtime.getURL("status.html"),
-    active: true
+// Don't reopen the background status tab more than once per this window while the user keeps saving
+// offline (it's already open or was just shown). The context-menu path ignores this and always shows.
+const STATUS_TAB_THROTTLE_MS = 10 * 60 * 1000;
+const STATUS_TAB_ID_KEY = "jobhunt.statusTabId";
+const STATUS_TAB_SHOWN_KEY = "jobhunt.statusTabShownAt";
+
+async function openQueueStatus({ background = false } = {}) {
+  const statusURL = chrome.runtime.getURL("status.html");
+  const state = await chrome.storage.session.get([STATUS_TAB_ID_KEY, STATUS_TAB_SHOWN_KEY]);
+  const prevTabId = state[STATUS_TAB_ID_KEY];
+  const lastShown = state[STATUS_TAB_SHOWN_KEY];
+
+  // Reuse an already-open status tab instead of spawning another (anti-spam). chrome.tabs.get
+  // rejects if the tab was closed, in which case we fall through and open a fresh one.
+  if (prevTabId != null) {
+    try {
+      const tab = await chrome.tabs.get(prevTabId);
+      if (tab) {
+        if (!background) {
+          await chrome.tabs.update(prevTabId, { active: true });
+          if (tab.windowId != null) {
+            await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
+          }
+        }
+        return;
+      }
+    } catch (_) {
+      // tab no longer exists — fall through to create a new one
+    }
+  }
+
+  // Background (auto) path: skip if we showed the tab recently, so a burst of offline saves doesn't
+  // keep reopening it. The context-menu path (background === false) always opens.
+  if (background && lastShown && Date.now() - lastShown < STATUS_TAB_THROTTLE_MS) {
+    return;
+  }
+
+  const created = await chrome.tabs.create({ url: statusURL, active: !background });
+  await chrome.storage.session.set({
+    [STATUS_TAB_ID_KEY]: created.id,
+    [STATUS_TAB_SHOWN_KEY]: Date.now()
   });
 }
 

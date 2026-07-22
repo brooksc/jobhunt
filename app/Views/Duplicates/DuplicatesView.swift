@@ -48,6 +48,12 @@ struct DuplicatesView: View {
                     pair: pair,
                     originalJob: jobIndex[pair.original.id],
                     candidateJob: jobIndex[pair.candidate.id],
+                    onMarkDuplicate: { handleMarkDuplicate(
+                        candidateID: pair.candidate.id,
+                        cleanedHash: pair.candidate.cleanedHash,
+                        keepJobID: pair.original.id,
+                        confidence: pair.confidence
+                    ) },
                     onUnmark: { handleUnmark(
                         candidateID: pair.candidate.id,
                         cleanedHash: pair.candidate.cleanedHash,
@@ -223,6 +229,28 @@ struct DuplicatesView: View {
 
     // MARK: - Actions
 
+    /// Soft-mark the candidate as a duplicate (TASK-624): links it to the original + `.duplicate`
+    /// status (reversible), and records a "duplicate" decision so it stays resolved.
+    private func handleMarkDuplicate(candidateID: String, cleanedHash: String?, keepJobID: String, confidence: Double) {
+        Task {
+            do {
+                try await appServices.jobService.markDuplicate(
+                    jobID: candidateID, ofJobID: keepJobID, confidence: confidence
+                )
+                if let hash = cleanedHash, !hash.isEmpty {
+                    try await appServices.jobService.decideDuplicate(
+                        cleanedHash: hash, decision: "duplicate", keepJobID: keepJobID
+                    )
+                }
+                selectedPairID = nil
+                actionError = nil
+                await refreshPairsInBackground()
+            } catch {
+                actionError = "Mark as duplicate failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
     private func handleUnmark(candidateID: String, cleanedHash: String?, keepJobID: String) {
         Task {
             do {
@@ -331,6 +359,7 @@ struct CompareView: View {
     let pair: DuplicatePair
     let originalJob: Job?
     let candidateJob: Job?
+    let onMarkDuplicate: () -> Void
     let onUnmark: () -> Void
     let onDelete: () -> Void
 
@@ -352,18 +381,29 @@ struct CompareView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer()
-                Button("Unmark") {
+                // Keep Both: not a duplicate — dismiss so it won't resurface.
+                Button("Keep Both") {
                     onUnmark()
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .font(.caption)
 
-                Button("Delete Candidate") {
+                // Delete is destructive and demoted — a soft Mark as Duplicate is the safe primary.
+                Button("Delete") {
                     showDeleteConfirmation = true
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .font(.caption)
+                .foregroundStyle(.red)
+
+                // Mark as Duplicate (primary): reversible — links the candidate to the original and
+                // hides it from active lists, but keeps the record (Unmark from All Jobs to undo).
+                Button("Mark as Duplicate") {
+                    onMarkDuplicate()
+                }
                 .buttonStyle(.borderedProminent)
-                .tint(.red)
                 .controlSize(.small)
                 .font(.caption)
             }

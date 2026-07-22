@@ -1066,10 +1066,20 @@ public actor BackgroundStore {
         try modelContext.save()
     }
 
+    /// Count of unresolved duplicate REVIEW pairs — the same set the Duplicates screen shows. Computes
+    /// live and persists/marks NOTHING (TASK-624: duplicates are only ever resolved by explicit user
+    /// action in the review screen).
+    public func reviewablePairCount() throws -> Int {
+        let jobs = try modelContext.fetch(FetchDescriptor<Job>())
+        let decisions = try modelContext.fetch(FetchDescriptor<DuplicateDecision>())
+        return DuplicateDetector.unresolvedPairCount(jobs: jobs, decisions: decisions)
+    }
+
     /// Run domain-duplicate detection across all jobs and persist results: flag each detected
     /// candidate with duplicateOfJobID + confidence + `.duplicate` status, and log a
     /// `duplicate_detected` event. Skips pairs already resolved via DuplicateDecision.
     /// (Electron parity: detectDomainDuplicateJobs after markExtractionSucceeded.) Returns count flagged.
+    /// TASK-624: no longer called by the app — duplicates are never auto-marked. Retained for tooling.
     public func detectAndPersistDomainDuplicates() throws -> Int {
         let jobs = try modelContext.fetch(FetchDescriptor<Job>())
         let snapshots = jobs.compactMap { job -> JobSnapshot? in

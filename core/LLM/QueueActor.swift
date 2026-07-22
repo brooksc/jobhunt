@@ -443,14 +443,8 @@ public actor QueueActor {
             if await isPaused() { break }
         }
 
-        // Electron parity: detect & persist domain duplicates. Run once after draining rather
-        // than per-extraction — it's a global O(N^2) scan, so batching avoids quadratic blowup
-        // when many jobs are extracted in one session.
-        if totalProcessed > 0 {
-            do { _ = try await store.detectAndPersistDomainDuplicates() } catch {
-                logStoreFailure(error, context: "detectAndPersistDomainDuplicates")
-            }
-        }
+        // TASK-624: duplicates are never auto-marked — every match is surfaced in the Duplicates
+        // review screen (computed live) for the user to resolve explicitly. Nothing to persist here.
 
         emit(.processingComplete(processed: totalProcessed, failed: totalFailed))
     }
@@ -683,19 +677,13 @@ public actor QueueActor {
             )
             guard try await store.commitExtractionSuccess(result, metadata: metadata) else { return false }
 
-            // Catch duplicates BEFORE spending fit LLM calls on them (TASK-611): a job flagged as a
-            // duplicate of an already-captured posting is skipped here — the canonical keeps its fit
-            // score, and later copies in a bulk save cost only the (already-spent) extraction. The
-            // end-of-drain full scan still runs as a backstop for anything this per-job check misses.
-            let isDuplicate = await (try? store.detectDuplicateForJob(jobID: jobID)) ?? false
-
-            // Electron parity: auto-score fit against all active resumes (no-op when none is active,
-            // or when the job was just flagged a duplicate). The drain loop re-fetches queued
-            // requests, so the new fit requests run on the next iteration without an explicit restart.
-            if !isDuplicate {
-                do { _ = try await store.enqueueFitForActiveResumes(jobID: jobID) } catch {
-                    logStoreFailure(error, context: "enqueueFitForActiveResumes for job \(jobID)")
-                }
+            // TASK-624: duplicates are no longer auto-marked, so every extracted job is fit-scored.
+            // A suspected duplicate stays a real, scored job until the user confirms it in the
+            // Duplicates review screen. Auto-score fit against all active resumes (no-op when none is
+            // active). The drain loop re-fetches queued requests, so the new fit requests run on the
+            // next iteration without an explicit restart.
+            do { _ = try await store.enqueueFitForActiveResumes(jobID: jobID) } catch {
+                logStoreFailure(error, context: "enqueueFitForActiveResumes for job \(jobID)")
             }
 
             // TASK-513: prefer the freshly extracted title over item.jobTitle, a snapshot captured when

@@ -1038,18 +1038,18 @@ struct JobsView: View {
         }
     }
 
-    /// Manually run the same domain-duplicate scan the LLM queue runs after processing, so the user
-    /// can re-check the existing set on demand instead of waiting for the next AI batch (TASK-600).
+    /// Re-check for duplicate pairs on demand (TASK-600/623). Nothing is auto-marked — this just counts
+    /// the reviewable pairs and jumps to the Duplicates screen, where the user resolves each explicitly.
     private func runDuplicateScan() async {
         isScanningDuplicates = true
         defer { isScanningDuplicates = false }
         do {
-            let flagged = try await appServices.backgroundStore.detectAndPersistDomainDuplicates()
-            if flagged == 0 {
-                appServices.toastStore.show("No new duplicates found")
+            let pairs = try await appServices.backgroundStore.reviewablePairCount()
+            if pairs == 0 {
+                appServices.toastStore.show("No duplicate pairs to review")
             } else {
                 appServices.toastStore.show(
-                    "Found \(flagged) new duplicate\(flagged == 1 ? "" : "s")",
+                    "\(pairs) duplicate pair\(pairs == 1 ? "" : "s") to review",
                     actionLabel: "Review"
                 ) {
                     router.navigateToSection(.duplicates)

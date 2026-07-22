@@ -780,6 +780,28 @@ final class DuplicateDetectorTests: XCTestCase {
         XCTAssertEqual(pairs.count, 1, "same-host same-title repost should be surfaced")
     }
 
+    /// TASK-626 (the Guild case): a live candidate must NOT pair against an EXPIRED original — that would
+    /// push the user to mark the job they're pursuing as a duplicate of a dead posting. Expired/rejected
+    /// jobs are excluded from dedup candidates.
+    func testExpiredOriginal_doesNotPairWithLiveCandidate() {
+        let expired = snap(
+            10,
+            company: "Guild",
+            title: "Staff Technical Program Manager",
+            url: "https://guild.com/careers/staff-tpm",
+            status: .expired
+        )
+        let live = snap(
+            20,
+            company: "Guild",
+            title: "Staff Technical Program Manager",
+            url: "https://www.linkedin.com/jobs/view/4442490941",
+            status: .pursuing
+        )
+        let pairs = DuplicateDetector().duplicateGroups(snapshots: [expired, live], resolvedHashes: [])
+        XCTAssertTrue(pairs.isEmpty, "expired original must not form a review pair with a live candidate")
+    }
+
     /// C: aggregator vs company site whose title differs only by a suffix ("…, Toast IQ"). Real
     /// jobs #165/#304.
     func testFuzzyTitleSuffix_isPaired() {

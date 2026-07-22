@@ -87,7 +87,12 @@ public struct DuplicateDetector {
     /// by the Duplicates screen, the sidebar badge, and the dashboard card so they can't drift.
     public static func reviewSnapshots(jobs: [Job]) -> [JobSnapshot] {
         jobs.compactMap { job in
-            guard job.status != .duplicate, let capture = job.capture else { return nil }
+            // Only ACTIVE jobs are reviewable. Terminal statuses (already resolved as a duplicate, or
+            // expired/rejected/passed/archived/closed) shouldn't form dedup pairs — an expired original
+            // paired with a live candidate would push the user to mark the live job they're pursuing as
+            // a dup of a dead posting (TASK-626, the Guild guild.com-vs-linkedin case).
+            let excluded: Set<JobStatus> = [.duplicate, .expired, .rejected, .passed, .archived, .closed]
+            guard !excluded.contains(job.status), let capture = job.capture else { return nil }
             return JobSnapshot(job: job, capture: capture)
         }
     }
@@ -580,7 +585,7 @@ public struct DuplicateDetector {
             $0.extractionStatus == "succeeded" &&
                 !($0.company?.trimmingCharacters(in: .whitespaces).isEmpty ?? true) &&
                 !($0.title?.trimmingCharacters(in: .whitespaces).isEmpty ?? true) &&
-                !["passed", "archived", "closed"].contains($0.status) &&
+                !["passed", "archived", "closed", "expired", "rejected"].contains($0.status) &&
                 // Exclude already-resolved duplicates (either signal suffices per invariant).
                 $0.duplicateOfJobID == nil &&
                 $0.status != "duplicate"

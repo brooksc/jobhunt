@@ -62,7 +62,8 @@ public enum AvailabilityChecker {
     /// Heuristic removal-phrase lists — expect to keep extending these as new sites/wording surface.
     /// Add literal phrases here and generalized families to `goneBodyRegexes` below (see docs/tuning.md).
     static let goneBodyPatterns: [String] = [
-        "page not found", "job not found", "job no longer available",
+        // NOTE: bare "page not found" removed (TASK-626, job #325) — generic 404-shell copy, not job-scoped.
+        "job not found", "job no longer available",
         "this job is no longer", "position is no longer available", "position has been filled",
         "posting has expired", "job posting has expired", "no longer accepting applications",
         "job listing has expired", "this position has been filled", "this role is no longer",
@@ -86,8 +87,8 @@ public enum AvailabilityChecker {
         #"\bno longer accepting applications\b"#,
         // … <subject> (posting) (has) expired
         #"\b(job|position|posting|listing|role|opening|requisition)\s+(?:posting\s+)?(?:has\s+|have\s+)?expired\b"#,
-        // "<subject> not found"
-        #"\b(job|position|posting|page|listing)\s+not\s+found\b"#
+        // "<subject> not found" — "page" removed (TASK-626, job #325): "page not found" is generic 404 copy.
+        #"\b(job|position|posting|listing)\s+not\s+found\b"#
     ]
     /// 30s (was a legacy 12s): slow-but-alive ATS pages (Workday etc.) were timing out and counting as
     /// a failed check, so the job never got re-verified until the next interval. A timeout still resolves
@@ -408,9 +409,18 @@ public enum AvailabilityChecker {
             }
             let finalURLString = http.url?.absoluteString ?? requestURL.absoluteString
             let statusCode = http.statusCode
+            let body = String(data: data, encoding: .utf8)?.lowercased() ?? ""
+            // 1.9 Cloudflare / bot-challenge interstitial (Pinterest etc., jobs #48/#122): the real page
+            // is never served at ANY status, so it's indeterminate, NOT gone. Checked before gone heuristics.
+            if isBotChallenge(body) {
+                return .unverifiable(reason: "bot challenge: \(finalURLString)")
+            }
 
-            // 1. Gone status codes.
+            // 1. Gone status codes — except a LinkedIn 404 (fires on live search-only jobs, #212): not gone.
             if goneStatusCodes.contains(statusCode) {
+                if statusCode == 404, (URL(string: finalURLString)?.host?.lowercased() ?? "").hasSuffix("linkedin.com") {
+                    return .unverifiable(reason: "linkedin 404 (unreliable guest view): \(finalURLString)")
+                }
                 return .gone(reason: "HTTP \(statusCode)")
             }
 
@@ -418,16 +428,6 @@ public enum AvailabilityChecker {
             // removed posting to `…/{board}?error=true` at HTTP 200). Deterministic gone signal.
             if isBoardErrorLandingURL(finalURLString) {
                 return .gone(reason: "board posting not found: \(finalURLString)")
-            }
-
-            // 2. Body pattern matching (literal phrases + generalized regex families).
-            let body = String(data: data, encoding: .utf8)?.lowercased() ?? ""
-
-            // 1.9 Cloudflare / bot-challenge interstitial (e.g. Phenom-hosted sites like Pinterest,
-            // job #48): the real page is never served, so availability is indeterminate — surface it
-            // as unverifiable rather than silently "available".
-            if statusCode == 403, isBotChallenge(body) {
-                return .unverifiable(reason: "bot challenge: \(finalURLString)")
             }
 
             if let reason = bodyGoneReason(body) {

@@ -222,6 +222,20 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
         }
     }
 
+    /// TASK-626 (job #325 Cribl): bare "page not found" appears in the STATIC HTML shell of JS-rendered
+    /// career sites (Greenhouse `gh_jid` pages) even for LIVE jobs, so it must not be a gone signal.
+    /// The job-scoped "job not found" family still is.
+    func testBodyGoneReason_barePageNotFound_isNotGone() {
+        XCTAssertNil(
+            AvailabilityChecker.bodyGoneReason("<title>Page not found</title><div>404 page not found</div>"),
+            "bare 'page not found' must not be flagged gone (JS-shell false positive)"
+        )
+        XCTAssertNotNil(
+            AvailabilityChecker.bodyGoneReason("this job not found in our system"),
+            "job-scoped 'job not found' must still be gone"
+        )
+    }
+
     // MARK: Redirect heuristics
 
     func testGoneWhenRedirectedToCompanyPage() async throws {
@@ -547,8 +561,9 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
         if case let .gone(reason) = result { XCTFail("Expected .available, got .gone(\(reason))") }
     }
 
-    func testLinkedIn404StillGone() async throws {
-        // A real 404 must still be flagged even on LinkedIn (status check precedes the auth-wall guard).
+    func testLinkedIn404IsUnverifiableNotGone() async throws {
+        // TASK-626 (job #212): LinkedIn returns 404 on `/jobs/view/{id}` for LIVE jobs that are only
+        // reachable through search, so a LinkedIn 404 is indeterminate, not gone — surface .unverifiable.
         let originalURL = "https://www.linkedin.com/jobs/view/999"
         MockURLProtocol.handlers = [(originalURL, { _ in
             makeResponse(url: originalURL, status: 404, body: "")
@@ -558,7 +573,24 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
             title: "Whatever Role Here",
             session: session
         )
-        guard case .gone = result else { XCTFail("Expected .gone for 404"); return }
+        guard case let .unverifiable(reason) = result else {
+            XCTFail("Expected .unverifiable for LinkedIn 404, got \(result)"); return
+        }
+        XCTAssertTrue(reason.contains("linkedin 404"), "reason: \(reason)")
+    }
+
+    func testNonLinkedIn404IsStillGone() async throws {
+        // The LinkedIn 404 carve-out is host-scoped: a 404 on any other host stays gone.
+        let originalURL = "https://boards.greenhouse.io/acme/jobs/999"
+        MockURLProtocol.handlers = [(originalURL, { _ in
+            makeResponse(url: originalURL, status: 404, body: "")
+        })]
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: originalURL)),
+            title: "Whatever Role Here",
+            session: session
+        )
+        guard case .gone = result else { XCTFail("Expected .gone for non-LinkedIn 404, got \(result)"); return }
     }
 
     func testAvailableWhenCanonicalRedirectHasTitle() async throws {

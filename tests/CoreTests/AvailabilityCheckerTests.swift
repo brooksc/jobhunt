@@ -704,6 +704,26 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         return job
     }
 
+    /// TASK-608: with no cap, every eligible stale job is returned so a large backlog drains in one
+    /// pass; an explicit cap still bounds the result.
+    func testFetchStaleEligibleJobs_uncappedReturnsAllStale() async throws {
+        let staleDate = Date().addingTimeInterval(-30 * 86400)
+        for i in 0 ..< 40 {
+            _ = try makeJobWithCapture(
+                url: "https://stale.example.com/job/\(i)",
+                title: "Stale \(i)",
+                status: .pursuing,
+                capturedAt: staleDate.addingTimeInterval(-Double(i) * 3600)
+            )
+        }
+
+        let uncapped = try await AvailabilityChecker.fetchStaleEligibleJobs(store: store, staleDays: 21, limit: nil)
+        XCTAssertEqual(uncapped.count, 40, "no cap must return all 40 eligible stale jobs (was capped at 25)")
+
+        let capped = try await AvailabilityChecker.fetchStaleEligibleJobs(store: store, staleDays: 21, limit: 5)
+        XCTAssertEqual(capped.count, 5, "an explicit cap still bounds the result")
+    }
+
     func testCheckJobsReturnsZeroForNoJobs() async {
         let result = await AvailabilityChecker.checkJobs([], store: store, session: session)
         XCTAssertEqual(result.checked, 0)

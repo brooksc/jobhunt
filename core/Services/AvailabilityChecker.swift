@@ -624,31 +624,34 @@ public enum AvailabilityChecker {
 
     // MARK: - checkStaleJobs
 
-    /// Checks jobs that haven't been touched in `staleDays` days, up to `limit` per run.
+    /// Checks jobs that haven't been touched in `staleDays` days. `limit` caps how many are checked
+    /// per run; `nil` means no cap (TASK-608 — a fixed per-run cap left a large stale backlog that
+    /// never fully drained, since each run only ever chipped away at the oldest slice).
     /// Throws if the underlying store fetch fails — callers must treat that as a failed check
     /// (not a zero-result success), or future checks get suppressed for the interval.
     public static func checkStaleJobs(
         store: BackgroundStore,
         staleDays: Int = 21,
-        limit: Int = 25,
+        limit: Int? = nil,
         session: URLSession = .shared
     ) async throws -> (checked: Int, unavailable: Int, marked: Int, failed: Int) {
         let jobs = try await fetchStaleEligibleJobs(store: store, staleDays: staleDays, limit: limit)
         return await checkJobs(jobs, store: store, session: session)
     }
 
-    /// Fetches jobs untouched for `staleDays` days (up to `limit`), excluding terminal statuses.
-    /// Shared by the legacy silent `checkStaleJobs` and the confirm-first `maybeFindStaleGoneJobs`.
+    /// Fetches jobs untouched for `staleDays` days, oldest-first, excluding terminal statuses.
+    /// `limit` caps the result (`nil` = uncapped, TASK-608). Shared by the legacy silent
+    /// `checkStaleJobs` and the confirm-first `maybeFindStaleGoneJobs`.
     /// Throws if the underlying store fetch fails — callers must treat that as a failed check.
     static func fetchStaleEligibleJobs(
         store: BackgroundStore,
         staleDays: Int,
-        limit: Int
+        limit: Int?
     ) async throws -> [Job] {
         let cutoff = Date().addingTimeInterval(-Double(max(1, staleDays)) * 86400)
 
         // Use capturedAtDenormalized (populated on insert since TASK-216) to sort jobs
-        // oldest-first at the DB level, bounding the query with fetchLimit.
+        // oldest-first at the DB level, bounding the query with fetchLimit when a cap is set.
         // Status and date are still filtered in-memory (enum predicates unsupported; optional
         // date comparison in predicates requires force-unwrap which SwiftData doesn't support).
         // A fetch failure propagates (do NOT swallow it as an empty result).
@@ -656,7 +659,7 @@ public enum AvailabilityChecker {
             predicate: #Predicate { $0.capturedAtDenormalized != nil },
             sortBy: [SortDescriptor(\Job.capturedAtDenormalized, order: .forward)]
         )
-        descriptor.fetchLimit = limit * 4 // over-fetch to allow for in-memory status filter
+        if let limit { descriptor.fetchLimit = limit * 4 } // over-fetch to allow for in-memory status filter
         let newStyleRows = try await store.fetch(descriptor)
 
         // Legacy rows with nil capturedAtDenormalized: fetch separately, filter via relationship
@@ -664,16 +667,18 @@ public enum AvailabilityChecker {
             predicate: #Predicate { $0.capturedAtDenormalized == nil },
             sortBy: [SortDescriptor(\Job.createdAt, order: .forward)]
         )
-        legacyDescriptor.fetchLimit = limit * 2
+        if let limit { legacyDescriptor.fetchLimit = limit * 2 }
         let legacyRows = try await store.fetch(legacyDescriptor)
 
         let all = newStyleRows + legacyRows
-        return all.filter { job in
+        let eligible = all.filter { job in
             guard job.status != .passed, job.status != .archived,
                   job.status != .closed, job.status != .expired else { return false }
             let ageDate = job.capturedAtDenormalized ?? job.capture?.capturedAt ?? job.createdAt
             return ageDate <= cutoff
-        }.prefix(limit).map(\.self)
+        }
+        guard let limit else { return eligible }
+        return Array(eligible.prefix(limit))
     }
 
     /// Confirm-first background pass (TASK-595 follow-up): mirrors `maybeRunStaleCheck`'s enabled +
@@ -700,7 +705,8 @@ public enum AvailabilityChecker {
         let staleDays = max(1, settings.int(forKey: SettingsKey.availabilityStaleDays))
         let jobs: [Job]
         do {
-            jobs = try await fetchStaleEligibleJobs(store: store, staleDays: staleDays, limit: 25)
+            // TASK-608: uncapped so a large stale backlog actually drains (was limited to 25/run).
+            jobs = try await fetchStaleEligibleJobs(store: store, staleDays: staleDays, limit: nil)
         } catch {
             NSLog("AvailabilityChecker: stale fetch failed: \(error)")
             return nil
@@ -742,7 +748,8 @@ public enum AvailabilityChecker {
         let staleDays = max(1, settings.int(forKey: SettingsKey.availabilityStaleDays))
         let result: (checked: Int, unavailable: Int, marked: Int, failed: Int)
         do {
-            result = try await checkStaleJobs(store: store, staleDays: staleDays, limit: 25, session: session)
+            // TASK-608: uncapped so a large stale backlog actually drains (was limited to 25/run).
+            result = try await checkStaleJobs(store: store, staleDays: staleDays, limit: nil, session: session)
         } catch {
             // Fetch failed — no valid check ran. Do NOT invoke onAutoCheckCompleted, or the app
             // layer would advance the last-check timestamp and suppress checks for the whole interval

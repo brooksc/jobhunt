@@ -184,6 +184,8 @@ private struct DetailHeader: View {
                     }
                 }
                 Spacer()
+                // AI prompt menu (TASK-606) — build a resume/interview/cover-letter/etc. prompt.
+                JobPromptMenu(job: job)
                 // Prev/Next placeholders for keyboard nav
                 HStack(spacing: 4) {
                     Button { onNavigatePrev() } label: {

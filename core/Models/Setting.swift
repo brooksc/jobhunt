@@ -60,6 +60,9 @@ public enum SettingsKey {
     /// Persisted last-selected job-detail tab (DetailTab rawValue), so opening a job restores the tab
     /// you last deliberately chose (e.g. "Fit") instead of always resetting to Overview.
     public static let detailLastTab = "detail_last_tab"
+    /// Set once the user has acknowledged that opening a job AI prompt in an external chat embeds the
+    /// resume + job description in a URL (TASK-606). Gates the first external-open only.
+    public static let aiPromptExternalOpenAcknowledged = "ai_prompt_external_open_acknowledged"
 
     /// API key settings that must live in Keychain, not SwiftData (App Store hygiene).
     public static let keychainKeys: Set<String> = [

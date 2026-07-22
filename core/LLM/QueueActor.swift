@@ -81,6 +81,14 @@ public actor QueueActor {
         }
     }
 
+    /// Log a store failure that we deliberately swallow so it isn't silently misclassified.
+    /// TASK-584: the request-processing classification paths used `try?`, so a real storage error
+    /// looked identical to "row absent / not running" and was miscategorized as a user cancellation
+    /// (or swallowed into a provider failure) with no trace. Log it at minimum.
+    private nonisolated func logStoreFailure(_ error: Error, context: String) {
+        NSLog("QueueActor: store failure (\(context)): \(error)")
+    }
+
     // MARK: - Dependencies
 
     private let store: BackgroundStore
@@ -256,7 +264,7 @@ public actor QueueActor {
             req.finishedAt = Date()
         }
         // TASK-527: a cancelled fit request must not leave its JobFitScore stuck .running/.pending.
-        _ = try? await store.reconcileOrphanedFitScores()
+        await settleFitMirror("reconcileOrphanedFitScores") { _ = try await store.reconcileOrphanedFitScores() }
     }
 
     /// Cancel all queued and running requests.
@@ -267,20 +275,20 @@ public actor QueueActor {
             req.status = .cancelled
             req.finishedAt = Date()
         }
-        _ = try? await store.reconcileOrphanedFitScores()
+        await settleFitMirror("reconcileOrphanedFitScores") { _ = try await store.reconcileOrphanedFitScores() }
     }
 
     /// Permanently delete specific requests by ID.
     public func deleteRequests(ids: [String]) async throws {
         let set = Set(ids)
         try await store.delete(LLMRequest.self, predicate: #Predicate { set.contains($0.id) })
-        _ = try? await store.reconcileOrphanedFitScores()
+        await settleFitMirror("reconcileOrphanedFitScores") { _ = try await store.reconcileOrphanedFitScores() }
     }
 
     /// Permanently delete all requests (all statuses).
     public func deleteAll() async throws {
         try await store.deleteAll(LLMRequest.self)
-        _ = try? await store.reconcileOrphanedFitScores()
+        await settleFitMirror("reconcileOrphanedFitScores") { _ = try await store.reconcileOrphanedFitScores() }
     }
 
     /// Permanently delete all finished (terminal) requests — succeeded/failed/exhausted/cancelled —
@@ -439,7 +447,9 @@ public actor QueueActor {
         // than per-extraction — it's a global O(N^2) scan, so batching avoids quadratic blowup
         // when many jobs are extracted in one session.
         if totalProcessed > 0 {
-            _ = try? await store.detectAndPersistDomainDuplicates()
+            do { _ = try await store.detectAndPersistDomainDuplicates() } catch {
+                logStoreFailure(error, context: "detectAndPersistDomainDuplicates")
+            }
         }
 
         emit(.processingComplete(processed: totalProcessed, failed: totalFailed))
@@ -504,9 +514,18 @@ public actor QueueActor {
         }
 
         // Verify the transition actually happened
-        let current = try? await store.fetch(
-            FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == itemID })
-        ).first
+        let current: LLMRequest?
+        do {
+            current = try await store.fetch(
+                FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == itemID })
+            ).first
+        } catch {
+            // TASK-584: a real store error here is NOT a cancellation — don't mask it as one (which
+            // would drop it silently). Surface it as a failure so the drain's auto-pause streak can
+            // react to a persistently degraded store.
+            logStoreFailure(error, context: "verify running transition for \(itemID)")
+            return .providerFailure
+        }
         guard current?.status == .running else {
             // The row was cancelled or claimed between snapshot and transition — not a failure.
             return .cancelled
@@ -515,11 +534,13 @@ public actor QueueActor {
         // TASK-449: if the batch was cancelled (auto-pause) before this task reached its provider
         // call, bail now and put the row back to queued so it isn't lost — don't spend on the call.
         if Task.isCancelled {
-            try? await store.update(LLMRequest.self, predicate: #Predicate { $0.id == itemID }) { req in
-                guard req.status == .running else { return }
-                req.status = .queued
-                req.startedAt = nil
-            }
+            do {
+                try await store.update(LLMRequest.self, predicate: #Predicate { $0.id == itemID }) { req in
+                    guard req.status == .running else { return }
+                    req.status = .queued
+                    req.startedAt = nil
+                }
+            } catch { logStoreFailure(error, context: "requeue on pre-provider cancel for \(itemID)") }
             return .cancelled
         }
 
@@ -537,7 +558,15 @@ public actor QueueActor {
             // The processor returned false without throwing. Classify by the row's final status:
             // a user cancellation (or missing job → markRequestCancelled) leaves it .cancelled;
             // anything else (consent revoked, missing resume → .failed) is a real failure.
-            let finalStatus = try? await store.requestStatus(id: itemID)
+            let finalStatus: LLMRequestStatus?
+            do {
+                finalStatus = try await store.requestStatus(id: itemID)
+            } catch {
+                // TASK-584: can't read the final status — log it (don't swallow) and fall back to
+                // treating it as a provider failure, which is the safe default for the drain streak.
+                logStoreFailure(error, context: "read final status for \(itemID)")
+                return .providerFailure
+            }
             return finalStatus == .cancelled ? .cancelled : .providerFailure
         } catch {
             // Auto-pause's `group.cancelAll()` (or app shutdown) can cancel a request mid-provider-call.
@@ -568,12 +597,14 @@ public actor QueueActor {
     /// loop is cancelled and exits before reaching here; any row left `.running` is recovered by
     /// `requeueRunningOnLaunch`.)
     private func requeueAfterCancellation(id: String) async {
-        try? await store.update(LLMRequest.self, predicate: #Predicate { $0.id == id }) { req in
-            guard req.status == .running else { return }
-            req.status = .queued
-            req.startedAt = nil
-            req.error = nil
-        }
+        do {
+            try await store.update(LLMRequest.self, predicate: #Predicate { $0.id == id }) { req in
+                guard req.status == .running else { return }
+                req.status = .queued
+                req.startedAt = nil
+                req.error = nil
+            }
+        } catch { logStoreFailure(error, context: "requeueAfterCancellation for \(id)") }
     }
 
     private func processExtractRequest(
@@ -625,12 +656,14 @@ public actor QueueActor {
             // TASK-516: mirror the active extraction at the job level so the UI shows "Extracting"
             // (and disables Run AI) while the provider call is in flight, instead of "pending".
             // Terminal success/failure below remain the authority for the final state.
-            try? await store.update(Job.self, predicate: #Predicate { $0.id == jobID }) { job in
-                guard job.extractionStatus != .running else { return }
-                job.extractionStatus = .running
-                job.extractionError = nil
-                job.updatedAt = Date()
-            }
+            do {
+                try await store.update(Job.self, predicate: #Predicate { $0.id == jobID }) { job in
+                    guard job.extractionStatus != .running else { return }
+                    job.extractionStatus = .running
+                    job.extractionError = nil
+                    job.updatedAt = Date()
+                }
+            } catch { logStoreFailure(error, context: "mirror extractionStatus=.running for job \(jobID)") }
 
             let result = try await ExtractionEngine.extract(
                 snapshot: extractionSnapshot,
@@ -660,7 +693,9 @@ public actor QueueActor {
             // or when the job was just flagged a duplicate). The drain loop re-fetches queued
             // requests, so the new fit requests run on the next iteration without an explicit restart.
             if !isDuplicate {
-                _ = try? await store.enqueueFitForActiveResumes(jobID: jobID)
+                do { _ = try await store.enqueueFitForActiveResumes(jobID: jobID) } catch {
+                    logStoreFailure(error, context: "enqueueFitForActiveResumes for job \(jobID)")
+                }
             }
 
             emit(.jobReady(jobNumber: item.jobNumber, title: item.jobTitle, fitScore: nil))
@@ -752,11 +787,13 @@ public actor QueueActor {
               !fitInputs.resumeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             let errMsg = fitInputs.resumeExists ? "Resume has no text to score against." : "Resume no longer exists."
             // TASK-317: Record attempt history for pre-provider failures
-            try? await store.recordAttempt(
-                requestID: itemID, jobID: jobID,
-                requestType: .fit, attempt: item.attempt, status: .failed,
-                modelRequested: nil, startedAt: startedAt, finishedAt: Date(), error: errMsg
-            )
+            do {
+                try await store.recordAttempt(
+                    requestID: itemID, jobID: jobID,
+                    requestType: .fit, attempt: item.attempt, status: .failed,
+                    modelRequested: nil, startedAt: startedAt, finishedAt: Date(), error: errMsg
+                )
+            } catch { logStoreFailure(error, context: "recordAttempt (fit pre-provider) for \(itemID)") }
             try await store.update(
                 LLMRequest.self,
                 predicate: #Predicate { $0.id == itemID }
@@ -908,13 +945,15 @@ public actor QueueActor {
         requestID: String, jobID: String?, requestType: LLMRequestType,
         attempt: Int, model: String?, baseURL: String, startedAt: Date
     ) async {
-        try? await store.recordAttempt(
-            requestID: requestID, jobID: jobID,
-            requestType: requestType, attempt: attempt, status: .failed,
-            modelRequested: model, baseURL: baseURL,
-            startedAt: startedAt, finishedAt: Date(),
-            error: ConsentError.notConsented.localizedDescription
-        )
+        do {
+            try await store.recordAttempt(
+                requestID: requestID, jobID: jobID,
+                requestType: requestType, attempt: attempt, status: .failed,
+                modelRequested: model, baseURL: baseURL,
+                startedAt: startedAt, finishedAt: Date(),
+                error: ConsentError.notConsented.localizedDescription
+            )
+        } catch { logStoreFailure(error, context: "recordConsentBlockedAttempt for \(requestID)") }
     }
 
     private func markRequestFailed(item: QueuedItem, error: Error, startedAt _: Date) async {
@@ -943,13 +982,15 @@ public actor QueueActor {
     /// rather than only after completion. No-op if the row is no longer running or the model is blank.
     private func setRequestModel(itemID: String, model: String) async {
         guard !model.isEmpty else { return }
-        try? await store.update(
-            LLMRequest.self,
-            predicate: #Predicate { $0.id == itemID }
-        ) { req in
-            guard req.status == .running else { return }
-            req.model = model
-        }
+        do {
+            try await store.update(
+                LLMRequest.self,
+                predicate: #Predicate { $0.id == itemID }
+            ) { req in
+                guard req.status == .running else { return }
+                req.model = model
+            }
+        } catch { logStoreFailure(error, context: "setRequestModel for \(itemID)") }
     }
 
     private func markRequestCancelled(id: String) async {

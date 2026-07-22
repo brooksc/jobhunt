@@ -1,4 +1,4 @@
-// swiftlint:disable line_length large_tuple
+// swiftlint:disable line_length large_tuple type_body_length file_length
 import Foundation
 import SwiftData
 
@@ -488,11 +488,20 @@ public enum AvailabilityChecker {
 
         struct JobSpec: Sendable {
             let id: String; let jobNumber: Int?; let company: String?; let title: String; let url: URL
+            /// Greenhouse posting id (from any of the job's URLs), used for the authoritative
+            /// confirm-alive override (TASK-631). Nil for non-Greenhouse jobs.
+            let greenhouseJobID: String?
         }
         let specs: [JobSpec] = eligible.compactMap { job in
             let urlString = JobURLPolicy.availabilityCheckURL(job: job) ?? ""
             guard !urlString.isEmpty, let url = URL(string: urlString) else { return nil }
-            return JobSpec(id: job.id, jobNumber: job.jobNumber, company: job.company, title: job.title ?? "", url: url)
+            // The gh_jid usually lives in the capture URL's `?gh_jid=` even when the availability URL
+            // (applicationURL) is the path form without it, so scan all of the job's known URLs.
+            let ghjid = greenhouseJobID(fromURLs: [job.capture?.url, job.applicationURL, job.capture?.canonicalURL])
+            return JobSpec(
+                id: job.id, jobNumber: job.jobNumber, company: job.company,
+                title: job.title ?? "", url: url, greenhouseJobID: ghjid
+            )
         }
         guard !specs.isEmpty else { return [] }
 
@@ -507,16 +516,25 @@ public enum AvailabilityChecker {
                     }
                 }
                 let (id, jobNumber, company, title, url) = (spec.id, spec.jobNumber, spec.company, spec.title, spec.url)
+                let ghjid = spec.greenhouseJobID
                 inFlight += 1
                 group.addTask {
                     let result = await checkURL(url, title: title, session: session)
-                    if case let .gone(reason) = result {
-                        return GoneJobResult(
-                            jobID: id, jobNumber: jobNumber, company: company,
-                            title: title, url: url, reason: reason
-                        )
+                    guard case let .gone(reason) = result else { return nil }
+                    // Authoritative override (TASK-631): the flaky career-site HTML (Cloudflare / JS
+                    // shell) said gone, but if this posting carries a Greenhouse gh_jid and the public
+                    // Job Board API confirms it 200-alive, it's NOT gone. Only runs on a would-be-gone
+                    // result, so it costs nothing for healthy jobs and can only remove false positives.
+                    if let ghjid,
+                       await greenhouseConfirmsAlive(
+                           ghjid: ghjid, company: company, urlString: url.absoluteString, session: session
+                       ) {
+                        return nil
                     }
-                    return nil
+                    return GoneJobResult(
+                        jobID: id, jobNumber: jobNumber, company: company,
+                        title: title, url: url, reason: reason
+                    )
                 }
             }
             for await r in group {
@@ -524,6 +542,70 @@ public enum AvailabilityChecker {
             }
         }
         return results
+    }
+
+    // MARK: - Greenhouse authoritative availability (TASK-631)
+
+    /// The Greenhouse posting id (`gh_jid`) found in the first of `urls` that carries one, via the shared
+    /// ATS-id extraction (handles both `?gh_jid=N` on career sites and `/jobs/N` on greenhouse.io hosts).
+    static func greenhouseJobID(fromURLs urls: [String?]) -> String? {
+        for case let urlString? in urls {
+            if let ats = DuplicateDetector.atsPostingID(urlString: urlString), ats.hasPrefix("gh:") {
+                return String(ats.dropFirst(3))
+            }
+        }
+        return nil
+    }
+
+    /// Candidate Greenhouse board tokens to try for a posting, best-guess first. A `*.greenhouse.io`
+    /// URL carries the board authoritatively in its path; otherwise derive it from the career-site host
+    /// (stripping suffixes like "careers"/"jobs" — `pinterestcareers` → `pinterest`) and the normalized
+    /// company name. Deduped, order preserved.
+    static func greenhouseBoardCandidates(company: String?, urlString: String) -> [String] {
+        var candidates: [String] = []
+        if let comps = URLComponents(string: urlString), let host = comps.host?.lowercased() {
+            if host.hasSuffix("greenhouse.io") {
+                if let board = comps.path.split(separator: "/").map(String.init).first, !board.isEmpty {
+                    candidates.append(board)
+                }
+            } else {
+                let labels = host.split(separator: ".").map(String.init)
+                let registrable = labels.count >= 2 ? labels[labels.count - 2] : (labels.first ?? "")
+                if !registrable.isEmpty {
+                    for suffix in ["careers", "career", "jobs", "job", "careersite", "work", "talent"]
+                        where registrable.count > suffix.count && registrable.hasSuffix(suffix) {
+                        candidates.append(String(registrable.dropLast(suffix.count)))
+                    }
+                    candidates.append(registrable)
+                }
+            }
+        }
+        if let company {
+            let slug = String(String.UnicodeScalarView(
+                company.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }
+            ))
+            if !slug.isEmpty { candidates.append(slug) }
+        }
+        var seen = Set<String>()
+        return candidates.filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+
+    /// True when Greenhouse's PUBLIC Job Board API (no key) returns HTTP 200 for `ghjid` on any derived
+    /// board token — an authoritative "this posting is live". A non-200 / unreachable returns false so
+    /// the caller falls back to its HTML result (this can only clear a false positive, never add one).
+    static func greenhouseConfirmsAlive(
+        ghjid: String, company: String?, urlString: String, session: URLSession = .shared
+    ) async -> Bool {
+        for board in greenhouseBoardCandidates(company: company, urlString: urlString).prefix(4) {
+            guard let url = URL(string: "https://boards-api.greenhouse.io/v1/boards/\(board)/jobs/\(ghjid)")
+            else { continue }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 8
+            guard let (_, response) = try? await session.data(for: request),
+                  let http = response as? HTTPURLResponse else { continue }
+            if http.statusCode == 200 { return true }
+        }
+        return false
     }
 
     // MARK: - checkJobs
@@ -797,4 +879,4 @@ public enum AvailabilityChecker {
     }
 }
 
-// swiftlint:enable line_length cyclomatic_complexity function_body_length large_tuple type_body_length
+// swiftlint:enable line_length large_tuple type_body_length file_length

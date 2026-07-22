@@ -41,3 +41,25 @@ Parked product direction. Make job discovery a first-class native JobHunt capabi
 - [ ] #13 Focused tests cover provider contracts, filtering, normalization, duplicate handling, scheduling, cancellation, partial failures, and migration of discovery metadata.
 - [ ] #14 The implementation retains required CareerOps MIT attribution for any substantially reused or ported code.
 <!-- AC:END -->
+
+## Implementation note — prefer public ATS APIs over web scraping (2026-07-22)
+
+Strongly prefer the **public, no-credential ATS job-board APIs** as the provider layer instead of
+scraping career-site HTML. We already validated this for availability in **TASK-631**: Greenhouse's
+Job Board API (`boards-api.greenhouse.io/v1/boards/{board}/jobs[/{id}]`, no key) returns clean JSON —
+full description `content`, `title`, `location`, `departments`, `updated_at`, and (with
+`?questions=true`) the application form — and the board list endpoint returns **every open role for a
+company**, which is exactly the discovery primitive this card needs. This sidesteps the Cloudflare /
+JS-shell fragility that plagues scraping (the whole #122/#325 false-positive class).
+
+The same pattern generalizes to the other ATSes we already detect posting ids for — **Lever**
+(`api.lever.co/v0/postings/{company}`), **Ashby**, and **Workday** (CXS) — via the provider
+abstraction proposed in **TASK-636**. Discovery should be built on that abstraction:
+- Primary sources = ATS board APIs (Greenhouse/Lever/Ashby/Workday), keyed by company/board slug.
+- Reuse: **TASK-631** (board-token derivation + liveness), **TASK-632** (canonical content),
+  **TASK-634** (per-company role listing — the single-company precursor to full discovery),
+  **TASK-635** (application-form preview).
+- Fall back to scraping / CareerOps providers only for sources without a usable public API.
+
+Net: much of "scan for matching roles and drop them in New" can be **API-driven**, not scraped —
+cheaper, cleaner, and far more reliable.

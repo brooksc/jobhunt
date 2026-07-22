@@ -800,6 +800,67 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         return job
     }
 
+    // MARK: - TASK-631: Greenhouse authoritative confirm-alive override
+
+    /// The career-site HTML looks gone (Cloudflare/JS-shell), but the Greenhouse Job Board API returns
+    /// 200 for the gh_jid — the job is authoritatively live, so it must NOT surface as a gone candidate.
+    func testFindGoneJobs_greenhouse200OverridesGoneHTML() async throws {
+        let career = "https://www.pinterestcareers.com/jobs/7494634/staff-tpm/?gh_jid=7494634"
+        let job = try makeJobWithCapture(url: career, title: "Staff TPM", status: .applied)
+        job.company = "Pinterest"
+        MockURLProtocol.handlers = [
+            ("pinterestcareers.com", { _ in makeResponse(url: career, status: 200, body: "this job is no longer available") }),
+            ("boards-api.greenhouse.io/v1/boards/pinterest/jobs/7494634", { _ in
+                makeResponse(url: "https://boards-api.greenhouse.io/v1/boards/pinterest/jobs/7494634",
+                             status: 200, body: "{\"id\":7494634}")
+            })
+        ]
+        let gone = await AvailabilityChecker.findGoneJobs([job], session: session)
+        XCTAssertTrue(gone.isEmpty, "Greenhouse 200 must override the gone-looking career HTML")
+    }
+
+    /// When Greenhouse does NOT confirm alive (404 / wrong board), the gone HTML result stands — a
+    /// genuinely dead posting is still caught (no new false negatives).
+    func testFindGoneJobs_greenhouseNon200FallsThroughToGone() async throws {
+        let career = "https://www.pinterestcareers.com/jobs/7494634/staff-tpm/?gh_jid=7494634"
+        let job = try makeJobWithCapture(url: career, title: "Staff TPM", status: .applied)
+        job.company = "Pinterest"
+        MockURLProtocol.handlers = [
+            ("pinterestcareers.com", { _ in makeResponse(url: career, status: 200, body: "this job is no longer available") }),
+            // Any boards-api request 404s (must be explicit — the mock defaults unmatched URLs to 200).
+            ("boards-api.greenhouse.io", { _ in
+                makeResponse(url: "https://boards-api.greenhouse.io/x", status: 404, body: "{}")
+            })
+        ]
+        let gone = await AvailabilityChecker.findGoneJobs([job], session: session)
+        XCTAssertEqual(gone.count, 1, "Greenhouse 404 must fall through to the gone HTML result")
+    }
+
+    func testGreenhouseJobID_extractsGhJidFromAnyURL() {
+        XCTAssertEqual(
+            AvailabilityChecker.greenhouseJobID(fromURLs: [
+                nil, "https://x.com/no-id", "https://www.pinterestcareers.com/jobs/?gh_jid=7494634"
+            ]),
+            "7494634"
+        )
+        XCTAssertNil(AvailabilityChecker.greenhouseJobID(fromURLs: ["https://example.com/careers/role"]))
+    }
+
+    func testGreenhouseBoardCandidates_derivation() {
+        XCTAssertEqual(
+            AvailabilityChecker.greenhouseBoardCandidates(
+                company: "Pinterest", urlString: "https://www.pinterestcareers.com/jobs/7494634/?gh_jid=7494634"
+            ),
+            ["pinterest", "pinterestcareers"], "strip 'careers' suffix; company slug dedups"
+        )
+        XCTAssertEqual(
+            AvailabilityChecker.greenhouseBoardCandidates(
+                company: "Reddit", urlString: "https://job-boards.greenhouse.io/reddit/jobs/123"
+            ),
+            ["reddit"], "greenhouse.io host → board is authoritative in the path"
+        )
+    }
+
     /// TASK-608: with no cap, every eligible stale job is returned so a large backlog drains in one
     /// pass; an explicit cap still bounds the result.
     func testFetchStaleEligibleJobs_uncappedReturnsAllStale() async throws {

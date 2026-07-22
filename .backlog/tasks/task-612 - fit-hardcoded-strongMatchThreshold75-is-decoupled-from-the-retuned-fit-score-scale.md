@@ -3,9 +3,10 @@ id: TASK-612
 title: >-
   fit: hardcoded strongMatchThreshold=75 is decoupled from the (retuned)
   fit-score scale
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-21 23:47'
+updated_date: '2026-07-22 18:07'
 labels:
   - fit
   - tech-debt

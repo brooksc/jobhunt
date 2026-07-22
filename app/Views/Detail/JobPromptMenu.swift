@@ -112,7 +112,8 @@ struct JobPromptMenu: View {
             kind: .autoApply,
             input: JobPromptInput(
                 role: "", company: "", location: "", sourceURL: url,
-                jobDescription: "", resumeName: "", resumeText: "", fit: nil
+                jobDescription: "", resumeName: "", resumeText: "", fit: nil,
+                personalInfo: appServices.settings.string(forKey: SettingsKey.applicationPersonalInfo)
             )
         )
         setClipboard(prompt)

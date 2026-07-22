@@ -63,6 +63,10 @@ public enum SettingsKey {
     /// Set once the user has acknowledged that opening a job AI prompt in an external chat embeds the
     /// resume + job description in a URL (TASK-606). Gates the first external-open only.
     public static let aiPromptExternalOpenAcknowledged = "ai_prompt_external_open_acknowledged"
+    /// Free-text personal/application details (name, contact, work authorization, EEO answers, …) the
+    /// user provides so the Codex auto-apply prompt can fill application fields (TASK-606). Stored
+    /// locally in the SwiftData store; never sent anywhere by the app itself.
+    public static let applicationPersonalInfo = "application_personal_info"
 
     /// API key settings that must live in Keychain, not SwiftData (App Store hygiene).
     public static let keychainKeys: Set<String> = [

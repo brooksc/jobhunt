@@ -97,6 +97,7 @@ struct JobsSettingsTab: View {
     let settings: SettingsStore
 
     @State private var customJDText: String = ""
+    @State private var applicationDetailsText: String = ""
     @State private var isRunningAvailabilityCheck = false
     @State private var availabilityCheckMessage: String?
     @State private var goneJobs: [GoneJobResult] = []
@@ -110,10 +111,12 @@ struct JobsSettingsTab: View {
             locationSection
             availabilitySection
             customExtractionSection
+            applicationDetailsSection
         }
         .formStyle(.grouped)
         .onAppear {
             customJDText = settings.string(forKey: SettingsKey.jobDescriptionMarkdown)
+            applicationDetailsText = settings.string(forKey: SettingsKey.applicationPersonalInfo)
         }
         .sheet(isPresented: $showingExpiredConfirmation) {
             ExpiredConfirmationSheet(
@@ -236,6 +239,26 @@ struct JobsSettingsTab: View {
                 .border(Color(NSColor.separatorColor), width: 0.5)
                 .onChange(of: customJDText) { _, new in
                     settings.set(new, forKey: SettingsKey.jobDescriptionMarkdown)
+                }
+        }
+    }
+
+    // TASK-606: personal details the Codex auto-apply prompt uses to fill application fields.
+    private var applicationDetailsSection: some View {
+        Section("Application Details") {
+            Text("Personal details the AI \"Auto-Apply (Codex)\" prompt uses to fill application fields "
+                + "(name, contact info, address, links, work authorization, voluntary EEO answers). "
+                + "Stored only on this Mac; the app never sends it anywhere — but note it's copied into "
+                + "the prompt you paste into Codex.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            TextEditor(text: $applicationDetailsText)
+                .font(.system(.body, design: .monospaced))
+                .frame(minHeight: 120, maxHeight: 260)
+                .border(Color(NSColor.separatorColor), width: 0.5)
+                .onChange(of: applicationDetailsText) { _, new in
+                    settings.set(new, forKey: SettingsKey.applicationPersonalInfo)
                 }
         }
     }

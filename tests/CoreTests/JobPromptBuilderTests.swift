@@ -81,6 +81,25 @@ final class JobPromptBuilderTests: XCTestCase {
         XCTAssertTrue(prompt.contains("[PASTE URL HERE]"), "placeholder kept when no URL is known")
     }
 
+    func testAutoApplyInjectsPersonalInfoWhenProvided() {
+        let info = "Name: Brooks Cutter\nEmail: brooksc@brooksc.com\nUS Citizen, no sponsorship required."
+        let withInfo = JobPromptInput(
+            role: "", company: "", location: "", sourceURL: "https://x.com/j",
+            jobDescription: "", resumeName: "", resumeText: "", fit: nil, personalInfo: info
+        )
+        let prompt = JobPromptBuilder.build(kind: .autoApply, input: withInfo)
+        XCTAssertTrue(prompt.contains("My personal / application information"), "personal info section present")
+        XCTAssertTrue(prompt.contains("<<<BEGIN PERSONAL_INFO"), "personal info delimited")
+        XCTAssertTrue(prompt.contains("brooksc@brooksc.com"), "provided details embedded")
+        XCTAssertTrue(prompt.contains("STILL NOT complete electronic signatures"), "signatures still reserved for user")
+    }
+
+    func testAutoApplyOmitsPersonalInfoSectionWhenEmpty() {
+        // input() has personalInfo defaulted to "".
+        let prompt = JobPromptBuilder.build(kind: .autoApply, input: input())
+        XCTAssertFalse(prompt.contains("PERSONAL_INFO"), "no personal info section when none is provided")
+    }
+
     func testChatKindsExcludeAutoApply() {
         XCTAssertFalse(JobPromptKind.chatKinds.contains(.autoApply))
         XCTAssertEqual(JobPromptKind.chatKinds.count, JobPromptKind.allCases.count - 1)

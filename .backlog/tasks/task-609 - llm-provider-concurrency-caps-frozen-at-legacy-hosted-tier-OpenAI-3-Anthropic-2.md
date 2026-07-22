@@ -3,9 +3,10 @@ id: TASK-609
 title: >-
   llm: provider concurrency caps frozen at legacy hosted tier (OpenAI 3 /
   Anthropic 2)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-21 23:40'
+updated_date: '2026-07-22 18:12'
 labels:
   - llm
   - performance

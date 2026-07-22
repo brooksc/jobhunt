@@ -3,9 +3,10 @@ id: TASK-607
 title: >-
   llm: make max_tokens output cap model-aware (reasoning models exhaust the
   fixed 16384)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-21 23:40'
+updated_date: '2026-07-22 18:05'
 labels:
   - llm
   - tech-debt

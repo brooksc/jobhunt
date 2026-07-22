@@ -1,10 +1,10 @@
 ---
 id: TASK-603
 title: Investigate availability false positive for job 122
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-21 21:41'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-07-22 18:17'
 labels:
   - bug
   - availability

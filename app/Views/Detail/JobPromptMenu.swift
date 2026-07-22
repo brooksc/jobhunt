@@ -17,6 +17,8 @@ struct JobPromptMenu: View {
 
     /// A queued external open awaiting the one-time privacy acknowledgement.
     @State private var pendingOpen: PendingOpen?
+    /// Presents the one-time heads-up before the first auto-apply copy that embeds personal details.
+    @State private var showAutoApplyPrivacyPrompt = false
 
     private struct PendingOpen: Identifiable {
         let id = UUID()
@@ -67,7 +69,7 @@ struct JobPromptMenu: View {
             Divider()
             // Codex auto-apply agent prompt — uses local files + the browser, so it's always available
             // (independent of the app's résumé) and copy-only (meant to paste into a Codex session).
-            Button("Copy Auto-Apply Prompt (Codex)") { copyAutoApply() }
+            Button("Copy Auto-Apply Prompt (Codex)") { requestCopyAutoApply() }
         } label: {
             Label("Prompt AI", systemImage: "sparkles")
                 .font(.caption2.weight(.semibold))
@@ -87,6 +89,17 @@ struct JobPromptMenu: View {
                 + "URL, which may be retained in browser history, sync, or logs. The prompt is also copied "
                 + "to your clipboard.")
         }
+        .confirmationDialog(
+            "This prompt includes your Application Details",
+            isPresented: $showAutoApplyPrivacyPrompt
+        ) {
+            Button("Copy Prompt") { acknowledgeAndCopyAutoApply() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The Auto-Apply prompt embeds the personal details you entered in Settings — including "
+                + "contact info, address, work authorization, and any EEO answers — so Codex can fill "
+                + "applications. It's copied to your clipboard to paste into Codex. (Shown once.)")
+        }
     }
 
     // MARK: - Actions
@@ -102,6 +115,24 @@ struct JobPromptMenu: View {
         }
         setClipboard(buildPrompt(kind, resume: resume))
         appServices.toastStore.show("\(kind.title) prompt copied (using \(resume.name))")
+    }
+
+    /// Gate the first auto-apply copy on a one-time heads-up when it will embed personal details; if the
+    /// Application Details field is empty (nothing sensitive) or already acknowledged, copy directly.
+    private func requestCopyAutoApply() {
+        let hasPersonalInfo = !appServices.settings.string(forKey: SettingsKey.applicationPersonalInfo)
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let acknowledged = appServices.settings.bool(forKey: SettingsKey.autoApplyPersonalInfoAcknowledged)
+        if hasPersonalInfo, !acknowledged {
+            showAutoApplyPrivacyPrompt = true
+        } else {
+            copyAutoApply()
+        }
+    }
+
+    private func acknowledgeAndCopyAutoApply() {
+        appServices.settings.setBool(true, forKey: SettingsKey.autoApplyPersonalInfoAcknowledged)
+        copyAutoApply()
     }
 
     /// The Codex auto-apply prompt needs only the job URL (it uses local résumé files + the browser),

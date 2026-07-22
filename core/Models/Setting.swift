@@ -67,6 +67,9 @@ public enum SettingsKey {
     /// user provides so the Codex auto-apply prompt can fill application fields (TASK-606). Stored
     /// locally in the SwiftData store; never sent anywhere by the app itself.
     public static let applicationPersonalInfo = "application_personal_info"
+    /// Set once the user has acknowledged that the Codex auto-apply prompt embeds their Application
+    /// Details (address, EEO answers, …) when copied (TASK-606). Gates the first such copy only.
+    public static let autoApplyPersonalInfoAcknowledged = "auto_apply_personal_info_acknowledged"
 
     /// API key settings that must live in Keychain, not SwiftData (App Store hygiene).
     public static let keychainKeys: Set<String> = [

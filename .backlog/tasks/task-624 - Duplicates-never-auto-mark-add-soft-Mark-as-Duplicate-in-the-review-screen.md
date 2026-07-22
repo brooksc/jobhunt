@@ -1,9 +1,10 @@
 ---
 id: TASK-624
 title: 'Duplicates: never auto-mark; add soft Mark as Duplicate in the review screen'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-22 21:03'
+updated_date: '2026-07-22 21:04'
 labels: []
 dependencies: []
 priority: high

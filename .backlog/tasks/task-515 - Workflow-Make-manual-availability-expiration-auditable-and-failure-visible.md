@@ -1,10 +1,10 @@
 ---
 id: TASK-515
 title: 'Workflow: Make manual availability expiration auditable and failure-visible'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 01:31'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-07-22 03:03'
 labels:
   - workflow
   - availability

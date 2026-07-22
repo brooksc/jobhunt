@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-06-18 23:05'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-07-22 18:40'
 labels:
   - cleanup
   - schema
@@ -33,3 +33,9 @@ References: core/Models/Contact.swift, core/Models/CoverLetter.swift, core/Model
 - [ ] #1 Dead Contact/CoverLetter service methods removed (Phase A) without touching the schema
 - [ ] #2 Model + relationship removal is scoped into the SchemaV2 migration work (Phase B), not done as a casual edit
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Parked (2026-07-22): this is the only change forcing SchemaV2, but it's pure cleanup of unused models (0 Contact/CoverLetter rows in the live store) and drags in the full V1->V2 migration harness (TASK-480). Not worth doing on its own — avoid unless a genuinely breaking schema change lands that needs the migration plumbing anyway. See TASK-480 notes.
+<!-- SECTION:NOTES:END -->

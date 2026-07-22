@@ -451,6 +451,10 @@ private struct ResumeStep: View {
                 .controlSize(.large)
                 .disabled(isImporting)
 
+                if isImporting {
+                    ProgressView().controlSize(.small)
+                }
+
                 if let error = importError {
                     Text(error)
                         .font(.caption)
@@ -529,11 +533,11 @@ private struct ResumeStep: View {
                 text = try String(contentsOf: url, encoding: .utf8)
             }
 
-            resumeText = text
-            resumeName = filename
+            // TASK-547: don't flip to the "imported" success state yet — persist first, and only show
+            // the resume as imported if the save succeeds. Showing the green check before addResume
+            // returned meant a failed write left the user believing they had a resume when they didn't.
             importError = nil
-
-            // Persist the resume
+            isImporting = true
             Task {
                 await saveResume(name: filename, text: text)
             }
@@ -542,11 +546,17 @@ private struct ResumeStep: View {
         }
     }
 
+    /// Persist the imported resume. On success flips to the imported/preview state; on failure keeps
+    /// the user on the import step with a visible, retryable error (TASK-547 — a save failure at
+    /// first-run setup is not silently non-fatal; fit scoring needs the resume).
     private func saveResume(name: String, text: String) async {
+        defer { isImporting = false }
         do {
             try await resumeService.addResume(name: name, text: text)
+            resumeText = text
+            resumeName = name
         } catch {
-            // Non-fatal: user can add resume later in settings
+            importError = "Couldn't save the resume: \(error.localizedDescription). Please try again."
         }
     }
 }

@@ -1,9 +1,10 @@
 ---
 id: TASK-626
 title: 'Prompt AI: Draft a referral request with pasted contact context'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-22 21:42'
+updated_date: '2026-07-22 22:08'
 labels:
   - ai
   - job-detail

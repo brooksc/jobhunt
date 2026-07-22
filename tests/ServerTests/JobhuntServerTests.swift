@@ -65,6 +65,11 @@ private struct CaptureBody: Decodable {
     }
 }
 
+private struct JobByURLBody: Decodable {
+    let jobNumber: Int
+    enum CodingKeys: String, CodingKey { case jobNumber = "job_number" }
+}
+
 // MARK: - JobhuntServerTests
 
 final class JobhuntServerTests: XCTestCase {
@@ -318,6 +323,77 @@ final class JobhuntServerTests: XCTestCase {
         XCTAssertFalse(body.captureID.isEmpty)
         XCTAssertGreaterThan(body.jobNumber, 0)
         XCTAssertFalse(body.duplicate)
+    }
+
+    // MARK: - /api/jobs/by-url (TASK-588)
+
+    private func byURLRequest(_ query: String) async -> URLRequest {
+        // swiftlint:disable:next force_unwrapping
+        var req = await URLRequest(url: URL(string: baseURL() + "/api/jobs/by-url" + query)!)
+        req.setValue("chrome-extension://testextension", forHTTPHeaderField: "Origin")
+        return req
+    }
+
+    func testJobByURL_matchingJob_returns200WithJobNumber() async throws {
+        // Seed a job via the capture endpoint, then look it up by its URL.
+        let jobURL = "https://example.com/jobs/by-url-hit-\(UUID().uuidString)"
+        // swiftlint:disable:next force_unwrapping
+        var post = await URLRequest(url: URL(string: baseURL() + "/captures")!)
+        post.httpMethod = "POST"
+        post.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        post.setValue("chrome-extension://testextension", forHTTPHeaderField: "Origin")
+        post.httpBody = try JSONEncoder().encode([
+            "url": jobURL, "page_title": "By-URL Role", "visible_text": "Hiring for a role."
+        ])
+        let (capData, _) = try await URLSession.shared.data(for: post)
+        let created = try JSONDecoder().decode(CaptureBody.self, from: capData)
+
+        let (data, response) = try await URLSession.shared
+            .data(
+                for: byURLRequest(
+                    "?url=\(jobURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? jobURL)"
+                )
+            )
+        XCTAssertEqual(try XCTUnwrap(response as? HTTPURLResponse).statusCode, 200)
+        XCTAssertEqual(try JSONDecoder().decode(JobByURLBody.self, from: data).jobNumber, created.jobNumber)
+    }
+
+    func testJobByURL_unknownURL_returns404() async throws {
+        let (_, response) = try await URLSession.shared
+            .data(for: byURLRequest("?url=https://example.com/jobs/definitely-not-here-\(UUID().uuidString)"))
+        XCTAssertEqual(try XCTUnwrap(response as? HTTPURLResponse).statusCode, 404)
+    }
+
+    func testJobByURL_missingURLParam_returns400() async throws {
+        let (_, response) = try await URLSession.shared.data(for: byURLRequest(""))
+        XCTAssertEqual(try XCTUnwrap(response as? HTTPURLResponse).statusCode, 400)
+    }
+
+    func testJobByURL_malformedURL_returns404NotCrash() async throws {
+        // A schemeless/garbage value matches no capture — resolves to a clean 404, no crash.
+        let (_, response) = try await URLSession.shared.data(for: byURLRequest("?url=not%20a%20url"))
+        XCTAssertEqual(try XCTUnwrap(response as? HTTPURLResponse).statusCode, 404)
+    }
+
+    func testJobByURL_multipleURLParams_usesFirst() async throws {
+        // Documents current behavior: queryValue(for:) returns the first `url=` value.
+        let hit = "https://example.com/jobs/by-url-first-\(UUID().uuidString)"
+        // swiftlint:disable:next force_unwrapping
+        var post = await URLRequest(url: URL(string: baseURL() + "/captures")!)
+        post.httpMethod = "POST"
+        post.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        post.setValue("chrome-extension://testextension", forHTTPHeaderField: "Origin")
+        post.httpBody = try JSONEncoder().encode([
+            "url": hit, "page_title": "First Wins", "visible_text": "Hiring."
+        ])
+        let (capData, _) = try await URLSession.shared.data(for: post)
+        let created = try JSONDecoder().decode(CaptureBody.self, from: capData)
+
+        let enc = hit.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? hit
+        let (data, response) = try await URLSession.shared
+            .data(for: byURLRequest("?url=\(enc)&url=https://example.com/jobs/second"))
+        XCTAssertEqual(try XCTUnwrap(response as? HTTPURLResponse).statusCode, 200)
+        XCTAssertEqual(try JSONDecoder().decode(JobByURLBody.self, from: data).jobNumber, created.jobNumber)
     }
 
     /// The extension sends JSON-LD under `structured_data` (an array), not the pre-stringified

@@ -1,9 +1,10 @@
 ---
 id: TASK-608
 title: 'availability: stale-check batch cap (25/day) never clears a large backlog'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-21 23:40'
+updated_date: '2026-07-22 18:07'
 labels:
   - availability
   - tech-debt

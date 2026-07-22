@@ -201,6 +201,51 @@ final class BackgroundStoreDuplicateGuardTests: XCTestCase {
         let flaggedOrig = try await store.detectDuplicateForJob(jobID: "orig")
         XCTAssertFalse(flaggedOrig)
     }
+
+    /// TASK-622: a FUZZY match (same company + similar title, but different cleaned text and no shared
+    /// ATS id) must NOT be auto-marked — it stays a real, fit-scorable job and is surfaced in the
+    /// Duplicates review screen for the user to confirm. Only definitive matches auto-mark.
+    func testDetectDuplicateForJob_fuzzyMatch_notAutoMarked() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+
+        func makeJob(id: String, num: Int, title: String, url: String, hash: String) -> (Job, Capture) {
+            let cap = Capture(url: url, pageTitle: title, rawHash: "rh_\(id)", cleanedHash: hash)
+            cap.cleanedDescription = "distinct posting text \(id) with enough meaningful unique tokens here for evidence"
+            let job = Job(id: id, company: "AcmeCorp", title: title, extractionStatus: .succeeded)
+            job.jobNumber = num
+            job.capture = cap
+            return (job, cap)
+        }
+        // Same company, similar titles (subset), different hosts + hashes, no shared ATS id → fuzzy only.
+        let (orig, oc) = makeJob(
+            id: "o",
+            num: 1,
+            title: "Staff Engineer",
+            url: "https://acme.com/careers/staff-eng",
+            hash: "h1"
+        )
+        let (cand, cc) = makeJob(
+            id: "c",
+            num: 2,
+            title: "Staff Engineer, Platform",
+            url: "https://www.linkedin.com/jobs/view/999",
+            hash: "h2"
+        )
+        for model in [oc, cc, orig, cand] as [any PersistentModel] {
+            try await store.insert(model)
+        }
+
+        let flagged = try await store.detectDuplicateForJob(jobID: "c")
+        XCTAssertFalse(flagged, "a fuzzy candidate must NOT be auto-marked")
+        let cj = try await store.fetch(FetchDescriptor<Job>()).first { $0.id == "c" }
+        XCTAssertNotEqual(cj?.status, .duplicate)
+        XCTAssertNil(cj?.duplicateOfJobID)
+
+        // The end-of-drain persist pass likewise leaves fuzzy pairs unmarked (0 flagged).
+        let persisted = try await store.detectAndPersistDomainDuplicates()
+        XCTAssertEqual(persisted, 0, "fuzzy pairs are for review, not auto-marking")
+    }
 }
 
 // MARK: - Minimal no-op provider (local to this file)

@@ -1084,6 +1084,11 @@ public actor BackgroundStore {
         let jobIndex = Dictionary(jobs.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         var flagged = 0
         for pair in pairs {
+            // Only AUTO-mark DEFINITIVE matches — the same posting (identical cleaned text, or the same
+            // ATS posting id). Fuzzy heuristic matches (similar title / same-company) are surfaced in the
+            // Duplicates review screen for the user to confirm; auto-marking them wrongly hid legitimately
+            // distinct jobs, e.g. a specialization of the same base title (TASK-622).
+            guard pair.kind == .exactHash || pair.kind == .atsPostingID else { continue }
             guard let candidate = jobIndex[pair.candidate.id] else { continue }
             if candidate.duplicateOfJobID == pair.original.id { continue } // already flagged
             candidate.duplicateOfJobID = pair.original.id
@@ -1129,6 +1134,9 @@ public actor BackgroundStore {
         guard let pair = DuplicateDetector().duplicatePairForCandidate(
             candidate, among: corpus, resolvedHashes: resolvedHashes
         ) else { return false }
+        // Only auto-mark a DEFINITIVE match (same posting); a fuzzy candidate stays a real job to be
+        // fit-scored and surfaced in the Duplicates review screen for the user to confirm (TASK-622).
+        guard pair.kind == .exactHash || pair.kind == .atsPostingID else { return false }
 
         job.duplicateOfJobID = pair.original.id
         job.duplicateConfidence = pair.confidence

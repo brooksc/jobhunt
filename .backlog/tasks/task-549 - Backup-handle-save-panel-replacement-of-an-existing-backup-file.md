@@ -1,10 +1,10 @@
 ---
 id: TASK-549
 title: 'Backup: handle save-panel replacement of an existing backup file'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 22:19'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-07-22 01:33'
 labels:
   - audit
   - backup

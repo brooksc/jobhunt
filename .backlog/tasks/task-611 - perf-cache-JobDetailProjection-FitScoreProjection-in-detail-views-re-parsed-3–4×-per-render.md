@@ -3,9 +3,10 @@ id: TASK-611
 title: >-
   perf: cache JobDetailProjection / FitScoreProjection in detail views
   (re-parsed 3–4× per render)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-21 23:46'
+updated_date: '2026-07-22 00:43'
 labels:
   - performance
   - tech-debt

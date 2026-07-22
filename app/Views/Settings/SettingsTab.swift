@@ -278,8 +278,16 @@ struct JobsSettingsTab: View {
         showingExpiredConfirmation = false
         let ids = jobs.map(\.jobID)
         let count = ids.count
-        Task { try? await appServices.jobService.markExpired(jobIDs: ids) }
-        availabilityCheckMessage = "\(count) job(s) marked expired"
+        // TASK-515: await the result and only report success once it actually succeeds — the old
+        // `try?` + immediate "marked expired" message reported success even when the write failed.
+        Task {
+            do {
+                try await appServices.jobService.markExpired(jobIDs: ids)
+                availabilityCheckMessage = "\(count) job(s) marked expired"
+            } catch {
+                availabilityCheckMessage = "Couldn't mark jobs expired: \(error.localizedDescription)"
+            }
+        }
     }
 }
 

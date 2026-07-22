@@ -906,6 +906,47 @@ final class JobServiceTests: XCTestCase {
         XCTAssertEqual(notExpired.count, 2, "unspecified jobs must not be marked expired")
     }
 
+    /// TASK-515: manual expiration is a terminal decision — each affected job must get an auditable
+    /// "status" timeline event (routed through setJobStatus), not a silent bulk status flip.
+    func testMarkExpired_recordsStatusEventPerJob() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        for i in 1 ... 2 {
+            _ = try await svc.ingestCapture(CapturePayload(
+                url: "https://x.com/\(i)",
+                pageTitle: "J\(i)",
+                visibleText: "t"
+            ))
+        }
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+
+        try await svc.markExpired(jobIDs: jobs.map(\.id))
+
+        let events = try await store.fetch(FetchDescriptor<JobEvent>())
+        for job in jobs {
+            let statusEvents = events.filter { $0.job?.id == job.id && $0.eventType == "status" }
+            XCTAssertEqual(statusEvents.count, 1, "each expired job must have exactly one status event")
+            XCTAssertEqual(statusEvents.first?.note, "Status changed from new to expired")
+        }
+    }
+
+    /// TASK-515: a missing id makes markExpired throw (failure-visible) instead of silently skipping,
+    /// so a confirmed change can't be reported as succeeding when it didn't apply.
+    func testMarkExpired_throwsWhenJobMissing() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        do {
+            try await svc.markExpired(jobIDs: ["no-such-job"])
+            XCTFail("Expected markExpired to throw for a missing job")
+        } catch JobServiceError.jobNotFound {
+            // Expected.
+        }
+    }
+
     func testEnqueueBatch_createsOneRequestPerJob() async throws {
         let container = try ModelContainerFactory.inMemory()
         let store = makeStore(container)

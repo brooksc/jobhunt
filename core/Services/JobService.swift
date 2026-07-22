@@ -652,12 +652,18 @@ public actor JobService {
     // MARK: - Availability
 
     /// Bulk-mark a set of jobs as expired (e.g. after availability check confirms they're gone).
+    ///
+    /// Routes through `setJobStatus` (TASK-515) so each job gets the same auditable "status" timeline
+    /// event as any other status change — expiration is a terminal decision and the timeline should
+    /// explain it — and so the duplicate-link invariants stay consistent. Throws `jobNotFound` if any
+    /// id is missing rather than silently skipping it, so a confirmed change can't be reported as
+    /// succeeding when it didn't.
     public func markExpired(jobIDs: [String]) async throws {
         guard !jobIDs.isEmpty else { return }
-        let ids = jobIDs
-        try await store.update(Job.self, predicate: #Predicate { ids.contains($0.id) }) { job in
-            job.status = .expired
-            job.updatedAt = Date()
+        do {
+            try await store.setJobStatus(.expired, jobIDs: jobIDs)
+        } catch let BackgroundStoreError.notFound(id) {
+            throw JobServiceError.jobNotFound(id)
         }
     }
 

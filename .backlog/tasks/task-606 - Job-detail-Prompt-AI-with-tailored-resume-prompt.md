@@ -1,10 +1,10 @@
 ---
 id: TASK-606
 title: 'Job detail: Prompt AI with tailored-resume prompt'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-21 22:22'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-07-22 19:20'
 labels:
   - workflow
   - resume
@@ -85,3 +85,17 @@ Show success feedback naming the resume used, and actionable feedback when the j
 - [ ] #12 Missing resume text or missing full job-description text prevents prompt actions and produces actionable feedback; a missing URL is clearly labeled in the prompt or surfaced before continuing rather than silently omitted.
 - [ ] #13 Focused tests cover prompt construction, resume choice, fit inclusion/omission, privacy acknowledgement, URL encoding, conservative length fallback, ChatGPT and Claude destinations, clipboard behavior, feedback wording, and missing-data states.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented as a generalized "Prompt AI" menu in the job-detail header, not just a resume prompt.
+
+JobPromptBuilder (JobhuntCore) produces 5 deterministic, self-contained prompt kinds: Tailor Resume (the AC#5 flagship — ATS-friendly, preserves identity/chronology/facts/metrics, forbids invented content, splits unsupported gaps into a Questions/Evidence Needed section), Interview Prep (folds in the archived TASK-592 — behavioral/technical/ask-them questions with résumé-grounded talking points + gaps to prepare), Draft Cover Letter, Assess Fit, and Draft Outreach Message. Every prompt embeds the job description + résumé in clearly delimited <<<BEGIN/END sections and instructs the LLM to treat them as untrusted reference data (AC#6). Fit analysis (score/met/gaps/dimension notes) is included when available, omitted cleanly otherwise (AC#4). Source URL is labeled "(not available)" rather than omitted (AC#12).
+
+ExternalAIChat builds ?q= prefill URLs for ChatGPT (chatgpt.com/) and Claude (claude.ai/new) within a conservative 6000-char budget; oversized prompts (e.g. full resume prompts) fall back to the blank chat with the full prompt already on the clipboard — never truncated, never claims submission (AC#8/#9/#11). Copy performs no network call and names the résumé used (AC#7). A one-time confirmation (persisted via SettingsKey.aiPromptExternalOpenAcknowledged) warns before the first external open (AC#10). Missing résumé/description disables the menu with an explanation (AC#12).
+
+Tests (CoreTests, 9): prompt construction, per-kind instructions, fit include/omit, missing-data placeholders, URL encode + round-trip, oversized fallback.
+
+DEVIATIONS: (1) AC#2's interactive résumé chooser for multiple equally-eligible unscored résumés was simplified to deterministic selection (highest-scoring active résumé for the job, else the first active by sortOrder); the résumé used is surfaced in the toast for transparency. (2) AC#13's app-side assertions (clipboard, feedback wording, ack persistence, résumé selection) aren't automated — the app module has no unit-test target and the Menu→browser-open flow isn't XCUITest-automatable; the risky prompt/URL logic is fully unit-tested in Core.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -461,6 +461,41 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
     // because a plain background request gets a 403 "Just a moment…" challenge, not the real page.
     // It's now classified .unverifiable (checkURL step 1.9), so no expired proposal is made while the
     // posting is actually live — the exact response shape this fixture reproduces.
+    /// TASK-637: jobright.ai renders jobs client-side; its 200 SPA shell embeds "expired"/"was closed"
+    /// job-state templates for every job, so body-gone heuristics must be skipped → unverifiable, not gone.
+    func testBodyUnreliableHost_spaShellIsUnverifiableNotGone() async throws {
+        let url = "https://jobright.ai/jobs/info/6a53a1f68a74e077472f90e2"
+        MockURLProtocol.handlers = [("jobright.ai", { _ in
+            // Shell markup that WOULD trip bodyGoneReason on a normal host ("job posting has expired").
+            makeResponse(url: url, status: 200,
+                         body: "<div id='index_expired-job'>this job posting has expired, was closed</div>")
+        })]
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: url)), title: "Staff PM", session: session
+        )
+        guard case let .unverifiable(reason) = result else {
+            XCTFail("Expected .unverifiable for jobright.ai SPA shell, got \(result)"); return
+        }
+        XCTAssertTrue(reason.contains("client-rendered shell"), "reason: \(reason)")
+    }
+
+    /// A hard 404 on a body-unreliable host is still authoritatively gone (status codes precede the skip).
+    func testBodyUnreliableHost_real404IsStillGone() async throws {
+        let url = "https://jobright.ai/jobs/info/deadbeef"
+        MockURLProtocol.handlers = [("jobright.ai", { _ in makeResponse(url: url, status: 404, body: "") })]
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: url)), title: "Staff PM", session: session
+        )
+        guard case .gone = result else { XCTFail("Expected .gone for a real 404, got \(result)"); return }
+    }
+
+    func testIsBodyUnreliableHost_matchesHostAndSubdomains() {
+        XCTAssertTrue(AvailabilityChecker.isBodyUnreliableHost("https://jobright.ai/jobs/info/x"))
+        XCTAssertTrue(AvailabilityChecker.isBodyUnreliableHost("https://www.jobright.ai/x"))
+        XCTAssertTrue(AvailabilityChecker.isBodyUnreliableHost("https://app.jobright.ai/x"))
+        XCTAssertFalse(AvailabilityChecker.isBodyUnreliableHost("https://greenhouse.io/x"))
+    }
+
     func testCloudflareChallenge_403_isUnverifiable() async throws {
         let url = "https://www.pinterestcareers.com/jobs/7562128/technical-program-manager-ii-platforms/"
         MockURLProtocol.handlers = [("pinterestcareers.com/jobs/7562128", { _ in

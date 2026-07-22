@@ -231,6 +231,19 @@ public enum AvailabilityChecker {
         return false
     }
 
+    /// Registrable hosts that serve a client-rendered SPA shell whose STATIC HTML embeds job-state UI
+    /// templates ("expired", "…was closed", an expired-job apply button) for every job — so body-based
+    /// gone detection is unreliable and must be skipped for them (TASK-637). Extend as new such
+    /// aggregators/SPAs surface. Status-code (404/410) and redirect signals still apply.
+    static let bodyUnreliableHosts: Set<String> = ["jobright.ai"]
+
+    static func isBodyUnreliableHost(_ urlString: String) -> Bool {
+        guard let host = URL(string: urlString)?.host?.lowercased() else { return false }
+        let registrable = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+        return bodyUnreliableHosts.contains(registrable)
+            || bodyUnreliableHosts.contains { registrable.hasSuffix(".\($0)") }
+    }
+
     /// True when a LinkedIn public guest job page carries the structured "closed job" banner LinkedIn
     /// renders for a posting no longer accepting applications
     /// (`<figure class="closed-job …"><figcaption class="closed-job__flavor--closed">…`). The visible
@@ -428,6 +441,15 @@ public enum AvailabilityChecker {
             // removed posting to `…/{board}?error=true` at HTTP 200). Deterministic gone signal.
             if isBoardErrorLandingURL(finalURLString) {
                 return .gone(reason: "board posting not found: \(finalURLString)")
+            }
+
+            // 1.6 Client-rendered SPA / aggregator shells (jobright.ai; same class as Cribl #325) embed
+            // job-state templates ("expired", "…was closed") in their STATIC HTML for every job, so the
+            // body heuristics below would false-positive on live jobs. A real removal on these hosts also
+            // just returns the 200 shell, so availability is genuinely unverifiable — never gone. (A hard
+            // 404/410 was already handled above and still counts.) See TASK-637.
+            if isBodyUnreliableHost(finalURLString) {
+                return .unverifiable(reason: "client-rendered shell (body not authoritative): \(finalURLString)")
             }
 
             if let reason = bodyGoneReason(body) {

@@ -3,9 +3,10 @@ id: TASK-637
 title: >-
   Availability: skip body-gone heuristics for client-rendered SPA shells
   (jobright.ai) that embed job-state templates
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-22 23:29'
+updated_date: '2026-07-22 23:30'
 labels:
   - availability
   - detection

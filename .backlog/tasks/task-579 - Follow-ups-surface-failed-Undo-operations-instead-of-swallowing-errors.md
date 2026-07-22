@@ -1,10 +1,10 @@
 ---
 id: TASK-579
 title: 'Follow-ups: surface failed Undo operations instead of swallowing errors'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-20 22:55'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-07-22 00:50'
 labels:
   - audit
   - follow-ups

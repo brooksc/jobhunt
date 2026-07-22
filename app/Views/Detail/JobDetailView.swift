@@ -585,20 +585,21 @@ struct OverviewTabView: View {
     /// manual-entry hint nor a neutralized fit ring flashes before the check resolves.
     @State private var aiConfigured = true
 
-    private var projection: JobDetailProjection {
-        JobDetailProjection(job: job)
-    }
+    /// Cached projection (TASK-611). JobDetailProjection.init runs JSONSerialization on job.extractedJSON
+    /// AND job.manualOverridesJSON; it was rebuilt 3× per render (summary/requirements/niceToHaves), and
+    /// body re-renders per keystroke while inline-editing. Recompute only when those blobs change.
+    @State private var projection: JobDetailProjection?
 
     private var summary: String? {
-        projection.summary
+        projection?.summary
     }
 
     private var requirements: [String] {
-        projection.requirements
+        projection?.requirements ?? []
     }
 
     private var niceToHaves: [String] {
-        projection.niceToHaves
+        projection?.niceToHaves ?? []
     }
 
     var body: some View {
@@ -649,7 +650,11 @@ struct OverviewTabView: View {
         .onAppear {
             loadSkills()
             aiConfigured = AIConfig.isConfigured(appServices.settings)
+            projection = JobDetailProjection(job: job)
         }
+        // Rebuild only when the parsed source changes — e.g. after an inline edit commits (TASK-611).
+        .onChange(of: job.extractedJSON) { _, _ in projection = JobDetailProjection(job: job) }
+        .onChange(of: job.manualOverridesJSON) { _, _ in projection = JobDetailProjection(job: job) }
     }
 
     // MARK: Decision strip
@@ -1075,7 +1080,7 @@ struct OverviewTabView: View {
     }
 
     private func loadSkills() {
-        skills = projection.skills
+        skills = JobDetailProjection(job: job).skills
     }
 
     private func commitNewSkill() {
@@ -1273,24 +1278,25 @@ private struct ResumeScoreCard: View {
         fitScore.resume?.name ?? fitScore.model ?? "Resume"
     }
 
-    private var fitProjection: FitScoreProjection {
-        FitScoreProjection(fitScore: fitScore)
-    }
+    /// Cached (TASK-611). FitScoreProjection.init parses fitScoreJSON; it was rebuilt up to 4× per
+    /// render (the derived vars below) across every visible résumé card. Recompute only when the score
+    /// JSON changes (e.g. a re-score lands).
+    @State private var fitProjection: FitScoreProjection?
 
     private var requirementsMet: [String] {
-        fitProjection.requirementsMet
+        fitProjection?.requirementsMet ?? []
     }
 
     private var requirementsNotMet: [String] {
-        fitProjection.requirementsNotMet
+        fitProjection?.requirementsNotMet ?? []
     }
 
     private var requirementAssessments: [RequirementAssessment] {
-        fitProjection.requirementAssessments
+        fitProjection?.requirementAssessments ?? []
     }
 
     private var dimensions: [FitDimension] {
-        fitProjection.dimensions
+        fitProjection?.dimensions ?? []
     }
 
     private func assessmentColumn(_ title: String, _ items: [RequirementAssessment]) -> some View {
@@ -1512,6 +1518,8 @@ private struct ResumeScoreCard: View {
         .background(Color(NSColor.controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.12), lineWidth: 0.5))
+        .onAppear { fitProjection = FitScoreProjection(fitScore: fitScore) }
+        .onChange(of: fitScore.fitScoreJSON) { _, _ in fitProjection = FitScoreProjection(fitScore: fitScore) }
     }
 
     private func fitColor(_ score: Int) -> Color {

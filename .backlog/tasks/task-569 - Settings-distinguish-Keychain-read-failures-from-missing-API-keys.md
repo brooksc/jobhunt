@@ -1,10 +1,10 @@
 ---
 id: TASK-569
 title: 'Settings: distinguish Keychain read failures from missing API keys'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-20 04:10'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-07-22 02:31'
 labels:
   - audit
   - settings

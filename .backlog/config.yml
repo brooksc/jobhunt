@@ -1,6 +1,6 @@
 project_name: "jobhunt"
 default_status: "To Do"
-statuses: ["To Do", "In Progress", "Done"]
+statuses: ["On Hold","To Do", "In Progress", "Done", "Won't Do"]
 labels: []
 definition_of_done: []
 date_format: yyyy-mm-dd

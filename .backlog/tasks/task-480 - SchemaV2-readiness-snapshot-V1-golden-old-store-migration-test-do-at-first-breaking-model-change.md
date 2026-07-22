@@ -3,10 +3,10 @@ id: TASK-480
 title: >-
   SchemaV2 readiness: snapshot V1 + golden old-store migration test (do at first
   breaking model change)
-status: To Do
+status: On Hold
 assignee: []
 created_date: '2026-06-15 06:39'
-updated_date: '2026-07-22 18:39'
+updated_date: '2026-07-22 18:44'
 labels:
   - schema
   - migration
@@ -17,7 +17,7 @@ references:
   - core/Models/Schema.swift
   - tests/CoreTests/SchemaEvolutionTests.swift
 priority: low
-ordinal: 2000
+ordinal: 1000
 ---
 
 ## Description

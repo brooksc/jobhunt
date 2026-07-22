@@ -40,6 +40,15 @@ final class DemoSeederTests: XCTestCase {
         XCTAssertEqual(resumes.count, 2, "seedDemo must insert exactly 2 resumes")
     }
 
+    func testSeedDemoPopulatesSavedSearches() async throws {
+        let (container, store) = try makeStore()
+        try await DemoSeeder.seedDemo(into: store)
+
+        let ctx = ModelContext(container)
+        let searches = try ctx.fetch(FetchDescriptor<SavedSearch>(sortBy: [SortDescriptor(\.sortOrder)]))
+        XCTAssertEqual(searches.map(\.name), ["Active Pipeline", "Remote Only — High Fit", "Needs Action — Applied"])
+    }
+
     func testSeedDemoPopulatesCaptures() async throws {
         let (container, store) = try makeStore()
         try await DemoSeeder.seedDemo(into: store)
@@ -167,6 +176,21 @@ final class DemoSeederTests: XCTestCase {
 
         let afterSites = try ctx.fetch(FetchDescriptor<Site>())
         XCTAssertEqual(afterSites.count, 3, "reseedDemo must reset to exactly 3 sites")
+    }
+
+    func testReseedDemoReplacesSavedSearches() async throws {
+        let (container, store) = try makeStore()
+        try await DemoSeeder.seedDemo(into: store)
+
+        let ctx = ModelContext(container)
+        ctx.insert(SavedSearch(name: "User Search"))
+        try ctx.save()
+
+        try await DemoSeeder.reseedDemo(into: store)
+
+        let searches = try ctx.fetch(FetchDescriptor<SavedSearch>())
+        XCTAssertEqual(searches.count, 3)
+        XCTAssertFalse(searches.contains { $0.name == "User Search" })
     }
 
     // MARK: - Container isolation

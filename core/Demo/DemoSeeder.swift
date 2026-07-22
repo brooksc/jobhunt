@@ -57,6 +57,7 @@ extension BackgroundStore {
         try deleteAll(Capture.self)
         try deleteAll(Site.self)
         try deleteAll(Resume.self)
+        try deleteAll(SavedSearch.self)
         try deleteAll(Setting.self)
     }
 
@@ -536,6 +537,40 @@ extension BackgroundStore {
                 updatedAt: reviewedAt
             )
             modelContext.insert(site)
+        }
+
+        let savedSearches = [
+            SavedSearch(
+                name: "Active Pipeline",
+                sortOrder: 0,
+                statusFilterRaw: [
+                    JobStatus.new.rawValue,
+                    JobStatus.pursuing.rawValue,
+                    JobStatus.applied.rawValue,
+                    JobStatus.interview.rawValue,
+                    JobStatus.offer.rawValue
+                ],
+                sortKeyRaw: "capturedAt",
+                sortAscending: false
+            ),
+            SavedSearch(
+                name: "Remote Only — High Fit",
+                sortOrder: 1,
+                remoteFilterRaw: [RemoteType.remote.rawValue],
+                minFitScore: 80,
+                sortKeyRaw: "fitScore",
+                sortAscending: false
+            ),
+            SavedSearch(
+                name: "Needs Action — Applied",
+                sortOrder: 2,
+                statusFilterRaw: [JobStatus.applied.rawValue],
+                sortKeyRaw: "capturedAt",
+                sortAscending: true
+            )
+        ]
+        for search in savedSearches {
+            modelContext.insert(search)
         }
 
         try modelContext.save()

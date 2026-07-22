@@ -42,7 +42,7 @@ let projectConfigurations: [Configuration] = [
 
 let sharedBase = SettingsDictionary()
     .automaticCodeSigning(devTeam: "")
-    .marketingVersion("1.0.8")
+    .marketingVersion("1.0.9")
     .currentProjectVersion("202607081606")
     .merging(["SWIFT_STRICT_CONCURRENCY": .string("complete")])
 

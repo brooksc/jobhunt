@@ -702,6 +702,122 @@ final class DuplicateDetectorTests: XCTestCase {
         XCTAssertEqual(pairs.first?.candidate.id, aggJob.id)
     }
 
+    // MARK: - TASK-620: aggressive recall (ATS id, same-host, fuzzy title)
+
+    private func snap(
+        _ number: Int, company: String, title: String, url: String,
+        status: JobStatus = .pursuing,
+        desc: String = "shared job posting description with enough meaningful distinct tokens for evidence here today"
+    ) -> JobSnapshot {
+        let cap = Capture(url: url, pageTitle: title, rawHash: "rh\(number)", cleanedHash: "ch\(number)")
+        cap.cleanedDescription = desc
+        let job = Job(jobNumber: number, company: company, title: title, status: status, extractionStatus: .succeeded)
+        job.capture = cap
+        return JobSnapshot(job: job, capture: cap)
+    }
+
+    /// A: the ATS posting id is extracted across the providers seen in the real data.
+    func testATSPostingID_extractsAcrossProviders() {
+        let cases: [(String, String?)] = [
+            ("https://www.pinterestcareers.com/jobs/?gh_jid=7957799", "gh:7957799"),
+            ("https://www.pinterestcareers.com/jobs/7957799/staff-tpm/?gh_jid=7957799", "gh:7957799"),
+            ("https://job-boards.greenhouse.io/securityscorecard/jobs/7974857", "gh:7974857"),
+            ("https://www.linkedin.com/jobs/view/4424422798/?trackingId=x", "li:4424422798"),
+            ("https://www.linkedin.com/jobs/search/?currentJobId=4442611206&start=25", "li:4442611206"),
+            (
+                "https://zillow.wd5.myworkdayjobs.com/en-US/Zillow_Group_External/details/Role_P750335-1?x=1",
+                "wd:zillow:P750335"
+            ),
+            (
+                "https://zillow.wd5.myworkdayjobs.com/zillow_group_external/job/Remote-USA/Role_P750335-1",
+                "wd:zillow:P750335"
+            ),
+            ("https://jobs.ashbyhq.com/far.ai/00763d58-c6ae-4334-a5", "ashby:far.ai:00763d58-c6ae-4334-a5"),
+            ("https://example.com/careers/some-role", nil)
+        ]
+        for (url, expected) in cases {
+            XCTAssertEqual(DuplicateDetector.atsPostingID(urlString: url), expected, "url: \(url)")
+        }
+    }
+
+    /// A: same gh_jid captured from two URL forms is a duplicate — even when the titles differ (the
+    /// `?gh_jid=` landing page mis-captured a title). Real jobs #122/#329.
+    func testSameATSPostingID_pairsEvenWhenTitlesDiffer() {
+        let a = snap(
+            122,
+            company: "Pinterest",
+            title: "Staff Technical Program Manager ML/AI Platform",
+            url: "https://www.pinterestcareers.com/jobs/7494634/staff-tpm/?gh_jid=7494634"
+        )
+        let b = snap(
+            329,
+            company: "Pinterest",
+            title: "Staff Technical Program Manager, Compute Infrastructure",
+            url: "https://www.pinterestcareers.com/jobs/?gh_jid=7494634"
+        )
+        let pairs = DuplicateDetector().duplicateGroups(snapshots: [a, b], resolvedHashes: [])
+        XCTAssertEqual(pairs.count, 1)
+        XCTAssertEqual(pairs.first?.kind, .atsPostingID)
+        XCTAssertEqual(pairs.first?.original.id, a.id, "earlier job number is the canonical")
+    }
+
+    /// B: same company + same title on the SAME host (different req ids) — a repost — is now surfaced
+    /// (previously the two-distinct-hostname requirement skipped it). Real jobs #148/#361.
+    func testSameHostSameTitle_isPaired() {
+        let a = snap(
+            148,
+            company: "SecurityScorecard",
+            title: "Senior/Principal Product Manager, AI",
+            url: "https://job-boards.greenhouse.io/securityscorecard/jobs/7974857"
+        )
+        let b = snap(
+            361,
+            company: "SecurityScorecard",
+            title: "Senior/Principal Product Manager, AI",
+            url: "https://job-boards.greenhouse.io/securityscorecard/jobs/7961068"
+        )
+        let pairs = DuplicateDetector().duplicateGroups(snapshots: [a, b], resolvedHashes: [])
+        XCTAssertEqual(pairs.count, 1, "same-host same-title repost should be surfaced")
+    }
+
+    /// C: aggregator vs company site whose title differs only by a suffix ("…, Toast IQ"). Real
+    /// jobs #165/#304.
+    func testFuzzyTitleSuffix_isPaired() {
+        let agg = snap(
+            165,
+            company: "Toast",
+            title: "Principal Technical Program Manager",
+            url: "https://www.remoterocketship.com/us/publicjobs/company/toasttab/jobs/principal-tpm/"
+        )
+        let site = snap(
+            304,
+            company: "Toast",
+            title: "Principal Technical Program Manager, Toast IQ",
+            url: "https://careers.toasttab.com/jobs?gh_jid=8054004"
+        )
+        let pairs = DuplicateDetector().duplicateGroups(snapshots: [agg, site], resolvedHashes: [])
+        XCTAssertEqual(pairs.count, 1, "title-suffix variant across sources should be surfaced")
+    }
+
+    /// Guard: different LEVELS of the same role at one company must NOT merge (Senior vs Staff). Real
+    /// ClickUp jobs #255/#208.
+    func testDifferentLevelsSameCompany_notPaired() {
+        let senior = snap(
+            255,
+            company: "ClickUp",
+            title: "Senior Product Manager",
+            url: "https://www.linkedin.com/jobs/search/?currentJobId=1"
+        )
+        let staff = snap(
+            208,
+            company: "ClickUp",
+            title: "Staff Product Manager",
+            url: "https://www.linkedin.com/jobs/search/?currentJobId=2"
+        )
+        let pairs = DuplicateDetector().duplicateGroups(snapshots: [senior, staff], resolvedHashes: [])
+        XCTAssertTrue(pairs.isEmpty, "different seniority levels of the same role must not be flagged")
+    }
+
     func testDetectDomainDuplicates_alreadyMarkedDuplicate_notSurfacedAsCandidate() {
         let detector = DuplicateDetector()
 

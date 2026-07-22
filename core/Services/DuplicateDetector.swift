@@ -1,6 +1,6 @@
 import CryptoKit
 
-// swiftlint:disable line_length large_tuple
+// swiftlint:disable large_tuple
 import Foundation
 import SwiftData
 
@@ -22,6 +22,9 @@ public struct DuplicatePair: Sendable {
     public enum MatchKind: String, Sendable {
         case exactHash = "exact_hash"
         case similarHash = "similar_hash"
+        /// Same applicant-tracking-system posting id extracted from the URL (TASK-620) — the same
+        /// requisition captured from two URL forms/sources.
+        case atsPostingID = "ats_posting_id"
     }
 }
 
@@ -148,21 +151,54 @@ public struct DuplicateDetector {
             }
         }
 
+        // 1.5 Same ATS posting id (TASK-620): the same requisition captured from two URL forms/sources
+        //     (e.g. Pinterest `/jobs/N/` vs `?gh_jid=N`, Workday `/details/` vs `/job/`, a LinkedIn
+        //     search deep-link vs the posting view). The id is authoritative, so this pairs even when
+        //     the titles or cleaned text differ — the highest-confidence, lowest-false-positive signal.
+        let byATSID = Dictionary(grouping: snapshots.compactMap { snap -> (id: String, snap: JobSnapshot)? in
+            guard let atsID = Self.atsPostingID(urlString: snap.sourceURL) else { return nil }
+            return (atsID, snap)
+        }) { $0.id }
+        for (_, group) in byATSID where group.count >= 2 {
+            let sorted = group.map(\.snap).sorted { ($0.jobNumber ?? Int.max) < ($1.jobNumber ?? Int.max) }
+            let original = sorted[0]
+            for candidate in sorted.dropFirst() {
+                if let hash = candidate.cleanedHash, resolvedHashes.contains(hash) { continue }
+                pairs.append(DuplicatePair(
+                    original: original, candidate: candidate, confidence: 1.0,
+                    reason: "same ATS posting id in the source URL", kind: .atsPostingID
+                ))
+            }
+        }
+
         // 2. Domain-heuristic duplicate detection (same algorithm as detectDomainDuplicateJobs in db.js)
         let heuristicPairs = detectDomainDuplicates(snapshots: snapshots, resolvedHashes: resolvedHashes)
         pairs.append(contentsOf: heuristicPairs)
 
-        // Deduplicate: prefer exact_hash pair if both kinds appear for the same (original, candidate)
-        var seen = Set<String>()
+        // Collapse to at most one pair per *candidate* job — a star toward its best canonical — so N
+        // mutually-similar jobs yield N-1 review pairs, not every C(N,2) combination (TASK-620). Highest
+        // confidence wins (ATS id / exact hash before the fuzzy heuristic); ties break deterministically
+        // by job number then id. The unordered-pair guard also prevents A→B and B→A both appearing.
+        let ordered = pairs.sorted { lhs, rhs in
+            if lhs.confidence != rhs.confidence { return lhs.confidence > rhs.confidence }
+            let leftOrig = lhs.original.jobNumber ?? Int.max
+            let rightOrig = rhs.original.jobNumber ?? Int.max
+            if leftOrig != rightOrig { return leftOrig < rightOrig }
+            let leftCand = lhs.candidate.jobNumber ?? Int.max
+            let rightCand = rhs.candidate.jobNumber ?? Int.max
+            if leftCand != rightCand { return leftCand < rightCand }
+            return lhs.candidate.id < rhs.candidate.id
+        }
+        var claimedCandidates = Set<String>()
+        var seenUnordered = Set<String>()
         var deduped: [DuplicatePair] = []
-        for pair in pairs.sorted(by: { $0.confidence > $1.confidence }) {
-            let key = "\(pair.original.id)||\(pair.candidate.id)"
-            let reverseKey = "\(pair.candidate.id)||\(pair.original.id)"
-            if seen.contains(key) || seen.contains(reverseKey) { continue }
-            seen.insert(key)
+        for pair in ordered {
+            let unordered = [pair.original.id, pair.candidate.id].sorted().joined(separator: "||")
+            if seenUnordered.contains(unordered) || claimedCandidates.contains(pair.candidate.id) { continue }
+            seenUnordered.insert(unordered)
+            claimedCandidates.insert(pair.candidate.id)
             deduped.append(pair)
         }
-
         return deduped
     }
 
@@ -178,12 +214,16 @@ public struct DuplicateDetector {
         among corpus: [JobSnapshot],
         resolvedHashes: Set<String>
     ) -> DuplicatePair? {
-        let candTitle = candidate.title.map(Self.titleGroupKey) ?? ""
+        // Any job that could pair with the candidate under the batch algorithm: same cleaned hash, same
+        // ATS posting id, or a similar title (fuzzy). Same-company is enforced downstream by the batch
+        // pass (TASK-620).
+        let candATSID = Self.atsPostingID(urlString: candidate.sourceURL)
         let relevant = corpus.filter { snap in
             guard snap.id != candidate.id else { return false }
             if let hash = candidate.cleanedHash, snap.cleanedHash == hash { return true }
-            guard let title = snap.title, !candTitle.isEmpty else { return false }
-            return Self.titleGroupKey(title) == candTitle
+            if let candATSID, Self.atsPostingID(urlString: snap.sourceURL) == candATSID { return true }
+            guard let title = snap.title, let candTitle = candidate.title else { return false }
+            return Self.titlesAreSimilar(candTitle, title)
         }
         guard !relevant.isEmpty else { return nil }
         return duplicateGroups(snapshots: relevant + [candidate], resolvedHashes: resolvedHashes)
@@ -249,6 +289,86 @@ public struct DuplicateDetector {
             .joined(separator: " ")
     }
 
+    /// Common title-word abbreviations normalized so variants match (TASK-620).
+    static let titleSynonyms: [String: String] = ["sr": "senior", "jr": "junior", "pgm": "program", "mgr": "manager"]
+
+    /// Meaningful title tokens: normalized, work-arrangement qualifiers dropped, abbreviations expanded.
+    static func titleTokens(_ title: String) -> Set<String> {
+        Set(normalizeDuplicateText(title).split(separator: " ").map(String.init)
+            .filter { !titleQualifierStopWords.contains($0) }
+            .map { titleSynonyms[$0] ?? $0 })
+    }
+
+    /// Two titles match for the (recall-first) fuzzy grouping (TASK-620) when one's meaningful tokens
+    /// are a subset of the other's — e.g. "Principal TPM" ⊆ "Principal TPM, Toast IQ" (an aggregator vs
+    /// company-site variant) — or their Jaccard similarity clears `titleSimilarityThreshold`. Level
+    /// words (senior/staff/principal) are kept, so different levels of the same role don't merge on the
+    /// subset rule and only pair if the rest of the title is near-identical.
+    static func titlesAreSimilar(_ lhs: String, _ rhs: String) -> Bool {
+        let left = titleTokens(lhs)
+        let right = titleTokens(rhs)
+        guard !left.isEmpty, !right.isEmpty else { return false }
+        if left.isSubset(of: right) || right.isSubset(of: left) { return true }
+        let intersection = left.intersection(right).count
+        let union = left.union(right).count
+        return union > 0 && Double(intersection) / Double(union) >= titleSimilarityThreshold
+    }
+
+    // MARK: - ATS posting-id extraction (TASK-620)
+
+    /// Applicant-tracking-system registrable hosts whose URLs carry a stable posting id, plus company
+    /// career sites that expose Greenhouse's `gh_jid`. Used only to note when an id was found.
+    static func atsPostingID(urlString: String) -> String? {
+        guard let comps = URLComponents(string: urlString), let host = comps.host?.lowercased() else { return nil }
+        let items = comps.queryItems ?? []
+        func query(_ name: String) -> String? {
+            items.first { $0.name.lowercased() == name.lowercased() }?.value
+        }
+        let path = comps.path
+
+        // Greenhouse `gh_jid` — globally unique, and exposed by many company career sites (Pinterest,
+        // Stripe, Toast, GFiber, Motional, Cribl, Five9, …) as well as job-boards.greenhouse.io.
+        if let ghjid = query("gh_jid"), !ghjid.isEmpty, ghjid.allSatisfy(\.isNumber) { return "gh:\(ghjid)" }
+        if host.contains("greenhouse.io"), let id = trailingNumericID(in: path, after: "jobs") { return "gh:\(id)" }
+        // LinkedIn — /jobs/view/N and search ?currentJobId=N are the same posting.
+        if host.hasSuffix("linkedin.com") {
+            if let id = query("currentJobId"), !id.isEmpty, id.allSatisfy(\.isNumber) { return "li:\(id)" }
+            if let id = trailingNumericID(in: path, after: "view") { return "li:\(id)" }
+        }
+        // Workday — req id is only tenant-unique, so key by tenant (the host's first label) + req.
+        if host.hasSuffix("myworkdayjobs.com"), let reqID = workdayReqID(fromPath: path) {
+            let tenant = host.split(separator: ".").first.map(String.init) ?? ""
+            return "wd:\(tenant):\(reqID)"
+        }
+        // Ashby / Lever — /{company}/{uuid}; uuid is unique but qualify with company for safety.
+        if host.hasSuffix("ashbyhq.com"), let key = firstTwoPathSegments(path) { return "ashby:\(key)" }
+        if host.hasSuffix("lever.co"), let key = firstTwoPathSegments(path) { return "lever:\(key)" }
+        return nil
+    }
+
+    private static func trailingNumericID(in path: String, after marker: String) -> String? {
+        let segments = path.split(separator: "/").map(String.init)
+        guard let idx = segments.firstIndex(of: marker), idx + 1 < segments.count else { return nil }
+        let candidate = segments[idx + 1]
+        return candidate.allSatisfy(\.isNumber) && !candidate.isEmpty ? candidate : nil
+    }
+
+    private static func firstTwoPathSegments(_ path: String) -> String? {
+        let segments = path.split(separator: "/").map(String.init)
+        guard segments.count >= 2 else { return nil }
+        return "\(segments[0]):\(segments[1])"
+    }
+
+    /// Workday requisition id (`…_P750335-1` → `P750335`), tolerant of both `/job/` and `/details/`
+    /// URL shapes. Strips the trailing `-N` posting index so index variants of one req match.
+    static func workdayReqID(fromPath path: String) -> String? {
+        guard let last = path.split(separator: "/").last.map(String.init),
+              let underscore = last.lastIndex(of: "_") else { return nil }
+        var reqID = String(last[last.index(after: underscore)...])
+        if let dash = reqID.range(of: #"-\d+$"#, options: .regularExpression) { reqID.removeSubrange(dash) }
+        return reqID.isEmpty ? nil : reqID
+    }
+
     // MARK: - Tuning constants (heuristic — see docs/tuning.md)
 
     //
@@ -275,6 +395,10 @@ public struct DuplicateDetector {
     static let salaryDivergenceThreshold = 0.1
     /// Default company-name Jaccard similarity to cluster two jobs as the same company.
     static let companyClusterThreshold = 0.5
+    /// Title-token Jaccard at/above which two titles in the same company are treated as the same role
+    /// for the fuzzy grouping (TASK-620). Recall-first: lower = more candidate pairs surfaced for
+    /// review. The subset rule catches suffix variants regardless of this threshold.
+    static let titleSimilarityThreshold = 0.6
 
     /// Tokens that carry no signal for company identity (matches db.js COMPANY_STOP_WORDS).
     /// Extend this list as new noise words surface — see docs/tuning.md.
@@ -462,86 +586,88 @@ public struct DuplicateDetector {
                 $0.status != "duplicate"
         }
 
-        // Group by normalised title
-        var byTitle: [String: [JobSnapshot]] = [:]
-        for snap in active {
-            guard let title = snap.title, !title.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
-            let key = DuplicateDetector.titleGroupKey(title)
-            guard !key.isEmpty else { continue }
-            byTitle[key, default: []].append(snap)
-        }
-
+        // TASK-620 (recall-first): cluster ALL active jobs by company, then compare every same-company
+        // pair whose titles are *similar* (fuzzy, not exact) — regardless of hostname, so same-site URL
+        // variants and aggregator-vs-company-site captures are both compared. The exact-title grouping
+        // and the two-distinct-hostname requirement are gone; the company clustering, title similarity,
+        // and evidence scoring are what guard against unrelated pairs.
         var pairs: [DuplicatePair] = []
-
-        for titleGroup in byTitle.values where titleGroup.count >= 2 {
-            for cluster in DuplicateDetector.clusterByCompany(titleGroup) where cluster.count >= 2 {
-                let hostnames = Set(cluster.map { DuplicateDetector.sourceHostname(urlString: $0.sourceURL) }
-                    .filter { !$0.isEmpty })
-                guard hostnames.count >= 2 else { continue }
-
-                // Sort by domain score desc, then id asc (stable tie-break)
-                let sorted = cluster
-                    .map { snap -> (snap: JobSnapshot, score: Int) in
-                        (snap, DuplicateDetector.companyDomainScore(company: snap.company, urlString: snap.sourceURL))
+        for cluster in DuplicateDetector.clusterByCompany(active) where cluster.count >= 2 {
+            let scored = cluster.map { snap -> (snap: JobSnapshot, score: Int) in
+                (snap, DuplicateDetector.companyDomainScore(company: snap.company, urlString: snap.sourceURL))
+            }
+            for lhsIdx in 0 ..< scored.count {
+                for rhsIdx in (lhsIdx + 1) ..< scored.count {
+                    guard let pair = domainPair(scored[lhsIdx], scored[rhsIdx], resolvedHashes: resolvedHashes) else {
+                        continue
                     }
-                    .sorted { lhs, rhs in
-                        if lhs.score != rhs.score { return lhs.score > rhs.score }
-                        return lhs.snap.id < rhs.snap.id
-                    }
-
-                let (keep, keepScore) = (sorted[0].snap, sorted[0].score)
-                let runnerUpScore = sorted[1].score
-                guard keepScore > 0 && keepScore != runnerUpScore else { continue }
-
-                let keepHostname = DuplicateDetector.sourceHostname(urlString: keep.sourceURL)
-
-                for (candidate, candidateScore) in sorted.dropFirst() {
-                    guard ["new", "pursuing", "duplicate", "applied"].contains(candidate.status) else { continue }
-                    guard let evidence = DuplicateDetector.evidenceMatch(left: keep, right: candidate) else { continue }
-
-                    // Skip if resolved by DuplicateDecision
-                    if let hash = candidate.cleanedHash, resolvedHashes.contains(hash) { continue }
-                    if let hash = keep.cleanedHash, resolvedHashes.contains(hash) { continue }
-
-                    let domainConfidence = Self.baseDomainConfidence
-                        + (Double(keepScore - candidateScore) / 100.0) * Self.rankSpreadWeight
-                    let descWeight = evidence.descSimilarity == nil ? 0.0
-                        : min(1.0, Double(evidence.descTokenCount) / Self.descFullWeightTokens)
-                    let descAdj: Double = if let sim = evidence.descSimilarity {
-                        descWeight * (sim - Self.descSimilarityMidpoint) * Self.descAdjustmentScale
-                    } else {
-                        0.0
-                    }
-                    let fieldPenalty = Double(evidence.fieldConflicts.count) * Self.fieldConflictPenalty
-                    let confidence = min(
-                        Self.confidenceCeiling,
-                        max(Self.confidenceFloor, domainConfidence + descAdj - fieldPenalty)
-                    )
-
-                    let candidateHostname = DuplicateDetector.sourceHostname(urlString: candidate.sourceURL)
-                    var reasonParts = ["preferred \(keepHostname) over \(candidateHostname)"]
-                    if let sim = evidence.descSimilarity {
-                        reasonParts
-                            .append(
-                                "description similarity \(String(format: "%.2f", sim)) (\(evidence.descTokenCount) tokens)"
-                            )
-                    }
-                    if !evidence.fieldConflicts.isEmpty {
-                        reasonParts.append("field conflicts: \(evidence.fieldConflicts.joined(separator: ", "))")
-                    }
-
-                    pairs.append(DuplicatePair(
-                        original: keep,
-                        candidate: candidate,
-                        confidence: confidence,
-                        reason: reasonParts.joined(separator: "; "),
-                        kind: .similarHash
-                    ))
+                    pairs.append(pair)
                 }
             }
         }
-
         return pairs
+    }
+
+    /// Evaluate one same-company job pair for the fuzzy domain-heuristic path (TASK-620). Returns a
+    /// `DuplicatePair` when the titles are similar, evidence doesn't hard-block, and neither side is
+    /// resolved; the higher domain-authority source is kept as canonical (ties broken by job number).
+    private func domainPair(
+        _ lhs: (snap: JobSnapshot, score: Int),
+        _ rhs: (snap: JobSnapshot, score: Int),
+        resolvedHashes: Set<String>
+    ) -> DuplicatePair? {
+        guard let leftTitle = lhs.snap.title, let rightTitle = rhs.snap.title,
+              DuplicateDetector.titlesAreSimilar(leftTitle, rightTitle) else { return nil }
+
+        // Keep = higher domain score; tie → lower job number (earlier capture) is canonical.
+        let keepPair: (snap: JobSnapshot, score: Int)
+        let candPair: (snap: JobSnapshot, score: Int)
+        if lhs.score != rhs.score {
+            (keepPair, candPair) = lhs.score > rhs.score ? (lhs, rhs) : (rhs, lhs)
+        } else {
+            let lhsFirst = (lhs.snap.jobNumber ?? Int.max) <= (rhs.snap.jobNumber ?? Int.max)
+            (keepPair, candPair) = lhsFirst ? (lhs, rhs) : (rhs, lhs)
+        }
+        let keep = keepPair.snap
+        let candidate = candPair.snap
+
+        guard ["new", "pursuing", "duplicate", "applied"].contains(candidate.status) else { return nil }
+        guard let evidence = DuplicateDetector.evidenceMatch(left: keep, right: candidate) else { return nil }
+        if let hash = candidate.cleanedHash, resolvedHashes.contains(hash) { return nil }
+        if let hash = keep.cleanedHash, resolvedHashes.contains(hash) { return nil }
+
+        let domainConfidence = Self.baseDomainConfidence
+            + (Double(keepPair.score - candPair.score) / 100.0) * Self.rankSpreadWeight
+        let descWeight = evidence.descSimilarity == nil ? 0.0
+            : min(1.0, Double(evidence.descTokenCount) / Self.descFullWeightTokens)
+        let descAdj: Double = if let sim = evidence.descSimilarity {
+            descWeight * (sim - Self.descSimilarityMidpoint) * Self.descAdjustmentScale
+        } else {
+            0.0
+        }
+        let fieldPenalty = Double(evidence.fieldConflicts.count) * Self.fieldConflictPenalty
+        let confidence = min(
+            Self.confidenceCeiling,
+            max(Self.confidenceFloor, domainConfidence + descAdj - fieldPenalty)
+        )
+
+        let keepHost = DuplicateDetector.sourceHostname(urlString: keep.sourceURL)
+        let candHost = DuplicateDetector.sourceHostname(urlString: candidate.sourceURL)
+        var reasonParts = keepHost == candHost
+            ? ["same company + similar title on \(keepHost.isEmpty ? "the same source" : keepHost)"]
+            : ["preferred \(keepHost) over \(candHost)"]
+        if let sim = evidence.descSimilarity {
+            reasonParts
+                .append("description similarity \(String(format: "%.2f", sim)) (\(evidence.descTokenCount) tokens)")
+        }
+        if !evidence.fieldConflicts.isEmpty {
+            reasonParts.append("field conflicts: \(evidence.fieldConflicts.joined(separator: ", "))")
+        }
+
+        return DuplicatePair(
+            original: keep, candidate: candidate, confidence: confidence,
+            reason: reasonParts.joined(separator: "; "), kind: .similarHash
+        )
     }
 
     // MARK: - Internal: DB queries
@@ -616,4 +742,4 @@ public struct DuplicateDetector {
     }
 }
 
-// swiftlint:enable file_length line_length cyclomatic_complexity function_body_length type_body_length large_tuple
+// swiftlint:enable file_length cyclomatic_complexity function_body_length type_body_length large_tuple

@@ -178,12 +178,12 @@ public struct DuplicateDetector {
         among corpus: [JobSnapshot],
         resolvedHashes: Set<String>
     ) -> DuplicatePair? {
-        let candTitle = candidate.title.map(Self.normalizeDuplicateText) ?? ""
+        let candTitle = candidate.title.map(Self.titleGroupKey) ?? ""
         let relevant = corpus.filter { snap in
             guard snap.id != candidate.id else { return false }
             if let hash = candidate.cleanedHash, snap.cleanedHash == hash { return true }
             guard let title = snap.title, !candTitle.isEmpty else { return false }
-            return Self.normalizeDuplicateText(title) == candTitle
+            return Self.titleGroupKey(title) == candTitle
         }
         guard !relevant.isEmpty else { return nil }
         return duplicateGroups(snapshots: relevant + [candidate], resolvedHashes: resolvedHashes)
@@ -232,6 +232,20 @@ public struct DuplicateDetector {
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .joined(separator: " ")
             .split(separator: " ")
+            .joined(separator: " ")
+    }
+
+    /// Work-arrangement qualifiers that show up as title suffixes (e.g. "… (Remote)") but don't
+    /// distinguish the role. Kept deliberately tiny to avoid over-merging genuinely different titles.
+    static let titleQualifierStopWords: Set<String> = ["remote", "hybrid", "onsite"]
+
+    /// Group key for the domain-heuristic path: the normalized title with work-arrangement qualifiers
+    /// removed, so "Principal TPM" and "Principal TPM (Remote)" land in the same title group and can be
+    /// compared as a cross-source duplicate (TASK-605 — jobs #163/#193). The company clustering,
+    /// two-distinct-hostname requirement, and evidence scoring still guard against false pairs.
+    static func titleGroupKey(_ title: String) -> String {
+        normalizeDuplicateText(title).split(separator: " ").map(String.init)
+            .filter { !titleQualifierStopWords.contains($0) }
             .joined(separator: " ")
     }
 
@@ -452,7 +466,7 @@ public struct DuplicateDetector {
         var byTitle: [String: [JobSnapshot]] = [:]
         for snap in active {
             guard let title = snap.title, !title.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
-            let key = DuplicateDetector.normalizeDuplicateText(title)
+            let key = DuplicateDetector.titleGroupKey(title)
             guard !key.isEmpty else { continue }
             byTitle[key, default: []].append(snap)
         }

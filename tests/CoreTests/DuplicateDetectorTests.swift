@@ -658,6 +658,50 @@ final class DuplicateDetectorTests: XCTestCase {
 
     // MARK: - TASK-252: already-resolved duplicates excluded from detection candidates
 
+    /// TASK-605: the same posting captured from an aggregator and the company's ATS, whose titles
+    /// differ only by a "(Remote)" qualifier, must still be surfaced as a duplicate pair. Before the
+    /// fix the "(Remote)" token split them into different title groups so they were never compared.
+    func testDetectDomainDuplicates_titleDiffersOnlyByRemoteQualifier_isPaired() {
+        let detector = DuplicateDetector()
+        let sharedDesc = "lead cross functional program roadmap delivery stakeholders curriculum assessment "
+            + "childhood education platform milestones dependencies launch"
+
+        // #163 — aggregator source, bare title, location "Texas".
+        let aggCap = Capture(
+            url: "https://www.remoterocketship.com/us/publicjobs/company/teaching-strategies-llc/jobs/principal-tpm",
+            pageTitle: "Principal Technical Program Manager", rawHash: "rh-163", cleanedHash: "ch-163"
+        )
+        aggCap.cleanedDescription = sharedDesc
+        let aggJob = Job(
+            company: "Teaching Strategies, LLC",
+            title: "Principal Technical Program Manager",
+            extractionStatus: .succeeded
+        )
+        aggJob.location = "Texas"
+        aggJob.capture = aggCap
+
+        // #193 — the company ATS (pinpointhq), title has "(Remote)", location "Denton, Texas".
+        let atsCap = Capture(
+            url: "https://teaching-strategies.pinpointhq.com/en/postings/abc",
+            pageTitle: "Principal Technical Program Manager (Remote)", rawHash: "rh-193", cleanedHash: "ch-193"
+        )
+        atsCap.cleanedDescription = sharedDesc
+        let atsJob = Job(
+            company: "Teaching Strategies, LLC",
+            title: "Principal Technical Program Manager (Remote)",
+            extractionStatus: .succeeded
+        )
+        atsJob.location = "Denton, Texas"
+        atsJob.capture = atsCap
+
+        let snapshots = [JobSnapshot(job: aggJob, capture: aggCap), JobSnapshot(job: atsJob, capture: atsCap)]
+        let pairs = detector.duplicateGroups(snapshots: snapshots, resolvedHashes: [])
+        XCTAssertEqual(pairs.count, 1, "cross-source pair differing only by a (Remote) title qualifier must be found")
+        // The ATS (pinpointhq) is the higher-authority source, so it's the preferred original.
+        XCTAssertEqual(pairs.first?.original.id, atsJob.id)
+        XCTAssertEqual(pairs.first?.candidate.id, aggJob.id)
+    }
+
     func testDetectDomainDuplicates_alreadyMarkedDuplicate_notSurfacedAsCandidate() {
         let detector = DuplicateDetector()
 

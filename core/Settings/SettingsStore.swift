@@ -1,6 +1,14 @@
 import Foundation
 import Observation
+import Security
 import SwiftData
+
+/// Whether a provider's API key is present, absent, or unreadable due to a Keychain failure (TASK-569).
+public enum APIKeyAvailability: Equatable, Sendable {
+    case present
+    case missing
+    case unavailable(OSStatus)
+}
 
 /// Mirrors SETTINGS_DEFAULTS from server/db.js exactly.
 private let settingsDefaults: [String: String] = [
@@ -41,7 +49,7 @@ private let settingsDefaults: [String: String] = [
 @Observable
 public final class SettingsStore {
     private var modelContext: ModelContext
-    private var keychain: KeychainStore
+    private var keychain: any KeychainAccess
     private var cache: [String: String] = [:]
     /// Set when a keychain write fails; cleared on the next successful write.
     public var keychainWriteError: String?
@@ -53,7 +61,7 @@ public final class SettingsStore {
     /// can't overwrite stored settings that merely couldn't be read. Cleared by a successful `reload()`.
     public private(set) var loadError: String?
 
-    public init(modelContext: ModelContext, keychain: KeychainStore = KeychainStore()) {
+    public init(modelContext: ModelContext, keychain: any KeychainAccess = KeychainStore()) {
         self.modelContext = modelContext
         self.keychain = keychain
         loadCache()
@@ -234,12 +242,34 @@ public final class SettingsStore {
     // MARK: - Keychain API key accessors
 
     public func apiKey(forProvider provider: String) -> String {
-        let key = provider == "default" ? SettingsKey.llmAPIKey : "llm_api_key_\(provider)"
+        let key = keychainKey(forProvider: provider)
         return keychain.get(key) ?? ""
     }
 
+    /// Whether a provider's API key is present, genuinely absent, or unreadable due to a Keychain
+    /// error (locked keychain, ACL denial, corrupted item, …). Lets diagnostics/UI distinguish "no key
+    /// set" from "key exists but the Keychain wouldn't return it" instead of collapsing both to empty
+    /// (TASK-569). Pure — reads the Keychain but mutates no observable state, so it's safe to call
+    /// off the render path (call it on appear/refresh, not in a SwiftUI `body`).
+    public func apiKeyAvailability(forProvider provider: String) -> APIKeyAvailability {
+        let key = keychainKey(forProvider: provider)
+        do {
+            guard let value = try keychain.read(key),
+                  !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .missing }
+            return .present
+        } catch let KeychainError.readFailed(status) {
+            return .unavailable(status)
+        } catch {
+            return .unavailable(errSecInternalError)
+        }
+    }
+
+    private func keychainKey(forProvider provider: String) -> String {
+        provider == "default" ? SettingsKey.llmAPIKey : "llm_api_key_\(provider)"
+    }
+
     public func setAPIKey(_ value: String, forProvider provider: String) {
-        let key = provider == "default" ? SettingsKey.llmAPIKey : "llm_api_key_\(provider)"
+        let key = keychainKey(forProvider: provider)
         // Trim pasted whitespace/newlines — a trailing space alone makes a valid key get rejected
         // (e.g. Google returns 401) with no obvious cause.
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)

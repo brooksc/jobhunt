@@ -16,7 +16,27 @@ import Security
 ///
 /// Existing items without these attributes are migrated on next `set(_:forKey:)` via
 /// delete-then-add (SecItemUpdate cannot change accessibility or sync attributes in-place).
-public struct KeychainStore: Sendable {
+///
+/// Abstraction over Keychain reads/writes so `SettingsStore` can be given a fake in tests — the real
+/// Keychain can't be made to return an arbitrary `OSStatus` on demand, which is what TASK-569 needs
+/// to exercise the read-failure path.
+public protocol KeychainAccess: Sendable {
+    func set(_ value: String, forKey key: String) throws
+    /// Returns the stored value, `nil` if the item is genuinely absent (`errSecItemNotFound`), and
+    /// throws `KeychainError.readFailed` for any other non-success status.
+    func read(_ key: String) throws -> String?
+    /// Convenience that collapses any read failure to `nil` (for low-risk callers that don't care why).
+    func get(_ key: String) -> String?
+    func delete(_ key: String) throws
+}
+
+public extension KeychainAccess {
+    func get(_ key: String) -> String? {
+        (try? read(key)) ?? nil
+    }
+}
+
+public struct KeychainStore: KeychainAccess {
     private let service: String
 
     public init(service: String = "com.jobhunt-app.jobhunt") {
@@ -45,15 +65,25 @@ public struct KeychainStore: Sendable {
         guard status == errSecSuccess else { throw KeychainError.addFailed(status) }
     }
 
-    public func get(_ key: String) -> String? {
+    /// Reads a stored secret. `errSecItemNotFound` is a normal absence → `nil`; any other non-success
+    /// status is surfaced as `KeychainError.readFailed` rather than collapsed to `nil`, so callers can
+    /// tell a missing key from an inaccessible/locked/corrupted one (TASK-569).
+    public func read(_ key: String) throws -> String? {
         var query = baseQuery(for: key)
         query[kSecReturnData] = true
         query[kSecMatchLimit] = kSecMatchLimitOne
 
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess, let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        switch status {
+        case errSecSuccess:
+            guard let data = result as? Data else { throw KeychainError.readFailed(status) }
+            return String(data: data, encoding: .utf8)
+        case errSecItemNotFound:
+            return nil
+        default:
+            throw KeychainError.readFailed(status)
+        }
     }
 
     public func delete(_ key: String) throws {
@@ -77,12 +107,14 @@ public enum KeychainError: Error, LocalizedError, Sendable {
     case addFailed(OSStatus)
     case updateFailed(OSStatus)
     case deleteFailed(OSStatus)
+    case readFailed(OSStatus)
 
     public var errorDescription: String? {
         switch self {
         case let .addFailed(code): "Keychain write failed (code \(code))"
         case let .updateFailed(code): "Keychain update failed (code \(code))"
         case let .deleteFailed(code): "Keychain delete failed (code \(code))"
+        case let .readFailed(code): "Keychain read failed (code \(code))"
         }
     }
 }

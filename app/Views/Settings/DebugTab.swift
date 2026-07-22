@@ -40,8 +40,7 @@ struct DebugTab: View {
         let queued = llmRequests.count(where: { $0.status == .queued })
         let running = llmRequests.count(where: { $0.status == .running })
         let failed = llmRequests.count(where: { $0.status == .failed || $0.status == .retryExhausted })
-        let keyPresent = !settings.apiKey(forProvider: settings.llmProvider)
-            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let keyAvailability = settings.apiKeyAvailability(forProvider: settings.llmProvider)
         return Section("Environment") {
             LabeledContent("Store") {
                 Text(storeURL.path)
@@ -63,7 +62,7 @@ struct DebugTab: View {
             LabeledContent("AI model") {
                 Text(settings.llmModel.isEmpty ? "—" : settings.llmModel).foregroundStyle(.secondary)
             }
-            statusRow("API key", ok: keyPresent, okText: "Present", badText: "Not set")
+            apiKeyRow(keyAvailability)
             statusRow("AI ready", ok: AIConfig.isConfigured(settings), okText: "Yes", badText: "No")
 
             Divider()
@@ -92,6 +91,22 @@ struct DebugTab: View {
 
     private func mono(_ string: String) -> some View {
         Text(string).foregroundStyle(.secondary).monospacedDigit()
+    }
+
+    /// Three-state API-key diagnostic (TASK-569): a Keychain read failure is shown distinctly from a
+    /// genuinely unset key, with its OSStatus, so support can tell "no key" from "key inaccessible".
+    private func apiKeyRow(_ availability: APIKeyAvailability) -> some View {
+        let (text, icon, color): (String, String, Color) = switch availability {
+        case .present: ("Present", "checkmark.circle.fill", .green)
+        case .missing: ("Not set", "exclamationmark.triangle.fill", .orange)
+        case let .unavailable(status): ("Unavailable (Keychain error \(status))", "xmark.octagon.fill", .red)
+        }
+        return LabeledContent("API key") {
+            Label(text, systemImage: icon)
+                .labelStyle(.titleAndIcon)
+                .font(.caption)
+                .foregroundStyle(color)
+        }
     }
 
     private func statusRow(_ label: String, ok: Bool, okText: String, badText: String) -> some View {

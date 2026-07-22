@@ -10,6 +10,20 @@ private struct NoOpLLMProvider: LLMProvider {
     }
 }
 
+/// In-memory keychain fake (TASK-569) — lets tests drive a read failure, which the real Keychain
+/// can't be forced to return on demand. `readFailure` is thrown from `read` when non-nil.
+private struct FakeKeychain: KeychainAccess {
+    var items: [String: String] = [:]
+    var readFailure: OSStatus?
+
+    func set(_: String, forKey _: String) throws {}
+    func delete(_: String) throws {}
+    func read(_ key: String) throws -> String? {
+        if let readFailure { throw KeychainError.readFailed(readFailure) }
+        return items[key]
+    }
+}
+
 final class SettingsStoreTests: XCTestCase {
     var container: ModelContainer!
     var context: ModelContext!
@@ -156,6 +170,36 @@ final class SettingsStoreTests: XCTestCase {
             "mysecret",
             "Non-synced item must be readable by the default (non-synced) search"
         )
+    }
+
+    // MARK: - TASK-569: distinguish missing key from Keychain read failure
+
+    func testAPIKeyAvailability_missingWhenNotFound() {
+        let s = SettingsStore(modelContext: context, keychain: FakeKeychain())
+        XCTAssertEqual(s.apiKeyAvailability(forProvider: "openai"), .missing)
+        XCTAssertEqual(s.apiKey(forProvider: "openai"), "", "missing key reads as empty")
+    }
+
+    func testAPIKeyAvailability_presentWhenStored() {
+        let fake = FakeKeychain(items: ["llm_api_key_openai": "sk-test"])
+        let s = SettingsStore(modelContext: context, keychain: fake)
+        XCTAssertEqual(s.apiKeyAvailability(forProvider: "openai"), .present)
+        XCTAssertEqual(s.apiKey(forProvider: "openai"), "sk-test")
+    }
+
+    func testAPIKeyAvailability_unavailableOnReadFailure() {
+        // A stored key that the Keychain refuses to return (e.g. -25308 errSecInteractionNotAllowed)
+        // must be reported as unavailable-with-status, NOT collapsed to "missing".
+        let fake = FakeKeychain(items: ["llm_api_key_openai": "sk-test"], readFailure: errSecInteractionNotAllowed)
+        let s = SettingsStore(modelContext: context, keychain: fake)
+        XCTAssertEqual(s.apiKeyAvailability(forProvider: "openai"), .unavailable(errSecInteractionNotAllowed))
+        // The convenience getter still degrades to "" so callers that can't act on the error don't crash.
+        XCTAssertEqual(s.apiKey(forProvider: "openai"), "")
+    }
+
+    func testKeychainStore_read_notFoundReturnsNil() throws {
+        let keychain = KeychainStore(service: "com.jobhunt-app.test.\(UUID().uuidString)")
+        XCTAssertNil(try keychain.read("never-stored"), "errSecItemNotFound is a normal absence, not an error")
     }
 
     // MARK: - Consent logic

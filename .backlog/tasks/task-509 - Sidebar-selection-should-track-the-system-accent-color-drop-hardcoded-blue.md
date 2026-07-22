@@ -1,10 +1,10 @@
 ---
 id: TASK-509
 title: Sidebar selection should track the system accent color (drop hardcoded blue)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 01:13'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-07-22 03:07'
 labels:
   - hig
   - color

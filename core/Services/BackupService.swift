@@ -56,17 +56,25 @@ public enum BackupService {
     ///
     /// - Parameters:
     ///   - storeURL: URL of the production SwiftData store (e.g. from `container.configurations.first?.url`).
-    ///   - destinationURL: Where to write the backup. The file must not already exist.
+    ///   - destinationURL: Where to write the backup. May already exist — it is replaced only after a
+    ///     new backup has been successfully staged (TASK-549), so a failed backup never destroys an
+    ///     existing one.
     public static func backup(storeURL: URL, to destinationURL: URL) throws {
         guard FileManager.default.fileExists(atPath: storeURL.path) else {
             throw BackupError.storeNotFound(storeURL)
         }
 
-        // Ensure destination directory exists
-        try FileManager.default.createDirectory(
-            at: destinationURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
+        let fm = FileManager.default
+        let destDir = destinationURL.deletingLastPathComponent()
+        try fm.createDirectory(at: destDir, withIntermediateDirectories: true)
+
+        // VACUUM INTO requires its target to NOT already exist, but NSSavePanel can hand us an
+        // existing path the user confirmed replacing (TASK-549). So always VACUUM INTO a unique
+        // staging file in the destination directory (same volume → atomic final move), validate it,
+        // then swap it into place. The staging file is cleaned up on every exit path; the existing
+        // destination is only touched once a valid backup exists.
+        let stagingURL = destDir.appendingPathComponent(".jobhunt-backup-\(UUID().uuidString).tmp")
+        defer { try? fm.removeItem(at: stagingURL) }
 
         // Open source read-only so we never modify the live store
         var db: OpaquePointer?
@@ -77,7 +85,7 @@ public enum BackupService {
         defer { sqlite3_close(db) }
 
         // VACUUM INTO checkpoints WAL and writes a complete, self-contained copy
-        let escaped = destinationURL.path.replacingOccurrences(of: "'", with: "''")
+        let escaped = stagingURL.path.replacingOccurrences(of: "'", with: "''")
         let sql = "VACUUM INTO '\(escaped)'"
         var errMsg: UnsafeMutablePointer<CChar>?
         let vacRC = sqlite3_exec(db, sql, nil, nil, &errMsg)
@@ -87,6 +95,21 @@ public enum BackupService {
             throw BackupError.vacuumFailed(msg)
         }
         sqlite3_free(errMsg)
+
+        // Prove the staged file is a valid Jobhunt SQLite database before swapping it in — a swap
+        // never replaces a good backup with a bad one.
+        guard isValidSQLite(at: stagingURL) else {
+            throw BackupError.notValidSQLite(stagingURL)
+        }
+
+        // Swap into place. `replaceItemAt` is atomic and keeps the original if it fails; for a new
+        // destination it doesn't apply, so move directly. On any failure the existing destination is
+        // left intact and the staging file is removed by the defer above.
+        if fm.fileExists(atPath: destinationURL.path) {
+            _ = try fm.replaceItemAt(destinationURL, withItemAt: stagingURL)
+        } else {
+            try fm.moveItem(at: stagingURL, to: destinationURL)
+        }
     }
 
     /// Returns true if `url` points to a file that begins with the SQLite magic header AND

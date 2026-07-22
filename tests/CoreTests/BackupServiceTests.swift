@@ -72,6 +72,74 @@ final class BackupServiceTests: XCTestCase {
         XCTAssertEqual(settings.first?.value, "lmstudio")
     }
 
+    // MARK: - TASK-549: replace an existing save-panel destination safely
+
+    /// AC#1/#2/#4/#6: backing up onto a path that already exists (the save panel's "Replace"
+    /// intent) succeeds — VACUUM INTO no longer sees a pre-existing target — and leaves no staging
+    /// `.tmp` file behind.
+    func testBackup_replacesExistingDestination() throws {
+        let (container, storeURL) = try makeFileBacked()
+        defer { try? FileManager.default.removeItem(at: storeURL) }
+
+        let ctx = ModelContext(container)
+        ctx.insert(Job(jobNumber: 42, title: "New Backup Job"))
+        try ctx.save()
+
+        // A file already occupies the destination (as if the user picked an existing backup to replace).
+        let destURL = makeTempStoreURL()
+        defer { try? FileManager.default.removeItem(at: destURL) }
+        try Data("not a real backup".utf8).write(to: destURL)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: destURL.path), "Precondition: destination exists")
+
+        // Must succeed despite the pre-existing file (previously VACUUM INTO would fail 'file exists').
+        try BackupService.backup(storeURL: storeURL, to: destURL)
+
+        XCTAssertTrue(BackupService.isValidSQLite(at: destURL), "Destination must now be a valid backup")
+        let schema = Schema(SchemaV1.models)
+        let restored = try ModelContainer(
+            for: schema,
+            migrationPlan: JobhuntMigrationPlan.self,
+            configurations: ModelConfiguration(schema: schema, url: destURL, cloudKitDatabase: .none)
+        )
+        let jobs = try ModelContext(restored).fetch(FetchDescriptor<Job>())
+        XCTAssertEqual(jobs.first?.jobNumber, 42, "Destination must hold the freshly backed-up data")
+
+        // AC#4: no staging temp file left in the destination directory.
+        let leftovers = try FileManager.default
+            .contentsOfDirectory(atPath: destURL.deletingLastPathComponent().path)
+            .filter { $0.hasPrefix(".jobhunt-backup-") }
+        XCTAssertTrue(leftovers.isEmpty, "Staging temp files must be cleaned up: \(leftovers)")
+    }
+
+    /// AC#3: if the backup fails, a pre-existing backup at the destination is left byte-for-byte
+    /// intact — a failed backup never destroys the user's existing one.
+    func testBackup_failureLeavesExistingDestinationIntact() throws {
+        let (container, storeURL) = try makeFileBacked()
+        defer { try? FileManager.default.removeItem(at: storeURL) }
+        let ctx = ModelContext(container)
+        ctx.insert(Job(jobNumber: 1, title: "Existing Good Backup"))
+        try ctx.save()
+
+        // Seed the destination with a real, valid prior backup.
+        let destURL = makeTempStoreURL()
+        defer { try? FileManager.default.removeItem(at: destURL) }
+        try BackupService.backup(storeURL: storeURL, to: destURL)
+        let before = try Data(contentsOf: destURL)
+
+        // Now a backup whose source is missing must fail — and must not touch the existing destination.
+        let missingStore = URL(fileURLWithPath: "/tmp/missing_store_\(UUID().uuidString).store")
+        XCTAssertThrowsError(try BackupService.backup(storeURL: missingStore, to: destURL)) { error in
+            guard case BackupService.BackupError.storeNotFound = error else {
+                XCTFail("Expected storeNotFound, got \(error)")
+                return
+            }
+        }
+
+        let after = try Data(contentsOf: destURL)
+        XCTAssertEqual(before, after, "Existing backup must be untouched when a new backup fails")
+        XCTAssertTrue(BackupService.isValidSQLite(at: destURL), "Existing backup must remain valid")
+    }
+
     func testBackup_throwsWhenStoreNotFound() {
         let missingURL = URL(fileURLWithPath: "/tmp/does_not_exist_\(UUID().uuidString).store")
         let destURL = makeTempStoreURL()

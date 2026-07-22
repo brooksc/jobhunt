@@ -16,6 +16,13 @@ struct DuplicatesView: View {
     @State private var pairs: [DuplicatePair] = []
     @State private var jobIndex: [String: Job] = [:]
     @State private var actionError: String?
+    /// Persisted width of the pair-list pane so the compare panel's width is sticky across selections
+    /// and launches, and defaults wide enough to use the space (TASK-625).
+    @AppStorage("duplicates.listPaneWidth") private var listWidth: Double = 440
+    /// List-pane width captured at the start of a divider drag.
+    @State private var dragStartWidth: Double?
+
+    private static let listWidthRange: ClosedRange<Double> = 300 ... 760
 
     /// Monotonic token guarding stale scan publishes (TASK-384). Each `refreshPairsInBackground`
     /// captures the current value; the expensive scan runs in a detached task that `.task(id:)`
@@ -38,34 +45,14 @@ struct DuplicatesView: View {
     }
 
     var body: some View {
-        HSplitView {
+        // A manual split (not HSplitView) so the pair-list width is persisted + draggable, keeping the
+        // compare panel's width sticky across selections and launches (TASK-625).
+        HStack(spacing: 0) {
             pairList
-                .frame(minWidth: 320)
-
-            if let pairID = selectedPairID,
-               let pair = pairs.first(where: { pairKey($0) == pairID }) {
-                CompareView(
-                    pair: pair,
-                    originalJob: jobIndex[pair.original.id],
-                    candidateJob: jobIndex[pair.candidate.id],
-                    onMarkDuplicate: { handleMarkDuplicate(
-                        candidateID: pair.candidate.id,
-                        cleanedHash: pair.candidate.cleanedHash,
-                        keepJobID: pair.original.id,
-                        confidence: pair.confidence
-                    ) },
-                    onUnmark: { handleUnmark(
-                        candidateID: pair.candidate.id,
-                        cleanedHash: pair.candidate.cleanedHash,
-                        keepJobID: pair.original.id
-                    ) },
-                    onDelete: { handleDelete(candidateID: pair.candidate.id) }
-                )
-                .frame(minWidth: 480)
-            } else {
-                emptyDetail
-                    .frame(minWidth: 480)
-            }
+                .frame(width: listWidth)
+            resizeDivider
+            detailPane
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationTitle("Duplicates")
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -93,6 +80,55 @@ struct DuplicatesView: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    // MARK: - Detail pane + resizable divider
+
+    @ViewBuilder
+    private var detailPane: some View {
+        if let pairID = selectedPairID,
+           let pair = pairs.first(where: { pairKey($0) == pairID }) {
+            CompareView(
+                pair: pair,
+                originalJob: jobIndex[pair.original.id],
+                candidateJob: jobIndex[pair.candidate.id],
+                onMarkDuplicate: { handleMarkDuplicate(
+                    candidateID: pair.candidate.id,
+                    cleanedHash: pair.candidate.cleanedHash,
+                    keepJobID: pair.original.id,
+                    confidence: pair.confidence
+                ) },
+                onUnmark: { handleUnmark(
+                    candidateID: pair.candidate.id,
+                    cleanedHash: pair.candidate.cleanedHash,
+                    keepJobID: pair.original.id
+                ) }
+            )
+        } else {
+            emptyDetail
+        }
+    }
+
+    /// Thin draggable divider that resizes (and persists) the pair-list pane width.
+    private var resizeDivider: some View {
+        Divider()
+            .frame(width: 6)
+            .contentShape(Rectangle())
+            .onHover { inside in
+                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { value in
+                        let start = dragStartWidth ?? listWidth
+                        if dragStartWidth == nil { dragStartWidth = start }
+                        listWidth = min(
+                            Self.listWidthRange.upperBound,
+                            max(Self.listWidthRange.lowerBound, start + value.translation.width)
+                        )
+                    }
+                    .onEnded { _ in dragStartWidth = nil }
+            )
     }
 
     // MARK: - Pair list
@@ -242,9 +278,8 @@ struct DuplicatesView: View {
                         cleanedHash: hash, decision: "duplicate", keepJobID: keepJobID
                     )
                 }
-                selectedPairID = nil
                 actionError = nil
-                await refreshPairsInBackground()
+                await refreshAndAdvance()
             } catch {
                 actionError = "Mark as duplicate failed: \(error.localizedDescription)"
             }
@@ -261,26 +296,33 @@ struct DuplicatesView: View {
                         cleanedHash: hash, decision: "not_duplicate", keepJobID: keepJobID
                     )
                 }
-                selectedPairID = nil
                 actionError = nil
-                await refreshPairsInBackground()
+                await refreshAndAdvance()
             } catch {
-                actionError = "Unmark failed: \(error.localizedDescription)"
+                actionError = "Keep Both failed: \(error.localizedDescription)"
             }
         }
     }
 
-    private func handleDelete(candidateID: String) {
-        Task {
-            do {
-                try await appServices.jobService.delete(jobID: candidateID)
-                selectedPairID = nil
-                actionError = nil
-                await refreshPairsInBackground()
-            } catch {
-                actionError = "Delete failed: \(error.localizedDescription)"
-            }
+    /// After resolving the selected pair, refresh and advance to the NEXT pair (the one that followed
+    /// it, or the new last if it was last), so the user can work through the queue without re-selecting
+    /// or losing the compare panel (TASK-625).
+    @MainActor
+    private func refreshAndAdvance() async {
+        let nextID = selectedPairID.flatMap { pairIDAfter($0) }
+        await refreshPairsInBackground()
+        if let nextID, filteredPairs.contains(nextID) {
+            selectedPairID = nextID
+        } else {
+            selectedPairID = filteredPairs.last
         }
+    }
+
+    /// The pair-list id immediately after `pairID` in the current filtered list, or nil if it's last.
+    private func pairIDAfter(_ pairID: String) -> String? {
+        let ids = filteredPairs
+        guard let idx = ids.firstIndex(of: pairID), idx + 1 < ids.count else { return nil }
+        return ids[idx + 1]
     }
 }
 
@@ -361,9 +403,6 @@ struct CompareView: View {
     let candidateJob: Job?
     let onMarkDuplicate: () -> Void
     let onUnmark: () -> Void
-    let onDelete: () -> Void
-
-    @State private var showDeleteConfirmation = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -389,17 +428,11 @@ struct CompareView: View {
                 .controlSize(.small)
                 .font(.caption)
 
-                // Delete is destructive and demoted — a soft Mark as Duplicate is the safe primary.
-                Button("Delete") {
-                    showDeleteConfirmation = true
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .font(.caption)
-                .foregroundStyle(.red)
-
                 // Mark as Duplicate (primary): reversible — links the candidate to the original and
-                // hides it from active lists, but keeps the record (Unmark from All Jobs to undo).
+                // hides it from active lists, but keeps the record so the same posting can't be
+                // re-captured into the review queue (Unmark from All Jobs to undo). Deleting is
+                // deliberately NOT offered here — it would lose that re-capture protection (TASK-625);
+                // a genuine junk job can still be deleted from the Jobs list.
                 Button("Mark as Duplicate") {
                     onMarkDuplicate()
                 }
@@ -427,19 +460,10 @@ struct CompareView: View {
                         snapshot: pair.candidate,
                         job: candidateJob,
                         other: pair.original,
-                        isNewer: true,
-                        onDiscard: { showDeleteConfirmation = true }
+                        isNewer: true
                     )
                 }
             }
-        }
-        .alert("Delete Candidate?", isPresented: $showDeleteConfirmation) {
-            Button("Delete", role: .destructive) {
-                onDelete()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will permanently delete the candidate job and cannot be undone.")
         }
     }
 }
@@ -452,7 +476,6 @@ private struct JobCompareColumn: View {
     let job: Job?
     let other: JobSnapshot
     var isNewer: Bool = false
-    var onDiscard: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -570,20 +593,6 @@ private struct JobCompareColumn: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16).padding(.bottom, 8)
                 }
-            }
-
-            // Discard button
-            if let onDiscard {
-                Button {
-                    onDiscard()
-                } label: {
-                    Label("Discard this one", systemImage: "trash")
-                        .font(.caption)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -3,9 +3,10 @@ id: TASK-621
 title: >-
   Availability: auto-check actively-pursued jobs regardless of the staleness
   window
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-22 20:19'
+updated_date: '2026-07-22 20:20'
 labels: []
 dependencies: []
 priority: high

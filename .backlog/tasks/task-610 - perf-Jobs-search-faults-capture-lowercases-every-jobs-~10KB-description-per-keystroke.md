@@ -3,9 +3,10 @@ id: TASK-610
 title: >-
   perf: Jobs search faults capture + lowercases every job's ~10KB description
   per keystroke
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-21 23:46'
+updated_date: '2026-07-22 00:40'
 labels:
   - performance
   - jobs

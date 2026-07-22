@@ -15,7 +15,8 @@ final class JobPromptBuilderTests: XCTestCase {
     }
 
     func testEveryKindHasCoreSectionsAndSafetyPreamble() {
-        for kind in JobPromptKind.allCases {
+        // Chat kinds embed the job + résumé; .autoApply is a separate agent template (covered below).
+        for kind in JobPromptKind.chatKinds {
             let prompt = JobPromptBuilder.build(kind: kind, input: input())
             XCTAssertTrue(prompt.contains("Staff Engineer"), "\(kind): role present")
             XCTAssertTrue(prompt.contains("Acme"), "\(kind): company present")
@@ -62,6 +63,27 @@ final class JobPromptBuilderTests: XCTestCase {
         XCTAssertTrue(p(.coverLetter).contains("cover letter"))
         XCTAssertTrue(p(.fitAssessment).contains("deal-breaker"))
         XCTAssertTrue(p(.outreachMessage).contains("outreach message"))
+    }
+
+    func testAutoApplyTemplateSubstitutesURLAndKeepsGuardrails() {
+        let prompt = JobPromptBuilder.build(kind: .autoApply, input: input(url: "https://acme.com/jobs/staff-eng"))
+        XCTAssertTrue(prompt.contains("https://acme.com/jobs/staff-eng"), "job URL is substituted")
+        XCTAssertFalse(prompt.contains("[PASTE URL HERE]"), "placeholder replaced when a URL is present")
+        XCTAssertTrue(prompt.contains("@Browser"), "targets the browser agent")
+        XCTAssertTrue(prompt.contains("Never submit the application"), "keeps the never-submit guardrail")
+        XCTAssertTrue(prompt.contains("Final application review checkpoint — mandatory"), "keeps the checkpoints")
+        // Auto-apply must NOT embed the app's job description / résumé (it uses local files instead).
+        XCTAssertFalse(prompt.contains("<<<BEGIN RESUME"), "auto-apply doesn't embed the app résumé")
+    }
+
+    func testAutoApplyKeepsPlaceholderWhenNoURL() {
+        let prompt = JobPromptBuilder.build(kind: .autoApply, input: input(url: ""))
+        XCTAssertTrue(prompt.contains("[PASTE URL HERE]"), "placeholder kept when no URL is known")
+    }
+
+    func testChatKindsExcludeAutoApply() {
+        XCTAssertFalse(JobPromptKind.chatKinds.contains(.autoApply))
+        XCTAssertEqual(JobPromptKind.chatKinds.count, JobPromptKind.allCases.count - 1)
     }
 
     func testEmptyDescriptionAndResumeRenderPlaceholders() {

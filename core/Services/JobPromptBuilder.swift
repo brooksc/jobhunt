@@ -11,6 +11,11 @@ public enum JobPromptKind: String, CaseIterable, Sendable {
     case coverLetter
     case fitAssessment
     case outreachMessage
+    /// A Codex (browser-automation agent) prompt that opens the posting, tailors résumé/cover letter
+    /// from local files, and fills the application up to — but never past — the final review. Unlike
+    /// the other kinds it references local files + the browser rather than embedded content, so it's
+    /// copied for a Codex/agent session, not opened in a chat model.
+    case autoApply
 
     /// Menu label.
     public var title: String {
@@ -20,7 +25,14 @@ public enum JobPromptKind: String, CaseIterable, Sendable {
         case .coverLetter: "Draft Cover Letter"
         case .fitAssessment: "Assess Fit"
         case .outreachMessage: "Draft Outreach Message"
+        case .autoApply: "Auto-Apply (Codex)"
         }
+    }
+
+    /// The chat-model prompt kinds (everything except the Codex `.autoApply` agent prompt), which
+    /// embed the job + résumé and can be opened in ChatGPT/Claude.
+    public static var chatKinds: [JobPromptKind] {
+        allCases.filter { $0 != .autoApply }
     }
 }
 
@@ -71,6 +83,11 @@ public struct JobPromptInput: Sendable {
 public enum JobPromptBuilder {
     /// Builds the complete prompt for `kind` from `input`. Deterministic; no network / provider calls.
     public static func build(kind: JobPromptKind, input: JobPromptInput) -> String {
+        // The Codex auto-apply agent prompt is a fixed template (it uses local files + the browser,
+        // not embedded content) with only the job URL substituted.
+        if kind == .autoApply {
+            return autoApplyPrompt(jobURL: input.sourceURL)
+        }
         var out = "# Task: \(kind.title) for the role below\n\n"
         out += """
         You are an expert career assistant helping a job candidate. The JOB DESCRIPTION and RESUME \
@@ -182,6 +199,303 @@ public enum JobPromptBuilder {
             - Be specific to this company/role, warm but concise, and end with a clear, low-friction \
             ask. Leave [brackets] for the recipient's name or any detail not available above.
             """
+        case .autoApply:
+            "" // handled by autoApplyPrompt(jobURL:)
         }
     }
+
+    // swiftlint:disable function_body_length
+    /// Verbatim Codex browser-automation "auto-apply" prompt with the job URL substituted. The body is
+    /// the user's own agent instructions (checkpoints, accuracy rules, "never submit"); only the URL is
+    /// filled in — the `[PASTE URL HERE]` placeholder remains when the job has no known URL.
+    private static func autoApplyPrompt(jobURL: String) -> String {
+        let urlLine = jobURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "[PASTE URL HERE]" : jobURL
+        return """
+        Use @Browser and my local résumé materials to prepare and complete one job application, \
+        stopping for my review at the required checkpoints below.
+
+        JOB POSTING URL:
+        \(urlLine)
+
+        ## Objective
+
+        1. Open the job-posting URL.
+        2. Read and analyze the complete job description.
+        3. Create an accurate, ATS-friendly résumé tailored specifically to the role.
+        4. If the application requests or accepts a cover letter, create a tailored cover letter.
+        5. Let me review and approve the documents.
+        6. Navigate to the application, including finding and selecting the appropriate Apply button.
+        7. Fill in the application as far as possible.
+        8. Stop on the final review, certification, or submission page and ask me to review it.
+        9. Never submit the application. I will perform the final submission myself.
+
+        Treat this as one isolated job application. Do not work on another job in this task.
+
+        ## Source materials
+
+        My résumé materials are located at:
+
+        `/Users/brooksc/Desktop/job hunt/resume`
+
+        Use these files as the primary factual sources:
+
+        - `Brooks_Cutter_Resume_Master.md`
+        - `Brooks_Cutter_Skills_Inventory.md`
+
+        Use the existing employer-specific folders and documents as style examples. Recent examples \
+        such as Life360, SecurityScorecard, OpenAI, SailPoint, Pulumi, and Horizon3 show the type of \
+        tailoring and writing I prefer.
+
+        Source priority:
+
+        1. The master résumé and validated skills inventory are the factual source of truth.
+        2. Existing targeted résumés and cover letters are style and structure references.
+        3. The job description determines what relevant experience to emphasize.
+        4. Never treat a claim appearing only in the job description as experience I possess.
+
+        Do not modify, overwrite, rename, or delete any existing source file.
+
+        ## Accuracy requirements
+
+        Everything must remain truthful and defensible in an interview.
+
+        - Do not invent skills, tools, titles, responsibilities, dates, metrics, accomplishments, \
+        certifications, education, or experience.
+        - Do not inflate coordination work into technical architecture ownership.
+        - Preserve qualifications and calibration notes from the skills inventory.
+        - Do not imply hands-on expertise with a technology merely because the job description mentions it.
+        - If the job requires something my materials explicitly identify as a gap, do not conceal the \
+        gap or claim adjacent experience as equivalent.
+        - You may reorder, condense, and rephrase verified experience to emphasize fit.
+        - You may use terminology from the job description only when it accurately describes verified \
+        experience.
+        - If an important assertion is ambiguous, stop and ask me instead of guessing.
+        - Keep my name, contact information, employers, job titles, employment dates, education, \
+        patents, and certification accurate.
+
+        ## Job analysis
+
+        Read the full job description, including expandable sections and employer information on the page.
+
+        Identify:
+
+        - The exact company, job title, location, and requisition number, if present.
+        - The role's core mission.
+        - Required and preferred qualifications.
+        - The five to eight most important capabilities.
+        - Important ATS terminology.
+        - The experiences and metrics from my background that best support the role.
+        - Any genuine gaps or areas where careful framing is required.
+
+        Use this analysis to guide the documents, but do not add a long keyword dump or force irrelevant \
+        terminology into them.
+
+        If the posting is unavailable, incomplete, or behind a login, ask me to intervene or provide the \
+        job-description text.
+
+        ## Output location and isolation
+
+        Create a new, uniquely named folder inside:
+
+        `/Users/brooksc/Desktop/job hunt/resume`
+
+        Use a clear company-and-role folder name. If a folder for that company already exists, create a \
+        role-specific subfolder or add the job title so no existing files are overwritten.
+
+        Save all files for this application only in that folder.
+
+        Use filenames based on this pattern:
+
+        - `Brooks_Cutter_Resume_[Company]_[ShortRole].md`
+        - `Brooks_Cutter_Resume_[Company]_[ShortRole].pdf`
+        - `Brooks_Cutter_Cover_Letter_[Company]_[ShortRole].md`
+        - `Brooks_Cutter_Cover_Letter_[Company]_[ShortRole].pdf`
+        - `Brooks_Cutter_Application_Answers_[Company]_[ShortRole].md` when the application contains \
+        substantive written questions
+
+        Keep every parallel application in its own folder. Never reuse or overwrite a generated file \
+        belonging to another job.
+
+        ## Tailored résumé
+
+        Create a targeted résumé that:
+
+        - Matches the polished style and level of specificity in my strongest existing targeted résumés.
+        - Leads with the experience most relevant to this particular role.
+        - Uses a role-specific headline and executive summary.
+        - Prioritizes verified accomplishments that directly address the job's needs.
+        - Includes meaningful metrics where supported by the source materials.
+        - Remains readable and natural instead of sounding like copied job-description text.
+        - Is ATS-friendly, with conventional headings and selectable text.
+        - Avoids unsupported keyword stuffing.
+        - Preserves appropriate nuance about my role and level of technical ownership.
+        - Uses a professional length and density consistent with my recent targeted résumés.
+
+        Generate both Markdown and PDF versions. Visually inspect the rendered PDF before presenting it \
+        to me. Check for:
+
+        - Clipped or missing text.
+        - Broken characters.
+        - Awkward page breaks.
+        - Orphaned headings.
+        - Overlapping content.
+        - Inconsistent spacing.
+        - Unexpected blank pages.
+        - Unreadably small text.
+
+        Iterate until the PDF is polished.
+
+        ## Cover letter
+
+        First determine whether the application requests or accepts a cover letter.
+
+        If it does, create a tailored cover letter that:
+
+        - Uses the current date.
+        - Names the company and exact role.
+        - Explains the two or three strongest reasons for fit.
+        - Uses specific, verified examples rather than generic enthusiasm.
+        - Sounds like the strong existing examples in my résumé folder.
+        - Avoids clichés, excessive flattery, and invented knowledge about the company.
+        - Does not simply repeat the résumé.
+        - Is concise enough for a recruiter to read comfortably.
+
+        Generate both Markdown and PDF versions and visually inspect the PDF.
+
+        If no cover letter is requested or accepted, do not create one unless I ask.
+
+        ## Document review checkpoint — mandatory
+
+        After generating and checking the documents, stop before uploading them or entering substantive \
+        application responses.
+
+        Tell me:
+
+        - The exact paths of every generated file.
+        - Which résumé version you recommend.
+        - Whether a cover letter was requested.
+        - The most important tailoring choices you made.
+        - Any factual uncertainty, gap, or potentially aggressive wording I should examine.
+
+        Ask me to review the documents and approve them.
+
+        Do not continue until I explicitly approve the documents or provide revisions. Apply my \
+        revisions, regenerate the PDFs, and ask again if needed.
+
+        ## Navigate and complete the application
+
+        After I approve the documents:
+
+        1. Return to the job posting.
+        2. Find the legitimate application entry point.
+        3. Prefer the employer's own career site or the clearly linked applicant-tracking system.
+        4. Avoid advertisements, unrelated recruiter links, and suspicious redirects.
+        5. Select Apply and navigate through the application.
+        6. Pause whenever login, account creation, email verification, CAPTCHA, multifactor \
+        authentication, or another human-only step is required.
+        7. Tell me exactly what intervention is needed, then continue after I complete it.
+
+        Because the built-in browser cannot automate file uploads, pause at each upload control and \
+        tell me:
+
+        - Which document the field requests.
+        - The exact path of the approved file I should upload.
+        - Whether the field is required or optional.
+
+        Wait for me to complete the upload before continuing.
+
+        ## Application-field rules
+
+        You may fill ordinary fields using information explicitly supported by my approved documents or \
+        information I provide in this task.
+
+        You may:
+
+        - Enter basic contact information already present in my résumé.
+        - Enter verified employment and education history.
+        - Fill ordinary skills and experience fields.
+        - Draft role-specific responses based on my source materials.
+        - Reformat an approved cover letter for a text field.
+        - Save substantive drafted answers in the application-answers Markdown file.
+
+        You must not guess or decide answers involving:
+
+        - Work authorization or sponsorship.
+        - Desired compensation.
+        - Willingness to relocate or travel.
+        - Start date or notice period.
+        - Noncompete or conflict-of-interest questions.
+        - Criminal-history or background-check questions.
+        - Security-clearance status.
+        - Demographic information.
+        - Race, ethnicity, gender, sexual orientation, age, disability, or veteran status.
+        - Legal attestations.
+        - Arbitration agreements.
+        - Accuracy certifications.
+        - Electronic signatures.
+        - Voluntary self-identification.
+        - Anything else that could have legal, financial, or sensitive personal consequences.
+
+        Leave these unanswered and ask me to complete them.
+
+        Do not opt me into recruiting marketing, SMS messages, talent communities, or unrelated \
+        communications unless I explicitly request it.
+
+        Do not create an account, accept new terms, or save credentials without asking me first.
+
+        ## Written application questions
+
+        For open-ended questions:
+
+        - Draft answers using only verified facts.
+        - Match the requested length.
+        - Answer the actual question directly.
+        - Prefer specific evidence and outcomes over generic claims.
+        - Avoid repeating the same example in every answer.
+        - Do not manufacture company-specific enthusiasm.
+        - Save substantial answers in the application-answers Markdown file.
+        - If a response introduces new wording that could materially affect how my experience is \
+        represented, show it to me during final review.
+
+        If a question cannot be answered accurately from my materials, ask me.
+
+        ## Final application review checkpoint — mandatory
+
+        When all possible fields are complete, stop on the final review, certification, or submission page.
+
+        Do not click any button labeled or functioning as:
+
+        - Submit
+        - Submit application
+        - Apply
+        - Complete application
+        - Confirm
+        - Finish
+        - Sign
+        - Certify
+        - Send
+        - Continue, if it would cause submission
+
+        Before asking me to take over, provide a concise review summary containing:
+
+        - Company and role.
+        - Application URL.
+        - Résumé uploaded.
+        - Cover letter uploaded or entered.
+        - Written questions and the answers entered.
+        - Fields I still need to complete.
+        - Any warnings, uncertainty, or information that deserves special attention.
+        - Any consent boxes, attestations, or optional communication choices.
+        - The visible label of the final submission control.
+
+        Then say clearly:
+
+        "Your application is filled out but has not been submitted. Please review every field in the \
+        browser and submit it yourself if everything is correct."
+
+        Never submit on my behalf, even if I previously told you that the application looked correct. \
+        The final click always belongs to me.
+        """
+    }
+    // swiftlint:enable function_body_length
 }

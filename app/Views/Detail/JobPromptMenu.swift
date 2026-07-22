@@ -52,21 +52,29 @@ struct JobPromptMenu: View {
 
     var body: some View {
         Menu {
-            ForEach(JobPromptKind.allCases, id: \.self) { kind in
+            // Chat prompts embed the job + résumé; disabled (with a reason) when either is missing.
+            if !isUsable {
+                Text(disabledHelp)
+            }
+            ForEach(JobPromptKind.chatKinds, id: \.self) { kind in
                 Menu(kind.title) {
                     Button("Copy Prompt") { copy(kind) }
                     Button("Open in ChatGPT") { requestOpen(kind, .chatGPT) }
                     Button("Open in Claude") { requestOpen(kind, .claude) }
                 }
+                .disabled(!isUsable)
             }
+            Divider()
+            // Codex auto-apply agent prompt — uses local files + the browser, so it's always available
+            // (independent of the app's résumé) and copy-only (meant to paste into a Codex session).
+            Button("Copy Auto-Apply Prompt (Codex)") { copyAutoApply() }
         } label: {
             Label("Prompt AI", systemImage: "sparkles")
                 .font(.caption2.weight(.semibold))
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .disabled(!isUsable)
-        .help(isUsable ? "Generate an AI prompt from this job + your résumé" : disabledHelp)
+        .help("Generate an AI prompt from this job (résumé prompts need an active résumé)")
         .confirmationDialog(
             "Open in \(pendingOpen?.provider.displayName ?? "the AI chat")?",
             isPresented: Binding(get: { pendingOpen != nil }, set: { if !$0 { pendingOpen = nil } }),
@@ -94,6 +102,25 @@ struct JobPromptMenu: View {
         }
         setClipboard(buildPrompt(kind, resume: resume))
         appServices.toastStore.show("\(kind.title) prompt copied (using \(resume.name))")
+    }
+
+    /// The Codex auto-apply prompt needs only the job URL (it uses local résumé files + the browser),
+    /// so it works regardless of the app's résumé/description state.
+    private func copyAutoApply() {
+        let url = JobURLPolicy.sourceURL(job: job) ?? ""
+        let prompt = JobPromptBuilder.build(
+            kind: .autoApply,
+            input: JobPromptInput(
+                role: "", company: "", location: "", sourceURL: url,
+                jobDescription: "", resumeName: "", resumeText: "", fit: nil
+            )
+        )
+        setClipboard(prompt)
+        appServices.toastStore.show(
+            url.isEmpty
+                ? "Auto-Apply (Codex) prompt copied — add the job URL where marked, then paste into Codex"
+                : "Auto-Apply (Codex) prompt copied — paste into Codex"
+        )
     }
 
     /// Gate the first external open on the privacy acknowledgement; thereafter open directly.

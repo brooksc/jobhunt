@@ -38,8 +38,11 @@ struct AddJobSheet: View {
 
     private func submit() {
         let url = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !url.isEmpty, URL(string: url) != nil else {
-            errorMessage = "Please enter a valid URL."
+        // Client-side validation with the SAME rule the service enforces (TASK-561), so inputs like
+        // "example.com/jobs" that URL(string:) accepts but ingestion rejects are caught here instead
+        // of after a round trip. The service's validatedForIngestion stays the authoritative guard.
+        guard (try? URLNormalizer.validatedForIngestion(url)) != nil else {
+            errorMessage = "Enter a valid http or https web address."
             return
         }
         isSaving = true

@@ -7,10 +7,17 @@ import SwiftUI
 struct DockBadgeUpdater: View {
     let unreadCount: Int
 
+    private static func badgeLabel(for count: Int) -> String {
+        count > 0 ? "\(count)" : ""
+    }
+
     var body: some View {
         Color.clear
+            // Set the badge on first appearance too (TASK-544) — otherwise launching with existing
+            // unread jobs left the Dock badge blank until the count next changed that session.
+            .onAppear { NSApp.dockTile.badgeLabel = Self.badgeLabel(for: unreadCount) }
             .onChange(of: unreadCount) { _, newVal in
-                NSApp.dockTile.badgeLabel = newVal > 0 ? "\(newVal)" : ""
+                NSApp.dockTile.badgeLabel = Self.badgeLabel(for: newVal)
             }
     }
 }

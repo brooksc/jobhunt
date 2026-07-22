@@ -991,6 +991,11 @@ struct JobsView: View {
         searchTokens = []
         searchText = ""
         filterState = JobsFilterState()
+        // Clear the sidebar smart-folder status too (TASK-574) — "Clear All" promised to remove all
+        // constraints, but this one was managed outside this path and left the user stuck in a status
+        // folder. Return sidebar selection to All Jobs.
+        localSidebarFilter = nil
+        router.sidebarJobFilter = nil
         applyPersistedSort() // #7: clearing filters shouldn't reset the chosen sort
         router.activeSavedSearchID = nil
     }

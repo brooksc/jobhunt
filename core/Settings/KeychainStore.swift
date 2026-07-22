@@ -30,7 +30,12 @@ public struct KeychainStore: Sendable {
         if SecItemCopyMatching(searchQuery as CFDictionary, nil) == errSecSuccess {
             // Delete and re-add so the new item picks up the explicit security policy.
             // SecItemUpdate cannot change kSecAttrAccessible or kSecAttrSynchronizable.
-            SecItemDelete(searchQuery as CFDictionary)
+            // Check the delete status (TASK-585): a failed delete otherwise surfaces later as a
+            // cryptic errSecDuplicateItem from SecItemAdd, hiding the real root cause.
+            let deleteStatus = SecItemDelete(searchQuery as CFDictionary)
+            guard deleteStatus == errSecSuccess || deleteStatus == errSecItemNotFound else {
+                throw KeychainError.deleteFailed(deleteStatus)
+            }
         }
         var addQuery = searchQuery
         addQuery[kSecValueData] = data

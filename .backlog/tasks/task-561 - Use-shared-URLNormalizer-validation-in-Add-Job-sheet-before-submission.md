@@ -1,10 +1,10 @@
 ---
 id: TASK-561
 title: Use shared URLNormalizer validation in Add Job sheet before submission
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-20 00:17'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-07-22 00:47'
 labels:
   - audit
   - capture-ingestion

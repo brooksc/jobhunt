@@ -1,10 +1,10 @@
 ---
 id: TASK-504
 title: 'Surface "Applied on {date}" prominently (needs Job.appliedAt — SchemaV2)'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-18 23:23'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-07-22 18:27'
 labels:
   - ux
   - schema

@@ -30,6 +30,11 @@ struct DashboardView: View {
     /// change, replacing repeated all-job scans in `body` computed properties.
     @State private var derived = DashboardDerived()
 
+    /// Start-of-day token driving date-window metrics (TASK-583) — advances at local midnight (via
+    /// `dayTick`) so date-window sections refresh across a day change with no data mutation.
+    @State private var dayToken = Calendar.current.startOfDay(for: Date())
+    private let dayTick = Timer.publish(every: 300, on: .main, in: .common).autoconnect()
+
     init() {
         let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
         _recentCaptures = Query(
@@ -62,12 +67,18 @@ struct DashboardView: View {
         }
         .accessibilityIdentifier("content.dashboard")
         .navigationTitle("Dashboard")
-        .onAppear { recomputeMetrics() }
+        .onAppear { dayToken = Calendar.current.startOfDay(for: Date()); recomputeMetrics() }
         .onChange(of: jobs) { _, _ in recomputeMetrics() }
         // Follow-ups depend on action state, which can change without a `jobs` change.
         .onChange(of: pendingActions) { _, _ in recomputeMetrics() }
         // Resolving a duplicate (a new decision) can change the count without a `jobs` change.
         .onChange(of: duplicateDecisions) { _, _ in recomputeMetrics() }
+        // TASK-583: day rollover — rebuild date-window metrics + re-render live-`Date()` sections.
+        .onReceive(dayTick) { _ in
+            let today = Calendar.current.startOfDay(for: Date())
+            if today != dayToken { dayToken = today }
+        }
+        .onChange(of: dayToken) { _, _ in recomputeMetrics() }
     }
 
     // MARK: - Cached metrics (TASK-363)
@@ -448,7 +459,7 @@ struct DashboardView: View {
 
     private var dailyActivitySection: some View {
         let captureData = recentCaptures.map { (capturedAt: $0.capturedAt, id: $0.id) }
-        let activity = DashboardMetrics.buildDailyActivity(captures: captureData)
+        let activity = DashboardMetrics.buildDailyActivity(captures: captureData, now: dayToken)
 
         return VStack(alignment: .leading, spacing: 10) {
             sectionHeader("Daily Activity (30 days)")
@@ -662,42 +673,6 @@ private struct StatCard: View {
         } else {
             card
         }
-    }
-}
-
-// MARK: - DueBadge
-
-private struct DueBadge: View {
-    let date: Date
-
-    private var label: String {
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        let due = cal.startOfDay(for: date)
-        let days = cal.dateComponents([.day], from: today, to: due).day ?? 0
-        if days < 0 { return "\(-days)d late" }
-        if days == 0 { return "Today" }
-        if days == 1 { return "Tomor." }
-        return "in \(days)d"
-    }
-
-    private var color: Color {
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        let due = cal.startOfDay(for: date)
-        if due < today { return .red }
-        if due == today { return .orange }
-        return .secondary
-    }
-
-    var body: some View {
-        Text(label)
-            .font(.caption2.weight(.semibold).monospacedDigit())
-            .foregroundStyle(color)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(color.opacity(0.12))
-            .clipShape(Capsule())
     }
 }
 

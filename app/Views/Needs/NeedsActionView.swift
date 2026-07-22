@@ -311,7 +311,11 @@ struct NeedsActionView: View {
             do {
                 try await jobService.completeAction(actionID: id)
                 appServices.toastStore.show("Follow-up marked done.", actionLabel: "Undo") {
-                    Task { try? await jobService.reopenAction(actionID: id) }
+                    Task {
+                        do { try await jobService.reopenAction(actionID: id) } catch {
+                            appServices.toastStore.show("Couldn't undo: \(error.localizedDescription)", isError: true)
+                        }
+                    }
                 }
             } catch {
                 errorMessage = error.localizedDescription

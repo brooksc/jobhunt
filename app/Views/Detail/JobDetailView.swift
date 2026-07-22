@@ -440,7 +440,13 @@ private struct StatusPickerButton: View {
                                 try await jobService?.setStatus(s, for: job.id)
                                 if s != old {
                                     appServices.toastStore.show("Status set to \(s.displayName)", actionLabel: "Undo") {
-                                        Task { try? await jobService?.setStatus(old, for: job.id) }
+                                        Task {
+                                            do { try await jobService?.setStatus(old, for: job.id) } catch {
+                                                appServices.toastStore.show(
+                                                    "Couldn't undo: \(error.localizedDescription)", isError: true
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             } catch { appServices.toastStore.show(
@@ -2574,7 +2580,11 @@ private func completeFollowUpWithUndo(actionID: String, jobService: JobService?,
         do {
             try await jobService?.completeAction(actionID: actionID)
             toastStore.show("Follow-up marked done.", actionLabel: "Undo") {
-                Task { try? await jobService?.reopenAction(actionID: actionID) }
+                Task {
+                    do { try await jobService?.reopenAction(actionID: actionID) } catch {
+                        toastStore.show("Couldn't undo: \(error.localizedDescription)", isError: true)
+                    }
+                }
             }
         } catch {
             toastStore.show("Couldn't complete action: \(error.localizedDescription)", isError: true)

@@ -866,9 +866,17 @@ struct JobsView: View {
                 try await svc.setStatusBulk(.archived, jobIDs: ids)
                 await MainActor.run {
                     toast.show("Archived \(ids.count) job\(ids.count == 1 ? "" : "s")", actionLabel: "Undo") {
-                        Task { for (id, status) in priors {
-                            try? await svc.setStatus(status, for: id)
-                        } }
+                        Task {
+                            var failed = 0
+                            for (id, status) in priors {
+                                do { try await svc.setStatus(status, for: id) } catch { failed += 1 }
+                            }
+                            if failed > 0 {
+                                await MainActor.run {
+                                    toast.show("Couldn't undo \(failed) of \(priors.count) job(s).", isError: true)
+                                }
+                            }
+                        }
                     }
                 }
             } catch {
@@ -894,9 +902,17 @@ struct JobsView: View {
                     let changed = priors.filter { $0.1 != status }
                     if !changed.isEmpty {
                         toast.show("Status set to \(status.displayName)", actionLabel: "Undo") {
-                            Task { for (id, old) in changed {
-                                try? await svc.setStatus(old, for: id)
-                            } }
+                            Task {
+                                var failed = 0
+                                for (id, old) in changed {
+                                    do { try await svc.setStatus(old, for: id) } catch { failed += 1 }
+                                }
+                                if failed > 0 {
+                                    await MainActor.run {
+                                        toast.show("Couldn't undo \(failed) of \(changed.count) job(s).", isError: true)
+                                    }
+                                }
+                            }
                         }
                     }
                 }

@@ -42,6 +42,15 @@ struct ContentView: View {
         .overlay(alignment: .bottom) {
             ToastOverlay(store: appServices.toastStore)
         }
+        // Keyboard Shortcuts overlay (TASK-499) — opened by bare `?` (via the key monitor) or the
+        // Help ▸ Keyboard Shortcuts menu item; Escape / the close button dismiss it.
+        .sheet(isPresented: Binding(
+            get: { router.showKeyboardShortcuts },
+            set: { router.showKeyboardShortcuts = $0 }
+        )) {
+            KeyboardShortcutsView(dismiss: { router.showKeyboardShortcuts = false })
+        }
+        .modifier(KeyboardShortcutMonitor(router: router))
         .background(DockBadgeUpdater(unreadCount: unreadJobs.count))
         .onAppear {
             applyAppearance(theme.colorSchemePreference)

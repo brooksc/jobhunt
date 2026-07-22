@@ -1,3 +1,4 @@
+import JobhuntCore
 import SwiftUI
 
 // MARK: - Queue Commands
@@ -81,11 +82,13 @@ struct QualityMenuCommands: Commands {
 struct JobCommandHandlers {
     let hasSelection: Bool
     let openPosting: () -> Void
-    let markApplied: () -> Void
-    let markInterested: () -> Void
     let reRunExtraction: () -> Void
     let archive: () -> Void
     let delete: () -> Void
+    /// Set the current selection's status (⌥1–⌥6, TASK-499). Routes through the same bulk
+    /// status-change + Undo + toast path the Jobs list uses; the ⌥2/⌥3 items cover the old
+    /// Mark Interested / Mark Applied menu commands.
+    let setStatus: (JobStatus) -> Void
 }
 
 private struct JobCommandsKey: FocusedValueKey {
@@ -112,10 +115,14 @@ struct JobMenuCommands: Commands {
                 .keyboardShortcut("o", modifiers: .command)
                 .disabled(!enabled)
             Divider()
-            Button("Mark Applied") { handlers?.markApplied() }
-                .disabled(!enabled)
-            Button("Mark Interested") { handlers?.markInterested() }
-                .disabled(!enabled)
+            // Status progression ⌥1–⌥6 (TASK-499) — acts on the current single/multi selection via
+            // the shared bulk status + Undo path. Disabled without a selection (AC#4).
+            ForEach(statusShortcutOrder, id: \.status) { entry in
+                Button("Set Status: \(entry.title)") { handlers?.setStatus(entry.status) }
+                    .keyboardShortcut(entry.key, modifiers: .option)
+                    .disabled(!enabled)
+            }
+            Divider()
             Button("Re-run Extraction") { handlers?.reRunExtraction() }
                 .keyboardShortcut("r", modifiers: [.command, .control])
                 .disabled(!enabled)

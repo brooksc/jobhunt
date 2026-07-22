@@ -964,11 +964,10 @@ struct JobsView: View {
         return JobCommandHandlers(
             hasSelection: !ids.isEmpty,
             openPosting: { openPostingJobs(ids) },
-            markApplied: { setStatusJobs(.applied, ids) },
-            markInterested: { setStatusJobs(.pursuing, ids) },
             reRunExtraction: { reRunJobs(ids) },
             archive: { archiveJobs(ids) },
-            delete: { jobIDsToDelete = ids }
+            delete: { jobIDsToDelete = ids },
+            setStatus: { status in setStatusJobs(status, ids) }
         )
     }
 

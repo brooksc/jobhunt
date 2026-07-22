@@ -304,6 +304,19 @@ struct JobhuntApp: App {
                         .keyboardShortcut("7", modifiers: [.command, .control])
                     Button("Resumes") { r.navigateToSection(.resumes) }
                         .keyboardShortcut("8", modifiers: [.command, .control])
+
+                    Divider()
+                    // ⌘1–⌘6 — jump to the Jobs list with a smart-folder filter applied (TASK-499).
+                    // Each clears any active saved search and sets the sidebar filter, so the list and
+                    // the sidebar selection stay in sync.
+                    ForEach(filterShortcutOrder, id: \.title) { entry in
+                        Button("Jobs: \(entry.title)") {
+                            r.activeSavedSearchID = nil
+                            r.sidebarJobFilter = entry.status
+                            r.navigateToSection(.jobs)
+                        }
+                        .keyboardShortcut(entry.key, modifiers: .command)
+                    }
                 }
 
                 // ⌘N — Add Job (HIG-7)
@@ -357,12 +370,19 @@ struct JobhuntApp: App {
                 // empty system default ("Help isn't available") with a link to the online docs,
                 // which stay current independent of the app build.
                 CommandGroup(replacing: .help) {
+                    // Keyboard Shortcuts overlay (TASK-499). Bare `?` also opens it (via the key
+                    // monitor); the menu item is the discoverable entry point. It takes over the
+                    // former ⌘? binding so online Help no longer conflicts with it.
+                    Button("Keyboard Shortcuts") { r.showKeyboardShortcuts = true }
+                        .keyboardShortcut("?", modifiers: .command)
+
+                    Divider()
+
                     Button("JobHunt Help") {
                         if let url = URL(string: "https://jobhunt-app.com/help/") {
                             NSWorkspace.shared.open(url)
                         }
                     }
-                    .keyboardShortcut("?", modifiers: .command)
 
                     Button("Report an Issue…") {
                         if let url = URL(string: "https://jobhunt-app.com/issues/") {

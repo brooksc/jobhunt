@@ -157,6 +157,19 @@ public final class Router {
     /// Set by "Add Note" affordances (e.g. the Jobs row context menu) to ask the job detail view
     /// to open the selected job's Timeline tab for note entry. Cleared once consumed.
     public var composeNoteJobID: String?
+    /// Presents the Keyboard Shortcuts overlay (TASK-499) — set by the bare-`?` key monitor and the
+    /// Help ▸ Keyboard Shortcuts menu item; cleared when the overlay is dismissed.
+    public var showKeyboardShortcuts: Bool = false
+    /// Installed by the visible job-detail view so the ⌃Tab / ⌃⇧Tab key monitor can cycle its tabs
+    /// (`forward` = ⌃Tab, `!forward` = ⌃⇧Tab). Nil when no detail is on screen, in which case the
+    /// monitor lets the key event pass through untouched (TASK-499). The `token` lets the outgoing
+    /// detail avoid clearing a hook the incoming detail already installed during a per-job re-mount.
+    public struct DetailTabCycler {
+        public let token: UUID
+        public let cycle: (_ forward: Bool) -> Void
+    }
+
+    public var detailTabCycler: DetailTabCycler?
 
     public init() {}
 

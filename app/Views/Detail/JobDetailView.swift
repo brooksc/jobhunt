@@ -19,6 +19,9 @@ struct JobDetailView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var selectedTab: DetailTab = .overview
+    /// Identifies this detail instance's ⌃Tab cycling hook so a per-job re-mount doesn't clear the
+    /// incoming instance's registration (TASK-499).
+    @State private var cycleToken = UUID()
 
     enum DetailTab: String, CaseIterable {
         case overview = "Overview"
@@ -78,8 +81,26 @@ struct JobDetailView: View {
         .onAppear {
             restoreStickyTab()
             consumeComposeNoteRequest()
+            // TASK-499: let the ⌃Tab / ⌃⇧Tab key monitor cycle this detail's tabs while it's visible.
+            router.detailTabCycler = Router.DetailTabCycler(token: cycleToken) { forward in
+                cycleTab(forward: forward)
+            }
+        }
+        .onDisappear {
+            // Only clear our own hook — during a per-job re-mount the incoming detail may already have
+            // installed its own before this outgoing one disappears.
+            if router.detailTabCycler?.token == cycleToken { router.detailTabCycler = nil }
         }
         .onChange(of: router.composeNoteJobID) { _, _ in consumeComposeNoteRequest() }
+    }
+
+    /// Cycle to the next/previous visible tab with wraparound (⌃Tab / ⌃⇧Tab). Persists like a
+    /// deliberate pick so the sticky default follows the user's last tab (TASK-499).
+    private func cycleTab(forward: Bool) {
+        let tabs = visibleTabs
+        let current = tabs.firstIndex(of: selectedTab) ?? 0
+        let nextIndex = TabCycling.next(count: tabs.count, from: current, forward: forward)
+        stickyTabSelection.wrappedValue = tabs[nextIndex]
     }
 
     /// Picker binding that persists the choice — but ONLY deliberate segmented-control picks. The

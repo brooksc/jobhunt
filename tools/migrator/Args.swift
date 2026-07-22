@@ -15,6 +15,7 @@ enum Mode {
     case recomputeFitMirrors(storePath: String)
     case detectDuplicates(storePath: String)
     case repairDuplicateJobNumbers(storePath: String)
+    case unmarkHeuristicDuplicates(storePath: String)
 
     /// True for modes that open the live store read-WRITE. The store is single-writer, so these
     /// must not run while the Jobhunt app is running (TASK-470). `migrate` writes a NEW output
@@ -25,7 +26,7 @@ enum Mode {
             return false
         case .repairFitScores, .patch, .patchFitScores, .reclean, .backfillModels,
              .pruneOrphanFitScores, .pruneOrphanAttempts, .recomputeFitMirrors, .detectDuplicates,
-             .repairDuplicateJobNumbers:
+             .repairDuplicateJobNumbers, .unmarkHeuristicDuplicates:
             return true
         }
     }
@@ -41,7 +42,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
 
     var repair = false
     var verify = false
-    var patch  = false
+    var patch = false
     var patchFit = false
     var reclean = false
     var backfillModels = false
@@ -50,6 +51,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
     var recomputeFitMirrors = false
     var detectDuplicates = false
     var repairDuplicateJobNumbers = false
+    var unmarkHeuristicDuplicates = false
     var storePath = defaultStorePath
     var inputPath = defaultInputPath
     var outputPath: String? = nil
@@ -79,6 +81,8 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
             detectDuplicates = true
         case "--repair-duplicate-job-numbers":
             repairDuplicateJobNumbers = true
+        case "--unmark-heuristic-duplicates":
+            unmarkHeuristicDuplicates = true
         case "--store":
             i += 1
             guard i < args.count, !args[i].hasPrefix("--") else {
@@ -118,28 +122,33 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
         ("--recompute-fit-mirrors", recomputeFitMirrors),
         ("--detect-duplicates", detectDuplicates),
         ("--repair-duplicate-job-numbers", repairDuplicateJobNumbers),
+        ("--unmark-heuristic-duplicates", unmarkHeuristicDuplicates),
     ]
     let setFlags = modeFlags.filter(\.set).map(\.name)
     // `--output` with no operation flag means migrate; combining it with one is also ambiguous.
     let migrateRequested = outputPath != nil
     if setFlags.count > 1 || (!setFlags.isEmpty && migrateRequested) {
         let names = setFlags + (migrateRequested ? ["--output (migrate)"] : [])
-        fputs("Error: choose exactly one operation — these are mutually exclusive: "
-            + "\(names.joined(separator: ", ")).\n", stderr)
+        fputs(
+            "Error: choose exactly one operation — these are mutually exclusive: "
+                + "\(names.joined(separator: ", ")).\n",
+            stderr
+        )
         return nil
     }
 
-    if repair   { return .repairFitScores(storePath: storePath) }
-    if verify   { return .verify(inputPath: inputPath, storePath: storePath) }
-    if patch    { return .patch(inputPath: inputPath, storePath: storePath) }
+    if repair { return .repairFitScores(storePath: storePath) }
+    if verify { return .verify(inputPath: inputPath, storePath: storePath) }
+    if patch { return .patch(inputPath: inputPath, storePath: storePath) }
     if patchFit { return .patchFitScores(inputPath: inputPath, storePath: storePath) }
-    if reclean  { return .reclean(storePath: storePath) }
+    if reclean { return .reclean(storePath: storePath) }
     if backfillModels { return .backfillModels(storePath: storePath) }
     if pruneOrphanFitScores { return .pruneOrphanFitScores(storePath: storePath) }
     if pruneOrphanAttempts { return .pruneOrphanAttempts(storePath: storePath) }
     if recomputeFitMirrors { return .recomputeFitMirrors(storePath: storePath) }
     if detectDuplicates { return .detectDuplicates(storePath: storePath) }
     if repairDuplicateJobNumbers { return .repairDuplicateJobNumbers(storePath: storePath) }
+    if unmarkHeuristicDuplicates { return .unmarkHeuristicDuplicates(storePath: storePath) }
 
     guard let out = outputPath else {
         fputs("Error: --output <path> is required.\n", stderr)
@@ -155,6 +164,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
         fputs("  JobhuntMigrator --prune-orphan-attempts [--store <path>]\n", stderr)
         fputs("  JobhuntMigrator --recompute-fit-mirrors [--store <path>]\n", stderr)
         fputs("  JobhuntMigrator --detect-duplicates [--store <path>]\n", stderr)
+        fputs("  JobhuntMigrator --unmark-heuristic-duplicates [--store <path>]\n", stderr)
         return nil
     }
     return .migrate(inputPath: inputPath, outputPath: out)

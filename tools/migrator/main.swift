@@ -29,8 +29,11 @@ func requireAppNotRunning() {
         try task.run()
         task.waitUntilExit()
         if task.terminationStatus == 0 {
-            fputs("Error: Jobhunt is running — the store is single-writer. Quit it first:\n"
-                + "  osascript -e 'quit app \"Jobhunt\"'\n", stderr)
+            fputs(
+                "Error: Jobhunt is running — the store is single-writer. Quit it first:\n"
+                    + "  osascript -e 'quit app \"Jobhunt\"'\n",
+                stderr
+            )
             exit(1)
         }
     } catch {
@@ -43,7 +46,6 @@ if mode.mutatesLiveStore {
 }
 
 switch mode {
-
 case let .verify(inputPath, storePath):
     guard FileManager.default.fileExists(atPath: inputPath) else {
         fputs("Error: SQLite DB not found at '\(inputPath)'\n", stderr); exit(1)
@@ -285,6 +287,31 @@ case let .detectDuplicates(storePath):
         fputs("Error: detection failed: \(error)\n", stderr); exit(1)
     }
 
+case let .unmarkHeuristicDuplicates(storePath):
+    guard FileManager.default.fileExists(atPath: storePath) else {
+        fputs("Error: store not found at '\(storePath)'\n", stderr); exit(1)
+    }
+    print("=== Un-mark Heuristic Duplicates (TASK-622) ===")
+    print("Store: \(storePath)")
+    print("(Run with the Jobhunt app quit — the store is single-writer.)")
+    let storeURL = URL(fileURLWithPath: storePath)
+    let schema = Schema(SchemaV1.models)
+    let config = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
+    let container: ModelContainer
+    do {
+        container = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
+    } catch {
+        fputs("Error: could not open store: \(error)\n", stderr); exit(1)
+    }
+    let store = BackgroundStore(modelContainer: container)
+    do {
+        let recovered = try await store.unmarkHeuristicDuplicates()
+        print("Recovery complete: \(recovered) fuzzy-flagged job(s) un-marked and restored "
+            + "(definitive same-posting duplicates kept).")
+    } catch {
+        fputs("Error: recovery failed: \(error)\n", stderr); exit(1)
+    }
+
 case let .repairDuplicateJobNumbers(storePath):
     guard FileManager.default.fileExists(atPath: storePath) else {
         fputs("Error: store not found at '\(storePath)'\n", stderr); exit(1)
@@ -383,10 +410,14 @@ case let .migrate(inputPath, outputPath):
         var parts: [String] = []
         if summary.skippedOrphanEvents > 0 { parts.append("events=\(summary.skippedOrphanEvents)") }
         if summary.skippedOrphanActions > 0 { parts.append("actions=\(summary.skippedOrphanActions)") }
-        if summary.skippedOrphanDataQualityReviews > 0 { parts.append("dataQualityReviews=\(summary.skippedOrphanDataQualityReviews)") }
+        if summary
+            .skippedOrphanDataQualityReviews >
+            0 { parts.append("dataQualityReviews=\(summary.skippedOrphanDataQualityReviews)") }
         if summary.skippedOrphanFitScores > 0 { parts.append("fitScores=\(summary.skippedOrphanFitScores)") }
         if summary.skippedOrphanLLMRequests > 0 { parts.append("llmRequests=\(summary.skippedOrphanLLMRequests)") }
-        if summary.skippedOrphanLLMRequestAttempts > 0 { parts.append("llmRequestAttempts=\(summary.skippedOrphanLLMRequestAttempts)") }
+        if summary
+            .skippedOrphanLLMRequestAttempts >
+            0 { parts.append("llmRequestAttempts=\(summary.skippedOrphanLLMRequestAttempts)") }
         if summary.skippedOrphanContacts > 0 { parts.append("contacts=\(summary.skippedOrphanContacts)") }
         if summary.skippedOrphanCoverLetters > 0 { parts.append("coverLetters=\(summary.skippedOrphanCoverLetters)") }
         print("")

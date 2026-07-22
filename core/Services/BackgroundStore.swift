@@ -1108,6 +1108,55 @@ public actor BackgroundStore {
         return flagged
     }
 
+    /// TASK-622 recovery: un-mark jobs that were auto-marked `.duplicate` by the FUZZY heuristic path
+    /// (before auto-marking was restricted to definitive matches). A job is recovered when its most
+    /// recent `duplicate_detected` event is NOT a definitive (same-ATS-id / exact-hash) match. Restores
+    /// its status from its last `status` timeline event (default `.pursuing`), clears the duplicate
+    /// flag, and logs a status event. Idempotent (recovered jobs are no longer `.duplicate`). Returns
+    /// the number recovered.
+    @discardableResult
+    public func unmarkHeuristicDuplicates() throws -> Int {
+        let marked = try modelContext.fetch(FetchDescriptor<Job>()).filter {
+            $0.status == .duplicate && !($0.duplicateOfJobID?.isEmpty ?? true)
+        }
+        var recovered = 0
+        for job in marked {
+            let dupEvents = job.events.filter { $0.eventType == "duplicate_detected" }
+                .sorted { $0.createdAt < $1.createdAt }
+            guard let latest = dupEvents.last else { continue }
+            let note = (latest.note ?? "").lowercased()
+            // Keep definitive flags (the same posting); recover everything fuzzy.
+            if note.contains("same ats posting id") || note.contains("exact cleaned-description hash") { continue }
+
+            let restored = priorStatusBeforeDuplicate(job)
+            job.duplicateOfJobID = nil
+            job.duplicateConfidence = nil
+            job.status = restored
+            job.updatedAt = Date()
+            let event = JobEvent(
+                eventType: "status",
+                note: "Restored to \(restored.rawValue) — un-marked a heuristic duplicate flag (TASK-622)"
+            )
+            event.job = job
+            modelContext.insert(event)
+            recovered += 1
+        }
+        if recovered > 0 { try modelContext.save() }
+        return recovered
+    }
+
+    /// The job's last real status before it was auto-marked `.duplicate` (which didn't log a status
+    /// event), parsed from the most recent "Status changed from X to Y" event; `.pursuing` if unknown.
+    private func priorStatusBeforeDuplicate(_ job: Job) -> JobStatus {
+        let statusEvents = job.events.filter { $0.eventType == "status" }.sorted { $0.createdAt < $1.createdAt }
+        for event in statusEvents.reversed() {
+            guard let note = event.note, let toRange = note.range(of: "to ", options: .backwards) else { continue }
+            let target = note[toRange.upperBound...].trimmingCharacters(in: .whitespaces)
+            if let status = JobStatus(rawValue: target), status != .duplicate { return status }
+        }
+        return .pursuing
+    }
+
     /// Incremental duplicate check for a SINGLE just-extracted job. If it looks like a duplicate of an
     /// already-captured job, flag it (duplicateOfJobID + confidence + `.duplicate` status + a
     /// `duplicate_detected` event) and return true. Runs after extraction and BEFORE fit scoring so a

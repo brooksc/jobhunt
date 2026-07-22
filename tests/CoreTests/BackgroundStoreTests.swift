@@ -246,6 +246,60 @@ final class BackgroundStoreDuplicateGuardTests: XCTestCase {
         let persisted = try await store.detectAndPersistDomainDuplicates()
         XCTAssertEqual(persisted, 0, "fuzzy pairs are for review, not auto-marking")
     }
+
+    /// TASK-622 recovery: un-mark fuzzy-flagged duplicates (restore prior status), keep definitive ones.
+    func testUnmarkHeuristicDuplicates_recoversFuzzyKeepsDefinitive() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+
+        func markedDuplicate(id: String, num: Int, reason: String, priorStatus: JobStatus?) -> Job {
+            let cap = Capture(url: "https://x.com/\(id)", pageTitle: "T", rawHash: "rh\(id)")
+            let job = Job(id: id, company: "Co", title: "T", status: .duplicate, extractionStatus: .succeeded)
+            job.jobNumber = num
+            job.duplicateOfJobID = "canonical"
+            job.duplicateConfidence = 0.7
+            job.capture = cap
+            if let priorStatus {
+                let statusEv = JobEvent(eventType: "status", note: "Status changed from new to \(priorStatus.rawValue)")
+                statusEv.job = job
+                job.events.append(statusEv)
+            }
+            let dupEv = JobEvent(eventType: "duplicate_detected", note: "Flagged as a possible duplicate — \(reason)")
+            dupEv.job = job
+            job.events.append(dupEv)
+            return job
+        }
+        let fuzzy = markedDuplicate(
+            id: "f",
+            num: 1,
+            reason: "same company + similar title on x.com",
+            priorStatus: .applied
+        )
+        let fuzzyNoHistory = markedDuplicate(id: "fn", num: 2, reason: "preferred a.com over b.com", priorStatus: nil)
+        let definitive = markedDuplicate(
+            id: "d",
+            num: 3,
+            reason: "same ATS posting id in the source URL",
+            priorStatus: .pursuing
+        )
+        for job in [fuzzy, fuzzyNoHistory, definitive] {
+            try await store.insert(job)
+        }
+
+        let recovered = try await store.unmarkHeuristicDuplicates()
+        XCTAssertEqual(recovered, 2, "both fuzzy flags recovered; the definitive one kept")
+
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        let byID = Dictionary(uniqueKeysWithValues: jobs.map { ($0.id, $0) })
+        XCTAssertEqual(byID["f"]?.status, .applied, "restored from its status history")
+        XCTAssertNil(byID["f"]?.duplicateOfJobID)
+        XCTAssertEqual(byID["fn"]?.status, .pursuing, "defaults to pursuing when no status history")
+        XCTAssertEqual(byID["d"]?.status, .duplicate, "definitive (same-ATS-id) flag is preserved")
+
+        // Idempotent — a second run recovers nothing.
+        let again = try await store.unmarkHeuristicDuplicates()
+        XCTAssertEqual(again, 0)
+    }
 }
 
 // MARK: - Minimal no-op provider (local to this file)

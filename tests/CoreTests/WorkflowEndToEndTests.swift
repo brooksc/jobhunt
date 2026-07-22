@@ -95,16 +95,24 @@ final class WorkflowEndToEndTests: XCTestCase {
         XCTAssertTrue(extracted.allSatisfy { $0.extractionStatus == .succeeded })
         XCTAssertTrue(extracted.allSatisfy { $0.company == "Acme" && $0.title == "Staff Engineer" })
 
-        // ── Stage 3: DEDUP — heuristic prefers the company domain over the ATS ───
+        // ── Stage 3: DEDUP — a fuzzy cross-post is a REVIEW candidate, NOT auto-marked (TASK-622) ──
+        // The two postings share company + title but have different cleaned text and no shared ATS id,
+        // so it's a heuristic (similar_hash) match — surfaced for the user to confirm, not auto-flagged.
         let marked = try await store.detectAndPersistDomainDuplicates()
-        XCTAssertEqual(marked, 1, "the greenhouse cross-post should be flagged as a duplicate")
+        XCTAssertEqual(marked, 0, "a fuzzy cross-post is surfaced for review, not auto-flagged")
         let dupes = try await store.fetch(FetchDescriptor<Job>()).filter { $0.duplicateOfJobID != nil }
-        XCTAssertEqual(dupes.count, 1)
-        // The kept (canonical) job is the company-domain posting.
-        let keptID = try XCTUnwrap(dupes.first?.duplicateOfJobID)
-        let afterDedup = try await store.fetch(FetchDescriptor<Job>())
-        let kept = try XCTUnwrap(afterDedup.first { $0.id == keptID })
-        XCTAssertEqual(kept.capture?.url, "https://acme.com/jobs/staff-eng")
+        XCTAssertEqual(dupes.count, 0)
+        // It IS detected as a review pair, preferring the company domain over the ATS as canonical.
+        let jobsForReview = try await store.fetch(FetchDescriptor<Job>())
+        let reviewPairs = DuplicateDetector().duplicateGroups(
+            snapshots: DuplicateDetector.reviewSnapshots(jobs: jobsForReview), resolvedHashes: []
+        )
+        XCTAssertEqual(reviewPairs.count, 1, "the greenhouse cross-post is a review candidate")
+        XCTAssertEqual(reviewPairs.first?.kind, .similarHash)
+        XCTAssertEqual(reviewPairs.first?.original.sourceURL, "https://acme.com/jobs/staff-eng")
+        XCTAssertEqual(reviewPairs.first?.candidate.sourceURL, "https://boards.greenhouse.io/acme/jobs/55")
+        let keptID = try XCTUnwrap(reviewPairs.first?.original.id) // the company-domain posting is canonical
+        let kept = try XCTUnwrap(jobsForReview.first { $0.id == keptID })
 
         // ── Stage 4: QUALITY — a company-less job surfaces a quality issue ───────
         let badJob = Job(title: "Mystery role", extractionStatus: .succeeded) // company nil

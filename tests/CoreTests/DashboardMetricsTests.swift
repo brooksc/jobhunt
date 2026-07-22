@@ -57,4 +57,69 @@ final class DashboardMetricsTests: XCTestCase {
         // swiftlint:disable:next empty_count — `.count` is the per-day capture tally, not Collection.count
         XCTAssertTrue(at30.allSatisfy { $0.count == 0 }, "capture falls out of the window after 30 days")
     }
+
+    // MARK: - TASK-623: daily recap
+
+    private func ev(_ type: String, _ note: String?, _ date: Date) -> DashboardMetrics.RecapEvent {
+        .init(eventType: type, note: note, occurredAt: date)
+    }
+
+    func testDailyRecap_countsUserActionsAndExcludesBackground() {
+        let day = fixed(2026, 3, 15)
+        let events: [DashboardMetrics.RecapEvent] = [
+            ev("capture", nil, fixed(2026, 3, 15, hour: 9)),
+            ev("captured", nil, fixed(2026, 3, 15, hour: 8)), // legacy capture name
+            ev("status", "Status changed from new to pursuing", fixed(2026, 3, 15, hour: 10)),
+            ev("status", "Status changed from pursuing to applied", fixed(2026, 3, 15, hour: 11)),
+            ev("status", "Status changed from applied to interview", fixed(2026, 3, 15, hour: 12)),
+            ev("status", "Status changed from new to passed", fixed(2026, 3, 15, hour: 13)),
+            ev("duplicate_decided", "duplicate", fixed(2026, 3, 15, hour: 14)),
+            ev("note", "called recruiter", fixed(2026, 3, 15, hour: 15)),
+            // Background / non-user — must NOT count:
+            ev("extraction", "gemini", fixed(2026, 3, 15, hour: 9)),
+            ev("extraction_queued", nil, fixed(2026, 3, 15, hour: 9)),
+            ev("duplicate_detected", nil, fixed(2026, 3, 15, hour: 9)),
+            ev("availability", "gone", fixed(2026, 3, 15, hour: 9)),
+            // Different day — must NOT count:
+            ev("capture", nil, fixed(2026, 3, 14, hour: 9))
+        ]
+        let recap = DashboardMetrics.buildDailyRecap(events: events, followUpCompletions: [], day: day, calendar: cal)
+        XCTAssertEqual(recap.captured, 2)
+        XCTAssertEqual(recap.movedToInterested, 1)
+        XCTAssertEqual(recap.applied, 1)
+        XCTAssertEqual(recap.interviews, 1)
+        XCTAssertEqual(recap.triaged, 1)
+        XCTAssertEqual(recap.duplicatesResolved, 1)
+        XCTAssertEqual(recap.notesAdded, 1)
+        XCTAssertEqual(recap.total, 8, "8 meaningful actions; background + other-day events excluded")
+        XCTAssertTrue(recap.hasActivity)
+    }
+
+    func testDailyRecap_emptyWhenNoUserActivity() {
+        let day = fixed(2026, 3, 15)
+        let events = [ev("extraction", "gemini", fixed(2026, 3, 15)), ev("duplicate_detected", nil, fixed(2026, 3, 15))]
+        let recap = DashboardMetrics.buildDailyRecap(events: events, followUpCompletions: [], day: day, calendar: cal)
+        XCTAssertFalse(recap.hasActivity)
+        XCTAssertEqual(recap.total, 0)
+    }
+
+    func testDailyRecap_countsFollowUpsCompletedOnTheDay() {
+        let day = fixed(2026, 3, 15)
+        let recap = DashboardMetrics.buildDailyRecap(
+            events: [],
+            followUpCompletions: [fixed(2026, 3, 15, hour: 9), fixed(2026, 3, 15, hour: 16), fixed(2026, 3, 14)],
+            day: day, calendar: cal
+        )
+        XCTAssertEqual(recap.followUpsCompleted, 2, "only the two completed today count")
+    }
+
+    func testStatusTarget_parsesCurrentAndLegacyNotes() {
+        XCTAssertEqual(DashboardMetrics.statusTarget(fromNote: "Status changed from applied to rejected"), "rejected")
+        XCTAssertEqual(DashboardMetrics.statusTarget(fromNote: "Status changed from new to pursuing"), "pursuing")
+        XCTAssertEqual(DashboardMetrics.statusTarget(fromNote: "applied"), "applied", "legacy single-token note")
+        XCTAssertEqual(DashboardMetrics.statusTarget(fromNote: "saved"), "pursuing", "legacy vocab mapped to current")
+        XCTAssertEqual(DashboardMetrics.statusTarget(fromNote: "not_available"), "expired")
+        XCTAssertNil(DashboardMetrics.statusTarget(fromNote: nil))
+        XCTAssertNil(DashboardMetrics.statusTarget(fromNote: "  "))
+    }
 }

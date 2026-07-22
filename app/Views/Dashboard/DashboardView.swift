@@ -23,6 +23,10 @@ struct DashboardView: View {
     /// Resolved duplicate decisions — feed the unresolved-pair count so it matches the Duplicates
     /// screen / sidebar badge (TASK-581).
     @Query private var duplicateDecisions: [DuplicateDecision]
+    /// Job events — the authoritative activity log behind the "Today" recap (TASK-623).
+    @Query private var jobEvents: [JobEvent]
+    /// Completed follow-up actions — the "follow-ups done today" count in the recap (TASK-623).
+    @Query(filter: #Predicate<JobAction> { $0.completedAt != nil }) private var completedActions: [JobAction]
 
     /// Cached aggregate metrics — recomputed only when `jobs` changes, not on every render.
     @State private var summary: JobStatusSummary = .zero
@@ -50,6 +54,8 @@ struct DashboardView: View {
             LazyVStack(alignment: .leading, spacing: 20) {
                 SetupChecklistCard(settings: appServices.settings)
                 statCardsSection
+                TodayRecapCard(events: jobEvents,
+                               followUpCompletions: completedActions.compactMap(\.completedAt), day: dayToken)
                 HStack(alignment: .top, spacing: 16) {
                     pipelineFunnelSection
                     followUpsDueSection

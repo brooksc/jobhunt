@@ -692,8 +692,8 @@ public enum AvailabilityChecker {
 
         let all = newStyleRows + legacyRows
         let eligible = all.filter { job in
-            guard job.status != .passed, job.status != .archived,
-                  job.status != .closed, job.status != .expired else { return false }
+            // Skip terminal statuses — incl. `.duplicate`: no point expiring a resolved dup (TASK-626).
+            guard !job.status.isTerminal else { return false }
             if alwaysCheckStatuses.contains(job.status.rawValue) { return true } // checked every run
             let ageDate = job.capturedAtDenormalized ?? job.capture?.capturedAt ?? job.createdAt
             return ageDate <= cutoff

@@ -840,6 +840,18 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         XCTAssertTrue(withPursued.allSatisfy { $0.status == .pursuing || $0.status == .applied })
     }
 
+    /// TASK-626: a job the user resolved as a duplicate must NOT be availability-checked — expiring a
+    /// duplicate is wasted work (the user tracks the original). `.duplicate` is a terminal status.
+    func testFetchStaleEligibleJobs_excludesDuplicates() async throws {
+        let staleDate = Date().addingTimeInterval(-30 * 86400)
+        _ = try makeJobWithCapture(url: "https://x.com/live", title: "Live", status: .pursuing, capturedAt: staleDate)
+        _ = try makeJobWithCapture(url: "https://x.com/dup", title: "Dup", status: .duplicate, capturedAt: staleDate)
+
+        let eligible = try await AvailabilityChecker.fetchStaleEligibleJobs(store: store, staleDays: 21, limit: nil)
+        XCTAssertEqual(eligible.count, 1, "the duplicate must be excluded; only the live pursuing job is eligible")
+        XCTAssertTrue(eligible.allSatisfy { $0.status != .duplicate })
+    }
+
     func testCheckJobsReturnsZeroForNoJobs() async {
         let result = await AvailabilityChecker.checkJobs([], store: store, session: session)
         XCTAssertEqual(result.checked, 0)

@@ -40,6 +40,12 @@ struct JobsView: View {
     @State private var jobIDsToDelete: [String] = []
     /// Mirror of router.sidebarJobFilter as @State so SwiftUI reliably re-renders.
     @State private var localSidebarFilter: JobStatus?
+    /// Cached filter+sort result (TASK-610). `filteredJobs` was recomputed live and read ~4× per body,
+    /// so an active text search faulted each job's Capture + lowercased its ~10 KB description several
+    /// times per keystroke. Recompute only when `filterSignature` changes. The signature includes
+    /// `count + max(updatedAt)`, so in-place mutations (a status change) still refresh it — the exact
+    /// staleness that made the previous author abandon caching.
+    @State private var cachedFilteredJobs: [Job] = []
 
     var body: some View {
         jobListWithModifiers
@@ -349,6 +355,11 @@ struct JobsView: View {
                 localSidebarFilter = router.sidebarJobFilter
                 // #7: restore the persisted sort when no saved search is dictating one.
                 if router.activeSavedSearchID == nil { applyPersistedSort() }
+                cachedFilteredJobs = computeFilteredJobs()
+            }
+            // Recompute the filter/sort only when an input actually changes (TASK-610).
+            .onChange(of: filterSignature) { _, _ in
+                cachedFilteredJobs = computeFilteredJobs()
             }
             .onChange(of: filterState.sortKey) { _, newKey in
                 appServices.settings.jobsSortKey = newKey.rawValue
@@ -712,11 +723,27 @@ struct JobsView: View {
         Set(filteredJobs.map(\.id))
     }
 
-    /// Computed live each render so an in-place status change (e.g. New → Interested) immediately
-    /// drops the job out of the active smart-folder/filter — a few hundred rows is imperceptible
-    /// (a cached @State version went stale because in-place mutations don't trip onChange).
     private var filteredJobs: [Job] {
-        computeFilteredJobs()
+        cachedFilteredJobs
+    }
+
+    /// Cheap per-body change signal for `cachedFilteredJobs`. O(N) over one `updatedAt` read per job
+    /// (no Capture fault, no description lowercasing) — far cheaper than the full filter, and it
+    /// changes whenever any input to the filter/sort could change: the query, tokens, filters, the
+    /// sidebar folder, insert/delete (count), or any job edit/status change (max updatedAt).
+    private var filterSignature: Int {
+        var hasher = Hasher()
+        hasher.combine(searchText)
+        hasher.combine(localSidebarFilter)
+        hasher.combine(searchTokens)
+        hasher.combine(filterState)
+        hasher.combine(allJobs.count)
+        var maxUpdated = Date.distantPast
+        for job in allJobs where job.updatedAt > maxUpdated {
+            maxUpdated = job.updatedAt
+        }
+        hasher.combine(maxUpdated)
+        return hasher.finalize()
     }
 
     private func computeFilteredJobs() -> [Job] {

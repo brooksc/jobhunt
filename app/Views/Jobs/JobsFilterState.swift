@@ -16,7 +16,7 @@ enum JobsSortKey: String, CaseIterable {
     case lastOpenedAt
 }
 
-struct JobsFilterState: Equatable {
+struct JobsFilterState: Equatable, Hashable {
     var statusFilter: Set<JobStatus>? // nil = all
     var remoteFilter: Set<RemoteType>? // nil = all
     var searchText: String = ""

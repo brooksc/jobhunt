@@ -1,10 +1,10 @@
 ---
 id: TASK-544
 title: 'Dock: initialize unread badge on launch, not only after count changes'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 07:30'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-07-22 00:47'
 labels:
   - audit
   - ux

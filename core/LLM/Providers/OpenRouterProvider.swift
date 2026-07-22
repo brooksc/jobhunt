@@ -5,7 +5,7 @@ import Foundation
 /// Mirrors postOpenAICompatibleCompletion() with openrouter base URL.
 public final class OpenRouterProvider: LLMProvider, @unchecked Sendable {
     public let id = "openrouter"
-    public let concurrencyLimit = 3
+    public let concurrencyLimit = 8
     /// Max distinct free models tried per request when rotating (TASK-462, Electron parity).
     static let maxRotationModels = 4
 

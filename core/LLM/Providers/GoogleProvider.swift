@@ -10,7 +10,7 @@ import Foundation
 /// Google Generative Language v1beta API.
 public final class GoogleProvider: LLMProvider, @unchecked Sendable {
     public let id = "google"
-    public let concurrencyLimit = 3
+    public let concurrencyLimit = 8
     /// Bounded 429 retry budget + per-wait clamp (TASK-463, Electron parity ~4 RL retries).
     static let maxRateLimitRetries = 4
     /// 180 (was 60): honor a legitimate Retry-After up to a couple of minutes rather than retrying

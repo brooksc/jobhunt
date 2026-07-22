@@ -4,7 +4,7 @@ import Foundation
 /// Concurrency limit 3 to mirror legacy HOSTED_CONCURRENCY.
 public final class OpenAIProvider: LLMProvider, @unchecked Sendable {
     public let id = "openai"
-    public let concurrencyLimit = 3
+    public let concurrencyLimit = 8
 
     private let apiKey: String
     private let model: String

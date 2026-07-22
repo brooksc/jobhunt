@@ -13,11 +13,15 @@ public struct AdaptiveConcurrency: Equatable {
     public private(set) var effective: Int
     private var consecutiveSuccesses: Int
 
-    public init(ceiling: Int, promoteAfter: Int = 10) {
+    /// Starts at `floor` (a conservative number of in-flight requests) and probes UP toward `ceiling`
+    /// after sustained success, rather than starting at the ceiling (TASK-609). This makes the raised
+    /// per-provider ceilings safe on low-quota keys: a free tier hits a 429 partway up and self-limits,
+    /// while a paid tier keeps climbing to the ceiling — no need to detect the account's tier.
+    public init(ceiling: Int, floor: Int = 3, promoteAfter: Int = 10) {
         let clampedCeiling = max(1, ceiling)
         self.ceiling = clampedCeiling
         self.promoteAfter = max(1, promoteAfter)
-        effective = clampedCeiling
+        effective = min(max(1, floor), clampedCeiling)
         consecutiveSuccesses = 0
     }
 

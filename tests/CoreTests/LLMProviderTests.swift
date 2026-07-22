@@ -133,7 +133,7 @@ final class OpenAIProviderTests: LLMMockProviderTestCase {
 
     func testConcurrencyLimit() {
         let provider = OpenAIProvider(apiKey: "sk-test")
-        XCTAssertEqual(provider.concurrencyLimit, 3)
+        XCTAssertEqual(provider.concurrencyLimit, 8)
     }
 
     // TASK-455: a 2xx with empty message content is a no-response, not empty success.
@@ -367,7 +367,7 @@ final class AnthropicProviderTests: LLMMockProviderTestCase {
     }
 
     func testConcurrencyLimit() {
-        XCTAssertEqual(AnthropicProvider(apiKey: "").concurrencyLimit, 2)
+        XCTAssertEqual(AnthropicProvider(apiKey: "").concurrencyLimit, 8)
     }
 }
 
@@ -502,7 +502,7 @@ final class GoogleProviderTests: LLMMockProviderTestCase {
     }
 
     func testConcurrencyLimit() {
-        XCTAssertEqual(GoogleProvider(apiKey: "").concurrencyLimit, 3)
+        XCTAssertEqual(GoogleProvider(apiKey: "").concurrencyLimit, 8)
     }
 
     // MARK: - TASK-481: strict structured output via responseSchema
@@ -705,7 +705,7 @@ final class OpenRouterProviderTests: LLMMockProviderTestCase {
     }
 
     func testConcurrencyLimit() {
-        XCTAssertEqual(OpenRouterProvider(apiKey: "").concurrencyLimit, 3)
+        XCTAssertEqual(OpenRouterProvider(apiKey: "").concurrencyLimit, 8)
     }
 }
 

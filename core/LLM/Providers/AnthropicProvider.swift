@@ -2,7 +2,8 @@
 import Foundation
 
 /// Anthropic Messages API provider.
-/// Uses x-api-key header; maps to /v1/messages; concurrency limit 2.
+/// Uses x-api-key header; maps to /v1/messages. `concurrencyLimit` is the adaptive-concurrency
+/// ceiling (probed up to from a lower floor; TASK-609), not a fixed number of in-flight requests.
 /// Mirrors postAnthropicCompletion() from server/extract.js.
 ///
 /// Structured output: when the request carries a `structuredOutput` kind (or an explicit
@@ -12,7 +13,7 @@ import Foundation
 /// engine's JSON repair handle the free-form text.
 public final class AnthropicProvider: LLMProvider, @unchecked Sendable {
     public let id = "anthropic"
-    public let concurrencyLimit = 2
+    public let concurrencyLimit = 8
 
     private let apiKey: String
     private let model: String

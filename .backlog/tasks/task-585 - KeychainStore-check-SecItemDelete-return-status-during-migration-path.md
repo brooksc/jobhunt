@@ -1,10 +1,10 @@
 ---
 id: TASK-585
 title: 'KeychainStore: check SecItemDelete return status during migration path'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-02 21:51'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-07-22 00:46'
 labels: []
 dependencies:
   - TASK-569

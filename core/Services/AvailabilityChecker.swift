@@ -258,6 +258,24 @@ public enum AvailabilityChecker {
         return false
     }
 
+    /// LinkedIn `…/jobs/search/?currentJobId=N` and `…/jobs/collections/…?currentJobId=N` URLs point at
+    /// a results page that merely highlights a job — the posting's "No longer accepting applications" /
+    /// closed banner is NOT in that page's server response, so a removed posting reads as available
+    /// (jobs #218/#224). Rewrite such URLs to the public posting view `…/jobs/view/N`, where the closed
+    /// banner IS served and the existing detection (`bodyGoneReason`, `isLinkedInClosedJob`) can see it.
+    /// Any non-matching URL (including an existing `/jobs/view/` URL) is returned unchanged.
+    static func linkedInCanonicalJobURL(_ url: URL) -> URL {
+        guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let host = comps.host?.lowercased(), host.hasSuffix("linkedin.com"),
+              comps.path.contains("/jobs/"), !comps.path.contains("/jobs/view/"),
+              let jobID = comps.queryItems?.first(where: { $0.name == "currentJobId" })?.value,
+              !jobID.isEmpty, jobID.allSatisfy(\.isNumber),
+              let viewURL = URL(string: "https://www.linkedin.com/jobs/view/\(jobID)") else {
+            return url
+        }
+        return viewURL
+    }
+
     // MARK: - Workday CXS availability
 
     /// Workday postings are fully client-rendered: the HTML job URL returns a generic 200 shell
@@ -276,13 +294,15 @@ public enum AvailabilityChecker {
               let tenant = host.split(separator: ".").first.map(String.init), !tenant.isEmpty else {
             return nil
         }
-        // The site is the path segment immediately before "job" (handles both with/without a locale
-        // segment, e.g. `/en-US/{site}/job/…` and `/{site}/job/…`).
+        // The site is the path segment immediately before the job marker. Workday deep-links come in
+        // two shapes — `/[locale/]{site}/job/{slug}_{reqId}` and the newer share/detail format
+        // `/[locale/]{site}/details/{slug}_{reqId}` (job #195) — so accept either "job" or "details".
         let segments = comps.path.split(separator: "/").map(String.init)
-        guard let jobIdx = segments.firstIndex(of: "job"), jobIdx >= 1, jobIdx + 1 < segments.count else {
+        guard let markerIdx = segments.firstIndex(where: { $0 == "job" || $0 == "details" }),
+              markerIdx >= 1, markerIdx + 1 < segments.count else {
             return nil
         }
-        let site = segments[jobIdx - 1]
+        let site = segments[markerIdx - 1]
         // Requisition id: trailing `_P123456` token of the final segment, minus any `-N` posting index.
         guard let last = segments.last, let underscore = last.lastIndex(of: "_") else { return nil }
         var reqId = String(last[last.index(after: underscore)...])
@@ -366,8 +386,9 @@ public enum AvailabilityChecker {
     ) async -> URLAvailabilityResult {
         // ATS blocks plain-HTTP external requests, so upgrade http→https for the request (and use the
         // upgraded URL as the redirect-comparison baseline, so the upgrade isn't itself counted as a
-        // redirect). TASK-594.
-        let requestURL = httpsUpgraded(url)
+        // redirect). TASK-594. Then canonicalize a LinkedIn search/collections deep-link to the posting
+        // view so a removed posting's closed banner is actually in the fetched response (job #218/#224).
+        let requestURL = linkedInCanonicalJobURL(httpsUpgraded(url))
 
         // Workday: the HTML is a client-rendered 200 shell whether or not the job exists, so the
         // body/redirect heuristics below can't see a removed requisition. Consult the CXS JSON API by

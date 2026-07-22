@@ -339,6 +339,66 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
         XCTAssertNil(AvailabilityChecker.workdayCXSQuery(for: url))
     }
 
+    /// TASK-613 (job #195): Workday's newer `/details/` deep-link format must parse like `/job/`.
+    func testWorkdayCXSQuery_detailsPathFormat_parses() throws {
+        let url = try XCTUnwrap(URL(string:
+            "https://zillow.wd5.myworkdayjobs.com/en-US/Zillow_Group_External/details/Principal-Product-Technologist_P750648-2"))
+        let cxs = try XCTUnwrap(AvailabilityChecker.workdayCXSQuery(for: url))
+        XCTAssertEqual(
+            cxs.endpoint.absoluteString,
+            "https://zillow.wd5.myworkdayjobs.com/wday/cxs/zillow/Zillow_Group_External/jobs"
+        )
+        XCTAssertEqual(cxs.reqId, "P750648")
+    }
+
+    /// TASK-613 (job #195): a removed requisition on a `/details/` URL is now consulted via CXS and
+    /// classified gone (previously the `/details/` URL wasn't recognized, so CXS was skipped).
+    func testWorkdayDetailsURL_removedRequisition_isGone() async throws {
+        let url = "https://zillow.wd5.myworkdayjobs.com/en-US/Zillow_Group_External/details/Principal-PT_P750648-2"
+        MockURLProtocol.handlers = [("wday/cxs", { _ in
+            makeResponse(url: url, status: 200, body: #"{"total":0,"jobPostings":[]}"#)
+        })]
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: url)), title: "Principal Product Technologist", session: session
+        )
+        guard case let .gone(reason) = result else { XCTFail("Expected .gone, got \(result)"); return }
+        XCTAssertTrue(reason.contains("P750648"), "reason should cite the requisition, got: \(reason)")
+    }
+
+    // MARK: LinkedIn search-URL canonicalization (jobs #218/#224)
+
+    /// TASK-613: a `/jobs/search/?currentJobId=N` deep-link is rewritten to the posting view so the
+    /// closed banner is visible; other URLs (including an existing `/jobs/view/`) are unchanged.
+    func testLinkedInCanonicalJobURL_rewritesSearchToView() throws {
+        let search = try XCTUnwrap(URL(string:
+            "https://www.linkedin.com/jobs/search/?currentJobId=4442611206&keywords=remote&start=25"))
+        XCTAssertEqual(
+            AvailabilityChecker.linkedInCanonicalJobURL(search).absoluteString,
+            "https://www.linkedin.com/jobs/view/4442611206"
+        )
+        let view = try XCTUnwrap(URL(string: "https://www.linkedin.com/jobs/view/4442611206"))
+        XCTAssertEqual(AvailabilityChecker.linkedInCanonicalJobURL(view), view, "view URLs are untouched")
+        let other = try XCTUnwrap(URL(string: "https://example.com/jobs/search/?currentJobId=1"))
+        XCTAssertEqual(AvailabilityChecker.linkedInCanonicalJobURL(other), other, "non-LinkedIn is untouched")
+    }
+
+    /// TASK-613 (jobs #218/#224): checking a LinkedIn search deep-link for a closed posting reaches the
+    /// view page (where the "no longer accepting" banner is served) and classifies it gone.
+    func testLinkedInSearchURL_closedPosting_isGone() async throws {
+        let search = "https://www.linkedin.com/jobs/search/?currentJobId=4442611206&start=25"
+        MockURLProtocol.handlers = [("linkedin.com/jobs/view/4442611206", { _ in
+            makeResponse(
+                url: "https://www.linkedin.com/jobs/view/4442611206",
+                status: 200,
+                body: "<h1>Staff Program Manager</h1>we are no longer accepting applications for this role"
+            )
+        })]
+        let result = try await AvailabilityChecker.checkURL(
+            XCTUnwrap(URL(string: search)), title: "Staff Program Manager", session: session
+        )
+        guard case .gone = result else { XCTFail("Expected .gone, got \(result)"); return }
+    }
+
     /// Job #119: a removed Workday requisition still returns a 200 HTML shell, but the CXS API lists
     /// zero matching postings — that absence is the gone signal.
     func testWorkdayRemovedRequisition_notInCXS_isGone() async throws {

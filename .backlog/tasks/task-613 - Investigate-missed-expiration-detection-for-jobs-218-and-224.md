@@ -1,10 +1,10 @@
 ---
 id: TASK-613
 title: 'Investigate missed expiration detection for jobs 195, 218, and 224'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-22 17:55'
-updated_date: '2026-07-22 17:55'
+updated_date: '2026-07-22 18:45'
 labels:
   - bug
   - availability

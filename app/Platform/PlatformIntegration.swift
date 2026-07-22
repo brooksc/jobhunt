@@ -28,6 +28,10 @@ public final class PlatformIntegration: NSObject, ObservableObject {
     /// A single capture (or a handful) notifies per job; a larger drain summarizes instead of firing
     /// one banner per job. 3 keeps interactive captures individual while taming bulk re-extractions.
     private let maxIndividualReadyNotifications = 3
+    /// "Strong Match!" cutoff on the fit **overall** score, which is on a 0–100 scale (see
+    /// `FitScorer`/`JobFitScore.overall`). Only used to pick the notification title/emphasis — low
+    /// stakes — so 75 is kept deliberately (TASK-612). If the fit-score scale is ever rescaled
+    /// (e.g. to 0–10), this magic number must move with it, hence the explicit tie to the 0–100 scale.
     private let strongMatchThreshold = 75
 
     public init(router: Router, modelContainer: ModelContainer) {

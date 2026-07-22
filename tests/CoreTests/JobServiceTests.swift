@@ -906,6 +906,41 @@ final class JobServiceTests: XCTestCase {
         XCTAssertEqual(notExpired.count, 2, "unspecified jobs must not be marked expired")
     }
 
+    /// TASK-504: the first transition to .applied stamps appliedAt; a later status bounce that returns
+    /// to .applied must not overwrite the original application date.
+    func testSetStatusApplied_stampsAppliedAtOnceAndNeverOverwrites() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+        _ = try await svc.ingestCapture(CapturePayload(url: "https://x.com/1", pageTitle: "J", visibleText: "t"))
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        let jobID = try XCTUnwrap(jobs.first?.id)
+
+        try await svc.setStatus(.applied, for: jobID)
+        let firstApplied = try await store.fetch(FetchDescriptor<Job>()).first?.appliedAt
+        XCTAssertNotNil(firstApplied, "becoming applied stamps appliedAt")
+
+        // Bounce away and back to applied — the stamp must be preserved.
+        try await svc.setStatus(.pursuing, for: jobID)
+        try await svc.setStatus(.applied, for: jobID)
+        let secondApplied = try await store.fetch(FetchDescriptor<Job>()).first?.appliedAt
+        XCTAssertEqual(secondApplied, firstApplied, "re-applying must not overwrite the original applied date")
+    }
+
+    /// A status change that is not .applied must not stamp appliedAt.
+    func testSetStatus_nonApplied_doesNotStampAppliedAt() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+        _ = try await svc.ingestCapture(CapturePayload(url: "https://x.com/2", pageTitle: "J", visibleText: "t"))
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        let jobID = try XCTUnwrap(jobs.first?.id)
+
+        try await svc.setStatus(.pursuing, for: jobID)
+        let applied = try await store.fetch(FetchDescriptor<Job>()).first?.appliedAt
+        XCTAssertNil(applied, "a non-applied status must leave appliedAt nil")
+    }
+
     /// TASK-515: manual expiration is a terminal decision — each affected job must get an auditable
     /// "status" timeline event (routed through setJobStatus), not a silent bulk status flip.
     func testMarkExpired_recordsStatusEventPerJob() async throws {

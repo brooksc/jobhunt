@@ -138,6 +138,11 @@ public actor BackgroundStore {
             guard let job = jobsByID[id] else { continue }
             let oldStatus = job.status
             job.status = status
+            // TASK-504: stamp the first time the job becomes .applied; never overwrite on re-apply so
+            // "Applied {date}" reflects the original application, not a later status bounce.
+            if status == .applied, job.appliedAt == nil {
+                job.appliedAt = Date()
+            }
             if status != .duplicate, job.duplicateOfJobID != nil {
                 job.duplicateOfJobID = nil
                 job.duplicateConfidence = nil

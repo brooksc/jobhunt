@@ -524,6 +524,16 @@ private struct DetailFooter: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
+            // TASK-504: surface the application date once the job has been applied to.
+            if let appliedAt = job.appliedAt {
+                Label(
+                    "Applied \(appliedAt.formatted(date: .abbreviated, time: .omitted))",
+                    systemImage: "paperplane.fill"
+                )
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+                .labelStyle(.titleAndIcon)
+            }
             Spacer()
             if let action = pendingAction {
                 HStack(spacing: 6) {

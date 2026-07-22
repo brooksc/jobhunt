@@ -43,6 +43,10 @@ public final class Job {
     /// Electron `meets_criteria`). Nil for jobs extracted before this field / when not computed.
     public var meetsCriteria: Bool?
     public var lastOpenedAt: Date?
+    /// When the job's status first became `.applied` (TASK-504). Stamped once by `setJobStatus` and
+    /// never overwritten on re-apply; nil for jobs applied before this field existed (optional, so it's
+    /// a lightweight in-place addition, not a SchemaV2 change). Surfaced as "Applied {date}".
+    public var appliedAt: Date?
     public var unread: Bool
     public var createdAt: Date
     public var updatedAt: Date
@@ -109,6 +113,7 @@ public final class Job {
         extractionConfidence: Double? = nil,
         meetsCriteria: Bool? = nil,
         lastOpenedAt: Date? = nil,
+        appliedAt: Date? = nil,
         unread: Bool = false,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
@@ -145,6 +150,7 @@ public final class Job {
         self.extractionConfidence = extractionConfidence
         self.meetsCriteria = meetsCriteria
         self.lastOpenedAt = lastOpenedAt
+        self.appliedAt = appliedAt
         self.unread = unread
         self.createdAt = createdAt
         self.updatedAt = updatedAt

@@ -19,11 +19,15 @@ struct JobPromptMenu: View {
     @State private var pendingOpen: PendingOpen?
     /// Presents the one-time heads-up before the first auto-apply copy that embeds personal details.
     @State private var showAutoApplyPrivacyPrompt = false
+    /// Presents the Request Referral sheet where the user optionally pastes contact context.
+    @State private var showReferralSheet = false
 
     private struct PendingOpen: Identifiable {
         let id = UUID()
         let kind: JobPromptKind
         let provider: AIChatProvider
+        /// Optional pasted referral context to carry through the privacy ack into the open.
+        var referralContext: String = ""
     }
 
     private var hasDescription: Bool {
@@ -58,7 +62,7 @@ struct JobPromptMenu: View {
             if !isUsable {
                 Text(disabledHelp)
             }
-            ForEach(JobPromptKind.chatKinds, id: \.self) { kind in
+            ForEach(JobPromptKind.directChatKinds, id: \.self) { kind in
                 Menu(kind.title) {
                     Button("Copy Prompt") { copy(kind) }
                     Button("Open in ChatGPT") { requestOpen(kind, .chatGPT) }
@@ -66,6 +70,10 @@ struct JobPromptMenu: View {
                 }
                 .disabled(!isUsable)
             }
+            // Referral needs optional pasted contact context first, so it opens a sheet instead of a
+            // plain Copy/Open submenu.
+            Button("\(JobPromptKind.requestReferral.title)…") { showReferralSheet = true }
+                .disabled(!isUsable)
             Divider()
             // Codex auto-apply agent prompt — uses local files + the browser, so it's always available
             // (independent of the app's résumé) and copy-only (meant to paste into a Codex session).
@@ -85,9 +93,12 @@ struct JobPromptMenu: View {
             Button("Copy & Open \(open.provider.displayName)") { acknowledgeAndOpen(open) }
             Button("Cancel", role: .cancel) { pendingOpen = nil }
         } message: { open in
-            Text("Your full résumé and the job description will be placed in a \(open.provider.displayName) "
-                + "URL, which may be retained in browser history, sync, or logs. The prompt is also copied "
-                + "to your clipboard.")
+            let contact = open.kind == .requestReferral
+                && !open.referralContext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? " and any contact context you pasted" : ""
+            Text("Your full résumé, the job description\(contact) will be placed in a "
+                + "\(open.provider.displayName) URL, which may be retained in browser history, sync, or "
+                + "logs. The prompt is also copied to your clipboard.")
         }
         .confirmationDialog(
             "This prompt includes your Application Details",
@@ -100,20 +111,27 @@ struct JobPromptMenu: View {
                 + "contact info, address, work authorization, and any EEO answers — so Codex can fill "
                 + "applications. It's copied to your clipboard to paste into Codex. (Shown once.)")
         }
+        .sheet(isPresented: $showReferralSheet) {
+            ReferralPromptSheet(
+                onCopy: { context in copy(.requestReferral, referralContext: context) },
+                onOpen: { provider, context in requestOpen(.requestReferral, provider, referralContext: context) }
+            )
+        }
     }
 
     // MARK: - Actions
 
-    private func buildPrompt(_ kind: JobPromptKind, resume: Resume) -> String {
-        JobPromptBuilder.build(kind: kind, input: promptInput(resume: resume))
+    private func buildPrompt(_ kind: JobPromptKind, resume: Resume, referralContext: String = "") -> String {
+        JobPromptBuilder.build(kind: kind, input: promptInput(resume: resume, referralContext: referralContext))
     }
 
-    private func copy(_ kind: JobPromptKind) {
+    private func copy(_ kind: JobPromptKind, referralContext: String = "") {
         guard let resume = usableResume, isUsable else {
             appServices.toastStore.show(disabledHelp, isError: true)
             return
         }
-        setClipboard(buildPrompt(kind, resume: resume))
+        showReferralSheet = false
+        setClipboard(buildPrompt(kind, resume: resume, referralContext: referralContext))
         appServices.toastStore.show("\(kind.title) prompt copied (using \(resume.name))")
     }
 
@@ -156,27 +174,30 @@ struct JobPromptMenu: View {
     }
 
     /// Gate the first external open on the privacy acknowledgement; thereafter open directly.
-    private func requestOpen(_ kind: JobPromptKind, _ provider: AIChatProvider) {
+    private func requestOpen(_ kind: JobPromptKind, _ provider: AIChatProvider, referralContext: String = "") {
         guard usableResume != nil, isUsable else {
             appServices.toastStore.show(disabledHelp, isError: true)
             return
         }
+        // Close the referral sheet first (if open) so the privacy dialog / browser open isn't stacked
+        // under it; the pasted context is carried through pendingOpen or straight into performOpen.
+        showReferralSheet = false
         if appServices.settings.bool(forKey: SettingsKey.aiPromptExternalOpenAcknowledged) {
-            performOpen(kind, provider)
+            performOpen(kind, provider, referralContext: referralContext)
         } else {
-            pendingOpen = PendingOpen(kind: kind, provider: provider)
+            pendingOpen = PendingOpen(kind: kind, provider: provider, referralContext: referralContext)
         }
     }
 
     private func acknowledgeAndOpen(_ open: PendingOpen) {
         appServices.settings.setBool(true, forKey: SettingsKey.aiPromptExternalOpenAcknowledged)
         pendingOpen = nil
-        performOpen(open.kind, open.provider)
+        performOpen(open.kind, open.provider, referralContext: open.referralContext)
     }
 
-    private func performOpen(_ kind: JobPromptKind, _ provider: AIChatProvider) {
+    private func performOpen(_ kind: JobPromptKind, _ provider: AIChatProvider, referralContext: String = "") {
         guard let resume = usableResume else { return }
-        let prompt = buildPrompt(kind, resume: resume)
+        let prompt = buildPrompt(kind, resume: resume, referralContext: referralContext)
         // Always copy first, so a failed/blank prefill still leaves the user the full prompt to paste.
         setClipboard(prompt)
         if let url = provider.prefillURL(prompt: prompt) {
@@ -196,7 +217,7 @@ struct JobPromptMenu: View {
         NSPasteboard.general.setString(text, forType: .string)
     }
 
-    private func promptInput(resume: Resume) -> JobPromptInput {
+    private func promptInput(resume: Resume, referralContext: String = "") -> JobPromptInput {
         JobPromptInput(
             role: job.title ?? "",
             company: job.company ?? "",
@@ -205,7 +226,8 @@ struct JobPromptMenu: View {
             jobDescription: job.capture?.cleanedDescription ?? "",
             resumeName: resume.name,
             resumeText: resume.text,
-            fit: fitSummary(for: resume)
+            fit: fitSummary(for: resume),
+            referralContext: referralContext
         )
     }
 
@@ -226,5 +248,61 @@ struct JobPromptMenu: View {
             requirementGaps: gaps.isEmpty ? proj.requirementsNotMet : gaps,
             dimensionNotes: notes
         )
+    }
+}
+
+// MARK: - Request Referral sheet
+
+/// Collects optional pasted contact/relationship context before building the referral prompt. The
+/// pasted text lives only in this sheet's local `@State` and is handed to the copy/open callbacks — it
+/// is never written to the store, so closing the sheet discards it (TASK-626, AC #9).
+private struct ReferralPromptSheet: View {
+    let onCopy: (String) -> Void
+    let onOpen: (AIChatProvider, String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var referralContext: String = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Request a Referral")
+                .font(.headline)
+            Text("Optionally paste anything about the person you're asking — their LinkedIn profile, how "
+                + "you know them, prior messages, or mutual connections. It's added to the prompt so the "
+                + "AI can personalize the ask truthfully. Leave it blank for a cautious cold request.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $referralContext)
+                    .font(.body)
+                    .frame(minHeight: 160)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.3)))
+                if referralContext.isEmpty {
+                    Text("Paste contact / relationship context (optional)…")
+                        .font(.body)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 8)
+                        .allowsHitTesting(false)
+                }
+            }
+
+            Text("Pasted text is treated as untrusted reference data and isn't saved.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+
+            HStack(spacing: 8) {
+                Button("Cancel", role: .cancel) { dismiss() }
+                Spacer()
+                Button("Open in Claude") { onOpen(.claude, referralContext) }
+                Button("Open in ChatGPT") { onOpen(.chatGPT, referralContext) }
+                Button("Copy Prompt") { onCopy(referralContext) }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(16)
+        .frame(width: 460)
     }
 }

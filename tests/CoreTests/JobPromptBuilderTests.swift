@@ -105,6 +105,76 @@ final class JobPromptBuilderTests: XCTestCase {
         XCTAssertEqual(JobPromptKind.chatKinds.count, JobPromptKind.allCases.count - 1)
     }
 
+    // MARK: - TASK-626: Request Referral
+
+    private func referralInput(context: String, url: String = "https://acme.com/jobs/1") -> JobPromptInput {
+        JobPromptInput(
+            role: "Staff Engineer", company: "Acme", location: "Remote", sourceURL: url,
+            jobDescription: "Build distributed systems.", resumeName: "My Resume",
+            resumeText: "10 years backend.", fit: nil, referralContext: context
+        )
+    }
+
+    func testReferralRequestExcludedFromDirectChatKindsButInChatKinds() {
+        XCTAssertTrue(JobPromptKind.chatKinds.contains(.requestReferral), "referral builds via the chat path")
+        XCTAssertFalse(
+            JobPromptKind.directChatKinds.contains(.requestReferral),
+            "referral is NOT a plain Copy/Open submenu — it collects context via its own sheet"
+        )
+    }
+
+    func testReferralInstructionsAreCautiousAndNonInventing() {
+        let prompt = JobPromptBuilder.build(kind: .requestReferral, input: referralInput(context: ""))
+        XCTAssertTrue(prompt.contains("referral"), "asks for a referral")
+        XCTAssertTrue(prompt.contains("way to decline"), "AC#6: gives the recipient an easy way to decline")
+        XCTAssertTrue(prompt.contains("Do NOT invent a relationship"), "AC#7: non-invention of relationship")
+        XCTAssertTrue(prompt.contains("cold or weak-connection request"), "AC#4: cautious cold request when no context")
+        XCTAssertTrue(prompt.contains("To personalize"), "AC#7: flags missing personalization instead of fabricating")
+    }
+
+    func testReferralContextIncludedAtEndInDelimitedSectionWhenProvided() {
+        let context = "We worked together at Globex 2018-2020; connected on LinkedIn."
+        let prompt = JobPromptBuilder.build(kind: .requestReferral, input: referralInput(context: context))
+        // AC#3: delimited, clearly labeled section containing the pasted material.
+        XCTAssertTrue(prompt.contains("## Referral context"), "labeled section present")
+        XCTAssertTrue(prompt.contains("<<<BEGIN REFERRAL_CONTEXT"), "context is fenced")
+        XCTAssertTrue(prompt.contains("<<<END REFERRAL_CONTEXT"), "context fence closed")
+        XCTAssertTrue(prompt.contains(context), "pasted material embedded verbatim")
+        // AC#8: marked untrusted, must not override instructions.
+        XCTAssertTrue(prompt.contains("untrusted reference DATA"), "context flagged untrusted")
+        // AC#3: appended at the END — after the Instructions section.
+        guard let instr = prompt.range(of: "## Instructions"),
+              let ctx = prompt.range(of: "## Referral context") else {
+            return XCTFail("both sections should be present")
+        }
+        XCTAssertTrue(ctx.lowerBound > instr.lowerBound, "referral context comes after the instructions")
+    }
+
+    func testReferralContextOmittedCleanlyWhenBlank() {
+        let prompt = JobPromptBuilder.build(kind: .requestReferral, input: referralInput(context: "   \n  "))
+        XCTAssertFalse(prompt.contains("REFERRAL_CONTEXT"), "AC#4: no context section when none supplied")
+        XCTAssertFalse(prompt.contains("## Referral context"), "AC#4: label omitted too")
+    }
+
+    func testReferralContextIsNotAddedToOtherKinds() {
+        // The referral context field is ignored by every other kind.
+        let prompt = JobPromptBuilder.build(kind: .outreachMessage, input: referralInput(context: "should not appear"))
+        XCTAssertFalse(prompt.contains("REFERRAL_CONTEXT"))
+        XCTAssertFalse(prompt.contains("should not appear"))
+    }
+
+    func testReferralOversizedPromptFallsBackWithoutTruncatingContext() {
+        // AC#11: a large pasted context pushes the prompt past the prefill ceiling, so prefill is
+        // declined (blank chat + clipboard fallback) and the full prompt — context intact — is preserved.
+        // End with a unique non-whitespace tail so it survives the section's whitespace trim; its
+        // presence proves the tail (end) of the context wasn't dropped.
+        let bigContext = String(repeating: "relationship detail. ", count: 800) + "UNIQUE_TAIL_MARKER"
+        let prompt = JobPromptBuilder.build(kind: .requestReferral, input: referralInput(context: bigContext))
+        XCTAssertGreaterThan(prompt.count, ExternalAIChat.maxPrefillPromptChars, "prompt exceeds the prefill ceiling")
+        XCTAssertNil(AIChatProvider.chatGPT.prefillURL(prompt: prompt), "oversized prompt declines prefill")
+        XCTAssertTrue(prompt.contains(bigContext), "full pasted context is preserved, not truncated")
+    }
+
     func testEmptyDescriptionAndResumeRenderPlaceholders() {
         let sparse = JobPromptInput(
             role: "", company: "", location: "", sourceURL: "",

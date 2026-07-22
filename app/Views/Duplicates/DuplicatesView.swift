@@ -342,12 +342,14 @@ private struct PairRow: View {
             // Original
             jobSummaryLine(
                 label: "Original",
+                jobNumber: originalJob?.jobNumber,
                 company: pair.original.company,
                 title: pair.original.title
             )
             // Candidate
             jobSummaryLine(
                 label: "Candidate",
+                jobNumber: candidateJob?.jobNumber,
                 company: pair.candidate.company,
                 title: pair.candidate.title
             )
@@ -373,12 +375,20 @@ private struct PairRow: View {
         .padding(.vertical, 4)
     }
 
-    private func jobSummaryLine(label: String, company: String?, title: String?) -> some View {
+    private func jobSummaryLine(label: String, jobNumber: Int?, company: String?, title: String?) -> some View {
         HStack(spacing: 6) {
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .frame(width: 56, alignment: .leading)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(label)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                // Job ID (e.g. #123) so a specific pair is easy to reference when reporting an issue.
+                if let jobNumber {
+                    Text("#\(jobNumber)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .frame(width: 56, alignment: .leading)
             VStack(alignment: .leading, spacing: 1) {
                 Text(company ?? "Unknown company")
                     .font(.callout)

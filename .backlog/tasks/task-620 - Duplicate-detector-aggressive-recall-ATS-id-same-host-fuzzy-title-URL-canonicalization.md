@@ -3,9 +3,10 @@ id: TASK-620
 title: >-
   Duplicate detector: aggressive recall (ATS id, same-host, fuzzy title, URL
   canonicalization)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-22 20:07'
+updated_date: '2026-07-22 20:08'
 labels: []
 dependencies: []
 priority: high

@@ -258,12 +258,10 @@ public enum AvailabilityChecker {
         return false
     }
 
-    /// LinkedIn `…/jobs/search/?currentJobId=N` and `…/jobs/collections/…?currentJobId=N` URLs point at
-    /// a results page that merely highlights a job — the posting's "No longer accepting applications" /
-    /// closed banner is NOT in that page's server response, so a removed posting reads as available
-    /// (jobs #218/#224). Rewrite such URLs to the public posting view `…/jobs/view/N`, where the closed
-    /// banner IS served and the existing detection (`bodyGoneReason`, `isLinkedInClosedJob`) can see it.
-    /// Any non-matching URL (including an existing `/jobs/view/` URL) is returned unchanged.
+    /// LinkedIn `…/jobs/search|collections/…?currentJobId=N` URLs point at a results page that only
+    /// highlights a job — the posting's closed banner isn't in that response, so a removed posting reads
+    /// as available (jobs #218/#224). Rewrite them to the public view `…/jobs/view/N`, where the banner
+    /// IS served and `bodyGoneReason`/`isLinkedInClosedJob` can see it. Non-matching URLs are unchanged.
     static func linkedInCanonicalJobURL(_ url: URL) -> URL {
         guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let host = comps.host?.lowercased(), host.hasSuffix("linkedin.com"),
@@ -660,14 +658,15 @@ public enum AvailabilityChecker {
         return await checkJobs(jobs, store: store, session: session)
     }
 
-    /// Fetches jobs untouched for `staleDays` days, oldest-first, excluding terminal statuses.
-    /// `limit` caps the result (`nil` = uncapped, TASK-608). Shared by the legacy silent
-    /// `checkStaleJobs` and the confirm-first `maybeFindStaleGoneJobs`.
-    /// Throws if the underlying store fetch fails — callers must treat that as a failed check.
+    /// Fetches jobs untouched for `staleDays` days, oldest-first, excluding terminal statuses. `limit`
+    /// caps the result (`nil` = uncapped, TASK-608). `alwaysCheckStatuses` are re-checked every run
+    /// regardless of age (TASK-621 — pursued jobs expire before the staleness window). Throws on fetch
+    /// failure; callers must treat that as a failed check.
     static func fetchStaleEligibleJobs(
         store: BackgroundStore,
         staleDays: Int,
-        limit: Int?
+        limit: Int?,
+        alwaysCheckStatuses: Set<String> = []
     ) async throws -> [Job] {
         let cutoff = Date().addingTimeInterval(-Double(max(1, staleDays)) * 86400)
 
@@ -695,6 +694,7 @@ public enum AvailabilityChecker {
         let eligible = all.filter { job in
             guard job.status != .passed, job.status != .archived,
                   job.status != .closed, job.status != .expired else { return false }
+            if alwaysCheckStatuses.contains(job.status.rawValue) { return true } // checked every run
             let ageDate = job.capturedAtDenormalized ?? job.capture?.capturedAt ?? job.createdAt
             return ageDate <= cutoff
         }
@@ -726,8 +726,10 @@ public enum AvailabilityChecker {
         let staleDays = max(1, settings.int(forKey: SettingsKey.availabilityStaleDays))
         let jobs: [Job]
         do {
-            // TASK-608: uncapped so a large stale backlog actually drains (was limited to 25/run).
-            jobs = try await fetchStaleEligibleJobs(store: store, staleDays: staleDays, limit: nil)
+            // TASK-608: uncapped so a large stale backlog drains. TASK-621: always re-check pursued jobs.
+            jobs = try await fetchStaleEligibleJobs(
+                store: store, staleDays: staleDays, limit: nil, alwaysCheckStatuses: ["pursuing", "applied"]
+            )
         } catch {
             NSLog("AvailabilityChecker: stale fetch failed: \(error)")
             return nil

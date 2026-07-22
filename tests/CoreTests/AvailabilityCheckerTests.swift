@@ -788,6 +788,26 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         XCTAssertEqual(capped.count, 5, "an explicit cap still bounds the result")
     }
 
+    /// TASK-621: actively-pursued jobs are re-checked every run regardless of the staleness window,
+    /// while other statuses still wait for it — so fast-expiring pursued jobs aren't missed for weeks.
+    func testFetchStaleEligibleJobs_alwaysChecksPursuedRegardlessOfAge() async throws {
+        let fresh = Date() // well within the 21-day window
+        _ = try makeJobWithCapture(url: "https://x.com/pursuing", title: "P", status: .pursuing, capturedAt: fresh)
+        _ = try makeJobWithCapture(url: "https://x.com/applied", title: "A", status: .applied, capturedAt: fresh)
+        _ = try makeJobWithCapture(url: "https://x.com/new", title: "N", status: .new, capturedAt: fresh)
+
+        // Without always-check, none are stale → none eligible.
+        let staleOnly = try await AvailabilityChecker.fetchStaleEligibleJobs(store: store, staleDays: 21, limit: nil)
+        XCTAssertTrue(staleOnly.isEmpty, "fresh jobs aren't stale")
+
+        // With always-check for pursued statuses, the pursuing + applied jobs are eligible; new is not.
+        let withPursued = try await AvailabilityChecker.fetchStaleEligibleJobs(
+            store: store, staleDays: 21, limit: nil, alwaysCheckStatuses: ["pursuing", "applied"]
+        )
+        XCTAssertEqual(withPursued.count, 2, "pursuing + applied are always checked; new still waits for staleness")
+        XCTAssertTrue(withPursued.allSatisfy { $0.status == .pursuing || $0.status == .applied })
+    }
+
     func testCheckJobsReturnsZeroForNoJobs() async {
         let result = await AvailabilityChecker.checkJobs([], store: store, session: session)
         XCTAssertEqual(result.checked, 0)

@@ -3,9 +3,10 @@ id: TASK-631
 title: >-
   Availability: trust Greenhouse Job Board API (200=alive) for gh_jid jobs to
   kill Cloudflare/JS-shell false expirations
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-22 23:14'
+updated_date: '2026-07-22 23:21'
 labels:
   - availability
   - detection

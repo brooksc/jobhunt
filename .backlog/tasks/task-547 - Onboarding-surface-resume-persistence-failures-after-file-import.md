@@ -1,10 +1,10 @@
 ---
 id: TASK-547
 title: 'Onboarding: surface resume persistence failures after file import'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 22:18'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-07-22 18:14'
 labels:
   - audit
   - ux

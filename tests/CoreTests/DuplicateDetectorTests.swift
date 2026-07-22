@@ -716,6 +716,56 @@ final class DuplicateDetectorTests: XCTestCase {
         return JobSnapshot(job: job, capture: cap)
     }
 
+    // MARK: - TASK-629: same full URL (query included) is a definitive duplicate
+
+    /// The real Reddit #15/#16 case: byte-identical levels.fyi URL (incl. jobId), captured seconds apart,
+    /// whose SPA DOM differed enough to give distinct cleaned hashes. The same-URL path makes it a
+    /// definitive duplicate (1.0), outranking the fuzzy heuristic that previously surfaced it at ~80%.
+    func testSameFullURL_pairsAsDefinitiveDuplicate() {
+        let url = "https://www.levels.fyi/jobs/title/technical-program-manager"
+            + "?locationSlug=united-states&offset=5&perkIds=58&jobId=119440407640580806"
+        let a = snap(15, company: "Reddit", title: "Principal Technical Program Manager, Developer Productivity", url: url)
+        let b = snap(16, company: "Reddit", title: "Principal Technical Program Manager, Developer Productivity", url: url)
+        let pairs = DuplicateDetector().duplicateGroups(snapshots: [a, b], resolvedHashes: [])
+        XCTAssertEqual(pairs.count, 1)
+        XCTAssertEqual(pairs.first?.kind, .sameURL, "identical full URL should win over the fuzzy path")
+        XCTAssertEqual(pairs.first?.confidence, 1.0)
+        XCTAssertEqual(pairs.first?.original.jobNumber, 15, "earlier capture is canonical")
+    }
+
+    /// Query-order / trailing-slash differences on the same posting still match (normalized key).
+    func testSameFullURL_matchesDespiteQueryOrderAndTrailingSlash() {
+        let a = snap(1, company: "Reddit", title: "Staff TPM", url: "https://x.com/jobs/?b=2&a=1&jobId=99")
+        let b = snap(2, company: "Reddit", title: "Staff TPM", url: "https://x.com/jobs?a=1&jobId=99&b=2")
+        let pairs = DuplicateDetector().duplicateGroups(snapshots: [a, b], resolvedHashes: [])
+        XCTAssertEqual(pairs.first?.kind, .sameURL)
+    }
+
+    /// Query-less generic/SPA URLs must NOT collapse unrelated jobs — the same-URL path requires a query.
+    func testQuerylessSameURL_doesNotTriggerSameURLPath() {
+        let a = snap(1, company: "Foo", title: "Staff Engineer", url: "https://careers.foo.com/openings")
+        let b = snap(2, company: "Bar", title: "Marketing Lead", url: "https://careers.foo.com/openings")
+        let pairs = DuplicateDetector().duplicateGroups(snapshots: [a, b], resolvedHashes: [])
+        XCTAssertTrue(pairs.allSatisfy { $0.kind != .sameURL }, "query-less URL must not form a same-URL pair")
+    }
+
+    /// Different jobId in the query → different keys → no same-URL pair (distinct postings on one page).
+    func testDifferentQueryID_noSameURLPair() {
+        let a = snap(1, company: "Reddit", title: "Alpha Role", url: "https://x.com/jobs?jobId=111")
+        let b = snap(2, company: "Reddit", title: "Beta Role", url: "https://x.com/jobs?jobId=222")
+        let pairs = DuplicateDetector().duplicateGroups(snapshots: [a, b], resolvedHashes: [])
+        XCTAssertTrue(pairs.allSatisfy { $0.kind != .sameURL }, "different jobId must not pair via same-URL")
+    }
+
+    func testSpecificFullURLKey_requiresQueryAndNormalizes() {
+        XCTAssertNil(DuplicateDetector.specificFullURLKey("https://x.com/jobs"), "no query → nil")
+        XCTAssertNil(DuplicateDetector.specificFullURLKey("https://x.com/jobs/"), "no query → nil")
+        let k1 = DuplicateDetector.specificFullURLKey("https://X.com/jobs/?b=2&a=1")
+        let k2 = DuplicateDetector.specificFullURLKey("https://x.com/jobs?a=1&b=2")
+        XCTAssertNotNil(k1)
+        XCTAssertEqual(k1, k2, "host case, query order, and trailing slash are normalized")
+    }
+
     /// A: the ATS posting id is extracted across the providers seen in the real data.
     func testATSPostingID_extractsAcrossProviders() {
         let cases: [(String, String?)] = [

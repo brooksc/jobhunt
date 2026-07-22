@@ -15,6 +15,10 @@ guard let port = discoverPort() else {
     exit(1)
 }
 
+// Held mutably so a token rotation / port change from an app relaunch is picked up on the next call
+// (the bridge outlives the app it forwards to during development) — see MCPSession (TASK-629).
+let session = MCPSession(token: token, port: port)
+
 // Read JSON-RPC 2.0 requests from stdin line by line
 while let line = readLine() {
     let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -49,7 +53,7 @@ while let line = readLine() {
         let toolName = params["name"] as? String ?? ""
         let toolArgs = params["arguments"] as? [String: Any] ?? [:]
 
-        switch callTool(name: toolName, args: toolArgs, port: port, token: token) {
+        switch callTool(name: toolName, args: toolArgs, session: session) {
         case let .success(result):
             writeResponse(successResponse(id: id, result: result))
         case let .failure(err):

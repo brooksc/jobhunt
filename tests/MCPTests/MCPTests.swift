@@ -222,4 +222,25 @@ final class MCPTests: XCTestCase {
         try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
         XCTAssertNil(readToken(at: url), "group/world-readable token must be rejected")
     }
+
+    // MARK: - shouldRefreshMCP (token/port refresh trigger — TASK-629)
+
+    func testShouldRefreshMCP_triggersOn401() {
+        // A 401 = the app rotated the token on relaunch; refresh + retry (we reached the server).
+        XCTAssertTrue(shouldRefreshMCP(status: 401, hasBody: true))
+        XCTAssertTrue(shouldRefreshMCP(status: 401, hasBody: false))
+    }
+
+    func testShouldRefreshMCP_triggersOnBodylessServerError() {
+        // Connection refused (app moved ports / down) surfaces as a bodyless 5xx from postMCP.
+        XCTAssertTrue(shouldRefreshMCP(status: 500, hasBody: false))
+        XCTAssertTrue(shouldRefreshMCP(status: 503, hasBody: false))
+    }
+
+    func testShouldRefreshMCP_doesNotTriggerOnNormalOrAppErrors() {
+        XCTAssertFalse(shouldRefreshMCP(status: 200, hasBody: true), "success never refreshes")
+        XCTAssertFalse(shouldRefreshMCP(status: 400, hasBody: true), "a real 4xx (bad args) is not a stale token")
+        XCTAssertFalse(shouldRefreshMCP(status: 404, hasBody: true), "not-found is not a token/port problem")
+        XCTAssertFalse(shouldRefreshMCP(status: 500, hasBody: true), "a server error WITH a body reached the app")
+    }
 }

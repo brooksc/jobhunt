@@ -1,6 +1,6 @@
 import CryptoKit
 
-// swiftlint:disable large_tuple
+// swiftlint:disable file_length type_body_length large_tuple
 import Foundation
 import SwiftData
 
@@ -25,6 +25,10 @@ public struct DuplicatePair: Sendable {
         /// Same applicant-tracking-system posting id extracted from the URL (TASK-620) — the same
         /// requisition captured from two URL forms/sources.
         case atsPostingID = "ats_posting_id"
+        /// Byte-identical full source URL (query included) — the same posting captured twice, e.g. a
+        /// levels.fyi SPA posting whose two DOM snapshots differ enough to dodge the exact-hash path
+        /// (TASK-629).
+        case sameURL = "same_url"
     }
 }
 
@@ -45,7 +49,12 @@ public struct JobSnapshot: Sendable {
     public let status: String
     public let cleanedDescription: String?
     public let cleanedHash: String?
+    /// Canonical (query-stripped) URL — the preferred display/source identifier.
     public let sourceURL: String
+    /// The full captured URL including its query string. Unlike `sourceURL`, this keeps the query (e.g.
+    /// levels.fyi `?…&jobId=…`) that pins a specific posting on SPA/aggregator pages — used only by the
+    /// same-full-URL duplicate path (TASK-629).
+    public let fullURL: String
     public let duplicateOfJobID: String?
     public let extractionStatus: String
 
@@ -65,6 +74,7 @@ public struct JobSnapshot: Sendable {
         cleanedDescription = capture.cleanedDescription
         cleanedHash = capture.cleanedHash
         sourceURL = capture.canonicalURL ?? capture.url
+        fullURL = capture.url
         duplicateOfJobID = job.duplicateOfJobID
         extractionStatus = job.extractionStatus.rawValue
     }
@@ -172,6 +182,27 @@ public struct DuplicateDetector {
                 pairs.append(DuplicatePair(
                     original: original, candidate: candidate, confidence: 1.0,
                     reason: "same ATS posting id in the source URL", kind: .atsPostingID
+                ))
+            }
+        }
+
+        // 1.7 Same specific full URL (TASK-629): two captures of the byte-identical posting URL (query
+        //     included) — e.g. a levels.fyi SPA posting captured twice seconds apart, whose slightly
+        //     different DOM snapshots dodge the exact-hash path. Definitive (same URL = same posting);
+        //     gated on the URL carrying a query so generic query-less category/SPA pages don't collapse
+        //     unrelated jobs (see `specificFullURLKey`).
+        let bySpecificURL = Dictionary(grouping: snapshots.compactMap { snap -> (key: String, snap: JobSnapshot)? in
+            guard let key = Self.specificFullURLKey(snap.fullURL) else { return nil }
+            return (key, snap)
+        }) { $0.key }
+        for (_, group) in bySpecificURL where group.count >= 2 {
+            let sorted = group.map(\.snap).sorted { ($0.jobNumber ?? Int.max) < ($1.jobNumber ?? Int.max) }
+            let original = sorted[0]
+            for candidate in sorted.dropFirst() {
+                if let hash = candidate.cleanedHash, resolvedHashes.contains(hash) { continue }
+                pairs.append(DuplicatePair(
+                    original: original, candidate: candidate, confidence: 1.0,
+                    reason: "same source URL (captured twice)", kind: .sameURL
                 ))
             }
         }
@@ -317,6 +348,30 @@ public struct DuplicateDetector {
         let intersection = left.intersection(right).count
         let union = left.union(right).count
         return union > 0 && Double(intersection) / Double(union) >= titleSimilarityThreshold
+    }
+
+    // MARK: - Same-full-URL key (TASK-629)
+
+    /// A normalized key for the same-full-URL duplicate path: host lowercased, query items sorted,
+    /// fragment and trailing slash stripped. Returns nil unless the URL carries a query string — the
+    /// query is what pins a specific posting on SPA/aggregator pages (e.g. levels.fyi
+    /// `…/technical-program-manager?…&jobId=119…`), whereas the query-less path there is a generic
+    /// category page shared by many different jobs. Query-less per-posting URLs (Greenhouse
+    /// `/jobs/7944159`, LinkedIn `/jobs/view/N`) are already covered by the ATS-posting-id path, so
+    /// requiring a query here loses nothing while preventing generic pages from collapsing unrelated jobs.
+    static func specificFullURLKey(_ urlString: String) -> String? {
+        guard var comps = URLComponents(string: urlString),
+              let host = comps.host, !host.isEmpty,
+              let items = comps.queryItems, !items.isEmpty else { return nil }
+        comps.host = host.lowercased()
+        comps.fragment = nil
+        comps.queryItems = items.sorted {
+            $0.name == $1.name ? ($0.value ?? "") < ($1.value ?? "") : $0.name < $1.name
+        }
+        var path = comps.path
+        while path.hasSuffix("/"), path.count > 1 { path = String(path.dropLast()) }
+        comps.path = path
+        return comps.url?.absoluteString ?? comps.string
     }
 
     // MARK: - ATS posting-id extraction (TASK-620)
@@ -747,4 +802,4 @@ public struct DuplicateDetector {
     }
 }
 
-// swiftlint:enable file_length cyclomatic_complexity function_body_length type_body_length large_tuple
+// swiftlint:enable file_length type_body_length large_tuple

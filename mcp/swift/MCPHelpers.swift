@@ -20,6 +20,27 @@ func readToken(at url: URL = MCPTokenManager.tokenURL) -> String? {
     MCPTokenManager.read(at: url)
 }
 
+/// The token + port the bridge forwards to. Mutable and long-lived: the bridge is spawned once by the
+/// MCP client, while the Jobhunt app it talks to is relaunched during development. Each relaunch
+/// rotates `~/.jobhunt-mcp-token` (401s the cached token) and may change the port (refuses the old
+/// connection). Holding these on a shared instance lets `callTool` refresh them on failure and retry,
+/// instead of every request failing until the bridge itself is restarted (TASK-629).
+final class MCPSession {
+    var token: String
+    var port: Int
+    init(token: String, port: Int) {
+        self.token = token
+        self.port = port
+    }
+}
+
+/// Whether a bridge response should trigger a one-time token/port refresh + retry: a 401 (the app
+/// rotated the token on relaunch) or a bodyless server error (connection refused — the app moved ports
+/// or is down). A 401 means we reached the server, so only the token needs refreshing (TASK-629).
+func shouldRefreshMCP(status: Int, hasBody: Bool) -> Bool {
+    status == 401 || (status >= 500 && !hasBody)
+}
+
 func discoverPort() -> Int? {
     // Shared contract with the app server + extension (TASK-433).
     let candidates = ServerPortContract.discoveryPorts.map(Int.init)
@@ -355,7 +376,7 @@ func resolveToolRoute(name: String, args: [String: Any]) -> Result<(String, [Str
     }
 }
 
-func callTool(name: String, args: [String: Any], port: Int, token: String) -> Result<[String: Any], MCPError> {
+func callTool(name: String, args: [String: Any], session: MCPSession) -> Result<[String: Any], MCPError> {
     let routeResult = resolveToolRoute(name: name, args: args)
     let (path, body): (String, [String: Any])
     switch routeResult {
@@ -363,7 +384,16 @@ func callTool(name: String, args: [String: Any], port: Int, token: String) -> Re
     case let .failure(e): return .failure(e)
     }
 
-    let (status, result) = postMCP(path: path, body: body, port: port, token: token)
+    var (status, result) = postMCP(path: path, body: body, port: session.port, token: session.token)
+
+    // The app may have relaunched since the bridge started: refresh the token (always) and, only on a
+    // connection failure, re-probe the port — then retry once before surfacing the error (TASK-629).
+    if shouldRefreshMCP(status: status, hasBody: result != nil) {
+        if let freshToken = readToken() { session.token = freshToken }
+        if status != 401, let freshPort = discoverPort() { session.port = freshPort }
+        (status, result) = postMCP(path: path, body: body, port: session.port, token: session.token)
+    }
+
     if status >= 400 {
         let msg: String = if let obj = result as? [String: Any], let err = obj["error"] as? String {
             err

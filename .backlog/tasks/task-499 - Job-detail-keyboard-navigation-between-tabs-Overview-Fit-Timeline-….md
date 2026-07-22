@@ -1,10 +1,10 @@
 ---
 id: TASK-499
 title: Comprehensive keyboard shortcuts and in-app shortcut reference
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-18 22:32'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-07-22 04:18'
 labels:
   - ux
   - keyboard

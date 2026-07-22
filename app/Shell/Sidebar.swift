@@ -17,14 +17,13 @@ private let sidebarStatuses: [JobStatus] = [
     .expired
 ]
 
-/// Selected-row highlight (drawn manually because macOS 26's List(.sidebar) selection
-/// highlight doesn't render — see sidebarRow).
-private let sidebarSelectionColor = Color(red: 0.0, green: 0.32, blue: 0.75)
-
 struct Sidebar: View {
     var router: Router
 
     @Environment(AppServices.self) private var appServices
+    /// Drives the emphasized (accent) vs unemphasized (gray) selection highlight so a non-key window
+    /// dims like a native source list (TASK-509).
+    @Environment(\.controlActiveState) private var controlActiveState
 
     @Query(filter: #Predicate<JobAction> { $0.completedAt == nil }) private var pendingActions: [JobAction]
 
@@ -247,12 +246,16 @@ struct Sidebar: View {
         // Arrow-key navigation still updates `listSelection` natively, and the manual
         // highlight + onChange react to that the same way.
         let selected = listSelection == item
+        // Emphasized only while the window is key/active; a background window dims to the gray
+        // unemphasized selection like a native source list (TASK-509).
+        let emphasized = selected && controlActiveState != .inactive
         Button {
             listSelection = item
         } label: {
             label
-                // White icon + text on the dark-blue selection, like a native source list.
-                .foregroundStyle(selected ? Color.white : Color.primary)
+                // Match native source-list pairing: white-ish text on the emphasized accent fill,
+                // normal label color on the unemphasized (inactive) gray or when unselected.
+                .foregroundStyle(emphasized ? Color(nsColor: .alternateSelectedControlTextColor) : Color.primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 5)
                 // .listRowBackground is ignored by .listStyle(.sidebar), so draw the
@@ -260,7 +263,7 @@ struct Sidebar: View {
                 // around the label without shifting the icon off its native position.
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(selected ? sidebarSelectionColor : Color.clear)
+                        .fill(sidebarSelectionFill(selected: selected, emphasized: emphasized))
                         .padding(.horizontal, -6)
                 )
                 .contentShape(Rectangle())
@@ -268,6 +271,15 @@ struct Sidebar: View {
         .buttonStyle(.plain)
         .tag(item)
         .accessibilityIdentifier(id ?? "")
+    }
+
+    /// Native-tracking selection fill (TASK-509): the emphasized state uses the system
+    /// `selectedContentBackgroundColor`, which follows the user's accent color; an inactive window
+    /// falls back to the gray `unemphasizedSelectedContentBackgroundColor`. Both adapt to light/dark.
+    private func sidebarSelectionFill(selected: Bool, emphasized: Bool) -> Color {
+        guard selected else { return .clear }
+        return Color(nsColor: emphasized ? .selectedContentBackgroundColor :
+            .unemphasizedSelectedContentBackgroundColor)
     }
 
     /// A non-selectable sidebar row that opens the standard Settings (⌘,) window. Mirrors the

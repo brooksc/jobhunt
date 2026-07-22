@@ -3,10 +3,10 @@ id: TASK-513
 title: >-
   Workflow: Use extracted job title in ready-to-review notifications before fit
   is available
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 01:31'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-07-22 02:59'
 labels:
   - workflow
   - notifications

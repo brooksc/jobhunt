@@ -3,9 +3,10 @@ id: TASK-625
 title: >-
   Duplicates review UX: advance to next on resolve, sticky/larger compare width,
   remove Delete
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-22 21:13'
+updated_date: '2026-07-22 21:15'
 labels: []
 dependencies: []
 priority: medium

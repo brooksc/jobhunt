@@ -1,7 +1,7 @@
 ---
 id: TASK-593
 title: Clear pre-existing KeyPath-Sendable strict-concurrency warnings
-status: To Do
+status: On Hold
 assignee: []
 created_date: '2026-07-04 02:40'
 updated_date: '2026-07-21 22:59'

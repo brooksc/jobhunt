@@ -3,7 +3,7 @@ id: TASK-500
 title: >-
   Cut Contacts & Cover Letters (vestigial — full removal is a breaking schema
   change)
-status: To Do
+status: On Hold
 assignee: []
 created_date: '2026-06-18 23:05'
 updated_date: '2026-07-22 18:40'

@@ -710,6 +710,61 @@ final class ExtractionEngineTests: XCTestCase {
         XCTAssertEqual(result.title, "Engineer")
     }
 
+    // MARK: - TASK-513: extraction ready event carries the extracted title
+
+    /// With no active resume, the extraction `.jobReady` event is the only notification the user gets.
+    /// It must carry the freshly extracted title — not `item.jobTitle`, the snapshot captured when the
+    /// request was queued (before extraction ran).
+    func testExtractionReadyEvent_usesExtractedTitleNotQueuedSnapshot() async throws {
+        let successJSON = """
+        {"title":"Senior Platform Engineer","company":"Acme","location":null,"remote_type":null,
+         "salary_min":null,"salary_max":null,"salary_currency":null,"salary_note":null,
+         "salary_hourly_min":null,"salary_hourly_max":null,
+         "employment_type":null,"seniority":null,"skills":[],"summary":"Great",
+         "requirements":[],"nice_to_haves":[],"benefits":[],
+         "application_url":null,"application_instructions":null,"confidence":null}
+        """
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        let provider = CountingProvider(succeedOnAttempt: 1, successResponse: successJSON)
+        let queue = QueueActor(
+            store: store,
+            isPaused: { false },
+            onSetPaused: { _ in },
+            readExtractionSettings: { makeExtractionSettings() },
+            providerFactory: { provider },
+            isProviderConfigured: { true }
+        )
+
+        let capture = Capture(
+            url: "https://example.com/job",
+            pageTitle: "Stale Snapshot Title",
+            selectedText: "We are looking for a platform engineer.",
+            rawHash: "task-513"
+        )
+        // The queued snapshot title differs from what the model will extract.
+        let job = Job(jobNumber: 1, title: "Stale Snapshot Title")
+        job.capture = capture
+        try await store.insert(job)
+        let req = LLMRequest(requestType: .extract, status: .queued)
+        req.job = job
+        try await store.insert(req)
+
+        let events = await queue.subscribe()
+        await queue.startProcessing()
+
+        var readyTitle: String??
+        for await event in events {
+            if case let .jobReady(_, title, _) = event { readyTitle = .some(title) }
+            if case .processingComplete = event { break }
+        }
+
+        XCTAssertEqual(
+            readyTitle ?? nil, "Senior Platform Engineer",
+            "extraction ready event must use the extracted title, not the queued snapshot"
+        )
+    }
+
     // MARK: - TASK-154: scoreFit merged JSON retains explanation fields
 
     func testScoreFit_mergedJSON_retainsExplanationFields() async throws {

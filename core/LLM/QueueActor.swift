@@ -698,7 +698,13 @@ public actor QueueActor {
                 }
             }
 
-            emit(.jobReady(jobNumber: item.jobNumber, title: item.jobTitle, fitScore: nil))
+            // TASK-513: prefer the freshly extracted title over item.jobTitle, a snapshot captured when
+            // the request was queued (before extraction ran). Without an active resume this extraction
+            // ready event is the only notification the user gets, so a stale/generic snapshot title would
+            // waste it. Fall back to the snapshot when the model returned no title.
+            let extractedTitle = result.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let readyTitle = (extractedTitle?.isEmpty == false) ? extractedTitle : item.jobTitle
+            emit(.jobReady(jobNumber: item.jobNumber, title: readyTitle, fitScore: nil))
             return true
         } catch {
             // A cancellation in flight (auto-pause cancelAll / shutdown) isn't a real attempt — don't

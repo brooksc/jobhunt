@@ -39,7 +39,10 @@ public final class AnthropicProvider: LLMProvider, @unchecked Sendable {
 
         var payload: [String: Any] = [
             "model": request.model,
-            "max_tokens": request.maxTokens,
+            // Anthropic requires max_tokens, so it can't be omitted like the OpenAI-compatible path
+            // (TASK-607). Fall back to the historical 16384 when the request leaves it unset — no
+            // regression versus before, and a model-aware cap can replace this later.
+            "max_tokens": request.maxTokens ?? 16384,
             "messages": userMsgs.map { ["role": $0.role, "content": $0.content] }
         ]
         if let sys = systemMsg { payload["system"] = sys.content }

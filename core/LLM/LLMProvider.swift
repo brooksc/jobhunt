@@ -51,7 +51,11 @@ public struct ChatRequest: Sendable {
     public let model: String
     /// Preferred response format. Providers may negotiate a lower level if unsupported.
     public let responseFormat: ResponseFormat?
-    public let maxTokens: Int
+    /// Output-token cap. `nil` means "don't send one" — let the model use its own maximum (TASK-607).
+    /// A fixed 16384 cap truncated reasoning models, which spend the budget on hidden reasoning tokens
+    /// before emitting the JSON. Omitted for OpenAI-compatible / Google; Anthropic requires the field
+    /// so it substitutes a fallback (see AnthropicProvider).
+    public let maxTokens: Int?
     /// Optional guided-generation hint for providers that support typed structured output.
     public let structuredOutput: StructuredOutputKind?
 
@@ -59,7 +63,7 @@ public struct ChatRequest: Sendable {
         messages: [ChatMessage],
         model: String,
         responseFormat: ResponseFormat? = nil,
-        maxTokens: Int = 16384,
+        maxTokens: Int? = nil,
         structuredOutput: StructuredOutputKind? = nil
     ) {
         self.messages = messages

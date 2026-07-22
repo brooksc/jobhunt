@@ -116,14 +116,19 @@ enum OpenAICompatibleTransport {
 
     // MARK: - Private
 
-    private static func buildBody(request: ChatRequest, fmt: ResponseFormat?) throws -> Data {
+    /// Internal (not private) so a unit test can assert the max_tokens omit/include behavior (TASK-607).
+    static func buildBody(request: ChatRequest, fmt: ResponseFormat?) throws -> Data {
         var obj: [String: Any] = [
             "model": request.model,
             "messages": request.messages.map { ["role": $0.role, "content": $0.content] },
             "temperature": 0,
-            "stream": false,
-            "max_tokens": request.maxTokens
+            "stream": false
         ]
+        // TASK-607: only cap output when a cap is set; omitting lets reasoning models use their full
+        // completion budget instead of exhausting a fixed 16384 cap on hidden reasoning tokens.
+        if let maxTokens = request.maxTokens {
+            obj["max_tokens"] = maxTokens
+        }
         if let fmt {
             obj["response_format"] = responseFormatJSON(fmt)
         }

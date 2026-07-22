@@ -81,7 +81,7 @@ All tests share one `JobhuntServer` instance (class-level `static sharedServer`)
 | `ScreenshotTests` | 18 | Visual tour: Dashboard → every Jobs filter → NeedsAction → Sites → Duplicates → LLM Queue → Data Quality → Settings tabs (General/Jobs/AI/Data/Debug) → Resumes |
 | `BehaviorUITests` | 6 | Sidebar nav, ⌘K, ⌘, (Settings), Remote filter chip, Data Quality filter chip |
 | `WorkflowUITests` | 2 | Archive a job, seeded data health check |
-| `MockLLMUITests` | 1 | LLM Test Connection vs a localhost mock (skipped — TASK-540) |
+| `MockLLMUITests` | 1 | LLM Test Connection vs a localhost mock |
 | `JobsScreenUITests` | 2 | Pursuing filter, Jobs menu bar commands |
 
 **Launch arguments (set automatically by `launchApp()`):**

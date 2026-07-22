@@ -551,12 +551,14 @@ private struct ResumeStep: View {
     /// first-run setup is not silently non-fatal; fit scoring needs the resume).
     private func saveResume(name: String, text: String) async {
         defer { isImporting = false }
-        do {
-            try await resumeService.addResume(name: name, text: text)
+        // Outcome mapping lives in ResumeImporter (unit-tested in Core) so this view only renders it.
+        switch await ResumeImporter.save(name: name, text: text, using: resumeService.addResume) {
+        case let .imported(name, text):
             resumeText = text
             resumeName = name
-        } catch {
-            importError = "Couldn't save the resume: \(error.localizedDescription). Please try again."
+            importError = nil
+        case let .failed(message):
+            importError = message
         }
     }
 }

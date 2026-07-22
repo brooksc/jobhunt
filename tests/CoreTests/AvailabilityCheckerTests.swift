@@ -381,8 +381,12 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
         guard case .available = result else { XCTFail("Expected .available, got \(result)"); return }
     }
 
-    // MARK: Cloudflare / bot-challenge (job #48)
+    // MARK: Cloudflare / bot-challenge (jobs #48, #122)
 
+    // TASK-603: job #122 (a pinterestcareers.com posting behind Cloudflare) was reported as gone
+    // because a plain background request gets a 403 "Just a moment…" challenge, not the real page.
+    // It's now classified .unverifiable (checkURL step 1.9), so no expired proposal is made while the
+    // posting is actually live — the exact response shape this fixture reproduces.
     func testCloudflareChallenge_403_isUnverifiable() async throws {
         let url = "https://www.pinterestcareers.com/jobs/7562128/technical-program-manager-ii-platforms/"
         MockURLProtocol.handlers = [("pinterestcareers.com/jobs/7562128", { _ in

@@ -30,11 +30,13 @@ struct JobsFilterState: Equatable, Hashable {
     var extractionFilter: ExtractionStatus?
     /// TASK-464: session-only filter — show only jobs that passed the location/remote criteria.
     var meetsCriteriaOnly: Bool = false
+    /// TASK-630: show only applied-funnel jobs that still need referral outreach.
+    var needsReferralOutreach: Bool = false
 
     var hasActiveFilters: Bool {
         statusFilter != nil || remoteFilter != nil || !searchText.isEmpty
             || minFitScore != nil || minRating != nil || minSalary != nil || recentDays != nil
-            || extractionFilter != nil || meetsCriteriaOnly
+            || extractionFilter != nil || meetsCriteriaOnly || needsReferralOutreach
     }
 
     var activeFilterCount: Int {
@@ -47,7 +49,8 @@ struct JobsFilterState: Equatable, Hashable {
             minSalary != nil,
             recentDays != nil,
             extractionFilter != nil,
-            meetsCriteriaOnly
+            meetsCriteriaOnly,
+            needsReferralOutreach
         ]
         .count(where: { $0 })
     }

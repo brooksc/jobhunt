@@ -554,6 +554,16 @@ struct JobsView: View {
                         .toggleStyle(.checkbox)
                         .font(.caption)
                     }
+                    Divider()
+                    filterSection("Referral") {
+                        Toggle("Needs referral outreach", isOn: Binding(
+                            get: { filterState.needsReferralOutreach },
+                            set: { filterState.needsReferralOutreach = $0 }
+                        ))
+                        .toggleStyle(.checkbox)
+                        .font(.caption)
+                        .help("Applied / interview / offer jobs with no referral outreach yet")
+                    }
                 }
             } // end ScrollView
         } // end outer VStack
@@ -773,6 +783,7 @@ struct JobsView: View {
         hasher.combine(searchTokens)
         hasher.combine(filterState)
         hasher.combine(allJobs.count)
+        hasher.combine(referralAttempts.count) // re-filter when a referral is recorded/removed (TASK-630)
         var maxUpdated = Date.distantPast
         for job in allJobs where job.updatedAt > maxUpdated {
             maxUpdated = job.updatedAt
@@ -782,6 +793,7 @@ struct JobsView: View {
     }
 
     private func computeFilteredJobs() -> [Job] {
+        let referralAttemptsByJob = Dictionary(grouping: referralAttempts) { $0.jobID }
         let base = allJobs.filter { job in
             // Sidebar smart-folder filter (use @State mirror for reliable re-render)
             if let sidebarStatus = localSidebarFilter {
@@ -829,6 +841,11 @@ struct JobsView: View {
             // TASK-464: only jobs that passed the location/remote criteria (nil = not computed → excluded).
             if filterState.meetsCriteriaOnly {
                 guard job.meetsCriteria == true else { return false }
+            }
+            // TASK-630: only funnel jobs that still need referral outreach.
+            if filterState.needsReferralOutreach {
+                let summary = Self.referralSummary(for: job, attempts: referralAttemptsByJob[job.id] ?? [])
+                guard summary == .needsOutreach else { return false }
             }
             // Text search — one matcher shared with saved-search badge counts so an opened saved
             // search shows exactly as many rows as its sidebar badge (TASK-573). Display fallbacks

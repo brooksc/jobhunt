@@ -91,6 +91,28 @@ public enum DashboardMetrics {
         return recap
     }
 
+    /// Per-day meaningful-action totals for the `days`-day window ending on `endingOn` (inclusive),
+    /// oldest → newest, for the "last N days" progress strip. Zero-activity days are included so the
+    /// window is a continuous timeline (TASK-623).
+    public static func buildRecapWindow(
+        events: [RecapEvent],
+        followUpCompletions: [Date],
+        days: Int,
+        endingOn: Date,
+        calendar: Calendar = .current
+    ) -> [(day: Date, total: Int)] {
+        let today = calendar.startOfDay(for: endingOn)
+        var result: [(day: Date, total: Int)] = []
+        for offset in stride(from: max(0, days - 1), through: 0, by: -1) {
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: today) else { continue }
+            let recap = buildDailyRecap(
+                events: events, followUpCompletions: followUpCompletions, day: day, calendar: calendar
+            )
+            result.append((day: day, total: recap.total))
+        }
+        return result
+    }
+
     /// The target status of a status-change event — from the current "Status changed from X to Y" note
     /// or a legacy single-token note — mapped to the current vocabulary. Nil if unrecognized.
     static func statusTarget(fromNote note: String?) -> String? {

@@ -113,6 +113,24 @@ final class DashboardMetricsTests: XCTestCase {
         XCTAssertEqual(recap.followUpsCompleted, 2, "only the two completed today count")
     }
 
+    func testRecapWindow_isContinuousOldestToNewestWithZeros() {
+        let end = fixed(2026, 3, 15)
+        let events = [
+            ev("capture", nil, fixed(2026, 3, 15)), // today → 1
+            ev("status", "Status changed from new to applied", fixed(2026, 3, 13)), // 2 days ago
+            ev("capture", nil, fixed(2026, 3, 13)) // 2 days ago → total 2
+        ]
+        let window = DashboardMetrics.buildRecapWindow(
+            events: events, followUpCompletions: [], days: 7, endingOn: end, calendar: cal
+        )
+        XCTAssertEqual(window.count, 7, "continuous 7-day window")
+        XCTAssertEqual(window.last?.day, cal.startOfDay(for: end), "last bucket is today")
+        XCTAssertEqual(window.last?.total, 1, "today has 1 action")
+        XCTAssertEqual(window[4].total, 2, "two days ago (index 4) has 2 actions")
+        XCTAssertEqual(window.map(\.day), window.map(\.day).sorted(), "buckets ascending oldest → newest")
+        XCTAssertEqual(window.filter { $0.total == 0 }.count, 5, "the other five days are zero")
+    }
+
     func testStatusTarget_parsesCurrentAndLegacyNotes() {
         XCTAssertEqual(DashboardMetrics.statusTarget(fromNote: "Status changed from applied to rejected"), "rejected")
         XCTAssertEqual(DashboardMetrics.statusTarget(fromNote: "Status changed from new to pursuing"), "pursuing")

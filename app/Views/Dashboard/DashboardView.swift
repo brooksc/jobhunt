@@ -601,11 +601,33 @@ private struct DashboardDerived {
 
     init() {}
 
+    /// Normalized `company|title` key for matching the "same role" across separate captures/duplicates.
+    /// Conservative — exact normalized match only (lowercased, trimmed); nil if either side is blank.
+    private static func roleKey(company: String?, title: String?) -> String? {
+        let company = (company ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = (title ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !company.isEmpty, !title.isEmpty else { return nil }
+        return "\(company)|\(title)"
+    }
+
     init(jobs: [Job], decisions: [DuplicateDecision], now: Date) {
+        // Roles already handled elsewhere — applied to, or closed out (passed/rejected/expired/etc.) —
+        // keyed by normalized company+title. Used to suppress recommending a role you're already done
+        // with when it exists as a separate capture/duplicate (TASK-623 follow-up: a rejected Reddit
+        // role was still being recommended via its levels.fyi duplicate).
+        let handledStatuses: Set<JobStatus> = [
+            .applied, .interview, .offer, .rejected, .passed, .closed, .expired, .archived, .duplicate
+        ]
+        let handledRoleKeys = Set(jobs.compactMap { job in
+            handledStatuses.contains(job.status) ? Self.roleKey(company: job.company, title: job.title) : nil
+        })
         recommended = Array(
-            jobs.filter { $0.status == .pursuing && $0.fitStatus == .succeeded && ($0.fitScore ?? 0) > 0 }
-                .sorted { ($0.fitScore ?? 0) > ($1.fitScore ?? 0) }
-                .prefix(4)
+            jobs.filter {
+                $0.status == .pursuing && $0.fitStatus == .succeeded && ($0.fitScore ?? 0) > 0
+                    && !(Self.roleKey(company: $0.company, title: $0.title).map(handledRoleKeys.contains) ?? false)
+            }
+            .sorted { ($0.fitScore ?? 0) > ($1.fitScore ?? 0) }
+            .prefix(4)
         )
 
         recent = Array(

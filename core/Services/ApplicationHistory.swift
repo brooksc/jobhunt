@@ -124,6 +124,24 @@ public enum ApplicationHistory {
         }
     }
 
+    /// The `occurredAt` of every event that is a transition INTO Applied — the legacy fallback source
+    /// for the first-Applied timestamp. Handles the current "Status changed from X to applied" note and
+    /// the legacy single-token "applied" note.
+    public static func appliedEventDates(
+        from events: [(eventType: String, note: String?, occurredAt: Date)]
+    ) -> [Date] {
+        events.compactMap { event in
+            guard event.eventType == "status" || event.eventType == "status_changed" else { return nil }
+            guard let raw = event.note?.lowercased() else { return nil }
+            let target: String = if let range = raw.range(of: " to ", options: .backwards) {
+                String(raw[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+            } else {
+                raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            return target == "applied" ? event.occurredAt : nil
+        }
+    }
+
     /// The Saturday ending the Sunday–Saturday Washington claim week containing `date` (start of that
     /// Saturday), in `calendar`'s time zone (AC #6). `.weekday` is 1=Sun…7=Sat regardless of locale.
     public static func claimWeekEnding(for date: Date, calendar: Calendar = .current) -> Date {

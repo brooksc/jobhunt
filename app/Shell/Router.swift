@@ -10,6 +10,7 @@ public enum SidebarSection: String, CaseIterable, Hashable {
     case llmQueue
     case sites
     case duplicates
+    case applicationHistory
 
     var title: String {
         switch self {
@@ -21,6 +22,7 @@ public enum SidebarSection: String, CaseIterable, Hashable {
         case .llmQueue: "LLM Queue"
         case .sites: "Sites"
         case .duplicates: "Duplicates"
+        case .applicationHistory: "Application History"
         }
     }
 
@@ -34,6 +36,7 @@ public enum SidebarSection: String, CaseIterable, Hashable {
         case .llmQueue: "cpu"
         case .sites: "globe"
         case .duplicates: "doc.on.doc"
+        case .applicationHistory: "list.bullet.rectangle"
         }
     }
 }
@@ -49,6 +52,7 @@ public enum SidebarItem: Hashable, Sendable {
     case duplicates
     case llmQueue
     case dataQuality
+    case applicationHistory
     case savedSearch(String)
 
     /// The display label shown in the sidebar row (matches NSTextField text for AppKit selection).
@@ -63,6 +67,7 @@ public enum SidebarItem: Hashable, Sendable {
         case .duplicates: return "Duplicates"
         case .llmQueue: return "LLM Queue"
         case .dataQuality: return "Data Quality"
+        case .applicationHistory: return "Application History"
         case .savedSearch: return nil // dynamic name — caller handles
         }
     }
@@ -80,6 +85,7 @@ public enum SidebarItem: Hashable, Sendable {
         case .duplicates: return "duplicates"
         case .llmQueue: return "llmQueue"
         case .dataQuality: return "dataQuality"
+        case .applicationHistory: return "applicationHistory"
         case let .savedSearch(id): return "savedSearch:\(id)"
         }
     }
@@ -95,6 +101,7 @@ public enum SidebarItem: Hashable, Sendable {
         case "duplicates": self = .duplicates
         case "llmQueue": self = .llmQueue
         case "dataQuality": self = .dataQuality
+        case "applicationHistory": self = .applicationHistory
         default:
             if raw.hasPrefix("jobs:"), let status = JobStatus(rawValue: String(raw.dropFirst("jobs:".count))) {
                 self = .jobs(status)

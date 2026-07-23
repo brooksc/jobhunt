@@ -177,6 +177,13 @@ struct Sidebar: View {
                 )
                 .help("Data quality issues")
 
+                sidebarRow(
+                    .applicationHistory,
+                    id: "sidebar.applicationHistory",
+                    label: Label("Application History", systemImage: "list.bullet.rectangle")
+                )
+                .help("Every job you've applied to — with CSV export for job-search logs")
+
                 // Settings is the standard macOS preferences window (⌘,), not an in-window
                 // section — this row just opens it.
                 settingsRow
@@ -394,6 +401,7 @@ struct Sidebar: View {
         case .duplicates: router.navigateToSection(.duplicates)
         case .llmQueue: router.navigateToSection(.llmQueue)
         case .dataQuality: router.navigateToSection(.dataQuality)
+        case .applicationHistory: router.navigateToSection(.applicationHistory)
         case let .savedSearch(id):
             router.activeSavedSearchID = id
             router.sidebarJobFilter = nil
@@ -419,6 +427,7 @@ struct Sidebar: View {
         case .duplicates: item = .duplicates
         case .llmQueue: item = .llmQueue
         case .dataQuality: item = .dataQuality
+        case .applicationHistory: item = .applicationHistory
         }
         if listSelection != item { listSelection = item }
         // Remember the current view so the next launch restores it. Gated on didRestore so the

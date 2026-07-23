@@ -1,9 +1,10 @@
 ---
 id: TASK-615
 title: 'Interested job detail: flag prior applications at the same company'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-22 19:02'
+updated_date: '2026-07-23 04:48'
 labels:
   - workflow
   - job-detail

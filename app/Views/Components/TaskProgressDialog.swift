@@ -13,6 +13,11 @@ final class TaskProgressModel {
     var total: Int
     var onCancel: () -> Void = {}
 
+    /// When set, the task finished with nothing to act on — the dialog shows this message + a Done
+    /// button (instead of a transient toast) so the result is stated where the user is already looking.
+    var completion: String?
+    var onDone: () -> Void = {}
+
     init(title: String, total: Int) {
         self.title = title
         self.total = total
@@ -31,19 +36,28 @@ struct TaskProgressDialog: View {
         VStack(spacing: 16) {
             Text(model.title)
                 .font(.headline)
-            if model.isIndeterminate {
+            if let completion = model.completion {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    Text(completion).multilineTextAlignment(.center)
+                }
+                Button("Done") { model.onDone() }
+                    .keyboardShortcut(.defaultAction)
+            } else if model.isIndeterminate {
                 ProgressView()
                     .controlSize(.large)
                     .padding(.vertical, 6)
+                Button("Cancel", role: .cancel) { model.onCancel() }
+                    .keyboardShortcut(.cancelAction)
             } else {
                 ProgressView(value: model.fraction)
                     .progressViewStyle(.linear)
                 Text("\(model.current) / \(model.total)")
                     .font(.callout.monospacedDigit())
                     .foregroundStyle(.secondary)
+                Button("Cancel", role: .cancel) { model.onCancel() }
+                    .keyboardShortcut(.cancelAction)
             }
-            Button("Cancel", role: .cancel) { model.onCancel() }
-                .keyboardShortcut(.cancelAction)
         }
         .padding(24)
         .frame(width: 320)

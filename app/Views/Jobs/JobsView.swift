@@ -1053,16 +1053,18 @@ struct JobsView: View {
         model.onCancel = { task.cancel() }
         progress = model
         let found = await task.value
-        progress = nil
-        guard !task.isCancelled else { return } // user cancelled — leave everything untouched
+        guard !task.isCancelled else { progress = nil; return } // user cancelled — leave everything untouched
 
         appServices.settings.set(
             ISO8601DateFormatter().string(from: Date()),
             forKey: SettingsKey.availabilityLastAutoCheckAt
         )
         if found.isEmpty {
-            appServices.toastStore.show("All \(eligible.count) Interested or Applied jobs are still available")
+            // Show the result in the dialog itself (no transient toast) — the user dismisses it.
+            model.completion = "All \(eligible.count) Interested or Applied jobs are still available."
+            model.onDone = { progress = nil }
         } else {
+            progress = nil
             // Let the progress sheet finish dismissing before presenting the confirmation sheet.
             try? await Task.sleep(for: .milliseconds(350))
             goneJobs = found
@@ -1087,16 +1089,18 @@ struct JobsView: View {
         model.onCancel = { task.cancel() }
         progress = model
         let pairs = await task.value
-        progress = nil
-        guard !task.isCancelled else { return }
+        guard !task.isCancelled else { progress = nil; return }
 
         guard let pairs else {
+            progress = nil
             appServices.toastStore.show("Couldn't scan for duplicates", isError: true)
             return
         }
         if pairs == 0 {
-            appServices.toastStore.show("No duplicate pairs to review")
+            model.completion = "No duplicate pairs to review."
+            model.onDone = { progress = nil }
         } else {
+            progress = nil
             router.navigateToSection(.duplicates)
         }
         notifyIfBackgrounded(

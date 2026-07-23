@@ -499,6 +499,41 @@ public enum AvailabilityChecker {
     /// Checks the URLs of pursuing jobs and returns those that appear to be gone,
     /// WITHOUT modifying any job records. Call this to gather candidates, then show
     /// a confirmation UI before marking them expired.
+    /// One job's availability-check inputs (Sendable so it crosses the task-group boundary).
+    private struct JobSpec: Sendable {
+        let id: String
+        let jobNumber: Int?
+        let company: String?
+        let title: String
+        let url: URL
+        /// Greenhouse posting id (from any of the job's URLs) for the confirm-alive override (TASK-631).
+        let greenhouseJobID: String?
+    }
+
+    /// Delay between serial LinkedIn availability checks to stay under LinkedIn's rate limit (TASK-641).
+    static let linkedInPaceDelay: Duration = .milliseconds(500)
+
+    /// Check one spec and apply the Greenhouse confirm-alive override; returns a result only when the
+    /// posting is genuinely gone. Shared by the concurrent pass and the paced LinkedIn pass.
+    private static func goneResult(for spec: JobSpec, session: URLSession) async -> GoneJobResult? {
+        let result = await checkURL(spec.url, title: spec.title, session: session)
+        guard case let .gone(reason) = result else { return nil }
+        // Authoritative override (TASK-631): the flaky career-site HTML (Cloudflare / JS shell) said
+        // gone, but if this posting carries a Greenhouse gh_jid and the public Job Board API confirms it
+        // 200-alive, it's NOT gone. Only runs on a would-be-gone result, so it can only remove a false
+        // positive.
+        if let ghjid = spec.greenhouseJobID,
+           await greenhouseConfirmsAlive(
+               ghjid: ghjid, company: spec.company, urlString: spec.url.absoluteString, session: session
+           ) {
+            return nil
+        }
+        return GoneJobResult(
+            jobID: spec.id, jobNumber: spec.jobNumber, company: spec.company,
+            title: spec.title, url: spec.url, reason: reason
+        )
+    }
+
     public static func findGoneJobs(
         _ jobs: [Job],
         session: URLSession = .shared,
@@ -511,12 +546,6 @@ public enum AvailabilityChecker {
         let eligible = jobs.filter { $0.status == .pursuing || $0.status == .applied }
         guard !eligible.isEmpty else { return [] }
 
-        struct JobSpec: Sendable {
-            let id: String; let jobNumber: Int?; let company: String?; let title: String; let url: URL
-            /// Greenhouse posting id (from any of the job's URLs), used for the authoritative
-            /// confirm-alive override (TASK-631). Nil for non-Greenhouse jobs.
-            let greenhouseJobID: String?
-        }
         let specs: [JobSpec] = eligible.compactMap { job in
             let urlString = JobURLPolicy.availabilityCheckURL(job: job) ?? ""
             guard !urlString.isEmpty, let url = URL(string: urlString) else { return nil }
@@ -533,9 +562,18 @@ public enum AvailabilityChecker {
         let total = specs.count
         var completed = 0
         var results: [GoneJobResult] = []
+
+        // LinkedIn aggressively rate-limits: a burst of concurrent guest requests gets throttled
+        // (999 / blocked / redirected), which reads as "available" and silently misses removed postings
+        // (job #212 was checked in a 35-URL burst and came back available though it 404s in isolation).
+        // So check LinkedIn URLs SERIALLY with a small pace; everything else stays fully concurrent.
+        func isLinkedIn(_ spec: JobSpec) -> Bool { (spec.url.host?.lowercased() ?? "").hasSuffix("linkedin.com") }
+        let concurrentSpecs = specs.filter { !isLinkedIn($0) }
+        let linkedInSpecs = specs.filter(isLinkedIn)
+
         await withTaskGroup(of: GoneJobResult?.self) { group in
             var inFlight = 0
-            for spec in specs {
+            for spec in concurrentSpecs {
                 if inFlight >= 10 {
                     if let r = await group.next() {
                         if let r { results.append(r) }
@@ -544,33 +582,23 @@ public enum AvailabilityChecker {
                         await onProgress?(completed, total)
                     }
                 }
-                let (id, jobNumber, company, title, url) = (spec.id, spec.jobNumber, spec.company, spec.title, spec.url)
-                let ghjid = spec.greenhouseJobID
                 inFlight += 1
-                group.addTask {
-                    let result = await checkURL(url, title: title, session: session)
-                    guard case let .gone(reason) = result else { return nil }
-                    // Authoritative override (TASK-631): the flaky career-site HTML (Cloudflare / JS
-                    // shell) said gone, but if this posting carries a Greenhouse gh_jid and the public
-                    // Job Board API confirms it 200-alive, it's NOT gone. Only runs on a would-be-gone
-                    // result, so it costs nothing for healthy jobs and can only remove false positives.
-                    if let ghjid,
-                       await greenhouseConfirmsAlive(
-                           ghjid: ghjid, company: company, urlString: url.absoluteString, session: session
-                       ) {
-                        return nil
-                    }
-                    return GoneJobResult(
-                        jobID: id, jobNumber: jobNumber, company: company,
-                        title: title, url: url, reason: reason
-                    )
-                }
+                group.addTask { await goneResult(for: spec, session: session) }
             }
             for await r in group {
                 if let r { results.append(r) }
                 completed += 1
                 await onProgress?(completed, total)
             }
+        }
+
+        // Paced LinkedIn pass — one at a time, with a gap, to stay under the rate limit (TASK-641).
+        for spec in linkedInSpecs {
+            if Task.isCancelled { break }
+            if let r = await goneResult(for: spec, session: session) { results.append(r) }
+            completed += 1
+            await onProgress?(completed, total)
+            try? await Task.sleep(for: linkedInPaceDelay)
         }
         return results
     }

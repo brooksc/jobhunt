@@ -878,6 +878,19 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         XCTAssertNil(AvailabilityChecker.greenhouseJobID(fromURLs: ["https://example.com/careers/role"]))
     }
 
+    /// TASK-641: a LinkedIn search URL is checked in the paced serial pass (rewritten to /jobs/view/{id});
+    /// a 404 there is still caught as gone. Guards the LinkedIn/other partition + the paced path.
+    func testFindGoneJobs_linkedInPacedPassCatches404() async throws {
+        let search = "https://www.linkedin.com/jobs/search/?currentJobId=999&keywords=remote"
+        let job = try makeJobWithCapture(url: search, title: "Role", status: .applied)
+        MockURLProtocol.handlers = [("linkedin.com/jobs/view/999", { _ in
+            makeResponse(url: "https://www.linkedin.com/jobs/view/999", status: 404, body: "")
+        })]
+        let gone = await AvailabilityChecker.findGoneJobs([job], session: session)
+        XCTAssertEqual(gone.count, 1, "a removed LinkedIn posting (404) is caught via the paced pass")
+        XCTAssertEqual(gone.first?.jobID, job.id)
+    }
+
     func testGreenhouseBoardCandidates_derivation() {
         XCTAssertEqual(
             AvailabilityChecker.greenhouseBoardCandidates(

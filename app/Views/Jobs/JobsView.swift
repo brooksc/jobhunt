@@ -154,6 +154,10 @@ struct JobsView: View {
                 router.activeSavedSearchID = nil
                 searchTokens = []
             }
+            // Dashboard "needs a referral" card → open Jobs pre-filtered to referral-needs-outreach
+            // (TASK-644). Widen to All Jobs so the funnel-status matches aren't hidden by a smart folder.
+            .onChange(of: router.focusReferralOutreach) { _, on in if on { applyReferralOutreachFilter() } }
+            .onAppear { if router.focusReferralOutreach { applyReferralOutreachFilter() } }
             .onChange(of: searchTokens) { _, newTokens in
                 // Programmatically applying a saved search sets these exact tokens — keep it active.
                 // Any user-initiated token edit diverges from the saved set and clears it (TASK-572).
@@ -707,6 +711,17 @@ struct JobsView: View {
     private func applyPersistedSort() {
         filterState.sortKey = JobsSortKey(rawValue: appServices.settings.jobsSortKey) ?? .capturedAt
         filterState.sortAscending = appServices.settings.jobsSortAscending
+    }
+
+    /// Consume the one-shot Router request to show referral-needs-outreach jobs (TASK-644): clear any
+    /// narrowing so the funnel-status matches are visible, enable the filter, then reset the flag.
+    private func applyReferralOutreachFilter() {
+        router.sidebarJobFilter = nil
+        router.activeSavedSearchID = nil
+        searchTokens = []
+        searchText = ""
+        filterState.needsReferralOutreach = true
+        router.focusReferralOutreach = false
     }
 
     // MARK: - Active filters bar (#6)

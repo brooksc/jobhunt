@@ -98,6 +98,59 @@ final class ReferralTrackingTests: XCTestCase {
         XCTAssertEqual(ReferralTracking.stateDate(outcome: .submitted, dates: dates), t0, "falls back to ask date")
     }
 
+    // MARK: - Follow-up nudges (TASK-644 Phase 2)
+
+    private func dated(_ outcome: ReferralOutcome, requested: Date, responded: Date? = nil) -> ReferralTracking.Attempt {
+        .init(outcome: outcome, recipientName: "Jane", recipientIdentifier: nil,
+              requestedAt: requested, respondedAt: responded)
+    }
+
+    func testFollowUpAwaitingResponseAfterGrace() {
+        let old = Date(timeIntervalSince1970: 0)
+        let now = Date(timeIntervalSince1970: 5 * 86_400) // 5 days later, grace = 4
+        let nudge = ReferralTracking.followUp(attempts: [dated(.requested, requested: old)], now: now)
+        XCTAssertEqual(nudge?.kind, .awaitingResponse)
+        XCTAssertEqual(nudge?.since, old)
+    }
+
+    func testFollowUpNotYetDueWithinGrace() {
+        let recent = Date(timeIntervalSince1970: 2 * 86_400)
+        let now = Date(timeIntervalSince1970: 5 * 86_400) // 3 days after request < 4-day grace
+        XCTAssertNil(ReferralTracking.followUp(attempts: [dated(.requested, requested: recent)], now: now))
+    }
+
+    func testFollowUpAwaitingSubmissionCountsFromResponse() {
+        let requested = Date(timeIntervalSince1970: 0)
+        let responded = Date(timeIntervalSince1970: 1 * 86_400)
+        let now = Date(timeIntervalSince1970: 9 * 86_400) // 8 days after response, grace = 7
+        let nudge = ReferralTracking.followUp(
+            attempts: [dated(.responded, requested: requested, responded: responded)], now: now
+        )
+        XCTAssertEqual(nudge?.kind, .awaitingSubmission)
+        XCTAssertEqual(nudge?.since, responded)
+    }
+
+    func testFollowUpNoneWhenSubmittedOrDeclinedOrNA() {
+        let old = Date(timeIntervalSince1970: 0)
+        let now = Date(timeIntervalSince1970: 30 * 86_400)
+        XCTAssertNil(ReferralTracking.followUp(attempts: [dated(.submitted, requested: old)], now: now))
+        XCTAssertNil(ReferralTracking.followUp(attempts: [dated(.declined, requested: old)], now: now))
+        XCTAssertNil(ReferralTracking.followUp(attempts: [dated(.notApplicable, requested: old)], now: now))
+        XCTAssertNil(ReferralTracking.followUp(attempts: [], now: now))
+    }
+
+    func testFollowUpRespondedSupersedesAStaleRequestToAnotherContact() {
+        // One contact asked long ago (would be stale) but another responded recently → wait on them.
+        let old = Date(timeIntervalSince1970: 0)
+        let now = Date(timeIntervalSince1970: 10 * 86_400)
+        let recentResponse = Date(timeIntervalSince1970: 9 * 86_400) // 1 day ago < 7-day grace
+        let attempts = [
+            dated(.requested, requested: old),
+            dated(.responded, requested: old, responded: recentResponse)
+        ]
+        XCTAssertNil(ReferralTracking.followUp(attempts: attempts, now: now), "recent response supersedes; no nudge")
+    }
+
     // MARK: - Backward-compatible raw values
 
     func testLegacyRawValuesStillDecode() {

@@ -146,6 +146,9 @@ public final class Router {
     public var focusSearch: Bool = false
     /// Triggers CSV export of the current filtered Jobs view from app menu / ⌘⇧E
     public var exportJobsRequested: Bool = false
+    /// One-shot: set by the Dashboard "needs a referral" card to open Jobs pre-filtered to
+    /// referral-needs-outreach. JobsView consumes it (enables the filter) and clears it (TASK-644).
+    public var focusReferralOutreach: Bool = false
     /// Which tab the ⌘, Settings window should show. Set by deep-links (e.g. the
     /// "AI not configured" nudge) before opening the window.
     public var settingsTab: SettingsPane = .general

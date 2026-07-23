@@ -55,6 +55,7 @@ struct DashboardView: View {
                     pipelineFunnelSection
                     followUpsDueSection
                 }
+                DashboardReferralCard()
                 HStack(alignment: .top, spacing: 16) {
                     recommendedToApplySection
                     recentCapturesSection

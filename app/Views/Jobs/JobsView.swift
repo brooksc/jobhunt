@@ -18,6 +18,22 @@ struct JobsView: View {
     @Query(sort: \Job.createdAt, order: .reverse) private var allJobs: [Job]
     @Query(sort: \SavedSearch.sortOrder) private var savedSearches: [SavedSearch]
     @Query private var resumes: [Resume]
+    /// Referral attempts across all jobs — drives the per-row referral badge (TASK-630).
+    @Query private var referralAttempts: [ReferralAttempt]
+
+    /// Derived referral summary for a job from its outreach attempts (TASK-630).
+    static func referralSummary(for job: Job, attempts: [ReferralAttempt]) -> ReferralSummary {
+        ReferralTracking.summary(
+            jobStatus: job.status.rawValue,
+            attempts: attempts.map {
+                .init(
+                    outcome: ReferralOutcome(rawValue: $0.outcome) ?? .requested,
+                    recipientName: $0.recipientName, recipientIdentifier: $0.recipientIdentifier,
+                    requestedAt: $0.requestedAt
+                )
+            }
+        )
+    }
 
     /// Whether a fit score could ever be produced — an AI provider is configured *and* a résumé is
     /// active. When false, rows neutralize the fit ring instead of showing a forever-pending
@@ -398,9 +414,13 @@ struct JobsView: View {
         // Keychain (API-key presence) via AIConfig.isConfigured, so evaluating it per row meant one
         // Keychain hit per visible job (~hundreds of ms when switching filters on a full list).
         let canScore = fitScoringAvailable
+        let attemptsByJob = Dictionary(grouping: referralAttempts) { $0.jobID }
         return ScrollViewReader { proxy in
             List(filteredJobs, selection: $selectedJobIDs) { job in
-                JobListRow(job: job, isSelected: selectedJobIDs.contains(job.id), fitScoringAvailable: canScore)
+                JobListRow(
+                    job: job, isSelected: selectedJobIDs.contains(job.id), fitScoringAvailable: canScore,
+                    referralSummary: Self.referralSummary(for: job, attempts: attemptsByJob[job.id] ?? [])
+                )
                     .tag(job.id)
                     .contextMenu { jobContextMenu(job) }
                     .accessibilityIdentifier("job.row.\(job.id)")
@@ -1165,6 +1185,7 @@ private struct JobListRow: View {
     let job: Job
     let isSelected: Bool
     let fitScoringAvailable: Bool
+    var referralSummary: ReferralSummary = .none
 
     var body: some View {
         HStack(spacing: 10) {
@@ -1225,6 +1246,9 @@ private struct JobListRow: View {
     private var rightMeta: some View {
         VStack(alignment: .trailing, spacing: 2) {
             StatusChip(status: job.status)
+            if referralSummary != .none {
+                ReferralBadge(summary: referralSummary)
+            }
             if let salary = salaryText {
                 Text(salary).font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
             }

@@ -650,6 +650,12 @@ struct OverviewTabView: View {
                 decisionStrip
                 Divider()
 
+                // Referral outreach — only renders for applied/interview/offer jobs or ones with
+                // recorded attempts (TASK-630).
+                ReferralSection(job: job)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+
                 // Compensation block
                 if job.salaryMin != nil || job.salaryMax != nil || job.salaryNote != nil {
                     compensationBlock

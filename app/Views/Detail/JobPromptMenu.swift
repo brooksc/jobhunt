@@ -21,6 +21,14 @@ struct JobPromptMenu: View {
     @State private var showAutoApplyPrivacyPrompt = false
     /// Presents the Request Referral sheet where the user optionally pastes contact context.
     @State private var showReferralSheet = false
+    /// A pending "Record as sent" → opens the referral editor prefilled with the pasted context.
+    @State private var recordingReferral: PendingReferral?
+    @Query private var allReferralAttempts: [ReferralAttempt]
+
+    private struct PendingReferral: Identifiable {
+        let id = UUID()
+        let context: String
+    }
 
     private struct PendingOpen: Identifiable {
         let id = UUID()
@@ -114,12 +122,41 @@ struct JobPromptMenu: View {
         .sheet(isPresented: $showReferralSheet) {
             ReferralPromptSheet(
                 onCopy: { context in copy(.requestReferral, referralContext: context) },
-                onOpen: { provider, context in requestOpen(.requestReferral, provider, referralContext: context) }
+                onOpen: { provider, context in requestOpen(.requestReferral, provider, referralContext: context) },
+                onRecordSent: { context in
+                    showReferralSheet = false
+                    recordingReferral = PendingReferral(context: context)
+                }
+            )
+        }
+        .sheet(item: $recordingReferral) { pending in
+            ReferralAttemptEditor(
+                jobID: job.id,
+                existing: nil,
+                priorAttempts: allReferralAttempts.filter { $0.jobID == job.id },
+                initialNote: pending.context,
+                onSave: { input in
+                    recordReferral(input)
+                    recordingReferral = nil
+                },
+                onCancel: { recordingReferral = nil }
             )
         }
     }
 
     // MARK: - Actions
+
+    /// Record an explicit referral outreach (from the "Record as sent" action) — copy/open never do this.
+    private func recordReferral(_ input: ReferralAttemptInput) {
+        Task {
+            do {
+                try await appServices.backgroundStore.recordReferralAttempt(input)
+                appServices.toastStore.show("Referral recorded — \(input.recipientName)")
+            } catch {
+                appServices.toastStore.show("Couldn't record referral: \(error.localizedDescription)", isError: true)
+            }
+        }
+    }
 
     private func buildPrompt(_ kind: JobPromptKind, resume: Resume, referralContext: String = "") -> String {
         JobPromptBuilder.build(kind: kind, input: promptInput(resume: resume, referralContext: referralContext))
@@ -259,6 +296,7 @@ struct JobPromptMenu: View {
 private struct ReferralPromptSheet: View {
     let onCopy: (String) -> Void
     let onOpen: (AIChatProvider, String) -> Void
+    let onRecordSent: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var referralContext: String = ""
@@ -295,6 +333,8 @@ private struct ReferralPromptSheet: View {
 
             HStack(spacing: 8) {
                 Button("Cancel", role: .cancel) { dismiss() }
+                // Copy/open never change referral state; recording a sent request is an explicit action.
+                Button("Record as sent…") { onRecordSent(referralContext) }
                 Spacer()
                 Button("Open in Claude") { onOpen(.claude, referralContext) }
                 Button("Open in ChatGPT") { onOpen(.chatGPT, referralContext) }

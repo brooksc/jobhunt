@@ -1002,6 +1002,37 @@ public actor BackgroundStore {
     }
 
     /// Create or update a job's data-quality review, on the store actor (TASK-526).
+    /// Insert or update a job's ESD application evidence (TASK-628), keyed by job id. Blank fields are
+    /// stored as nil so "missing" stays authoritative. No-op-safe: overwrites the single evidence row.
+    public func upsertApplicationEvidence(_ input: ApplicationEvidenceInput) throws {
+        let jid = input.jobID
+        var descriptor = FetchDescriptor<ApplicationEvidence>(predicate: #Predicate { $0.jobID == jid })
+        descriptor.fetchLimit = 1
+        let evidence: ApplicationEvidence
+        if let existing = try modelContext.fetch(descriptor).first {
+            evidence = existing
+        } else {
+            evidence = ApplicationEvidence(jobID: jid)
+            modelContext.insert(evidence)
+        }
+        func clean(_ value: String?) -> String? {
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (trimmed?.isEmpty ?? true) ? nil : trimmed
+        }
+        evidence.updatedAt = Date()
+        evidence.correctedAppliedAt = input.correctedAppliedAt
+        evidence.contactMethod = clean(input.contactMethod)
+        evidence.contactType = clean(input.contactType)
+        evidence.employerWebsiteOrEmail = clean(input.employerWebsiteOrEmail)
+        evidence.phone = clean(input.phone)
+        evidence.employerAddress = clean(input.employerAddress)
+        evidence.city = clean(input.city)
+        evidence.state = clean(input.state)
+        evidence.jobReferenceNumber = clean(input.jobReferenceNumber)
+        evidence.applicationResult = clean(input.applicationResult)
+        try modelContext.save()
+    }
+
     public func upsertDataQualityReview(jobID: String, note: String) throws {
         let jid = jobID
         let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))

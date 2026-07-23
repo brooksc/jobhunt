@@ -102,7 +102,8 @@ public enum SchemaV1: VersionedSchema {
             LLMRequestAttempt.self,
             Contact.self,
             CoverLetter.self,
-            SavedSearch.self
+            SavedSearch.self,
+            ApplicationEvidence.self
         ]
     }
 }

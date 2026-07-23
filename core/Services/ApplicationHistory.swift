@@ -32,6 +32,19 @@ public struct ApplicationRecord: Sendable, Equatable, Identifiable {
     public var id: String { jobID }
     public var hasApplicationDate: Bool { appliedAt != nil }
 
+    /// Which ESD-oriented evidence fields are still empty (AC #9) — for a "N fields to add" prompt.
+    /// Only the fields ESD's log leans on; never inferred from the URL.
+    public var missingEvidenceFields: [String] {
+        func blank(_ value: String?) -> Bool { (value?.trimmingCharacters(in: .whitespaces).isEmpty ?? true) }
+        var missing: [String] = []
+        if appliedAt == nil { missing.append("application date") }
+        if blank(contactMethod) { missing.append("contact method") }
+        if blank(contactType) { missing.append("contact type") }
+        if blank(employerWebsiteOrEmail) { missing.append("website/email") }
+        if blank(applicationResult) { missing.append("result") }
+        return missing
+    }
+
     public init(
         jobID: String, jobNumber: Int?, appliedAt: Date?, company: String?, jobTitle: String?,
         sourceURL: String, currentStatus: String, notes: String?,
@@ -73,10 +86,13 @@ public enum ApplicationHistory {
         /// `occurredAt` of every `status → applied` transition event — the legacy fallback for rows
         /// captured before `appliedAt` existed.
         public let appliedEventDates: [Date]
+        /// User-entered ESD evidence (a date correction + employer-contact fields), or nil.
+        public let evidence: Evidence?
 
         public init(
             jobID: String, jobNumber: Int?, company: String?, title: String?, sourceURL: String,
-            currentStatus: String, notes: String?, appliedAt: Date?, appliedEventDates: [Date]
+            currentStatus: String, notes: String?, appliedAt: Date?, appliedEventDates: [Date],
+            evidence: Evidence? = nil
         ) {
             self.jobID = jobID
             self.jobNumber = jobNumber
@@ -87,6 +103,39 @@ public enum ApplicationHistory {
             self.notes = notes
             self.appliedAt = appliedAt
             self.appliedEventDates = appliedEventDates
+            self.evidence = evidence
+        }
+
+        /// The user-entered evidence overlay for one job (TASK-628 Phase 2).
+        public struct Evidence: Sendable {
+            public let correctedAppliedAt: Date?
+            public let contactMethod: String?
+            public let contactType: String?
+            public let employerWebsiteOrEmail: String?
+            public let phone: String?
+            public let employerAddress: String?
+            public let city: String?
+            public let state: String?
+            public let jobReferenceNumber: String?
+            public let applicationResult: String?
+
+            public init(
+                correctedAppliedAt: Date? = nil, contactMethod: String? = nil, contactType: String? = nil,
+                employerWebsiteOrEmail: String? = nil, phone: String? = nil, employerAddress: String? = nil,
+                city: String? = nil, state: String? = nil, jobReferenceNumber: String? = nil,
+                applicationResult: String? = nil
+            ) {
+                self.correctedAppliedAt = correctedAppliedAt
+                self.contactMethod = contactMethod
+                self.contactType = contactType
+                self.employerWebsiteOrEmail = employerWebsiteOrEmail
+                self.phone = phone
+                self.employerAddress = employerAddress
+                self.city = city
+                self.state = state
+                self.jobReferenceNumber = jobReferenceNumber
+                self.applicationResult = applicationResult
+            }
         }
     }
 
@@ -98,20 +147,26 @@ public enum ApplicationHistory {
         job.appliedAt != nil || !job.appliedEventDates.isEmpty || appliedImplyingStatuses.contains(job.currentStatus)
     }
 
-    /// The authoritative first-Applied timestamp: `appliedAt` (set once on the first Applied transition),
-    /// else the earliest `status → applied` event; nil when only the current status implies it (AC #3/#4).
+    /// The authoritative first-Applied timestamp: a user correction wins (AC #4), else `appliedAt` (set
+    /// once on the first Applied transition), else the earliest `status → applied` event; nil when only
+    /// the current status implies it (AC #3).
     static func firstAppliedAt(_ job: JobInput) -> Date? {
-        job.appliedAt ?? job.appliedEventDates.min()
+        job.evidence?.correctedAppliedAt ?? job.appliedAt ?? job.appliedEventDates.min()
     }
 
     /// Build the report: one record per job with an authoritative Applied history, newest application
     /// first; missing-date rows sort last; ties broken by job number then id (deterministic — AC #5/#10).
     public static func build(jobs: [JobInput]) -> [ApplicationRecord] {
         jobs.filter(everApplied).map { job in
-            ApplicationRecord(
+            let evidence = job.evidence
+            return ApplicationRecord(
                 jobID: job.jobID, jobNumber: job.jobNumber, appliedAt: firstAppliedAt(job),
                 company: job.company, jobTitle: job.title, sourceURL: job.sourceURL,
-                currentStatus: job.currentStatus, notes: job.notes
+                currentStatus: job.currentStatus, notes: job.notes,
+                contactMethod: evidence?.contactMethod, contactType: evidence?.contactType,
+                employerWebsiteOrEmail: evidence?.employerWebsiteOrEmail, phone: evidence?.phone,
+                employerAddress: evidence?.employerAddress, city: evidence?.city, state: evidence?.state,
+                jobReferenceNumber: evidence?.jobReferenceNumber, applicationResult: evidence?.applicationResult
             )
         }.sorted { lhs, rhs in
             let lDate = lhs.appliedAt ?? .distantPast // missing dates sort last in a newest-first order

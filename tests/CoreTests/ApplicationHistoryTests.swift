@@ -14,11 +14,13 @@ final class ApplicationHistoryTests: XCTestCase {
     private func job(
         id: String, number: Int? = nil, status: String = "applied", appliedAt: Date? = nil,
         events: [Date] = [], company: String? = "Acme", title: String? = "Engineer",
-        url: String = "https://x.com/1", notes: String? = nil
+        url: String = "https://x.com/1", notes: String? = nil,
+        evidence: ApplicationHistory.JobInput.Evidence? = nil
     ) -> ApplicationHistory.JobInput {
         .init(
             jobID: id, jobNumber: number, company: company, title: title, sourceURL: url,
-            currentStatus: status, notes: notes, appliedAt: appliedAt, appliedEventDates: events
+            currentStatus: status, notes: notes, appliedAt: appliedAt, appliedEventDates: events,
+            evidence: evidence
         )
     }
 
@@ -115,6 +117,34 @@ final class ApplicationHistoryTests: XCTestCase {
         XCTAssertTrue(csv.contains("\"called\nrecruiter\""), "newline field quoted")
         XCTAssertTrue(csv.contains("2026-03-10"), "application date")
         XCTAssertTrue(csv.contains("2026-03-14"), "claim week ending Saturday")
+    }
+
+    func testEvidenceCorrectionFillsMissingDateAndFlowsToRecord() throws {
+        let corrected = date(2026, 4, 1)
+        let evidence = ApplicationHistory.JobInput.Evidence(
+            correctedAppliedAt: corrected, contactMethod: "online", contactType: "application",
+            employerWebsiteOrEmail: "jobs@acme.com", applicationResult: "applied"
+        )
+        let records = ApplicationHistory.build(jobs: [job(id: "a", status: "interview", appliedAt: nil, evidence: evidence)])
+        let record = try XCTUnwrap(records.first)
+        XCTAssertEqual(record.appliedAt, corrected, "the user correction fills the missing application date")
+        XCTAssertEqual(record.contactMethod, "online")
+        XCTAssertEqual(record.employerWebsiteOrEmail, "jobs@acme.com")
+        XCTAssertTrue(record.missingEvidenceFields.isEmpty, "date + method + type + website + result all present")
+    }
+
+    func testEvidenceCorrectionOverridesExistingAppliedAt() throws {
+        let evidence = ApplicationHistory.JobInput.Evidence(correctedAppliedAt: date(2026, 5, 5))
+        let records = ApplicationHistory.build(jobs: [job(id: "a", appliedAt: date(2026, 3, 1), evidence: evidence)])
+        XCTAssertEqual(try XCTUnwrap(records.first).appliedAt, date(2026, 5, 5))
+    }
+
+    func testMissingEvidenceFieldsListsGaps() throws {
+        let records = ApplicationHistory.build(jobs: [job(id: "a", appliedAt: date(2026, 3, 10))])
+        let missing = try XCTUnwrap(records.first).missingEvidenceFields
+        XCTAssertFalse(missing.contains("application date"), "date is present")
+        XCTAssertTrue(missing.contains("contact method"))
+        XCTAssertTrue(missing.contains("result"))
     }
 
     func testCSVMissingDateLeavesDateColumnsEmpty() {

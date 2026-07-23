@@ -15,23 +15,37 @@ struct ApplicationHistoryView: View {
 
     @Query private var allJobs: [Job]
     @Query private var allEvents: [JobEvent]
+    @Query private var allEvidence: [ApplicationEvidence]
 
     @State private var useCustomRange = false
     @State private var startDate = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
     @State private var endDate = Date()
+    @State private var editing: ApplicationRecord?
 
     private var records: [ApplicationRecord] {
         let eventsByJob = Dictionary(grouping: allEvents) { $0.job?.id }
+        let evidenceByJob = Dictionary(allEvidence.map { ($0.jobID, $0) }, uniquingKeysWith: { first, _ in first })
         let inputs: [ApplicationHistory.JobInput] = allJobs.map { job in
             let jobEvents = (eventsByJob[job.id] ?? []).map { ($0.eventType, $0.note, $0.occurredAt) }
             return ApplicationHistory.JobInput(
                 jobID: job.id, jobNumber: job.jobNumber, company: job.company, title: job.title,
                 sourceURL: JobURLPolicy.sourceURL(job: job) ?? "", currentStatus: job.status.rawValue,
                 notes: nil, appliedAt: job.appliedAt,
-                appliedEventDates: ApplicationHistory.appliedEventDates(from: jobEvents)
+                appliedEventDates: ApplicationHistory.appliedEventDates(from: jobEvents),
+                evidence: evidenceByJob[job.id].map(Self.evidenceOverlay)
             )
         }
         return ApplicationHistory.build(jobs: inputs)
+    }
+
+    private static func evidenceOverlay(_ evidence: ApplicationEvidence) -> ApplicationHistory.JobInput.Evidence {
+        .init(
+            correctedAppliedAt: evidence.correctedAppliedAt, contactMethod: evidence.contactMethod,
+            contactType: evidence.contactType, employerWebsiteOrEmail: evidence.employerWebsiteOrEmail,
+            phone: evidence.phone, employerAddress: evidence.employerAddress, city: evidence.city,
+            state: evidence.state, jobReferenceNumber: evidence.jobReferenceNumber,
+            applicationResult: evidence.applicationResult
+        )
     }
 
     private var filtered: [ApplicationRecord] {
@@ -82,6 +96,22 @@ struct ApplicationHistoryView: View {
         }
         .navigationTitle("Application History")
         .accessibilityIdentifier("content.applicationHistory")
+        .sheet(item: $editing) { record in
+            ApplicationEvidenceEditor(record: record) { input in
+                saveEvidence(input)
+                editing = nil
+            }
+        }
+    }
+
+    private func saveEvidence(_ input: ApplicationEvidenceInput) {
+        Task {
+            do {
+                try await appServices.backgroundStore.upsertApplicationEvidence(input)
+            } catch {
+                appServices.toastStore.show("Couldn't save: \(error.localizedDescription)", isError: true)
+            }
+        }
     }
 
     // MARK: - Controls
@@ -152,38 +182,48 @@ struct ApplicationHistoryView: View {
     }
 
     private func row(_ record: ApplicationRecord) -> some View {
-        Button {
-            router.selectedJobID = record.jobID
-        } label: {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(record.company ?? "Unknown company")
-                        .font(.subheadline.weight(.medium)).lineLimit(1)
-                    Text(record.jobTitle ?? "Untitled").font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    if record.sourceURL.isEmpty {
-                        Text("No source URL on this job").font(.caption2).foregroundStyle(.tertiary)
+        HStack(spacing: 8) {
+            Button {
+                router.selectedJobID = record.jobID
+            } label: {
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(record.company ?? "Unknown company")
+                            .font(.subheadline.weight(.medium)).lineLimit(1)
+                        Text(record.jobTitle ?? "Untitled").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        if !record.missingEvidenceFields.isEmpty {
+                            Text("Add: \(record.missingEvidenceFields.joined(separator: ", "))")
+                                .font(.caption2).foregroundStyle(.orange).lineLimit(1)
+                        } else if record.sourceURL.isEmpty {
+                            Text("No source URL on this job").font(.caption2).foregroundStyle(.tertiary)
+                        }
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 3) {
+                        if let applied = record.appliedAt {
+                            Text(applied.formatted(date: .abbreviated, time: .omitted))
+                                .font(.caption.monospacedDigit())
+                        } else {
+                            Text("date needed").font(.caption2).foregroundStyle(.orange)
+                        }
+                        if let number = record.jobNumber {
+                            Text("#\(number)").font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
+                        }
+                    }
+                    if let status = JobStatus(rawValue: record.currentStatus) {
+                        StatusChip(status: status)
                     }
                 }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 3) {
-                    if let applied = record.appliedAt {
-                        Text(applied.formatted(date: .abbreviated, time: .omitted))
-                            .font(.caption.monospacedDigit())
-                    } else {
-                        Text("date needed").font(.caption2).foregroundStyle(.orange)
-                    }
-                    if let number = record.jobNumber {
-                        Text("#\(number)").font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
-                    }
-                }
-                if let status = JobStatus(rawValue: record.currentStatus) {
-                    StatusChip(status: status)
-                }
-                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                .contentShape(Rectangle())
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+
+            Button { editing = record } label: {
+                Image(systemName: "square.and.pencil")
+            }
+            .buttonStyle(.borderless)
+            .help("Add or correct application evidence (contact method, date, result, …)")
         }
-        .buttonStyle(.plain)
     }
 
     private var emptyState: some View {
@@ -211,5 +251,102 @@ struct ApplicationHistoryView: View {
         } catch {
             appServices.toastStore.show("Export failed: \(error.localizedDescription)", isError: true)
         }
+    }
+}
+
+// MARK: - ApplicationEvidenceEditor (TASK-628 phase 2)
+
+/// Sheet to record/correct the ESD employer-contact evidence for one applied job — including a date
+/// correction for legacy missing-date rows. Nothing is inferred; blank fields stay empty on save.
+private struct ApplicationEvidenceEditor: View {
+    let record: ApplicationRecord
+    let onSave: (ApplicationEvidenceInput) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var overrideDate: Bool
+    @State private var appliedDate: Date
+    @State private var contactMethod: String
+    @State private var contactType: String
+    @State private var website: String
+    @State private var phone: String
+    @State private var address: String
+    @State private var city: String
+    @State private var stateField: String
+    @State private var jobRef: String
+    @State private var result: String
+
+    init(record: ApplicationRecord, onSave: @escaping (ApplicationEvidenceInput) -> Void) {
+        self.record = record
+        self.onSave = onSave
+        _overrideDate = State(initialValue: record.appliedAt == nil) // missing-date rows default to entering one
+        _appliedDate = State(initialValue: record.appliedAt ?? Date())
+        _contactMethod = State(initialValue: record.contactMethod ?? "")
+        _contactType = State(initialValue: record.contactType ?? "")
+        _website = State(initialValue: record.employerWebsiteOrEmail ?? "")
+        _phone = State(initialValue: record.phone ?? "")
+        _address = State(initialValue: record.employerAddress ?? "")
+        _city = State(initialValue: record.city ?? "")
+        _stateField = State(initialValue: record.state ?? "")
+        _jobRef = State(initialValue: record.jobReferenceNumber ?? "")
+        _result = State(initialValue: record.applicationResult ?? "")
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Application evidence").font(.headline)
+                    Text("\(record.company ?? "Unknown") — \(record.jobTitle ?? "Untitled")")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer()
+            }
+            .padding()
+            Divider()
+            Form {
+                Section("Application date") {
+                    Toggle("Set or correct the application date", isOn: $overrideDate)
+                    if overrideDate {
+                        DatePicker("Date", selection: $appliedDate, displayedComponents: .date)
+                    }
+                }
+                Section("Employer contact (for the ESD log)") {
+                    field("Contact method", "online, email, in person…", $contactMethod)
+                    field("Contact type", "application, résumé, inquiry…", $contactType)
+                    field("Website or email", "", $website)
+                    field("Phone", "", $phone)
+                    field("Address", "", $address)
+                    field("City", "", $city)
+                    field("State", "", $stateField)
+                    field("Job reference #", "", $jobRef)
+                    field("Result", "applied, interview, no response…", $result)
+                }
+            }
+            .formStyle(.grouped)
+            Divider()
+            HStack {
+                Button("Cancel") { dismiss() }
+                Spacer()
+                Button("Save") { save() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding()
+        }
+        .frame(width: 460, height: 580)
+    }
+
+    private func field(_ label: String, _ prompt: String, _ text: Binding<String>) -> some View {
+        TextField(label, text: text, prompt: prompt.isEmpty ? nil : Text(prompt))
+    }
+
+    private func save() {
+        onSave(ApplicationEvidenceInput(
+            jobID: record.jobID,
+            correctedAppliedAt: overrideDate ? appliedDate : nil,
+            contactMethod: contactMethod, contactType: contactType, employerWebsiteOrEmail: website,
+            phone: phone, employerAddress: address, city: city, state: stateField,
+            jobReferenceNumber: jobRef, applicationResult: result
+        ))
     }
 }

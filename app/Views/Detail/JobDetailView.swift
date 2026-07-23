@@ -608,6 +608,8 @@ struct OverviewTabView: View {
     @Environment(Router.self) private var router
 
     @Query private var resumes: [Resume]
+    /// All jobs — for the prior-application safeguard (TASK-615).
+    @Query private var allJobs: [Job]
 
     @State private var skills: [String] = []
     @State private var newSkillText = ""
@@ -643,12 +645,39 @@ struct OverviewTabView: View {
         projection?.niceToHaves ?? []
     }
 
+    /// Prior applications at the same company — only surfaced while the job is Interested (TASK-615).
+    private var priorApplicationMatches: [PriorApplications.Match] {
+        guard job.status == .pursuing else { return [] }
+        let viewed = PriorApplications.JobInput(
+            jobID: job.id, jobNumber: job.jobNumber, company: job.company, title: job.title,
+            currentStatus: job.status.rawValue, appliedAt: job.appliedAt
+        )
+        let others = allJobs.map {
+            PriorApplications.JobInput(
+                jobID: $0.id, jobNumber: $0.jobNumber, company: $0.company, title: $0.title,
+                currentStatus: $0.status.rawValue, appliedAt: $0.appliedAt
+            )
+        }
+        return PriorApplications.priorApplications(for: viewed, among: others)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 // Decision strip
                 decisionStrip
                 Divider()
+
+                // Already applied to this company? (Interested jobs only — TASK-615)
+                if !priorApplicationMatches.isEmpty {
+                    PriorApplicationsWarning(
+                        company: job.company ?? "this company",
+                        matches: priorApplicationMatches,
+                        onOpen: { id in router.selectJob(id: id) }
+                    )
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                }
 
                 // Referral outreach — only renders for applied/interview/offer jobs or ones with
                 // recorded attempts (TASK-630).

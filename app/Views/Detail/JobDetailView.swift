@@ -184,6 +184,8 @@ private struct DetailHeader: View {
                     }
                 }
                 Spacer()
+                // Report a data problem with this job as a prefilled GitHub issue (TASK-638).
+                JobIssueButton(job: job)
                 // AI prompt menu (TASK-606) — build a resume/interview/cover-letter/etc. prompt.
                 JobPromptMenu(job: job)
                 // Prev/Next placeholders for keyboard nav

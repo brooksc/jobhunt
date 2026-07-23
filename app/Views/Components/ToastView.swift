@@ -1,19 +1,27 @@
 import SwiftUI
 
-struct ToastMessage: Identifiable {
-    let id = UUID()
-    let message: String
-    let isError: Bool
-    /// Optional inline action (e.g. "Undo"). When set, a button renders in the toast.
-    var actionLabel: String?
-    var action: (() -> Void)?
-    /// Coalescing key — showing another toast with the same key replaces this one in place instead of
-    /// stacking a duplicate (e.g. repeated "N still selected" messages).
-    var key: String?
+// MARK: - AppNotification (TASK-645)
 
-    /// Actionable and error toasts stay until the user acts or dismisses them; plain informational
-    /// toasts auto-fade. So feedback the user might want to act on never disappears out from under them.
-    var isPersistent: Bool { action != nil || isError }
+/// A single notification. It shows briefly as a transient corner toast and — when it's actionable
+/// (Undo/Review) or an error — is also kept as a durable entry in the bell notification center, so
+/// nothing vanishes before you can act and nothing has to be manually dismissed. Repeated same-`key`
+/// actions within a short window coalesce into one entry with a combined Undo-all.
+struct AppNotification: Identifiable {
+    enum Kind { case info, action, error }
+    let id = UUID()
+    var message: String
+    var kind: Kind
+    var createdAt: Date
+    /// Coalescing group key — same-key actionable notifications within the window merge (e.g. "archive").
+    var key: String?
+    /// Accumulated item count across merged actions (drives the "Updated N jobs" group message).
+    var count: Int
+    var actionLabel: String?
+    /// One closure per merged action; the entry's action runs them all (Undo-all).
+    var actions: [() -> Void]
+
+    /// Bell entries are the actionable / error notifications worth keeping; plain info is transient-only.
+    var isPersistent: Bool { kind == .error || !actions.isEmpty }
 }
 
 struct ErrorRecord: Identifiable {
@@ -22,74 +30,114 @@ struct ErrorRecord: Identifiable {
     let timestamp: Date
 }
 
+// MARK: - ToastStore / notification center
+
 @Observable
 final class ToastStore {
-    var messages: [ToastMessage] = []
+    /// Bell inbox — actionable + error notifications, newest first. Durable until undone or cleared.
+    private(set) var notifications: [AppNotification] = []
+    /// The single transient toast currently shown in the corner (nil = none). Auto-fades.
+    private(set) var transient: AppNotification?
     /// Last 10 error toasts — survives dismissal for the Debug tab.
     private(set) var recentErrors: [ErrorRecord] = []
 
-    /// Max simultaneously-visible toasts — beyond this, the oldest non-persistent (then oldest) toasts
-    /// are trimmed so a burst can't bury the window in a stack.
-    private let maxVisible = 3
+    /// Recent same-key actions merge into one bell entry within this window.
+    private let coalesceWindow: TimeInterval = 30
+    /// Monotonic token so a re-shown/coalesced transient isn't cleared early by an older fade timer.
+    private var transientToken = 0
 
+    /// Show a notification. Non-actionable info is transient-only; actionable/error notifications also
+    /// land in the bell. `itemCount` + `groupMessage` drive coalescing of repeated same-`key` actions.
     func show(
         _ message: String,
         isError: Bool = false,
         key: String? = nil,
         actionLabel: String? = nil,
-        action: (() -> Void)? = nil
+        action: (() -> Void)? = nil,
+        itemCount: Int = 1,
+        groupMessage: ((Int) -> String)? = nil
     ) {
-        let toast = ToastMessage(message: message, isError: isError, actionLabel: actionLabel, action: action, key: key)
-        // Coalesce by key: a keyed message replaces the existing one in place rather than stacking.
-        if let key, let index = messages.firstIndex(where: { $0.key == key }) {
-            messages[index] = toast
-        } else {
-            messages.append(toast)
+        let now = Date()
+        if isError { recordError(message, at: now) }
+
+        // Coalesce into a recent same-key persistent entry (combined Undo-all).
+        if let key, action != nil || isError,
+           let idx = notifications.firstIndex(where: { $0.key == key }),
+           now.timeIntervalSince(notifications[idx].createdAt) <= coalesceWindow {
+            var entry = notifications.remove(at: idx)
+            entry.count += itemCount
+            if let action { entry.actions.append(action) }
+            entry.message = groupMessage?(entry.count) ?? message
+            entry.createdAt = now
+            if isError { entry.kind = .error }
+            notifications.insert(entry, at: 0)
+            showTransient(entry)
+            return
         }
-        if isError {
-            recentErrors.append(ErrorRecord(message: message, timestamp: Date()))
-            if recentErrors.count > 10 { recentErrors.removeFirst() }
-        }
-        trimStack()
-        // Only plain informational toasts auto-fade; actionable/error toasts persist until dismissed.
-        if !toast.isPersistent {
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(3))
-                messages.removeAll { $0.id == toast.id }
-            }
+
+        let kind: AppNotification.Kind = isError ? .error : (action != nil ? .action : .info)
+        let entry = AppNotification(
+            message: message, kind: kind, createdAt: now, key: key, count: itemCount,
+            actionLabel: actionLabel, actions: action.map { [$0] } ?? []
+        )
+        if entry.isPersistent { notifications.insert(entry, at: 0) }
+        showTransient(entry)
+    }
+
+    /// Run a bell entry's combined action(s) (Undo-all) and remove it.
+    func runAction(_ id: UUID) {
+        guard let entry = notifications.first(where: { $0.id == id }) else { return }
+        entry.actions.forEach { $0() }
+        remove(id)
+    }
+
+    func remove(_ id: UUID) {
+        notifications.removeAll { $0.id == id }
+        if transient?.id == id { transient = nil }
+    }
+
+    func dismissTransient() { transient = nil }
+
+    func clearAll() {
+        notifications.removeAll()
+        transient = nil
+    }
+
+    private func showTransient(_ entry: AppNotification) {
+        transient = entry
+        transientToken &+= 1
+        let token = transientToken
+        let seconds: Double = entry.kind == .error ? 5 : 4
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(seconds))
+            if transientToken == token { transient = nil }
         }
     }
 
-    func dismiss(_ id: UUID) {
-        messages.removeAll { $0.id == id }
-    }
-
-    /// Bound the visible stack: drop the oldest non-persistent toast first, then the oldest overall.
-    private func trimStack() {
-        while messages.count > maxVisible {
-            if let index = messages.firstIndex(where: { !$0.isPersistent }) {
-                messages.remove(at: index)
-            } else {
-                messages.removeFirst()
-            }
-        }
+    private func recordError(_ message: String, at now: Date) {
+        recentErrors.append(ErrorRecord(message: message, timestamp: now))
+        if recentErrors.count > 10 { recentErrors.removeFirst() }
     }
 }
 
+// MARK: - Transient corner toast
+
 struct ToastView: View {
-    let toast: ToastMessage
+    let notification: AppNotification
+    let onAction: () -> Void
     let onDismiss: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: toast.isError ? "xmark.circle.fill" : "checkmark.circle.fill")
-                .foregroundStyle(toast.isError ? .red : .green)
-            Text(toast.message)
+            Image(systemName: notification.kind == .error ? "xmark.circle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(notification.kind == .error ? .red : .green)
+            Text(notification.message)
                 .font(.callout)
-            Spacer()
-            if let label = toast.actionLabel, let action = toast.action {
+                .lineLimit(2)
+            Spacer(minLength: 8)
+            if let label = notification.actionLabel, !notification.actions.isEmpty {
                 Button(label) {
-                    action()
+                    onAction()
                     onDismiss()
                 }
                 .font(.callout.weight(.semibold))
@@ -105,38 +153,42 @@ struct ToastView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        .frame(maxWidth: 420, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
         .shadow(radius: 4, y: 2)
     }
 }
 
+/// The corner overlay — at most ONE transient toast at a time, so a burst can't cover the content.
 struct ToastOverlay: View {
     let store: ToastStore
 
     var body: some View {
-        VStack(spacing: 8) {
-            ForEach(store.messages) { toast in
-                ToastView(toast: toast) {
-                    store.dismiss(toast.id)
-                }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+        if let toast = store.transient {
+            ToastView(
+                notification: toast,
+                onAction: { store.runAction(toast.id) },
+                onDismiss: { store.dismissTransient() }
+            )
+            .padding()
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .animation(.spring(response: 0.3), value: toast.id)
         }
-        .padding()
-        .animation(.spring(response: 0.3), value: store.messages.map(\.id))
     }
 }
 
 #Preview {
     let store = ToastStore()
-    return VStack {
+    return VStack(spacing: 12) {
         Button("Show Toast") { store.show("Job saved successfully") }
+        Button("Show Undo") { store.show("Status set to Interview", actionLabel: "Undo", action: {}) }
         Button("Show Error") { store.show("Failed to save job", isError: true) }
     }
     .frame(width: 400, height: 300)
-    .overlay(alignment: .bottom) {
+    .overlay(alignment: .bottomTrailing) {
         ToastOverlay(store: store)
     }
 }

@@ -8,6 +8,7 @@ struct ContentView: View {
     var theme: Theme
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var selectedJobIDs: Set<String> = []
+    @State private var showNotifications = false
 
     @Environment(AppServices.self) private var appServices
     @Environment(\.openSettings) private var openSettings
@@ -38,8 +39,11 @@ struct ContentView: View {
         .environment(theme)
         .environment(\.jobService, appServices.jobService)
         .environment(\.queueActor, appServices.queueActor)
-        .toolbar { serviceStatusMenu }
-        .overlay(alignment: .bottom) {
+        .toolbar {
+            notificationBell
+            serviceStatusMenu
+        }
+        .overlay(alignment: .bottomTrailing) {
             ToastOverlay(store: appServices.toastStore)
         }
         // Keyboard Shortcuts overlay (TASK-499) — opened by bare `?` (via the key monitor) or the
@@ -133,6 +137,25 @@ struct ContentView: View {
             Color.clear
                 .navigationSplitViewColumnWidth(min: 0, ideal: 0, max: 0)
                 .accessibilityHidden(true)
+        }
+    }
+
+    // MARK: - Notification center (bell) toolbar (TASK-645)
+
+    @ToolbarContentBuilder
+    private var notificationBell: some ToolbarContent {
+        ToolbarItem(placement: .automatic) {
+            Button {
+                showNotifications.toggle()
+            } label: {
+                Image(systemName: appServices.toastStore.notifications.isEmpty ? "bell" : "bell.badge")
+                    .foregroundStyle(appServices.toastStore.notifications.contains { $0.kind == .error }
+                        ? Color.orange : Color.secondary)
+            }
+            .help("Notifications")
+            .popover(isPresented: $showNotifications, arrowEdge: .bottom) {
+                NotificationCenterView(store: appServices.toastStore)
+            }
         }
     }
 

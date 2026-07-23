@@ -65,10 +65,6 @@ struct JobsView: View {
     /// The row to select once a keyboard archive/status change removes the current selection from the
     /// filtered list, so keyboard triage continues without a mouse click (TASK-616).
     @State private var pendingSelectionAnchor: String?
-    /// Jobs archived while the coalescing archive toast is visible, so rapid sequential archives share
-    /// one growing "Archived N" Undo group instead of stacking a toast per archive (TASK-617 #5). Reset
-    /// once that toast is dismissed/undone (the next archive starts a fresh group).
-    @State private var archiveGroup: [ArchivedJob] = []
     /// Mirror of router.sidebarJobFilter as @State so SwiftUI reliably re-renders.
     @State private var localSidebarFilter: JobStatus?
     /// Cached filter+sort result (TASK-610). `filteredJobs` was recomputed live and read ~4× per body,
@@ -941,12 +937,8 @@ struct JobsView: View {
 
     // MARK: - Selection actions (shared by the row context menu and the menu-bar Job menu)
 
-    /// A job archived in the current Undo group, with the status to restore it to (TASK-617 #5).
-    private struct ArchivedJob { let id: String; let priorStatus: JobStatus }
-    /// Coalescing key shared by every archive toast so rapid archives replace/extend in place.
-    private var archiveToastKey: String { "archive" }
-
-    /// Archive a set of jobs with an Undo toast restoring each job's prior status.
+    /// Archive a set of jobs with an Undo toast restoring each job's prior status. Rapid archives
+    /// coalesce into one bell entry ("Archived N jobs") with a combined Undo-all (TASK-645).
     private func archiveJobs(_ ids: [String]) {
         guard !ids.isEmpty else { return }
         selfRemovedIDs.formUnion(ids) // these will drop from the filter by our own command (TASK-617)
@@ -961,28 +953,13 @@ struct JobsView: View {
             do {
                 try await svc.setStatusBulk(.archived, jobIDs: ids)
                 await MainActor.run {
-                    // Coalesce rapid archives into one growing Undo group: while the archive toast is
-                    // still visible, each archive extends it rather than stacking a new toast (TASK-617 #5).
-                    if !toast.messages.contains(where: { $0.key == archiveToastKey }) { archiveGroup = [] }
-                    archiveGroup.append(contentsOf: priors.map { ArchivedJob(id: $0.0, priorStatus: $0.1) })
-                    let group = archiveGroup
                     toast.show(
-                        "Archived \(group.count) job\(group.count == 1 ? "" : "s")",
-                        key: archiveToastKey,
-                        actionLabel: "Undo"
-                    ) {
-                        Task {
-                            var failed = 0
-                            for job in group {
-                                do { try await svc.setStatus(job.priorStatus, for: job.id) } catch { failed += 1 }
-                            }
-                            if failed > 0 {
-                                await MainActor.run {
-                                    toast.show("Couldn't undo \(failed) of \(group.count) job(s).", isError: true)
-                                }
-                            }
-                        }
-                    }
+                        "Archived \(ids.count) job\(ids.count == 1 ? "" : "s")",
+                        key: "archive", actionLabel: "Undo",
+                        action: { Self.restore(priors, using: svc, toast: toast) },
+                        itemCount: ids.count,
+                        groupMessage: { "Archived \($0) job\($0 == 1 ? "" : "s")" }
+                    )
                 }
             } catch {
                 await MainActor.run {
@@ -992,7 +969,8 @@ struct JobsView: View {
         }
     }
 
-    /// Set status on a set of jobs with an Undo toast restoring each job's prior status.
+    /// Set status on a set of jobs with an Undo toast restoring each job's prior status. Rapid changes
+    /// coalesce into one bell entry ("Updated N jobs") with a combined Undo-all (TASK-645).
     private func setStatusJobs(_ status: JobStatus, _ ids: [String]) {
         guard !ids.isEmpty else { return }
         selfRemovedIDs.formUnion(ids) // may drop from the current filter by our own command (TASK-617)
@@ -1008,25 +986,33 @@ struct JobsView: View {
                 try await svc.setStatusBulk(status, jobIDs: ids)
                 await MainActor.run {
                     let changed = priors.filter { $0.1 != status }
-                    if !changed.isEmpty {
-                        toast.show("Status set to \(status.displayName)", actionLabel: "Undo") {
-                            Task {
-                                var failed = 0
-                                for (id, old) in changed {
-                                    do { try await svc.setStatus(old, for: id) } catch { failed += 1 }
-                                }
-                                if failed > 0 {
-                                    await MainActor.run {
-                                        toast.show("Couldn't undo \(failed) of \(changed.count) job(s).", isError: true)
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    guard !changed.isEmpty else { return }
+                    toast.show(
+                        "Status set to \(status.displayName)",
+                        key: "status", actionLabel: "Undo",
+                        action: { Self.restore(changed, using: svc, toast: toast) },
+                        itemCount: changed.count,
+                        groupMessage: { "Updated \($0) job\($0 == 1 ? "" : "s")" }
+                    )
                 }
             } catch {
                 await MainActor.run {
                     toast.show("Couldn't update job statuses: \(error.localizedDescription)", isError: true)
+                }
+            }
+        }
+    }
+
+    /// Restore each job to its prior status (the Undo body), surfacing an error toast on any failure.
+    private static func restore(_ priors: [(String, JobStatus)], using svc: JobService, toast: ToastStore) {
+        Task {
+            var failed = 0
+            for (id, status) in priors {
+                do { try await svc.setStatus(status, for: id) } catch { failed += 1 }
+            }
+            if failed > 0 {
+                await MainActor.run {
+                    toast.show("Couldn't undo \(failed) of \(priors.count) job(s).", isError: true)
                 }
             }
         }

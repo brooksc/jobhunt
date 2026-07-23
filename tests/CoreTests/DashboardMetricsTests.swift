@@ -131,6 +131,47 @@ final class DashboardMetricsTests: XCTestCase {
         XCTAssertEqual(window.filter { $0.total == 0 }.count, 5, "the other five days are zero")
     }
 
+    func testDayActivity_groupsJobsByCategoryExcludingBackgroundAndOtherDays() {
+        let day = fixed(2026, 3, 15)
+        let events = [
+            DashboardMetrics.RecapEvent(
+                eventType: "capture", note: nil, occurredAt: fixed(2026, 3, 15, hour: 9),
+                jobID: "j1", jobNumber: 1, company: "Acme", title: "Engineer"
+            ),
+            DashboardMetrics.RecapEvent(
+                eventType: "status", note: "Status changed from new to applied", occurredAt: fixed(2026, 3, 15, hour: 10),
+                jobID: "j2", jobNumber: 2, company: "Globex", title: "PM"
+            ),
+            DashboardMetrics.RecapEvent( // background → excluded
+                eventType: "extraction", note: "gemini", occurredAt: fixed(2026, 3, 15),
+                jobID: "j3", jobNumber: 3, company: "X", title: "Y"
+            ),
+            DashboardMetrics.RecapEvent( // other day → excluded
+                eventType: "capture", note: nil, occurredAt: fixed(2026, 3, 14),
+                jobID: "j9", jobNumber: 9, company: "Old", title: "Z"
+            )
+        ]
+        let followUps = [DashboardMetrics.FollowUpCompletion(
+            completedAt: fixed(2026, 3, 15, hour: 11), jobID: "j2", jobNumber: 2, company: "Globex", title: "PM"
+        )]
+        let activity = DashboardMetrics.buildDayActivity(events: events, followUps: followUps, day: day, calendar: cal)
+
+        XCTAssertFalse(activity.isEmpty)
+        let cats = activity.sections.map(\.category)
+        XCTAssertEqual(cats, [.found, .applied, .followUp], "sections in canonical order, background/other-day dropped")
+        let found = activity.sections.first { $0.category == .found }
+        XCTAssertEqual(found?.items.first?.jobNumber, 1)
+        XCTAssertEqual(found?.items.first?.title, "Engineer")
+        XCTAssertEqual(activity.sections.reduce(0) { $0 + $1.items.count }, 3, "3 auditable rows total")
+
+        // The detail agrees with the counts (shared categorizer): found+applied here == recap's captured+applied.
+        let recap = DashboardMetrics.buildDailyRecap(
+            events: events, followUpCompletions: followUps.map(\.completedAt), day: day, calendar: cal
+        )
+        XCTAssertEqual(recap.captured, found?.items.count)
+        XCTAssertEqual(recap.applied + recap.followUpsCompleted, 2)
+    }
+
     func testStatusTarget_parsesCurrentAndLegacyNotes() {
         XCTAssertEqual(DashboardMetrics.statusTarget(fromNote: "Status changed from applied to rejected"), "rejected")
         XCTAssertEqual(DashboardMetrics.statusTarget(fromNote: "Status changed from new to pursuing"), "pursuing")

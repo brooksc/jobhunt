@@ -501,7 +501,8 @@ public enum AvailabilityChecker {
     /// a confirmation UI before marking them expired.
     public static func findGoneJobs(
         _ jobs: [Job],
-        session: URLSession = .shared
+        session: URLSession = .shared,
+        onProgress: (@Sendable (_ checked: Int, _ total: Int) async -> Void)? = nil
     ) async -> [GoneJobResult] {
         // Interested (.pursuing) AND Applied jobs are checked: a role you applied to can be pulled
         // just as a saved one can. Interview/offer/rejected stay protected — a job you're actively
@@ -529,6 +530,8 @@ public enum AvailabilityChecker {
         }
         guard !specs.isEmpty else { return [] }
 
+        let total = specs.count
+        var completed = 0
         var results: [GoneJobResult] = []
         await withTaskGroup(of: GoneJobResult?.self) { group in
             var inFlight = 0
@@ -537,6 +540,8 @@ public enum AvailabilityChecker {
                     if let r = await group.next() {
                         if let r { results.append(r) }
                         inFlight -= 1
+                        completed += 1
+                        await onProgress?(completed, total)
                     }
                 }
                 let (id, jobNumber, company, title, url) = (spec.id, spec.jobNumber, spec.company, spec.title, spec.url)
@@ -563,6 +568,8 @@ public enum AvailabilityChecker {
             }
             for await r in group {
                 if let r { results.append(r) }
+                completed += 1
+                await onProgress?(completed, total)
             }
         }
         return results

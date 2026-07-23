@@ -5,6 +5,7 @@ import JobhuntCore
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
+import UserNotifications
 
 // MARK: - JobsView
 
@@ -37,6 +38,9 @@ struct JobsView: View {
     @State private var showingExpiredConfirmation = false
     @State private var isCheckingAvailability = false
     @State private var isScanningDuplicates = false
+    /// Progress for a running long task (availability check / duplicate scan), shown as a modal dialog
+    /// so these aren't a silent minute (TASK-640).
+    @State private var progress: TaskProgressModel?
     @State private var jobIDsToDelete: [String] = []
     /// Jobs the user just archived/re-statused/deleted, so the filtered-set reconciliation below knows
     /// their drop from the current filter is an expected consequence of the command — not a surprise
@@ -77,6 +81,9 @@ struct JobsView: View {
                     onConfirm: { markExpired($0) },
                     onDismiss: { showingExpiredConfirmation = false }
                 )
+            }
+            .sheet(isPresented: Binding(get: { progress != nil }, set: { if !$0 { progress = nil } })) {
+                if let progress { TaskProgressDialog(model: progress) }
             }
             // Clicking the background "jobs may be gone" macOS notification opens this review.
             .onReceive(NotificationCenter.default.publisher(for: .runAvailabilityReview)) { _ in
@@ -1025,7 +1032,9 @@ struct JobsView: View {
         router.activeSavedSearchID = nil
     }
 
-    /// TASK-464: open the source/display page for every selected job in the browser.
+    /// Check every Interested/Applied job's posting for removal, showing a modal progress dialog with a
+    /// live count and a Cancel (TASK-640). On completion: nothing gone → a message; some gone → the
+    /// expired-confirmation sheet. A native notification fires if the app was backgrounded meanwhile.
     private func runAvailabilityCheck() async {
         let eligible = allJobs.filter { $0.status == .pursuing || $0.status == .applied }
         guard !eligible.isEmpty else {
@@ -1035,7 +1044,18 @@ struct JobsView: View {
         isCheckingAvailability = true
         defer { isCheckingAvailability = false }
 
-        let found = await AvailabilityChecker.findGoneJobs(eligible)
+        let model = TaskProgressModel(title: "Checking availability", total: eligible.count)
+        let task = Task {
+            await AvailabilityChecker.findGoneJobs(eligible) { checked, total in
+                await MainActor.run { model.current = checked; model.total = total }
+            }
+        }
+        model.onCancel = { task.cancel() }
+        progress = model
+        let found = await task.value
+        progress = nil
+        guard !task.isCancelled else { return } // user cancelled — leave everything untouched
+
         appServices.settings.set(
             ISO8601DateFormatter().string(from: Date()),
             forKey: SettingsKey.availabilityLastAutoCheckAt
@@ -1043,34 +1063,59 @@ struct JobsView: View {
         if found.isEmpty {
             appServices.toastStore.show("All \(eligible.count) Interested or Applied jobs are still available")
         } else {
+            // Let the progress sheet finish dismissing before presenting the confirmation sheet.
+            try? await Task.sleep(for: .milliseconds(350))
             goneJobs = found
             showingExpiredConfirmation = true
         }
+        notifyIfBackgrounded(
+            title: "Availability check complete",
+            body: found.isEmpty ? "All \(eligible.count) still available" : "\(found.count) job(s) may be gone"
+        )
     }
 
-    /// Re-check for duplicate pairs on demand (TASK-600/623). Nothing is auto-marked — this just counts
-    /// the reviewable pairs and jumps to the Duplicates screen, where the user resolves each explicitly.
+    /// Re-scan for duplicate pairs on demand with a modal progress spinner (TASK-600/623/640). Nothing is
+    /// auto-marked — nothing to review shows a message; otherwise it jumps to the Duplicates screen.
     private func runDuplicateScan() async {
         isScanningDuplicates = true
         defer { isScanningDuplicates = false }
-        do {
-            let pairs = try await appServices.backgroundStore.reviewablePairCount()
-            if pairs == 0 {
-                appServices.toastStore.show("No duplicate pairs to review")
-            } else {
-                appServices.toastStore.show(
-                    "\(pairs) duplicate pair\(pairs == 1 ? "" : "s") to review",
-                    actionLabel: "Review"
-                ) {
-                    router.navigateToSection(.duplicates)
-                }
-            }
-        } catch {
-            appServices.toastStore.show(
-                "Couldn't scan for duplicates: \(error.localizedDescription)",
-                isError: true
-            )
+
+        let model = TaskProgressModel(title: "Scanning for duplicates", total: 0) // indeterminate: single scan
+        let task = Task { () -> Int? in
+            try? await appServices.backgroundStore.reviewablePairCount()
         }
+        model.onCancel = { task.cancel() }
+        progress = model
+        let pairs = await task.value
+        progress = nil
+        guard !task.isCancelled else { return }
+
+        guard let pairs else {
+            appServices.toastStore.show("Couldn't scan for duplicates", isError: true)
+            return
+        }
+        if pairs == 0 {
+            appServices.toastStore.show("No duplicate pairs to review")
+        } else {
+            router.navigateToSection(.duplicates)
+        }
+        notifyIfBackgrounded(
+            title: "Duplicate scan complete",
+            body: pairs == 0 ? "No duplicates to review" : "\(pairs) pair(s) to review"
+        )
+    }
+
+    /// Post a native macOS notification only when Jobhunt isn't frontmost — so a long task that finished
+    /// while the user tabbed away isn't missed (in-app UI already covers the foreground case, TASK-640).
+    private func notifyIfBackgrounded(title: String, body: String) {
+        guard !NSApplication.shared.isActive else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        )
     }
 
     private func markExpired(_ jobs: [GoneJobResult]) {

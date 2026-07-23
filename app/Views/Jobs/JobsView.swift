@@ -62,6 +62,9 @@ struct JobsView: View {
     /// their drop from the current filter is an expected consequence of the command — not a surprise
     /// worth a "no longer match the filter" toast (TASK-617).
     @State private var selfRemovedIDs: Set<String> = []
+    /// The row to select once a keyboard archive/status change removes the current selection from the
+    /// filtered list, so keyboard triage continues without a mouse click (TASK-616).
+    @State private var pendingSelectionAnchor: String?
     /// Mirror of router.sidebarJobFilter as @State so SwiftUI reliably re-renders.
     @State private var localSidebarFilter: JobStatus?
     /// Cached filter+sort result (TASK-610). `filteredJobs` was recomputed live and read ~4× per body,
@@ -167,6 +170,13 @@ struct JobsView: View {
                 selectedJobIDs = selectedJobIDs.intersection(newIDs)
                 let unexpected = removed.subtracting(selfRemovedIDs)
                 selfRemovedIDs.subtract(removed) // consume the acknowledged self-removals
+                // TASK-616: after a keyboard archive/status change empties the selection, advance to the
+                // pre-computed next surviving row so triage continues without a mouse click.
+                if selectedJobIDs.isEmpty, !removed.isEmpty, let anchor = pendingSelectionAnchor,
+                   newIDs.contains(anchor) {
+                    selectedJobIDs = [anchor]
+                }
+                pendingSelectionAnchor = nil
                 if !unexpected.isEmpty && before > 1 {
                     appServices.toastStore.show(
                         "\(unexpected.count) selected job\(unexpected.count == 1 ? "" : "s") no longer match the "
@@ -909,6 +919,8 @@ struct JobsView: View {
     private func archiveJobs(_ ids: [String]) {
         guard !ids.isEmpty else { return }
         selfRemovedIDs.formUnion(ids) // these will drop from the filter by our own command (TASK-617)
+        // Keep keyboard triage focused: pre-compute the row to select once these drop out (TASK-616).
+        pendingSelectionAnchor = SelectionNavigation.nextSelection(order: filteredJobs.map(\.id), removing: Set(ids))
         let svc = appServices.jobService
         let toast = appServices.toastStore
         let priors: [(String, JobStatus)] = ids.compactMap { id in
@@ -944,6 +956,8 @@ struct JobsView: View {
     private func setStatusJobs(_ status: JobStatus, _ ids: [String]) {
         guard !ids.isEmpty else { return }
         selfRemovedIDs.formUnion(ids) // may drop from the current filter by our own command (TASK-617)
+        // Keep keyboard triage focused: pre-compute the row to select once these drop out (TASK-616).
+        pendingSelectionAnchor = SelectionNavigation.nextSelection(order: filteredJobs.map(\.id), removing: Set(ids))
         let svc = appServices.jobService
         let toast = appServices.toastStore
         let priors: [(String, JobStatus)] = ids.compactMap { id in

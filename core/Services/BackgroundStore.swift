@@ -1033,6 +1033,77 @@ public actor BackgroundStore {
         try modelContext.save()
     }
 
+    // MARK: - Referral outreach (TASK-630)
+
+    /// Record a new referral attempt or update an existing one (by `input.id`). A NEW real attempt also
+    /// logs a structured `referral` timeline event (AC #12) so the Dashboard can count it (AC #17);
+    /// edits and the `not_pursuing` marker don't emit one.
+    @discardableResult
+    public func recordReferralAttempt(_ input: ReferralAttemptInput) throws -> String {
+        func clean(_ value: String?) -> String? {
+            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (trimmed?.isEmpty ?? true) ? nil : trimmed
+        }
+        let isNew = input.id == nil
+        let attempt: ReferralAttempt
+        if let id = input.id,
+           let existing = try modelContext.fetch(
+               FetchDescriptor<ReferralAttempt>(predicate: #Predicate { $0.id == id })
+           ).first {
+            attempt = existing
+        } else {
+            attempt = ReferralAttempt(id: input.id ?? UUID().uuidString, jobID: input.jobID,
+                                      recipientName: input.recipientName, outcome: input.outcome)
+            modelContext.insert(attempt)
+        }
+        attempt.jobID = input.jobID
+        attempt.recipientName = input.recipientName
+        attempt.recipientIdentifier = clean(input.recipientIdentifier)
+        attempt.channel = clean(input.channel)
+        attempt.note = clean(input.note)
+        attempt.requestedAt = input.requestedAt
+        attempt.outcome = input.outcome
+
+        if isNew, input.outcome != ReferralOutcome.notPursuing.rawValue {
+            let jid = input.jobID
+            let event = JobEvent(
+                eventType: "referral",
+                note: "Referral requested — \(input.recipientName)",
+                occurredAt: input.requestedAt
+            )
+            event.job = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid })).first
+            modelContext.insert(event)
+        }
+        try modelContext.save()
+        return attempt.id
+    }
+
+    public func deleteReferralAttempt(id: String) throws {
+        let attemptID = id
+        guard let existing = try modelContext.fetch(
+            FetchDescriptor<ReferralAttempt>(predicate: #Predicate { $0.id == attemptID })
+        ).first else { return }
+        modelContext.delete(existing)
+        try modelContext.save()
+    }
+
+    /// Set (or clear) the recipient-less "not pursuing a referral" marker for a job (AC #3).
+    public func setReferralNotPursuing(jobID: String, _ notPursuing: Bool) throws {
+        let jid = jobID
+        let marker = ReferralOutcome.notPursuing.rawValue
+        let existing = try modelContext.fetch(
+            FetchDescriptor<ReferralAttempt>(predicate: #Predicate { $0.jobID == jid && $0.outcome == marker })
+        )
+        if notPursuing {
+            if existing.isEmpty {
+                modelContext.insert(ReferralAttempt(jobID: jid, recipientName: "", outcome: marker))
+            }
+        } else {
+            existing.forEach { modelContext.delete($0) }
+        }
+        try modelContext.save()
+    }
+
     public func upsertDataQualityReview(jobID: String, note: String) throws {
         let jid = jobID
         let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))

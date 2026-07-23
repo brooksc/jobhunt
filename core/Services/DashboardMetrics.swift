@@ -74,6 +74,7 @@ public enum DashboardMetrics {
         switch event.eventType {
         case "capture", "captured", "recapture", "recaptured": .found
         case "duplicate_decided": .duplicateResolved
+        case "referral": .referralRequested
         case "note", "note_added": .note
         case "status", "status_changed":
             switch statusTarget(fromNote: event.note) {
@@ -108,6 +109,7 @@ public enum DashboardMetrics {
             case .offer: recap.offers += 1
             case .triaged: recap.triaged += 1
             case .duplicateResolved: recap.duplicatesResolved += 1
+            case .referralRequested: recap.referralsRequested += 1
             case .note: recap.notesAdded += 1
             case .followUp, .none: break // follow-ups counted separately below
             }
@@ -211,6 +213,7 @@ public struct DailyRecap: Sendable, Equatable {
     public var offers = 0             // status → offer
     public var triaged = 0            // status → passed/archived/rejected/closed/expired (cleared out)
     public var duplicatesResolved = 0 // a duplicate pair resolved
+    public var referralsRequested = 0 // a referral outreach recorded
     public var notesAdded = 0         // a note written
     public var followUpsCompleted = 0 // a follow-up action completed
 
@@ -219,7 +222,7 @@ public struct DailyRecap: Sendable, Equatable {
     /// Count of meaningful actions — drives the momentum line and the empty state.
     public var total: Int {
         captured + movedToInterested + applied + interviews + offers
-            + triaged + duplicatesResolved + notesAdded + followUpsCompleted
+            + triaged + duplicatesResolved + referralsRequested + notesAdded + followUpsCompleted
     }
 
     public var hasActivity: Bool { total > 0 }
@@ -229,7 +232,8 @@ public struct DailyRecap: Sendable, Equatable {
 public struct DayActivity: Sendable, Equatable {
     /// A meaningful-activity category, with its display label + SF Symbol (UI applies the symbol).
     public enum Category: String, Sendable, CaseIterable {
-        case found, movedToInterested, applied, interview, offer, triaged, duplicateResolved, note, followUp
+        case found, movedToInterested, applied, interview, offer, triaged, duplicateResolved
+        case referralRequested, note, followUp
 
         public var label: String {
             switch self {
@@ -240,6 +244,7 @@ public struct DayActivity: Sendable, Equatable {
             case .offer: "Offers"
             case .triaged: "Triaged / cleared"
             case .duplicateResolved: "Duplicates resolved"
+            case .referralRequested: "Referrals requested"
             case .note: "Notes added"
             case .followUp: "Follow-ups done"
             }
@@ -254,6 +259,7 @@ public struct DayActivity: Sendable, Equatable {
             case .offer: "star"
             case .triaged: "tray.full"
             case .duplicateResolved: "doc.on.doc"
+            case .referralRequested: "person.crop.circle.badge.checkmark"
             case .note: "note.text"
             case .followUp: "checkmark.circle"
             }

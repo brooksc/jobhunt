@@ -116,6 +116,7 @@ struct TodayRecapCard: View {
                 metric(recap.offers, .offer)
                 metric(recap.triaged, .triaged)
                 metric(recap.duplicatesResolved, .duplicateResolved)
+                metric(recap.referralsRequested, .referralRequested)
                 metric(recap.notesAdded, .note)
                 metric(recap.followUpsCompleted, .followUp)
             }

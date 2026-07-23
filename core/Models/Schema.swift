@@ -103,7 +103,8 @@ public enum SchemaV1: VersionedSchema {
             Contact.self,
             CoverLetter.self,
             SavedSearch.self,
-            ApplicationEvidence.self
+            ApplicationEvidence.self,
+            ReferralAttempt.self
         ]
     }
 }

@@ -1,10 +1,10 @@
 ---
 id: TASK-628
 title: Historical application report with unemployment-evidence CSV export
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-22 21:55'
-updated_date: '2026-07-23 04:10'
+updated_date: '2026-07-23 04:23'
 labels:
   - reporting
   - dashboard

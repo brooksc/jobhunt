@@ -147,6 +147,13 @@ final class ApplicationHistoryTests: XCTestCase {
         XCTAssertTrue(missing.contains("result"))
     }
 
+    func testExportWriteThrowsOnUnwritablePath() {
+        // The export failure path surfaces a thrown error (the view turns it into an error toast, and
+        // never writes an empty success file — AC #14).
+        let badURL = URL(fileURLWithPath: "/no-such-directory-\(UUID().uuidString)/application-history.csv")
+        XCTAssertThrowsError(try ExportService.write("a,b\n", to: badURL))
+    }
+
     func testCSVMissingDateLeavesDateColumnsEmpty() {
         let record = ApplicationRecord(
             jobID: "j", jobNumber: nil, appliedAt: nil, company: "Acme", jobTitle: "E",

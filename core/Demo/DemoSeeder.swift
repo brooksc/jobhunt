@@ -50,6 +50,7 @@ extension BackgroundStore {
         try deleteAll(LLMRequest.self)
         try deleteAll(DataQualityReview.self)
         try deleteAll(JobEvent.self)
+        try deleteAll(ReferralAttempt.self)
         try deleteAll(JobAction.self)
         try deleteAll(DuplicateDecision.self)
         try deleteAll(JobFitScore.self)
@@ -492,6 +493,71 @@ extension BackgroundStore {
             modelContext.insert(capture)
             modelContext.insert(job)
         }
+
+        // MARK: Referral requests (demo)
+
+        // A spread of referral states so the detail Referral section, row badge, and dashboard
+        // reminders all have something to show: one submitted, one responded-but-stale (follow-up
+        // nudge), one requested today (Today recap), one requested a few days ago (follow-up nudge).
+        // One funnel job (Anthropic) is intentionally left with no request, so the dashboard's
+        // "needs a referral" prompt has a count.
+        struct SeedReferral {
+            let jobID: String
+            let recipient: String
+            let identifier: String?
+            let channel: String
+            let outcome: ReferralOutcome
+            let requested: Double
+            let responded: Double?
+            let submitted: Double?
+        }
+        let referrals: [SeedReferral] = [
+            .init(jobID: "job_001", recipient: "Alex Rivera",
+                  identifier: "https://www.linkedin.com/in/alexrivera", channel: "LinkedIn",
+                  outcome: .submitted, requested: 20, responded: 18, submitted: 16),
+            .init(jobID: "job_002", recipient: "Jordan Lee", identifier: "jordan.lee@example.com",
+                  channel: "Email", outcome: .responded, requested: 12, responded: 9, submitted: nil),
+            .init(jobID: "job_004", recipient: "Priya Nair",
+                  identifier: "https://www.linkedin.com/in/priyanair", channel: "LinkedIn",
+                  outcome: .requested, requested: 0, responded: nil, submitted: nil),
+            .init(jobID: "job_005", recipient: "Sam Chen", identifier: nil, channel: "Referral portal",
+                  outcome: .requested, requested: 6, responded: nil, submitted: nil)
+        ]
+        for ref in referrals {
+            let jid = ref.jobID
+            let attempt = ReferralAttempt(
+                id: "ref_\(jid)", jobID: jid, recipientName: ref.recipient,
+                recipientIdentifier: ref.identifier, channel: ref.channel,
+                requestedAt: daysAgo(ref.requested),
+                respondedAt: ref.responded.map(daysAgo), submittedAt: ref.submitted.map(daysAgo),
+                outcome: ref.outcome.rawValue
+            )
+            modelContext.insert(attempt)
+            let event = JobEvent(
+                id: "evt_ref_\(jid)", eventType: "referral",
+                note: "Referral requested — \(ref.recipient)",
+                occurredAt: daysAgo(ref.requested), createdAt: daysAgo(ref.requested)
+            )
+            if let job = try modelContext.fetch(
+                FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid })
+            ).first {
+                job.events.append(event)
+            }
+            modelContext.insert(event)
+        }
+
+        // A note added today, so the "Today" recap shows more than a single action.
+        let noteToday = JobEvent(
+            id: "evt_note_today", eventType: "note",
+            note: "Followed up with Jordan about the Google referral.",
+            occurredAt: daysAgo(0.15), createdAt: daysAgo(0.15)
+        )
+        if let job = try modelContext.fetch(
+            FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job_002" })
+        ).first {
+            job.events.append(noteToday)
+        }
+        modelContext.insert(noteToday)
 
         // MARK: Sites
 

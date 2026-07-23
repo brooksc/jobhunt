@@ -7,6 +7,13 @@ struct ToastMessage: Identifiable {
     /// Optional inline action (e.g. "Undo"). When set, a button renders in the toast.
     var actionLabel: String?
     var action: (() -> Void)?
+    /// Coalescing key — showing another toast with the same key replaces this one in place instead of
+    /// stacking a duplicate (e.g. repeated "N still selected" messages).
+    var key: String?
+
+    /// Actionable and error toasts stay until the user acts or dismisses them; plain informational
+    /// toasts auto-fade. So feedback the user might want to act on never disappears out from under them.
+    var isPersistent: Bool { action != nil || isError }
 }
 
 struct ErrorRecord: Identifiable {
@@ -21,28 +28,51 @@ final class ToastStore {
     /// Last 10 error toasts — survives dismissal for the Debug tab.
     private(set) var recentErrors: [ErrorRecord] = []
 
+    /// Max simultaneously-visible toasts — beyond this, the oldest non-persistent (then oldest) toasts
+    /// are trimmed so a burst can't bury the window in a stack.
+    private let maxVisible = 3
+
     func show(
         _ message: String,
         isError: Bool = false,
+        key: String? = nil,
         actionLabel: String? = nil,
         action: (() -> Void)? = nil
     ) {
-        let toast = ToastMessage(message: message, isError: isError, actionLabel: actionLabel, action: action)
-        messages.append(toast)
+        let toast = ToastMessage(message: message, isError: isError, actionLabel: actionLabel, action: action, key: key)
+        // Coalesce by key: a keyed message replaces the existing one in place rather than stacking.
+        if let key, let index = messages.firstIndex(where: { $0.key == key }) {
+            messages[index] = toast
+        } else {
+            messages.append(toast)
+        }
         if isError {
             recentErrors.append(ErrorRecord(message: message, timestamp: Date()))
             if recentErrors.count > 10 { recentErrors.removeFirst() }
         }
-        // Give actionable toasts (e.g. Undo) longer to be clicked.
-        let seconds = action == nil ? 3 : 6
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(seconds))
-            messages.removeAll { $0.id == toast.id }
+        trimStack()
+        // Only plain informational toasts auto-fade; actionable/error toasts persist until dismissed.
+        if !toast.isPersistent {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(3))
+                messages.removeAll { $0.id == toast.id }
+            }
         }
     }
 
     func dismiss(_ id: UUID) {
         messages.removeAll { $0.id == id }
+    }
+
+    /// Bound the visible stack: drop the oldest non-persistent toast first, then the oldest overall.
+    private func trimStack() {
+        while messages.count > maxVisible {
+            if let index = messages.firstIndex(where: { !$0.isPersistent }) {
+                messages.remove(at: index)
+            } else {
+                messages.removeFirst()
+            }
+        }
     }
 }
 

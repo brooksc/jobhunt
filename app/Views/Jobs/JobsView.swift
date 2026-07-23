@@ -38,6 +38,10 @@ struct JobsView: View {
     @State private var isCheckingAvailability = false
     @State private var isScanningDuplicates = false
     @State private var jobIDsToDelete: [String] = []
+    /// Jobs the user just archived/re-statused/deleted, so the filtered-set reconciliation below knows
+    /// their drop from the current filter is an expected consequence of the command — not a surprise
+    /// worth a "no longer match the filter" toast (TASK-617).
+    @State private var selfRemovedIDs: Set<String> = []
     /// Mirror of router.sidebarJobFilter as @State so SwiftUI reliably re-renders.
     @State private var localSidebarFilter: JobStatus?
     /// Cached filter+sort result (TASK-610). `filteredJobs` was recomputed live and read ~4× per body,
@@ -131,17 +135,21 @@ struct JobsView: View {
                 router.activeSavedSearchID = nil
             }
             .onChange(of: filteredJobIDs) { _, newIDs in
-                // Remove stale selections when the filter changes — and tell the user if their
-                // multi-selection just shrank, so they don't bulk-act on fewer jobs than they think.
+                // Reconcile the selection when the filter changes. Only warn about selections that
+                // dropped for reasons OTHER than the user's own archive/status/delete command — those
+                // self-removals are expected and already get one aggregate toast (TASK-617). One keyed,
+                // coalescing toast, so a bulk change can't produce a stack.
                 let before = selectedJobIDs.count
+                let removed = selectedJobIDs.subtracting(newIDs)
                 selectedJobIDs = selectedJobIDs.intersection(newIDs)
-                let dropped = before - selectedJobIDs.count
-                if dropped > 0 && before > 1 {
-                    appServices.toastStore
-                        .show(
-                            "\(dropped) selected job\(dropped == 1 ? "" : "s") no longer match the filter — " +
-                                "\(selectedJobIDs.count) still selected."
-                        )
+                let unexpected = removed.subtracting(selfRemovedIDs)
+                selfRemovedIDs.subtract(removed) // consume the acknowledged self-removals
+                if !unexpected.isEmpty && before > 1 {
+                    appServices.toastStore.show(
+                        "\(unexpected.count) selected job\(unexpected.count == 1 ? "" : "s") no longer match the "
+                            + "filter — \(selectedJobIDs.count) still selected.",
+                        key: "selection.shrink"
+                    )
                 }
             }
             .onChange(of: selectedJobIDs) { _, newIDs in
@@ -856,6 +864,7 @@ struct JobsView: View {
     /// Archive a set of jobs with an Undo toast restoring each job's prior status.
     private func archiveJobs(_ ids: [String]) {
         guard !ids.isEmpty else { return }
+        selfRemovedIDs.formUnion(ids) // these will drop from the filter by our own command (TASK-617)
         let svc = appServices.jobService
         let toast = appServices.toastStore
         let priors: [(String, JobStatus)] = ids.compactMap { id in
@@ -890,6 +899,7 @@ struct JobsView: View {
     /// Set status on a set of jobs with an Undo toast restoring each job's prior status.
     private func setStatusJobs(_ status: JobStatus, _ ids: [String]) {
         guard !ids.isEmpty else { return }
+        selfRemovedIDs.formUnion(ids) // may drop from the current filter by our own command (TASK-617)
         let svc = appServices.jobService
         let toast = appServices.toastStore
         let priors: [(String, JobStatus)] = ids.compactMap { id in

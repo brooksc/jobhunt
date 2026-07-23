@@ -4,12 +4,18 @@ title: Notification center (bell) replaces stacked bottom toasts
 status: Done
 assignee: []
 created_date: '2026-07-23 20:34'
+updated_date: '2026-07-23 20:34'
 labels:
   - ux
   - notifications
   - workflow
 dependencies: []
 references:
+  - app/Views/Components/ToastView.swift
+  - app/Views/Components/NotificationCenterView.swift
+  - app/ContentView.swift
+  - app/Views/Jobs/JobsView.swift
+modified_files:
   - app/Views/Components/ToastView.swift
   - app/Views/Components/NotificationCenterView.swift
   - app/ContentView.swift
@@ -25,13 +31,15 @@ The bottom-anchored toast stack was poor UX: full-width persistent toasts obscur
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A bell icon in the top toolbar opens a notification center popover listing actionable + error notifications newest-first, each with its inline action (Undo) and a relative time, plus Clear All
-- [ ] #2 At most one compact, auto-fading transient toast shows at a time (bottom-trailing), so a burst never covers the job list
-- [ ] #3 Actionable/error notifications persist in the bell until undone, dismissed, or cleared; plain info confirmations are transient-only
-- [ ] #4 Rapid similar actions (archive, status change) coalesce into one bell entry ('Archived N jobs' / 'Updated N jobs') with a combined Undo-all
-- [ ] #5 Errors are shown in the bell (tinted) and still feed the Debug tab's recent-errors list
-- [ ] #6 The bell badges (bell.badge) when there are notifications
+- [x] #1 A bell icon in the top toolbar opens a notification center popover listing actionable + error notifications newest-first, each with its inline action (Undo) and a relative time, plus Clear All
+- [x] #2 At most one compact, auto-fading transient toast shows at a time (bottom-trailing), so a burst never covers the job list
+- [x] #3 Actionable/error notifications persist in the bell until undone, dismissed, or cleared; plain info confirmations are transient-only
+- [x] #4 Rapid similar actions (archive, status change) coalesce into one bell entry ('Archived N jobs' / 'Updated N jobs') with a combined Undo-all
+- [x] #5 Errors are shown in the bell (tinted) and still feed the Debug tab's recent-errors list
+- [x] #6 The bell badges (bell.badge) when there are notifications
 <!-- AC:END -->
+
+
 
 ## Final Summary
 

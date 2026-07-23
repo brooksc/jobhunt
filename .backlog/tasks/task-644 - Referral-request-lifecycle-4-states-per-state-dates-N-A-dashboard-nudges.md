@@ -4,6 +4,7 @@ title: 'Referral request lifecycle: 4 states, per-state dates, N/A, dashboard nu
 status: In Progress
 assignee: []
 created_date: '2026-07-23 17:02'
+updated_date: '2026-07-23 17:03'
 labels:
   - referrals
   - workflow
@@ -35,10 +36,10 @@ Phase 2 (THIS): dashboard discovery + follow-up nudges — surface "applied but 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A referral request tracks 4 states (Requested/Responded/Submitted/Declined), each with its own date, and the user can revert to an earlier state which clears the later dates
-- [ ] #2 Multiple parallel requests per job are supported; the job's rolled-up referral badge shows the best state (submitted > responded > requested > declined)
-- [ ] #3 A job-level N/A marker (no referral possible) suppresses the needs-outreach nudge and covers both 'chose not to' and 'no contact'
-- [ ] #4 Raw values remain backward-compatible so referral requests recorded under TASK-630 still decode (submitted=referred, N/A=not_pursuing)
+- [x] #1 A referral request tracks 4 states (Requested/Responded/Submitted/Declined), each with its own date, and the user can revert to an earlier state which clears the later dates
+- [x] #2 Multiple parallel requests per job are supported; the job's rolled-up referral badge shows the best state (submitted > responded > requested > declined)
+- [x] #3 A job-level N/A marker (no referral possible) suppresses the needs-outreach nudge and covers both 'chose not to' and 'no contact'
+- [x] #4 Raw values remain backward-compatible so referral requests recorded under TASK-630 still decode (submitted=referred, N/A=not_pursuing)
 - [ ] #5 The dashboard surfaces jobs that are applied (in-funnel) with no referral request yet and not N/A, as a one-click way to find them (wired to the existing needsReferralOutreach Jobs filter)
 - [ ] #6 The dashboard surfaces stale requests as follow-up reminders: Requested with no response after 4 days, and Responded but not Submitted after 7 days
 - [ ] #7 Pure lifecycle helpers (state precedence, per-state date normalization, follow-up staleness) are unit tested

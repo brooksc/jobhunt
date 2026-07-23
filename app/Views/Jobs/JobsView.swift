@@ -65,6 +65,10 @@ struct JobsView: View {
     /// The row to select once a keyboard archive/status change removes the current selection from the
     /// filtered list, so keyboard triage continues without a mouse click (TASK-616).
     @State private var pendingSelectionAnchor: String?
+    /// Jobs archived while the coalescing archive toast is visible, so rapid sequential archives share
+    /// one growing "Archived N" Undo group instead of stacking a toast per archive (TASK-617 #5). Reset
+    /// once that toast is dismissed/undone (the next archive starts a fresh group).
+    @State private var archiveGroup: [ArchivedJob] = []
     /// Mirror of router.sidebarJobFilter as @State so SwiftUI reliably re-renders.
     @State private var localSidebarFilter: JobStatus?
     /// Cached filter+sort result (TASK-610). `filteredJobs` was recomputed live and read ~4× per body,
@@ -915,6 +919,11 @@ struct JobsView: View {
 
     // MARK: - Selection actions (shared by the row context menu and the menu-bar Job menu)
 
+    /// A job archived in the current Undo group, with the status to restore it to (TASK-617 #5).
+    private struct ArchivedJob { let id: String; let priorStatus: JobStatus }
+    /// Coalescing key shared by every archive toast so rapid archives replace/extend in place.
+    private var archiveToastKey: String { "archive" }
+
     /// Archive a set of jobs with an Undo toast restoring each job's prior status.
     private func archiveJobs(_ ids: [String]) {
         guard !ids.isEmpty else { return }
@@ -930,15 +939,24 @@ struct JobsView: View {
             do {
                 try await svc.setStatusBulk(.archived, jobIDs: ids)
                 await MainActor.run {
-                    toast.show("Archived \(ids.count) job\(ids.count == 1 ? "" : "s")", actionLabel: "Undo") {
+                    // Coalesce rapid archives into one growing Undo group: while the archive toast is
+                    // still visible, each archive extends it rather than stacking a new toast (TASK-617 #5).
+                    if !toast.messages.contains(where: { $0.key == archiveToastKey }) { archiveGroup = [] }
+                    archiveGroup.append(contentsOf: priors.map { ArchivedJob(id: $0.0, priorStatus: $0.1) })
+                    let group = archiveGroup
+                    toast.show(
+                        "Archived \(group.count) job\(group.count == 1 ? "" : "s")",
+                        key: archiveToastKey,
+                        actionLabel: "Undo"
+                    ) {
                         Task {
                             var failed = 0
-                            for (id, status) in priors {
-                                do { try await svc.setStatus(status, for: id) } catch { failed += 1 }
+                            for job in group {
+                                do { try await svc.setStatus(job.priorStatus, for: job.id) } catch { failed += 1 }
                             }
                             if failed > 0 {
                                 await MainActor.run {
-                                    toast.show("Couldn't undo \(failed) of \(priors.count) job(s).", isError: true)
+                                    toast.show("Couldn't undo \(failed) of \(group.count) job(s).", isError: true)
                                 }
                             }
                         }

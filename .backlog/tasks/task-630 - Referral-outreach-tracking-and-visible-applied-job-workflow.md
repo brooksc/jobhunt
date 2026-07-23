@@ -1,9 +1,10 @@
 ---
 id: TASK-630
 title: Referral outreach tracking and visible applied-job workflow
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-22 23:02'
+updated_date: '2026-07-23 04:44'
 labels:
   - referral
   - outreach

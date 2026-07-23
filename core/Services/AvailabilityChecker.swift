@@ -516,6 +516,15 @@ public enum AvailabilityChecker {
     /// Check one spec and apply the Greenhouse confirm-alive override; returns a result only when the
     /// posting is genuinely gone. Shared by the concurrent pass and the paced LinkedIn pass.
     private static func goneResult(for spec: JobSpec, session: URLSession) async -> GoneJobResult? {
+        // LinkedIn: the auth-walled guest /jobs/view page is unreliable under load (a removed posting's
+        // 404 gets throttled/redirected and reads as available — job #212). LinkedIn's guest job API is
+        // lighter and gives a clean 404-removed / 200-live signal, so use it as the authoritative
+        // LinkedIn check (TASK-642).
+        if (spec.url.host?.lowercased() ?? "").hasSuffix("linkedin.com"),
+           let jobID = linkedInJobID(from: spec.url) {
+            return await linkedInGoneResult(spec: spec, jobID: jobID, session: session)
+        }
+
         let result = await checkURL(spec.url, title: spec.title, session: session)
         guard case let .gone(reason) = result else { return nil }
         // Authoritative override (TASK-631): the flaky career-site HTML (Cloudflare / JS shell) said
@@ -532,6 +541,57 @@ public enum AvailabilityChecker {
             jobID: spec.id, jobNumber: spec.jobNumber, company: spec.company,
             title: spec.title, url: spec.url, reason: reason
         )
+    }
+
+    /// The LinkedIn numeric posting id from a `?currentJobId=` search/collections deep-link or a
+    /// `/jobs/view/{id}` URL (TASK-642).
+    static func linkedInJobID(from url: URL) -> String? {
+        guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        if let id = comps.queryItems?.first(where: { $0.name.lowercased() == "currentjobid" })?.value,
+           !id.isEmpty, id.allSatisfy(\.isNumber) {
+            return id
+        }
+        let segments = comps.path.split(separator: "/").map(String.init)
+        if let idx = segments.firstIndex(of: "view"), idx + 1 < segments.count,
+           !segments[idx + 1].isEmpty, segments[idx + 1].allSatisfy(\.isNumber) {
+            return segments[idx + 1]
+        }
+        return nil
+    }
+
+    /// Availability for a LinkedIn posting via the guest job API (`jobs-guest/jobs/api/jobPosting/{id}`):
+    /// a clean 404/410 means removed; a 200 posting is live unless its body carries the closed banner or
+    /// a gone phrase. A throttle/block (429/999) or network error can't confirm removal → not gone, so a
+    /// rate-limited check never false-expires (TASK-642).
+    private static func linkedInGoneResult(spec: JobSpec, jobID: String, session: URLSession) async -> GoneJobResult? {
+        guard let apiURL = URL(string: "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/\(jobID)") else {
+            return nil
+        }
+        var request = URLRequest(url: apiURL, timeoutInterval: timeoutSeconds)
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse else {
+            return nil // network error / throttle → can't confirm gone
+        }
+        func gone(_ reason: String) -> GoneJobResult {
+            GoneJobResult(
+                jobID: spec.id, jobNumber: spec.jobNumber, company: spec.company,
+                title: spec.title, url: spec.url, reason: reason
+            )
+        }
+        switch http.statusCode {
+        case 404, 410:
+            return gone("linkedin posting \(jobID) removed (guest API \(http.statusCode))")
+        case 200:
+            let body = String(data: data, encoding: .utf8)?.lowercased() ?? ""
+            guard !body.isEmpty else { return nil }
+            if isLinkedInClosedJob(finalURLString: apiURL.absoluteString, body: body) || bodyGoneReason(body) != nil {
+                return gone("linkedin posting \(jobID) no longer accepting applications")
+            }
+            return nil
+        default:
+            return nil // 429 / 999 / other → throttled or blocked, can't confirm removal
+        }
     }
 
     public static func findGoneJobs(

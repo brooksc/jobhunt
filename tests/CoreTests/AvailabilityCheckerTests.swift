@@ -878,17 +878,47 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         XCTAssertNil(AvailabilityChecker.greenhouseJobID(fromURLs: ["https://example.com/careers/role"]))
     }
 
-    /// TASK-641: a LinkedIn search URL is checked in the paced serial pass (rewritten to /jobs/view/{id});
-    /// a 404 there is still caught as gone. Guards the LinkedIn/other partition + the paced path.
-    func testFindGoneJobs_linkedInPacedPassCatches404() async throws {
+    /// TASK-642: a LinkedIn search URL (currentJobId) is checked via the guest job API in the paced pass;
+    /// a 404 there = removed → gone.
+    func testFindGoneJobs_linkedInGuestAPI404IsGone() async throws {
         let search = "https://www.linkedin.com/jobs/search/?currentJobId=999&keywords=remote"
         let job = try makeJobWithCapture(url: search, title: "Role", status: .applied)
-        MockURLProtocol.handlers = [("linkedin.com/jobs/view/999", { _ in
-            makeResponse(url: "https://www.linkedin.com/jobs/view/999", status: 404, body: "")
+        MockURLProtocol.handlers = [("jobs-guest/jobs/api/jobPosting/999", { _ in
+            makeResponse(url: "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/999", status: 404, body: "")
         })]
         let gone = await AvailabilityChecker.findGoneJobs([job], session: session)
-        XCTAssertEqual(gone.count, 1, "a removed LinkedIn posting (404) is caught via the paced pass")
+        XCTAssertEqual(gone.count, 1, "a removed LinkedIn posting (guest API 404) is caught")
         XCTAssertEqual(gone.first?.jobID, job.id)
+    }
+
+    /// A LinkedIn guest-API 200 whose body carries the closed banner is gone; a live 200 is not.
+    func testFindGoneJobs_linkedInGuestAPI200ClosedVsLive() async throws {
+        let closedURL = "https://www.linkedin.com/jobs/search/?currentJobId=111"
+        let liveURL = "https://www.linkedin.com/jobs/search/?currentJobId=222"
+        let closed = try makeJobWithCapture(url: closedURL, title: "Closed", status: .applied)
+        _ = try makeJobWithCapture(url: liveURL, title: "Live", status: .applied)
+        MockURLProtocol.handlers = [
+            ("jobs-guest/jobs/api/jobPosting/111", { _ in
+                makeResponse(url: "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/111",
+                             status: 200, body: "<figure class=\"closed-job__flavor\">no longer accepting applications</figure>")
+            }),
+            ("jobs-guest/jobs/api/jobPosting/222", { _ in
+                makeResponse(url: "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/222",
+                             status: 200, body: "<button>Apply</button> Actively recruiting")
+            })
+        ]
+        let gone = await AvailabilityChecker.findGoneJobs([closed], session: session)
+        XCTAssertEqual(gone.count, 1, "closed LinkedIn posting is gone")
+        XCTAssertEqual(gone.first?.jobID, closed.id)
+    }
+
+    func testLinkedInJobID_extractsFromSearchAndViewURLs() throws {
+        let search = try XCTUnwrap(URL(string: "https://www.linkedin.com/jobs/search/?currentJobId=4442490941&keywords=x"))
+        let view = try XCTUnwrap(URL(string: "https://www.linkedin.com/jobs/view/4443545630/"))
+        let noID = try XCTUnwrap(URL(string: "https://www.linkedin.com/jobs/search/?keywords=x"))
+        XCTAssertEqual(AvailabilityChecker.linkedInJobID(from: search), "4442490941")
+        XCTAssertEqual(AvailabilityChecker.linkedInJobID(from: view), "4443545630")
+        XCTAssertNil(AvailabilityChecker.linkedInJobID(from: noID))
     }
 
     func testGreenhouseBoardCandidates_derivation() {

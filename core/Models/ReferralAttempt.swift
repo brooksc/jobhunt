@@ -1,10 +1,15 @@
 import Foundation
 import SwiftData
 
-/// One referral-outreach attempt for a job (TASK-630). Referral progress is orthogonal to `JobStatus`,
-/// so it lives in its own model keyed by `jobID` (no relationship — the frozen `Job` is untouched; added
-/// to `SchemaV1.models`, a non-breaking change). A job can hold many attempts (multiple recipients).
-/// A special `not_pursuing` marker (no recipient) records the per-job "not pursuing a referral" decision.
+/// One referral-outreach request for a job (TASK-630/644). Referral progress is orthogonal to
+/// `JobStatus`, so it lives in its own model keyed by `jobID` (no relationship — the frozen `Job` is
+/// untouched; in `SchemaV1.models`, a non-breaking change). A job can hold many requests (parallel
+/// recipients). A special `not_pursuing` marker (no recipient) records the job-level "N/A — no referral
+/// possible" decision.
+///
+/// A request moves through `requested` → `responded` → `submitted` (or `declined`); each state stamps
+/// its own optional date so the dashboard can nudge stale requests. The extra dates are optional, so
+/// adding them is a lightweight SwiftData migration over existing TASK-630 rows.
 @Model
 public final class ReferralAttempt {
     @Attribute(.unique) public var id: String
@@ -14,14 +19,23 @@ public final class ReferralAttempt {
     public var recipientIdentifier: String?
     public var channel: String?
     public var note: String?
+    /// When the referral was requested (the ask date) — always set; anchors follow-up nudges.
     public var requestedAt: Date
-    /// One of `ReferralOutcome` raw values: requested / referred / declined / not_pursuing.
+    /// When the recipient responded/agreed (nil until reached).
+    public var respondedAt: Date?
+    /// When the referral was confirmed submitted (nil until reached).
+    public var submittedAt: Date?
+    /// When the recipient declined (nil unless declined).
+    public var declinedAt: Date?
+    /// One of `ReferralOutcome` raw values: requested / responded / referred(=submitted) / declined /
+    /// not_pursuing(=N/A).
     public var outcome: String
 
     public init(
         id: String = UUID().uuidString, jobID: String, recipientName: String,
         recipientIdentifier: String? = nil, channel: String? = nil, note: String? = nil,
-        requestedAt: Date = Date(), outcome: String
+        requestedAt: Date = Date(), respondedAt: Date? = nil, submittedAt: Date? = nil,
+        declinedAt: Date? = nil, outcome: String
     ) {
         self.id = id
         self.jobID = jobID
@@ -30,6 +44,9 @@ public final class ReferralAttempt {
         self.channel = channel
         self.note = note
         self.requestedAt = requestedAt
+        self.respondedAt = respondedAt
+        self.submittedAt = submittedAt
+        self.declinedAt = declinedAt
         self.outcome = outcome
     }
 }
@@ -43,11 +60,15 @@ public struct ReferralAttemptInput: Sendable {
     public let channel: String?
     public let note: String?
     public let requestedAt: Date
+    public let respondedAt: Date?
+    public let submittedAt: Date?
+    public let declinedAt: Date?
     public let outcome: String
 
     public init(
         id: String? = nil, jobID: String, recipientName: String, recipientIdentifier: String? = nil,
-        channel: String? = nil, note: String? = nil, requestedAt: Date = Date(), outcome: String
+        channel: String? = nil, note: String? = nil, requestedAt: Date = Date(), respondedAt: Date? = nil,
+        submittedAt: Date? = nil, declinedAt: Date? = nil, outcome: String
     ) {
         self.id = id
         self.jobID = jobID
@@ -56,6 +77,9 @@ public struct ReferralAttemptInput: Sendable {
         self.channel = channel
         self.note = note
         self.requestedAt = requestedAt
+        self.respondedAt = respondedAt
+        self.submittedAt = submittedAt
+        self.declinedAt = declinedAt
         self.outcome = outcome
     }
 }

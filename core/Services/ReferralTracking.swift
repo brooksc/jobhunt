@@ -2,12 +2,33 @@ import Foundation
 
 // MARK: - Referral tracking (TASK-630)
 
-/// Per-attempt outcome. `notPursuing` is a job-level decision recorded as a recipient-less marker.
+/// Per-request lifecycle state. A single referral request progresses `requested` → `responded`
+/// (they agreed, no evidence yet) → `submitted` (confirmed in the company's system), or ends in
+/// `declined`. `notApplicable` is a job-level "N/A — no referral possible / not pursuing" marker,
+/// recorded as a recipient-less attempt (TASK-644).
+///
+/// Raw values are kept backward-compatible with the original TASK-630 data: `submitted` persists as
+/// `"referred"` and `notApplicable` as `"not_pursuing"`, so attempts recorded before the 4-state
+/// model still read correctly.
 public enum ReferralOutcome: String, Sendable, CaseIterable {
     case requested
-    case referred
+    case responded
+    case submitted = "referred"
     case declined
-    case notPursuing = "not_pursuing"
+    case notApplicable = "not_pursuing"
+
+    /// The states a user picks for a real outreach request (excludes the job-level `notApplicable`).
+    public static let requestStates: [ReferralOutcome] = [.requested, .responded, .submitted, .declined]
+
+    public var label: String {
+        switch self {
+        case .requested: "Requested"
+        case .responded: "Responded"
+        case .submitted: "Submitted"
+        case .declined: "Declined"
+        case .notApplicable: "N/A"
+        }
+    }
 }
 
 /// The derived per-job referral summary — orthogonal to `JobStatus` (AC #1/#3).
@@ -15,18 +36,20 @@ public enum ReferralSummary: String, Sendable, CaseIterable {
     case none // no outreach applies (not in the active funnel, no attempts)
     case needsOutreach = "needs_outreach"
     case requested
-    case referred
+    case responded
+    case submitted
     case declined
-    case notPursuing = "not_pursuing"
+    case notApplicable = "not_applicable"
 
     public var label: String {
         switch self {
         case .none: "—"
         case .needsOutreach: "Needs outreach"
         case .requested: "Requested"
-        case .referred: "Referred"
+        case .responded: "Responded"
+        case .submitted: "Submitted"
         case .declined: "Declined"
-        case .notPursuing: "Not pursuing"
+        case .notApplicable: "N/A"
         }
     }
 
@@ -45,24 +68,82 @@ public enum ReferralTracking {
         public let recipientName: String
         public let recipientIdentifier: String?
         public let requestedAt: Date
-        public init(outcome: ReferralOutcome, recipientName: String, recipientIdentifier: String?, requestedAt: Date) {
+        /// When the request reached `responded` (nil until then) — used for follow-up nudges.
+        public let respondedAt: Date?
+        public init(
+            outcome: ReferralOutcome, recipientName: String, recipientIdentifier: String?,
+            requestedAt: Date, respondedAt: Date? = nil
+        ) {
             self.outcome = outcome
             self.recipientName = recipientName
             self.recipientIdentifier = recipientIdentifier
             self.requestedAt = requestedAt
+            self.respondedAt = respondedAt
         }
     }
 
-    /// Derive the job's referral summary from its status + attempts (AC #2/#3/#16). Real attempts (any
-    /// recipient outreach) take precedence over the `notPursuing` marker; a job leaving the funnel
-    /// (archived/closed/etc.) keeps recorded attempts but is no longer "Needs outreach".
+    /// Derive the job's referral summary from its status + attempts (AC #2/#3/#16). Real requests (any
+    /// recipient outreach) take precedence over the `notApplicable` marker; the best state across
+    /// parallel requests wins (submitted > responded > requested > declined). A job leaving the funnel
+    /// keeps recorded attempts but is no longer "Needs outreach".
     public static func summary(jobStatus: String, attempts: [Attempt]) -> ReferralSummary {
-        let real = attempts.filter { $0.outcome != .notPursuing }
-        if real.contains(where: { $0.outcome == .referred }) { return .referred }
+        let real = attempts.filter { $0.outcome != .notApplicable }
+        if real.contains(where: { $0.outcome == .submitted }) { return .submitted }
+        if real.contains(where: { $0.outcome == .responded }) { return .responded }
         if real.contains(where: { $0.outcome == .requested }) { return .requested }
-        if !real.isEmpty { return .declined } // real attempts exist but none requested/referred → all declined
-        if attempts.contains(where: { $0.outcome == .notPursuing }) { return .notPursuing }
+        if !real.isEmpty { return .declined } // real requests exist but none active → all declined
+        if attempts.contains(where: { $0.outcome == .notApplicable }) { return .notApplicable }
         return funnelStatuses.contains(jobStatus) ? .needsOutreach : .none
+    }
+
+    // MARK: - Per-state dates & reverting (TASK-644)
+
+    /// The four per-state dates of a request. `requested` is always set (the ask date); the others are
+    /// populated as the request reaches each state and cleared when the user reverts to an earlier state.
+    public struct StateDates: Sendable, Equatable {
+        public var requested: Date
+        public var responded: Date?
+        public var submitted: Date?
+        public var declined: Date?
+        public init(requested: Date, responded: Date? = nil, submitted: Date? = nil, declined: Date? = nil) {
+            self.requested = requested
+            self.responded = responded
+            self.submitted = submitted
+            self.declined = declined
+        }
+    }
+
+    /// Normalize a request's per-state dates for a chosen `outcome`, stamping the reached state's date
+    /// (defaulting to `now` when newly reached) and clearing the dates of states that don't belong to
+    /// that outcome — so reverting to an earlier state (to fix a mistake) drops the later milestones.
+    /// `submitted` and `declined` are mutually exclusive; `responded` may be skipped (requested →
+    /// submitted/declined directly), so it's preserved when already set.
+    public static func normalizedDates(outcome: ReferralOutcome, dates: StateDates, now: Date) -> StateDates {
+        var out = StateDates(requested: dates.requested)
+        switch outcome {
+        case .requested, .notApplicable:
+            break // only the request date survives
+        case .responded:
+            out.responded = dates.responded ?? now
+        case .submitted:
+            out.responded = dates.responded
+            out.submitted = dates.submitted ?? now
+        case .declined:
+            out.responded = dates.responded
+            out.declined = dates.declined ?? now
+        }
+        return out
+    }
+
+    /// The date of a request's *current* state, for row/badge display — the reached state's own date,
+    /// falling back to the request date when that state's date is somehow missing.
+    public static func stateDate(outcome: ReferralOutcome, dates: StateDates) -> Date {
+        switch outcome {
+        case .requested, .notApplicable: dates.requested
+        case .responded: dates.responded ?? dates.requested
+        case .submitted: dates.submitted ?? dates.requested
+        case .declined: dates.declined ?? dates.requested
+        }
     }
 
     // MARK: - Duplicate-recipient detection (AC #6)
@@ -79,14 +160,14 @@ public enum ReferralTracking {
             .joined(separator: " ")
     }
 
-    /// The first prior real attempt whose recipient matches `name`/`identifier` (AC #6) — so the UI can
-    /// warn (with its date) before recording another outreach to the same person. `notPursuing` markers
+    /// The first prior real request whose recipient matches `name`/`identifier` (AC #6) — so the UI can
+    /// warn (with its date) before recording another outreach to the same person. `notApplicable` markers
     /// and empty keys never match.
     public static func duplicateAttempt(name: String?, identifier: String?, among attempts: [Attempt]) -> Attempt? {
         let key = recipientKey(name: name, identifier: identifier)
         guard !key.isEmpty else { return nil }
         return attempts.first { attempt in
-            attempt.outcome != .notPursuing
+            attempt.outcome != .notApplicable
                 && recipientKey(name: attempt.recipientName, identifier: attempt.recipientIdentifier) == key
         }
     }

@@ -1062,9 +1062,12 @@ public actor BackgroundStore {
         attempt.channel = clean(input.channel)
         attempt.note = clean(input.note)
         attempt.requestedAt = input.requestedAt
+        attempt.respondedAt = input.respondedAt
+        attempt.submittedAt = input.submittedAt
+        attempt.declinedAt = input.declinedAt
         attempt.outcome = input.outcome
 
-        if isNew, input.outcome != ReferralOutcome.notPursuing.rawValue {
+        if isNew, input.outcome != ReferralOutcome.notApplicable.rawValue {
             let jid = input.jobID
             let event = JobEvent(
                 eventType: "referral",
@@ -1087,14 +1090,14 @@ public actor BackgroundStore {
         try modelContext.save()
     }
 
-    /// Set (or clear) the recipient-less "not pursuing a referral" marker for a job (AC #3).
-    public func setReferralNotPursuing(jobID: String, _ notPursuing: Bool) throws {
+    /// Set (or clear) the recipient-less "N/A — no referral possible" marker for a job (AC #3, TASK-644).
+    public func setReferralNotApplicable(jobID: String, _ notApplicable: Bool) throws {
         let jid = jobID
-        let marker = ReferralOutcome.notPursuing.rawValue
+        let marker = ReferralOutcome.notApplicable.rawValue
         let existing = try modelContext.fetch(
             FetchDescriptor<ReferralAttempt>(predicate: #Predicate { $0.jobID == jid && $0.outcome == marker })
         )
-        if notPursuing {
+        if notApplicable {
             if existing.isEmpty {
                 modelContext.insert(ReferralAttempt(jobID: jid, recipientName: "", outcome: marker))
             }

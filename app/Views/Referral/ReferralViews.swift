@@ -37,9 +37,10 @@ struct ReferralBadge: View {
         switch summary {
         case .needsOutreach: "person.crop.circle.badge.exclamationmark"
         case .requested: "paperplane"
-        case .referred: "person.crop.circle.badge.checkmark"
+        case .responded: "bubble.left.and.bubble.right"
+        case .submitted: "person.crop.circle.badge.checkmark"
         case .declined: "person.crop.circle.badge.xmark"
-        case .notPursuing: "minus.circle"
+        case .notApplicable: "minus.circle"
         case .none: "circle"
         }
     }
@@ -48,9 +49,10 @@ struct ReferralBadge: View {
         switch summary {
         case .needsOutreach: .orange
         case .requested: .blue
-        case .referred: .green
+        case .responded: .teal
+        case .submitted: .green
         case .declined: .secondary
-        case .notPursuing: .secondary
+        case .notApplicable: .secondary
         case .none: .secondary
         }
     }
@@ -58,8 +60,8 @@ struct ReferralBadge: View {
 
 // MARK: - ReferralSection (job detail — AC #11)
 
-/// The job-detail referral section: current summary, outreach-attempt history, and add/edit/remove
-/// actions, plus a "Not pursuing" toggle. Referral progress is orthogonal to the job's workflow status.
+/// The job-detail referral section: current summary, request history, and add/edit/remove actions,
+/// plus an "N/A — no referral possible" toggle. Referral progress is orthogonal to the job's status.
 struct ReferralSection: View {
     let job: Job
 
@@ -79,11 +81,11 @@ struct ReferralSection: View {
     }
 
     private var realAttempts: [ReferralAttempt] {
-        attempts.filter { $0.outcome != ReferralOutcome.notPursuing.rawValue }
+        attempts.filter { $0.outcome != ReferralOutcome.notApplicable.rawValue }
     }
 
-    private var isNotPursuing: Bool {
-        attempts.contains { $0.outcome == ReferralOutcome.notPursuing.rawValue }
+    private var isNotApplicable: Bool {
+        attempts.contains { $0.outcome == ReferralOutcome.notApplicable.rawValue }
     }
 
     private var summary: ReferralSummary {
@@ -125,7 +127,9 @@ struct ReferralSection: View {
             }
 
             if realAttempts.isEmpty {
-                Text(isNotPursuing ? "Marked as not pursuing a referral." : "No referral outreach recorded yet.")
+                Text(isNotApplicable
+                    ? "Marked N/A — no referral possible for this job."
+                    : "No referral request recorded yet.")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
                 VStack(spacing: 0) {
@@ -136,13 +140,13 @@ struct ReferralSection: View {
                 }
             }
 
-            Toggle("Not pursuing a referral for this job", isOn: Binding(
-                get: { isNotPursuing },
-                set: { setNotPursuing($0) }
+            Toggle("N/A — no referral possible for this job", isOn: Binding(
+                get: { isNotApplicable },
+                set: { setNotApplicable($0) }
             ))
             .toggleStyle(.checkbox)
             .font(.caption)
-            .disabled(!realAttempts.isEmpty) // a recorded attempt already means it's being pursued
+            .disabled(!realAttempts.isEmpty) // a recorded request already means one is being pursued
         }
         .sheet(item: $editorAttempt) { target in
             ReferralAttemptEditor(
@@ -155,18 +159,29 @@ struct ReferralSection: View {
         }
     }
 
+    /// The date of the request's current state (Responded/Submitted/Declined date, else the ask date).
+    private func stateDate(_ attempt: ReferralAttempt) -> Date {
+        ReferralTracking.stateDate(
+            outcome: ReferralOutcome(rawValue: attempt.outcome) ?? .requested,
+            dates: .init(
+                requested: attempt.requestedAt, responded: attempt.respondedAt,
+                submitted: attempt.submittedAt, declined: attempt.declinedAt
+            )
+        )
+    }
+
     private func attemptRow(_ attempt: ReferralAttempt) -> some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(attempt.recipientName.isEmpty ? "(no recipient)" : attempt.recipientName)
                     .font(.subheadline).lineLimit(1)
                 HStack(spacing: 6) {
-                    Text((ReferralOutcome(rawValue: attempt.outcome) ?? .requested).rawValue.capitalized)
-                        .foregroundStyle(.secondary)
+                    let outcome = ReferralOutcome(rawValue: attempt.outcome) ?? .requested
+                    Text(outcome.label).foregroundStyle(.secondary)
                     if let channel = attempt.channel, !channel.isEmpty {
                         Text("· \(channel)").foregroundStyle(.tertiary)
                     }
-                    Text("· \(attempt.requestedAt.formatted(date: .abbreviated, time: .omitted))")
+                    Text("· \(stateDate(attempt).formatted(date: .abbreviated, time: .omitted))")
                         .foregroundStyle(.tertiary)
                 }
                 .font(.caption2)
@@ -205,9 +220,9 @@ struct ReferralSection: View {
         }
     }
 
-    private func setNotPursuing(_ value: Bool) {
+    private func setNotApplicable(_ value: Bool) {
         Task {
-            do { try await appServices.backgroundStore.setReferralNotPursuing(jobID: job.id, value) } catch {
+            do { try await appServices.backgroundStore.setReferralNotApplicable(jobID: job.id, value) } catch {
                 appServices.toastStore.show("Couldn't update: \(error.localizedDescription)", isError: true)
             }
         }

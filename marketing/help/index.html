@@ -50,9 +50,12 @@
       <ul>
         <li><a href="#getting-started">Getting Started</a></li>
         <li><a href="#how-it-works">How It Works</a></li>
+        <li><a href="#dashboard">Dashboard</a></li>
         <li><a href="#extraction-scoring">Extraction &amp; Scoring</a></li>
+        <li><a href="#referrals">Referrals</a></li>
         <li><a href="#sites">Sites &amp; Availability</a></li>
         <li><a href="#duplicates">Duplicates</a></li>
+        <li><a href="#application-history">Application History</a></li>
         <li><a href="#troubleshooting">Troubleshooting</a></li>
         <li><a href="#settings">Settings Reference</a></li>
         <li><a href="#shortcuts">Keyboard Shortcuts</a></li>
@@ -78,6 +81,11 @@
     <p><strong>Fit Scoring</strong> → The model rates each job 0–100 against your resume and breaks the score down by dimension (skills, seniority, location, work arrangement).</p>
     <p><strong>Local-first</strong> → All data is stored locally on your Mac by the app. When you use a local model (LM Studio, Ollama, or a custom endpoint on localhost), all AI processing stays on-device and nothing leaves your machine. When you use a cloud provider — or a custom endpoint that isn't local — job description text is sent for extraction and, for fit scoring, your resume text is sent along with the job text. These remote providers require your consent before any data is sent.</p>
 
+    <h2 id="dashboard">Dashboard</h2>
+    <p>The <strong>Dashboard</strong> opens with a <strong>Today</strong> recap of the meaningful work you did — jobs captured, applications sent, interviews, referrals requested, notes added, and follow-ups completed — plus a 7- or 30-day activity strip. Tap any total to see the jobs behind it.</p>
+    <p>Below the recap are <strong>Follow-ups Due</strong>, <strong>Referrals</strong> reminders (jobs you've applied to but not yet asked for a referral, and stale requests to chase), <strong>Recommended to Apply</strong>, your <strong>Application Funnel</strong>, and housekeeping counts (duplicates, sites due, LLM queue).</p>
+    <p><strong>Notifications &amp; Undo</strong> — actions like archiving or changing a status show a brief toast with an <strong>Undo</strong> button. The same notifications collect under the <strong>bell</strong> in the toolbar, so you can undo or review them after the toast fades, then <strong>Clear All</strong> when you're done.</p>
+
     <h2 id="extraction-scoring">Extraction &amp; Scoring</h2>
     <p><strong>Extracted fields</strong> include: job title, company name, location, remote/hybrid/onsite arrangement, salary range, required skills, seniority level, application deadline, and a plain-text summary.</p>
     <h3>Fit dimensions (scored 0–100)</h3>
@@ -89,6 +97,10 @@
     </ul>
     <p>New captures are extracted automatically. To re-process a job, use <strong>Re-run AI</strong> (on a job's detail pane, or on a selection in <strong>Jobs</strong> / <strong>Data Quality</strong>). To recompute fit after updating your resume without re-extracting, use <strong>Score against resume</strong> on the job's <strong>Fit</strong> tab.</p>
 
+    <h2 id="referrals">Referrals</h2>
+    <p>Track referral outreach per job from the <strong>Referral</strong> section on the job's detail pane (shown once a job reaches your active pipeline, or whenever it already has recorded requests). Add one request per contact and move it through <strong>Requested → Responded → Submitted</strong>, or <strong>Declined</strong> — each state records its own date, and you can step back a state if you mis-clicked.</p>
+    <p>If no one can refer you, mark the job <strong>N/A</strong> so it stops showing as needing outreach. In <strong>Jobs</strong>, the <strong>Needs outreach</strong> filter lists applied jobs with no request yet, and the Dashboard reminds you to follow up when a request goes quiet.</p>
+
     <h2 id="sites">Sites &amp; Availability</h2>
     <p><strong>Sites</strong> tracks company or job-board pages you want to review periodically — even when no specific posting is captured.</p>
     <p>Add a site URL from the <strong>Sites</strong> screen. New sites inherit the review interval from Settings.</p>
@@ -99,6 +111,10 @@
     <p>JobHunt detects duplicate captures by comparing title, company, and URL similarity. Likely duplicates are grouped in the <strong>Duplicates</strong> screen.</p>
     <p>Compare a group to decide which record to keep, merge, archive, or ignore. Use duplicate review after large capture sessions or after retry queues flush several saved postings at once.</p>
     <p>A job marked <strong>Duplicate</strong> is hidden from default views but preserved in history.</p>
+
+    <h2 id="application-history">Application History</h2>
+    <p><strong>Application History</strong> (under <strong>Tools</strong>) is a date-stamped record of every job you've marked <strong>Applied</strong> — useful for employment or unemployment-benefit reporting that asks where and when you applied.</p>
+    <p>Each entry shows the company, role, and application date; you can correct the recorded date, add evidence details, and export the full history to <strong>CSV</strong>.</p>
 
     <h2 id="troubleshooting">Troubleshooting</h2>
     <p><strong>LM Studio not running</strong> — Make sure LM Studio is open and a model is loaded before queuing extraction. Use <strong>Test connection</strong> in Settings → AI Provider to verify.</p>

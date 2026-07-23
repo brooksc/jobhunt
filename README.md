@@ -98,7 +98,9 @@ End-user setup is also covered in the [help FAQ](https://jobhunt-app.com/help/fa
 - **Resume fit scoring** — ranks each job against your resume with dimension-level explanations
 - **Duplicate detection** — groups identical or near-identical postings across sources
 - **Availability checks** — flags saved postings that have been taken down
-- **Dashboard** — pipeline progress and daily activity
+- **Referral tracking** — track a referral per contact (requested → responded → submitted), with dashboard reminders to ask and follow up
+- **Application history** — a date-stamped record of every job you marked applied, exportable to CSV for employment/benefit reporting
+- **Dashboard** — daily accomplishments recap, pipeline funnel, follow-ups, and referral nudges
 - **CSV export** — export the current filtered list (⌘⇧E). This is job-list fields only, **not** a full backup — use **Settings → Back Up Data** for a complete, restorable backup of your database.
 - **Offline queue** — captures queue in the extension if the app isn't running
 - **MCP server** — expose your job database as tools for Claude and other AI assistants (DMG only)

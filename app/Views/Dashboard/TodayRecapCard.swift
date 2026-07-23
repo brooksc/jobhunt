@@ -52,9 +52,18 @@ struct TodayRecapCard: View {
     }
 
     /// Meaningful-action totals for the last 7 days (oldest → newest), for the progress strip.
-    private var week: [(day: Date, total: Int)] {
+    /// Selectable look-back window for the activity strip (AC #4).
+    private enum RecapRange: Int, CaseIterable, Identifiable {
+        case week = 7, month = 30
+        var id: Int { rawValue }
+        var label: String { self == .week ? "7 days" : "30 days" }
+    }
+
+    @State private var range: RecapRange = .week
+
+    private func totals(days: Int) -> [(day: Date, total: Int)] {
         DashboardMetrics.buildRecapWindow(
-            events: recapEvents, followUpCompletions: followUpDates, days: 7, endingOn: day
+            events: recapEvents, followUpCompletions: followUpDates, days: days, endingOn: day
         )
     }
 
@@ -71,9 +80,10 @@ struct TodayRecapCard: View {
             GroupBox {
                 VStack(alignment: .leading, spacing: 12) {
                     if recap.hasActivity { todayBreakdown } else { emptyToday }
-                    if week.contains(where: { $0.total > 0 }) {
+                    // Offer the strip whenever there's any activity across the longest window.
+                    if totals(days: RecapRange.month.rawValue).contains(where: { $0.total > 0 }) {
                         Divider()
-                        weekStrip
+                        activityStrip
                     }
                 }
             }
@@ -148,25 +158,37 @@ struct TodayRecapCard: View {
         }
     }
 
-    /// A compact "last 7 days" strip: one bar per day (height ∝ meaningful actions), today accented.
-    /// Tapping a day with activity drills into that day's jobs.
-    private var weekStrip: some View {
-        let totals = week
-        let maxTotal = max(totals.map(\.total).max() ?? 0, 1)
+    /// The activity strip: one bar per day over the selected window (7 or 30 days), height ∝ meaningful
+    /// actions, today accented. Tapping a day with activity drills into its jobs. Per-day count/weekday
+    /// labels show only in the compact 7-day view (30 bars are too narrow to label).
+    private var activityStrip: some View {
+        let entries = totals(days: range.rawValue)
+        let maxTotal = max(entries.map(\.total).max() ?? 0, 1)
+        let compact = range == .week
         return VStack(alignment: .leading, spacing: 6) {
-            Text("Last 7 days")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-            HStack(alignment: .bottom, spacing: 10) {
-                ForEach(totals, id: \.day) { entry in
-                    dayBar(entry, maxTotal: maxTotal)
+            HStack {
+                Text("Last \(range.label)")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Picker("Range", selection: $range) {
+                    ForEach(RecapRange.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .controlSize(.small)
+            }
+            HStack(alignment: .bottom, spacing: compact ? 10 : 3) {
+                ForEach(entries, id: \.day) { entry in
+                    dayBar(entry, maxTotal: maxTotal, showLabels: compact)
                 }
             }
         }
     }
 
     @ViewBuilder
-    private func dayBar(_ entry: (day: Date, total: Int), maxTotal: Int) -> some View {
+    private func dayBar(_ entry: (day: Date, total: Int), maxTotal: Int, showLabels: Bool) -> some View {
         let isToday = Calendar.current.isDate(entry.day, inSameDayAs: day)
         let plural = entry.total == 1 ? "" : "s"
         Button {
@@ -175,21 +197,26 @@ struct TodayRecapCard: View {
             }
         } label: {
             VStack(spacing: 4) {
-                Text("\(entry.total)")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(entry.total > 0 ? .secondary : .tertiary)
-                RoundedRectangle(cornerRadius: 3)
+                if showLabels {
+                    Text("\(entry.total)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(entry.total > 0 ? .secondary : .tertiary)
+                }
+                RoundedRectangle(cornerRadius: showLabels ? 3 : 1.5)
                     .fill(barColor(total: entry.total, isToday: isToday))
                     .frame(height: 6 + CGFloat(entry.total) / CGFloat(maxTotal) * 40)
-                Text(weekdayLetter(entry.day))
-                    .font(.caption2)
-                    .foregroundStyle(isToday ? .primary : .secondary)
+                if showLabels {
+                    Text(weekdayLetter(entry.day))
+                        .font(.caption2)
+                        .foregroundStyle(isToday ? .primary : .secondary)
+                }
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(entry.total == 0)
+        .help(showLabels ? "" : "\(weekdayLabel(entry.day)): \(entry.total) action\(plural)")
         .accessibilityLabel("\(weekdayLabel(entry.day)): \(entry.total) action\(plural)")
     }
 

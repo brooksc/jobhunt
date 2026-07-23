@@ -172,6 +172,25 @@ final class DashboardMetricsTests: XCTestCase {
         XCTAssertEqual(recap.applied + recap.followUpsCompleted, 2)
     }
 
+    func testDailyRecap_bucketsByTheCalendarTimeZone() {
+        // One instant, two zones: 06:30 UTC on Mar 15 is 22:30 Mar 14 in Los Angeles.
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        var la = Calendar(identifier: .gregorian)
+        la.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        let instant = utc.date(from: DateComponents(year: 2026, month: 3, day: 15, hour: 6, minute: 30))!
+        let event = DashboardMetrics.RecapEvent(eventType: "capture", note: nil, occurredAt: instant)
+        let mar15 = utc.date(from: DateComponents(year: 2026, month: 3, day: 15, hour: 12))!
+        let mar14 = utc.date(from: DateComponents(year: 2026, month: 3, day: 14, hour: 12))!
+
+        func captured(_ day: Date, _ cal: Calendar) -> Int {
+            DashboardMetrics.buildDailyRecap(events: [event], followUpCompletions: [], day: day, calendar: cal).captured
+        }
+        XCTAssertEqual(captured(mar15, utc), 1, "in UTC the event is on Mar 15")
+        XCTAssertEqual(captured(mar14, la), 1, "in LA the same instant is Mar 14")
+        XCTAssertEqual(captured(mar15, la), 0, "so it is NOT on Mar 15 in LA")
+    }
+
     func testStatusTarget_parsesCurrentAndLegacyNotes() {
         XCTAssertEqual(DashboardMetrics.statusTarget(fromNote: "Status changed from applied to rejected"), "rejected")
         XCTAssertEqual(DashboardMetrics.statusTarget(fromNote: "Status changed from new to pursuing"), "pursuing")

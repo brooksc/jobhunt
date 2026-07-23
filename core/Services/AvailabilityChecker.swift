@@ -429,11 +429,13 @@ public enum AvailabilityChecker {
                 return .unverifiable(reason: "bot challenge: \(finalURLString)")
             }
 
-            // 1. Gone status codes — except a LinkedIn 404 (fires on live search-only jobs, #212): not gone.
+            // 1. Gone status codes — including LinkedIn. The earlier "LinkedIn 404 is unverifiable" carve-out
+            // (meant to protect live search-only postings) suppressed REAL removals: with the app's browser
+            // User-Agent, LinkedIn's guest /jobs/view returns a clean 404 for a removed posting (verified
+            // against LinkedIn's guest job API — 404 there too), while live postings return 200. So a 404
+            // is a reliable gone signal; treat it as such (TASK-639, job #212). Rate-limit/bot-block
+            // statuses (429/999) aren't in goneStatusCodes, so they fall through to .available, never gone.
             if goneStatusCodes.contains(statusCode) {
-                if statusCode == 404, (URL(string: finalURLString)?.host?.lowercased() ?? "").hasSuffix("linkedin.com") {
-                    return .unverifiable(reason: "linkedin 404 (unreliable guest view): \(finalURLString)")
-                }
                 return .gone(reason: "HTTP \(statusCode)")
             }
 

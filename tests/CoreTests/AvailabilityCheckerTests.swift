@@ -596,9 +596,10 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
         if case let .gone(reason) = result { XCTFail("Expected .available, got .gone(\(reason))") }
     }
 
-    func testLinkedIn404IsUnverifiableNotGone() async throws {
-        // TASK-626 (job #212): LinkedIn returns 404 on `/jobs/view/{id}` for LIVE jobs that are only
-        // reachable through search, so a LinkedIn 404 is indeterminate, not gone — surface .unverifiable.
+    func testLinkedIn404IsGone() async throws {
+        // TASK-639 (job #212): a LinkedIn guest `/jobs/view/{id}` 404 is a reliable removed-posting
+        // signal with the app's browser UA (verified vs LinkedIn's guest job API), so it must be gone —
+        // the earlier "unverifiable" carve-out suppressed real removals.
         let originalURL = "https://www.linkedin.com/jobs/view/999"
         MockURLProtocol.handlers = [(originalURL, { _ in
             makeResponse(url: originalURL, status: 404, body: "")
@@ -608,14 +609,10 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
             title: "Whatever Role Here",
             session: session
         )
-        guard case let .unverifiable(reason) = result else {
-            XCTFail("Expected .unverifiable for LinkedIn 404, got \(result)"); return
-        }
-        XCTAssertTrue(reason.contains("linkedin 404"), "reason: \(reason)")
+        guard case .gone = result else { XCTFail("Expected .gone for a LinkedIn 404, got \(result)"); return }
     }
 
     func testNonLinkedIn404IsStillGone() async throws {
-        // The LinkedIn 404 carve-out is host-scoped: a 404 on any other host stays gone.
         let originalURL = "https://boards.greenhouse.io/acme/jobs/999"
         MockURLProtocol.handlers = [(originalURL, { _ in
             makeResponse(url: originalURL, status: 404, body: "")

@@ -69,6 +69,60 @@ public enum ExportService {
         try csv.write(to: url, atomically: true, encoding: .utf8)
     }
 
+    // MARK: - Application History CSV (TASK-628)
+
+    /// ESD-oriented employer-contact log columns, in order (AC #12).
+    static let applicationHistoryColumns = [
+        "application_date", "claim_week_ending", "activity_type", "contact_type", "contact_method",
+        "company", "job_title", "job_reference_number", "employer_address", "city", "state",
+        "website_or_email", "phone", "source_url", "application_result", "current_status", "notes",
+        "job_id", "job_number"
+    ]
+
+    /// CSV for the Application History report — one row per application-contact record, escaped and
+    /// formula-injection-sanitized like `jobsCSV`. Dates are local `yyyy-MM-dd` (calendar's zone); a
+    /// missing application date leaves the date + claim-week cells empty rather than inventing one.
+    public static func applicationHistoryCSV(records: [ApplicationRecord], calendar: Calendar = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+
+        var lines: [String] = [applicationHistoryColumns.joined(separator: ",")]
+        for record in records {
+            let appliedDate = record.appliedAt.map { formatter.string(from: $0) } ?? ""
+            let weekEnding = record.appliedAt
+                .map { formatter.string(from: ApplicationHistory.claimWeekEnding(for: $0, calendar: calendar)) } ?? ""
+            let row: [String: String] = [
+                "application_date": appliedDate,
+                "claim_week_ending": weekEnding,
+                "activity_type": "Job application",
+                "contact_type": record.contactType ?? "",
+                "contact_method": record.contactMethod ?? "",
+                "company": record.company ?? "",
+                "job_title": record.jobTitle ?? "",
+                "job_reference_number": record.jobReferenceNumber ?? "",
+                "employer_address": record.employerAddress ?? "",
+                "city": record.city ?? "",
+                "state": record.state ?? "",
+                "website_or_email": record.employerWebsiteOrEmail ?? "",
+                "phone": record.phone ?? "",
+                "source_url": record.sourceURL,
+                "application_result": record.applicationResult ?? "",
+                "current_status": record.currentStatus,
+                "notes": record.notes ?? "",
+                "job_id": record.jobID,
+                "job_number": record.jobNumber.map(String.init) ?? ""
+            ]
+            let rowCSV = applicationHistoryColumns
+                .map { escapeCsv(sanitizeCsvCell(row[$0] ?? "")) }
+                .joined(separator: ",")
+            lines.append(rowCSV)
+        }
+        return lines.joined(separator: "\n") + "\n"
+    }
+
     // MARK: - RFC-4180 escaping
 
     /// Fields containing comma, quote, or newline are wrapped in double-quotes;

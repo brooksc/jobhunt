@@ -912,6 +912,19 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         XCTAssertEqual(gone.first?.jobID, closed.id)
     }
 
+    /// TASK-643: a throttled/blocked LinkedIn guest-API response (429/999) must NEVER mark the job
+    /// expired — we can't confirm removal, so it stays available and is retried on a future run.
+    func testFindGoneJobs_linkedInThrottleNeverMarksGone() async throws {
+        let job = try makeJobWithCapture(
+            url: "https://www.linkedin.com/jobs/search/?currentJobId=777", title: "Role", status: .applied
+        )
+        MockURLProtocol.handlers = [("jobs-guest/jobs/api/jobPosting/777", { _ in
+            makeResponse(url: "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/777", status: 429, body: "")
+        })]
+        let gone = await AvailabilityChecker.findGoneJobs([job], session: session)
+        XCTAssertTrue(gone.isEmpty, "a throttled LinkedIn check must not false-expire the job")
+    }
+
     func testLinkedInJobID_extractsFromSearchAndViewURLs() throws {
         let search = try XCTUnwrap(URL(string: "https://www.linkedin.com/jobs/search/?currentJobId=4442490941&keywords=x"))
         let view = try XCTUnwrap(URL(string: "https://www.linkedin.com/jobs/view/4443545630/"))

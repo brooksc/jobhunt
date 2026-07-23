@@ -513,18 +513,23 @@ public enum AvailabilityChecker {
     /// Delay between serial LinkedIn availability checks to stay under LinkedIn's rate limit (TASK-641).
     static let linkedInPaceDelay: Duration = .milliseconds(500)
 
-    /// Check one spec and apply the Greenhouse confirm-alive override; returns a result only when the
-    /// posting is genuinely gone. Shared by the concurrent pass and the paced LinkedIn pass.
-    private static func goneResult(for spec: JobSpec, session: URLSession) async -> GoneJobResult? {
-        // LinkedIn: the auth-walled guest /jobs/view page is unreliable under load (a removed posting's
-        // 404 gets throttled/redirected and reads as available — job #212). LinkedIn's guest job API is
-        // lighter and gives a clean 404-removed / 200-live signal, so use it as the authoritative
-        // LinkedIn check (TASK-642).
-        if (spec.url.host?.lowercased() ?? "").hasSuffix("linkedin.com"),
-           let jobID = linkedInJobID(from: spec.url) {
-            return await linkedInGoneResult(spec: spec, jobID: jobID, session: session)
-        }
+    /// Max LinkedIn postings checked per run — capped + shuffled so a run can't fire a bursty volume
+    /// that trips LinkedIn's rate limit; coverage rotates across runs (eventual, not per-run — TASK-643).
+    static let maxLinkedInPerRun = 12
 
+    /// Race-free monotonic counter so the two interleaved availability passes report one progress stream.
+    private actor CheckCounter {
+        private var count = 0
+        func next() -> Int { count += 1; return count }
+    }
+
+    /// Outcome of a LinkedIn guest-API check. `.throttled` (rate-limit / block / network error) means we
+    /// can't confirm removal — the caller stops checking LinkedIn for the rest of the run (backoff).
+    private enum LinkedInOutcome { case gone(GoneJobResult), live, throttled }
+
+    /// Check one non-LinkedIn spec (the concurrent pass) and apply the Greenhouse confirm-alive override;
+    /// returns a result only when the posting is genuinely gone. LinkedIn is handled separately, gently.
+    private static func goneResult(for spec: JobSpec, session: URLSession) async -> GoneJobResult? {
         let result = await checkURL(spec.url, title: spec.title, session: session)
         guard case let .gone(reason) = result else { return nil }
         // Authoritative override (TASK-631): the flaky career-site HTML (Cloudflare / JS shell) said
@@ -561,37 +566,88 @@ public enum AvailabilityChecker {
 
     /// Availability for a LinkedIn posting via the guest job API (`jobs-guest/jobs/api/jobPosting/{id}`):
     /// a clean 404/410 means removed; a 200 posting is live unless its body carries the closed banner or
-    /// a gone phrase. A throttle/block (429/999) or network error can't confirm removal → not gone, so a
-    /// rate-limited check never false-expires (TASK-642).
-    private static func linkedInGoneResult(spec: JobSpec, jobID: String, session: URLSession) async -> GoneJobResult? {
-        guard let apiURL = URL(string: "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/\(jobID)") else {
-            return nil
+    /// a gone phrase; a throttle/block (429/999) or network error is `.throttled` — can't confirm, and
+    /// signals the caller to back off. A rate-limited check therefore never false-expires (TASK-642/643).
+    private static func linkedInOutcome(for spec: JobSpec, session: URLSession) async -> LinkedInOutcome {
+        guard let jobID = linkedInJobID(from: spec.url),
+              let apiURL = URL(string: "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/\(jobID)") else {
+            return .live // not a resolvable LinkedIn posting id — nothing to confirm gone
         }
         var request = URLRequest(url: apiURL, timeoutInterval: timeoutSeconds)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         guard let (data, response) = try? await session.data(for: request),
               let http = response as? HTTPURLResponse else {
-            return nil // network error / throttle → can't confirm gone
+            return .throttled // network error → back off
         }
-        func gone(_ reason: String) -> GoneJobResult {
-            GoneJobResult(
+        func gone(_ reason: String) -> LinkedInOutcome {
+            .gone(GoneJobResult(
                 jobID: spec.id, jobNumber: spec.jobNumber, company: spec.company,
                 title: spec.title, url: spec.url, reason: reason
-            )
+            ))
         }
         switch http.statusCode {
         case 404, 410:
             return gone("linkedin posting \(jobID) removed (guest API \(http.statusCode))")
         case 200:
             let body = String(data: data, encoding: .utf8)?.lowercased() ?? ""
-            guard !body.isEmpty else { return nil }
+            guard !body.isEmpty else { return .live }
             if isLinkedInClosedJob(finalURLString: apiURL.absoluteString, body: body) || bodyGoneReason(body) != nil {
                 return gone("linkedin posting \(jobID) no longer accepting applications")
             }
-            return nil
+            return .live
+        case 429, 999:
+            return .throttled // rate-limited / blocked
         default:
-            return nil // 429 / 999 / other → throttled or blocked, can't confirm removal
+            return .live // unknown status — don't flag
         }
+    }
+
+    /// The concurrent (non-LinkedIn) availability pass — up to 10 in flight. Reports each completion.
+    private static func checkConcurrently(
+        _ specs: [JobSpec], session: URLSession, tick: @Sendable @escaping () async -> Void
+    ) async -> [GoneJobResult] {
+        var results: [GoneJobResult] = []
+        await withTaskGroup(of: GoneJobResult?.self) { group in
+            var inFlight = 0
+            for spec in specs {
+                if inFlight >= 10 {
+                    if let done = await group.next() {
+                        if let done { results.append(done) }
+                        inFlight -= 1
+                        await tick()
+                    }
+                }
+                inFlight += 1
+                group.addTask { await goneResult(for: spec, session: session) }
+            }
+            for await done in group {
+                if let done { results.append(done) }
+                await tick()
+            }
+        }
+        return results
+    }
+
+    /// The gentle LinkedIn pass: one at a time with a pace gap, stopping the moment LinkedIn throttles
+    /// so we never hammer it (TASK-643). Runs interleaved with `checkConcurrently` for wall-clock spread.
+    private static func checkLinkedInPaced(
+        _ specs: [JobSpec], session: URLSession, tick: @Sendable @escaping () async -> Void
+    ) async -> [GoneJobResult] {
+        var results: [GoneJobResult] = []
+        for (index, spec) in specs.enumerated() {
+            if Task.isCancelled { break }
+            let outcome = await linkedInOutcome(for: spec, session: session)
+            if case let .gone(result) = outcome { results.append(result) }
+            await tick()
+            if case .throttled = outcome {
+                // LinkedIn is rate-limiting — stop; the rest are picked up on a future run. Advance the
+                // progress counter for the skipped ones so the bar still completes.
+                for _ in (index + 1) ..< specs.count { await tick() }
+                break
+            }
+            try? await Task.sleep(for: linkedInPaceDelay)
+        }
+        return results
     }
 
     public static func findGoneJobs(
@@ -619,48 +675,31 @@ public enum AvailabilityChecker {
         }
         guard !specs.isEmpty else { return [] }
 
-        let total = specs.count
-        var completed = 0
-        var results: [GoneJobResult] = []
-
-        // LinkedIn aggressively rate-limits: a burst of concurrent guest requests gets throttled
-        // (999 / blocked / redirected), which reads as "available" and silently misses removed postings
-        // (job #212 was checked in a 35-URL burst and came back available though it 404s in isolation).
-        // So check LinkedIn URLs SERIALLY with a small pace; everything else stays fully concurrent.
+        // LinkedIn aggressively rate-limits a burst of guest requests (999/blocked/redirect), which reads
+        // as "available" and misses removed postings (job #212). We stay guest-only (no login → no
+        // account-ban risk) and instead check LinkedIn GENTLY: capped + shuffled per run so a run can't
+        // fire a bursty volume, paced one-at-a-time, run INTERLEAVED with the other (concurrent) checks
+        // for wall-clock spread, and backed off the moment LinkedIn throttles. LinkedIn coverage is
+        // therefore eventual across runs, not guaranteed in one (TASK-643).
         func isLinkedIn(_ spec: JobSpec) -> Bool { (spec.url.host?.lowercased() ?? "").hasSuffix("linkedin.com") }
         let concurrentSpecs = specs.filter { !isLinkedIn($0) }
-        let linkedInSpecs = specs.filter(isLinkedIn)
+        var linkedInSpecs = specs.filter(isLinkedIn)
+        linkedInSpecs.shuffle()
+        let linkedInThisRun = Array(linkedInSpecs.prefix(maxLinkedInPerRun))
+        let total = concurrentSpecs.count + linkedInThisRun.count
 
-        await withTaskGroup(of: GoneJobResult?.self) { group in
-            var inFlight = 0
-            for spec in concurrentSpecs {
-                if inFlight >= 10 {
-                    if let r = await group.next() {
-                        if let r { results.append(r) }
-                        inFlight -= 1
-                        completed += 1
-                        await onProgress?(completed, total)
-                    }
-                }
-                inFlight += 1
-                group.addTask { await goneResult(for: spec, session: session) }
-            }
-            for await r in group {
-                if let r { results.append(r) }
-                completed += 1
-                await onProgress?(completed, total)
-            }
+        let counter = CheckCounter()
+        @Sendable func tick() async {
+            let n = await counter.next()
+            await onProgress?(n, total)
         }
 
-        // Paced LinkedIn pass — one at a time, with a gap, to stay under the rate limit (TASK-641).
-        for spec in linkedInSpecs {
-            if Task.isCancelled { break }
-            if let r = await goneResult(for: spec, session: session) { results.append(r) }
-            completed += 1
-            await onProgress?(completed, total)
-            try? await Task.sleep(for: linkedInPaceDelay)
-        }
-        return results
+        // Interleave the two passes so LinkedIn's paced requests are spread across the run rather than
+        // bunched. Each pass keeps its own results (no shared mutable state); progress is merged via the
+        // actor-backed counter.
+        async let concurrentResults = checkConcurrently(concurrentSpecs, session: session, tick: tick)
+        async let linkedInResults = checkLinkedInPaced(linkedInThisRun, session: session, tick: tick)
+        return await concurrentResults + linkedInResults
     }
 
     // MARK: - Greenhouse authoritative availability (TASK-631)

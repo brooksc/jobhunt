@@ -1638,6 +1638,24 @@ final class JobServiceTests: XCTestCase {
         _ = result
     }
 
+    /// The exposed bulk-delete action (TASK-604) routes each selected id through `JobService.delete`;
+    /// a missing/already-deleted id must throw so the UI reports failure instead of claiming success.
+    func testDelete_missingJobThrows() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        do {
+            try await svc.delete(jobID: "does-not-exist")
+            XCTFail("Deleting a nonexistent job should throw")
+        } catch {
+            // Any thrown error is enough for the UI to surface failure; assert the specific not-found case.
+            guard case BackgroundStoreError.notFound = error else {
+                return XCTFail("Expected .notFound, got \(error)")
+            }
+        }
+    }
+
     // MARK: - LocalizedError descriptions
 
     func testJobServiceError_localizedDescriptions() {

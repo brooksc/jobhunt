@@ -320,6 +320,13 @@ struct JobsView: View {
                     } label: {
                         Label("Archive Selected", systemImage: "archivebox")
                     }
+                    // Destructive Delete alongside Archive (TASK-604). Selection is kept until the
+                    // confirmation is accepted (the dialog clears it on success) so Cancel is a no-op.
+                    Button(role: .destructive) {
+                        jobIDsToDelete = Array(selectedJobIDs)
+                    } label: {
+                        Label("Delete \(selectedJobIDs.count) Selected…", systemImage: "trash")
+                    }
                     // TASK-464: bulk fit-only queue + open all source pages.
                     Button {
                         let ids = Array(selectedJobIDs)

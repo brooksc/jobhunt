@@ -60,9 +60,16 @@ public enum ReferralSummary: String, Sendable, CaseIterable {
 }
 
 public enum ReferralTracking {
-    /// Statuses in the active application funnel where a missing referral reads as "Needs outreach"
-    /// (AC #2). Jobs outside it don't get a misleading action requirement.
-    public static let funnelStatuses: Set<String> = ["applied", "interview", "offer"]
+    /// The single status where a *missing* referral reads as "Needs outreach" — the workflow is
+    /// apply-first, then ask for a referral to get in the system. Interested jobs aren't nudged (that
+    /// would pollute a list you don't actively pursue), and Interview/Offer aren't either (you're
+    /// already in the system — a nudge there is noise). (TASK-644 review)
+    public static let outreachStatuses: Set<String> = ["applied"]
+
+    /// Statuses where the referral *section* is offered even with no requests yet: Interested (you can
+    /// line up a referral) and Applied. Interview/Offer/terminal states only show the section when a
+    /// request already exists (see `ReferralSection.isApplicable`), so it's not noise once you're in.
+    public static let applicableStatuses: Set<String> = ["pursuing", "applied"]
 
     /// Minimal projection of a referral attempt for the pure derivation (SwiftData-free, testable).
     public struct Attempt: Sendable, Equatable {
@@ -95,7 +102,7 @@ public enum ReferralTracking {
         if real.contains(where: { $0.outcome == .requested }) { return .requested }
         if !real.isEmpty { return .declined } // real requests exist but none active → all declined
         if attempts.contains(where: { $0.outcome == .notApplicable }) { return .notApplicable }
-        return funnelStatuses.contains(jobStatus) ? .needsOutreach : .none
+        return outreachStatuses.contains(jobStatus) ? .needsOutreach : .none
     }
 
     // MARK: - Per-state dates & reverting (TASK-644)

@@ -10,11 +10,11 @@ final class ReferralTrackingTests: XCTestCase {
         .init(outcome: outcome, recipientName: name, recipientIdentifier: identifier, requestedAt: Date())
     }
 
-    func testNeedsOutreachOnlyInsideTheFunnelWithoutAttempts() {
-        for status in ["applied", "interview", "offer"] {
-            XCTAssertEqual(ReferralTracking.summary(jobStatus: status, attempts: []), .needsOutreach, status)
-        }
-        for status in ["pursuing", "new", "archived", "closed", "rejected"] {
+    func testNeedsOutreachOnlyWhenAppliedWithoutAttempts() {
+        // Apply-first workflow (TASK-644 review): the nudge is Applied-only — Interested isn't nudged
+        // (list-view noise) and Interview/Offer aren't either (already in the system).
+        XCTAssertEqual(ReferralTracking.summary(jobStatus: "applied", attempts: []), .needsOutreach)
+        for status in ["pursuing", "interview", "offer", "new", "archived", "closed", "rejected"] {
             XCTAssertEqual(ReferralTracking.summary(jobStatus: status, attempts: []), ReferralSummary.none, status)
         }
     }

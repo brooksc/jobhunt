@@ -104,7 +104,7 @@ struct ReferralSection: View {
     /// Only show the section for jobs where referral outreach is meaningful — those in the active
     /// application funnel, or any job that already has recorded attempts (AC #2/#16).
     private var isApplicable: Bool {
-        ReferralTracking.funnelStatuses.contains(job.status.rawValue) || !attempts.isEmpty
+        ReferralTracking.applicableStatuses.contains(job.status.rawValue) || !attempts.isEmpty
     }
 
     var body: some View {

@@ -90,15 +90,15 @@ struct ReferralAttemptEditor: View {
                     TextField("Note (optional)", text: $note, axis: .vertical).lineLimit(2 ... 4)
                 }
                 Section("Timeline") {
-                    DatePicker("Requested", selection: $requestedAt, displayedComponents: .date)
+                    DateRow(label: "Requested", date: $requestedAt)
                     if respondedAt != nil {
-                        DatePicker("Responded", selection: dateBinding(\.respondedAt), displayedComponents: .date)
+                        DateRow(label: "Responded", date: dateBinding(\.respondedAt))
                     }
                     if submittedAt != nil {
-                        DatePicker("Submitted", selection: dateBinding(\.submittedAt), displayedComponents: .date)
+                        DateRow(label: "Submitted", date: dateBinding(\.submittedAt))
                     }
                     if declinedAt != nil {
-                        DatePicker("Declined", selection: dateBinding(\.declinedAt), displayedComponents: .date)
+                        DateRow(label: "Declined", date: dateBinding(\.declinedAt))
                     }
                 }
                 if let duplicate {
@@ -139,6 +139,32 @@ struct ReferralAttemptEditor: View {
         } message: {
             Text("You've already contacted this recipient for this job. Recording again is fine for a "
                 + "follow-up or correction — just confirming it's intentional.")
+        }
+    }
+
+    /// A click-driven date field: a button showing the date that opens a graphical calendar popover.
+    /// The default macOS `DatePicker` is a segmented field editor that needs keyboard first-responder,
+    /// which the job-detail window's stacked sheets can leave broken — so date entry there is
+    /// unreliable. A popover manages its own responder, so clicking a day always works.
+    private struct DateRow: View {
+        let label: String
+        @Binding var date: Date
+        @State private var showPicker = false
+
+        var body: some View {
+            HStack {
+                Text(label)
+                Spacer()
+                Button(date.formatted(date: .abbreviated, time: .omitted)) { showPicker = true }
+                    .buttonStyle(.bordered)
+                    .popover(isPresented: $showPicker, arrowEdge: .bottom) {
+                        DatePicker(label, selection: $date, displayedComponents: .date)
+                            .datePickerStyle(.graphical)
+                            .labelsHidden()
+                            .padding()
+                            .frame(minWidth: 260)
+                    }
+            }
         }
     }
 

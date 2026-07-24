@@ -15,7 +15,13 @@
   ];
 
   function csvEscape(value) {
-    const text = String(value ?? "");
+    let text = String(value ?? "");
+    // Formula-injection guard (CWE-1236): a spreadsheet treats a cell beginning with =, +, -, @, tab,
+    // or CR as a formula, so page-controlled text like =HYPERLINK(...) would execute on open. Prefix a
+    // single quote to neutralize it (mirrors the app-side ExportService.sanitizeCsvCell).
+    if (/^[=+\-@\t\r]/.test(text)) {
+      text = `'${text}`;
+    }
     if (!/[",\r\n]/.test(text)) {
       return text;
     }

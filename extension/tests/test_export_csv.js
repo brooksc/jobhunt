@@ -57,6 +57,30 @@ describe('export_csv: csvEscape', () => {
   test('number is stringified', () => {
     assert.equal(csv.csvEscape(42), '42');
   });
+
+  // CSV formula-injection guard (CWE-1236): a spreadsheet treats a cell beginning with =,+,-,@,tab,CR
+  // as a formula, so page-controlled text must be neutralized with a leading apostrophe.
+  test('formula-leading "=" is neutralized with a leading apostrophe', () => {
+    assert.equal(csv.csvEscape('=SUM(A1:A2)'), "'=SUM(A1:A2)");
+  });
+
+  test('formula-leading +, -, @ are neutralized', () => {
+    assert.equal(csv.csvEscape('+1'), "'+1");
+    assert.equal(csv.csvEscape('-1'), "'-1");
+    assert.equal(csv.csvEscape('@cmd'), "'@cmd");
+  });
+
+  test('leading tab is neutralized', () => {
+    assert.equal(csv.csvEscape('\tvalue'), "'\tvalue");
+  });
+
+  test('formula cell that also needs quoting is both prefixed and quoted', () => {
+    assert.equal(csv.csvEscape('=A,B'), '"\'=A,B"');
+  });
+
+  test('non-leading formula chars are untouched', () => {
+    assert.equal(csv.csvEscape('a=b'), 'a=b');
+  });
 });
 
 describe('export_csv: queueToCsv', () => {

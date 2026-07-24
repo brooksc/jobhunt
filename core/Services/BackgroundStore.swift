@@ -1050,12 +1050,21 @@ public actor BackgroundStore {
             event.job = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid })).first
             modelContext.insert(event)
         }
-        let isNew = input.id == nil
+        // "New" is decided by whether the row already exists, not by a nil id — so an editor that keeps
+        // a stable id and re-saves (e.g. after a transient failure, or a double Save) upserts one record
+        // instead of duplicating it (TASK-644 review #7).
+        var existing: ReferralAttempt?
+        if let id = input.id {
+            existing = try modelContext.fetch(
+                FetchDescriptor<ReferralAttempt>(predicate: #Predicate { $0.id == id })
+            ).first
+        }
+        let isNew = existing == nil
+        // Prior state, captured before the mutation below, so an edit that advances to Submitted logs
+        // the milestone once (a fresh attempt has no prior). (TASK-644 review #5)
+        let priorOutcome = existing?.outcome
         let attempt: ReferralAttempt
-        if let id = input.id,
-           let existing = try modelContext.fetch(
-               FetchDescriptor<ReferralAttempt>(predicate: #Predicate { $0.id == id })
-           ).first {
+        if let existing {
             attempt = existing
         } else {
             attempt = ReferralAttempt(
@@ -1066,9 +1075,6 @@ public actor BackgroundStore {
             )
             modelContext.insert(attempt)
         }
-        // Prior state, captured before the mutation below, so an edit that advances to Submitted logs
-        // the milestone once (a fresh attempt has no prior). (TASK-644 review #5)
-        let priorOutcome: String? = isNew ? nil : attempt.outcome
         attempt.jobID = input.jobID
         attempt.recipientName = input.recipientName
         attempt.recipientIdentifier = clean(input.recipientIdentifier)

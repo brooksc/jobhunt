@@ -156,7 +156,7 @@ struct ReferralSection: View {
                 jobID: job.id,
                 existing: target.existing,
                 priorAttempts: realAttempts,
-                onSave: { input in save(input); editorAttempt = nil },
+                onSave: { input in save(input) },
                 onCancel: { editorAttempt = nil }
             )
         }
@@ -208,7 +208,10 @@ struct ReferralSection: View {
 
     private func save(_ input: ReferralAttemptInput) {
         Task {
-            do { try await appServices.backgroundStore.recordReferralAttempt(input) } catch {
+            do {
+                try await appServices.backgroundStore.recordReferralAttempt(input)
+                editorAttempt = nil // dismiss only once the write succeeds (review #7)
+            } catch {
                 appServices.toastStore.show("Couldn't save referral: \(error.localizedDescription)", isError: true)
             }
         }

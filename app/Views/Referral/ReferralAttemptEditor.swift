@@ -23,6 +23,9 @@ struct ReferralAttemptEditor: View {
     @State private var respondedAt: Date?
     @State private var submittedAt: Date?
     @State private var declinedAt: Date?
+    /// A stable id for this record for the editor's whole lifetime, so re-saving (after a failure or a
+    /// double Save) upserts one row rather than creating duplicates (TASK-644 review #7).
+    @State private var attemptID: String
     /// Set when Save is pressed on a new request to an already-contacted recipient — reveals an inline
     /// "Record anyway" instead of a `.confirmationDialog`, which as a modal inside this sheet is
     /// unreliable and can break the sheet's input (TASK-644 review #2).
@@ -50,6 +53,7 @@ struct ReferralAttemptEditor: View {
         _respondedAt = State(initialValue: existing?.respondedAt)
         _submittedAt = State(initialValue: existing?.submittedAt)
         _declinedAt = State(initialValue: existing?.declinedAt)
+        _attemptID = State(initialValue: existing?.id ?? UUID().uuidString)
     }
 
     /// A prior request (other than the one being edited) to the same recipient (AC #6).
@@ -220,7 +224,7 @@ struct ReferralAttemptEditor: View {
             now: Date()
         )
         onSave(ReferralAttemptInput(
-            id: existing?.id, jobID: jobID, recipientName: recipientName.trimmingCharacters(in: .whitespaces),
+            id: attemptID, jobID: jobID, recipientName: recipientName.trimmingCharacters(in: .whitespaces),
             recipientIdentifier: identifier, channel: channel, note: note,
             requestedAt: dates.requested, respondedAt: dates.responded, submittedAt: dates.submitted,
             declinedAt: dates.declined, outcome: outcome.rawValue

@@ -19,15 +19,16 @@ struct JobPromptMenu: View {
     @State private var pendingOpen: PendingOpen?
     /// Presents the one-time heads-up before the first auto-apply copy that embeds personal details.
     @State private var showAutoApplyPrivacyPrompt = false
-    /// Presents the Request Referral sheet where the user optionally pastes contact context.
-    @State private var showReferralSheet = false
-    /// A pending "Record as sent" → opens the referral editor prefilled with the pasted context.
-    @State private var recordingReferral: PendingReferral?
+    /// The referral flow, shown in a SINGLE sheet: paste optional contact context, then record the
+    /// request. Kept as one `.sheet(isPresented:)` so the prompt→editor transition swaps content in
+    /// place — presenting a second sheet as the first dismisses leaves its input dead on macOS
+    /// (TASK-644 review #1).
+    @State private var referralFlow: ReferralFlow?
     @Query private var allReferralAttempts: [ReferralAttempt]
 
-    private struct PendingReferral: Identifiable {
-        let id = UUID()
-        let context: String
+    private enum ReferralFlow {
+        case prompt
+        case record(context: String)
     }
 
     private struct PendingOpen: Identifiable {
@@ -80,7 +81,7 @@ struct JobPromptMenu: View {
             }
             // Referral needs optional pasted contact context first, so it opens a sheet instead of a
             // plain Copy/Open submenu.
-            Button("\(JobPromptKind.requestReferral.title)…") { showReferralSheet = true }
+            Button("\(JobPromptKind.requestReferral.title)…") { referralFlow = .prompt }
                 .disabled(!isUsable)
             Divider()
             // Codex auto-apply agent prompt — uses local files + the browser, so it's always available
@@ -119,34 +120,27 @@ struct JobPromptMenu: View {
                 + "contact info, address, work authorization, and any EEO answers — so Codex can fill "
                 + "applications. It's copied to your clipboard to paste into Codex. (Shown once.)")
         }
-        .sheet(isPresented: $showReferralSheet) {
-            ReferralPromptSheet(
-                onCopy: { context in copy(.requestReferral, referralContext: context) },
-                onOpen: { provider, context in requestOpen(.requestReferral, provider, referralContext: context) },
-                onRecordSent: { context in
-                    showReferralSheet = false
-                    // Let the prompt sheet fully dismiss before presenting the editor. A synchronous
-                    // sheet→sheet swap on the same view leaves the second sheet's controls unresponsive
-                    // to clicks/keystrokes on macOS.
-                    Task { @MainActor in
-                        try? await Task.sleep(for: .milliseconds(350))
-                        recordingReferral = PendingReferral(context: context)
-                    }
-                }
-            )
-        }
-        .sheet(item: $recordingReferral) { pending in
-            ReferralAttemptEditor(
-                jobID: job.id,
-                existing: nil,
-                priorAttempts: allReferralAttempts.filter { $0.jobID == job.id },
-                initialNote: pending.context,
-                onSave: { input in
-                    recordReferral(input)
-                    recordingReferral = nil
-                },
-                onCancel: { recordingReferral = nil }
-            )
+        .sheet(isPresented: Binding(get: { referralFlow != nil }, set: { if !$0 { referralFlow = nil } })) {
+            switch referralFlow {
+            case .prompt:
+                ReferralPromptSheet(
+                    onCopy: { context in copy(.requestReferral, referralContext: context) },
+                    onOpen: { provider, context in requestOpen(.requestReferral, provider, referralContext: context) },
+                    // Swap this same sheet's content to the editor in place — no dismiss/re-present.
+                    onRecordSent: { context in referralFlow = .record(context: context) }
+                )
+            case let .record(context):
+                ReferralAttemptEditor(
+                    jobID: job.id,
+                    existing: nil,
+                    priorAttempts: allReferralAttempts.filter { $0.jobID == job.id },
+                    initialNote: context,
+                    onSave: { input in recordReferral(input) },
+                    onCancel: { referralFlow = nil }
+                )
+            case .none:
+                EmptyView()
+            }
         }
     }
 
@@ -158,6 +152,7 @@ struct JobPromptMenu: View {
             do {
                 try await appServices.backgroundStore.recordReferralAttempt(input)
                 appServices.toastStore.show("Referral recorded — \(input.recipientName)")
+                referralFlow = nil // dismiss only once the write succeeds (review #7)
             } catch {
                 appServices.toastStore.show("Couldn't record referral: \(error.localizedDescription)", isError: true)
             }
@@ -173,7 +168,7 @@ struct JobPromptMenu: View {
             appServices.toastStore.show(disabledHelp, isError: true)
             return
         }
-        showReferralSheet = false
+        referralFlow = nil
         setClipboard(buildPrompt(kind, resume: resume, referralContext: referralContext))
         appServices.toastStore.show("\(kind.title) prompt copied (using \(resume.name))")
     }
@@ -224,7 +219,7 @@ struct JobPromptMenu: View {
         }
         // Close the referral sheet first (if open) so the privacy dialog / browser open isn't stacked
         // under it; the pasted context is carried through pendingOpen or straight into performOpen.
-        showReferralSheet = false
+        referralFlow = nil
         if appServices.settings.bool(forKey: SettingsKey.aiPromptExternalOpenAcknowledged) {
             performOpen(kind, provider, referralContext: referralContext)
         } else {

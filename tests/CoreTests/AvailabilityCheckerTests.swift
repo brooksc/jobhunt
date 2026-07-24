@@ -1295,6 +1295,38 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         )
         XCTAssertNil(found, "disabled auto-check must return nil (skipped)")
     }
+
+    // MARK: - SSRF host guard (F8)
+
+    func testIsInternalHostBlocksLoopbackLinkLocalAndPrivate() {
+        let blocked = [
+            "localhost",
+            "127.0.0.1",
+            "0.0.0.0",
+            "169.254.169.254",
+            "10.1.2.3",
+            "192.168.1.1",
+            "172.16.0.1",
+            "172.31.255.255",
+            "::1",
+            "foo.local",
+            "bar.internal"
+        ]
+        for host in blocked {
+            XCTAssertTrue(AvailabilityChecker.isInternalHost(host), "\(host) should be blocked")
+        }
+        let allowed = [
+            "example.com",
+            "8.8.8.8",
+            "172.32.0.1",
+            "172.15.0.1",
+            "203.0.113.5",
+            "boards.greenhouse.io"
+        ]
+        for host in allowed {
+            XCTAssertFalse(AvailabilityChecker.isInternalHost(host), "\(host) should be allowed")
+        }
+    }
 }
 
 // swiftlint:enable force_unwrapping

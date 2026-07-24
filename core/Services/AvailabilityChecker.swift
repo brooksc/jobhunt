@@ -205,6 +205,30 @@ public enum AvailabilityChecker {
         return components.url ?? url
     }
 
+    /// True for loopback / link-local / private-range hosts that the availability check must not fetch
+    /// (SSRF guard, F8). Recognizes `localhost`, `.local`/`.internal` suffixes, IPv4 literals in the
+    /// loopback (127/8, 0/8), link-local (169.254/16) and private (10/8, 172.16/12, 192.168/16) ranges,
+    /// and IPv6 loopback/link-local/unique-local literals. Hostnames that *resolve* to private IPs are
+    /// not caught here — a full guard would require DNS resolution.
+    static func isInternalHost(_ host: String) -> Bool {
+        let h = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        if h == "localhost" || h.hasSuffix(".localhost") || h.hasSuffix(".local") || h.hasSuffix(".internal") {
+            return true
+        }
+        if h.contains(":") { // IPv6 literal
+            return h == "::1" || h.hasPrefix("fe80") || h.hasPrefix("fc") || h.hasPrefix("fd")
+        }
+        let octets = h.split(separator: ".", omittingEmptySubsequences: false).compactMap { Int($0) }
+        guard octets.count == 4, octets.allSatisfy({ (0 ... 255).contains($0) }) else { return false }
+        switch (octets[0], octets[1]) {
+        case (0, _), (10, _), (127, _): return true
+        case (169, 254): return true
+        case (192, 168): return true
+        case (172, 16 ... 31): return true
+        default: return false
+        }
+    }
+
     /// True when the final URL is a known applicant-tracking board's "posting not found" landing page.
     /// Some ATSes keep a removed posting at HTTP 200 by redirecting to a board-level error page, so the
     /// status-code, body-phrase, and redirect-suffix heuristics all miss it. Each rule is scoped to a
@@ -401,6 +425,15 @@ public enum AvailabilityChecker {
         // redirect). TASK-594. Then canonicalize a LinkedIn search/collections deep-link to the posting
         // view so a removed posting's closed banner is actually in the fetched response (job #218/#224).
         let requestURL = linkedInCanonicalJobURL(httpsUpgraded(url))
+
+        // SSRF guard (CWE-918): a captured job's URL / <link rel="canonical"> is attacker-controlled and
+        // this default-on background loop fetches it (following redirects). Refuse loopback, link-local,
+        // and private hosts so it can't be turned into a request against the local machine or LAN.
+        // (Covers IP-literal / localhost / .local hosts; hostname→private DNS rebinding and redirects to
+        // internal hosts are not covered here.) TASK-644 review / F8.
+        if let host = requestURL.host, isInternalHost(host) {
+            return .unverifiable(reason: "refusing to fetch internal host: \(host)")
+        }
 
         // Workday: the HTML is a client-rendered 200 shell whether or not the job exists, so the
         // body/redirect heuristics below can't see a removed requisition. Consult the CXS JSON API by

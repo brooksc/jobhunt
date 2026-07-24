@@ -246,7 +246,7 @@ public struct DayActivity: Sendable, Equatable {
             case .offer: "Offers"
             case .triaged: "Triaged / cleared"
             case .duplicateResolved: "Duplicates resolved"
-            case .referralRequested: "Referrals requested"
+            case .referralRequested: "Referrals"
             case .note: "Notes added"
             case .followUp: "Follow-ups done"
             }

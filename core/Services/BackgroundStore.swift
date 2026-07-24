@@ -1044,6 +1044,12 @@ public actor BackgroundStore {
             let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
             return (trimmed?.isEmpty ?? true) ? nil : trimmed
         }
+        func logReferralEvent(_ note: String, occurredAt: Date) throws {
+            let jid = input.jobID
+            let event = JobEvent(eventType: "referral", note: note, occurredAt: occurredAt)
+            event.job = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid })).first
+            modelContext.insert(event)
+        }
         let isNew = input.id == nil
         let attempt: ReferralAttempt
         if let id = input.id,
@@ -1060,6 +1066,9 @@ public actor BackgroundStore {
             )
             modelContext.insert(attempt)
         }
+        // Prior state, captured before the mutation below, so an edit that advances to Submitted logs
+        // the milestone once (a fresh attempt has no prior). (TASK-644 review #5)
+        let priorOutcome: String? = isNew ? nil : attempt.outcome
         attempt.jobID = input.jobID
         attempt.recipientName = input.recipientName
         attempt.recipientIdentifier = clean(input.recipientIdentifier)
@@ -1072,14 +1081,16 @@ public actor BackgroundStore {
         attempt.outcome = input.outcome
 
         if isNew, input.outcome != ReferralOutcome.notApplicable.rawValue {
-            let jid = input.jobID
-            let event = JobEvent(
-                eventType: "referral",
-                note: "Referral requested — \(input.recipientName)",
-                occurredAt: input.requestedAt
+            try logReferralEvent("Referral requested — \(input.recipientName)", occurredAt: input.requestedAt)
+        }
+        // A request reaching Submitted is a real milestone — log it (on a fresh submitted attempt or an
+        // edit that advances to it) so the Timeline and Today recap reflect referrals landing, not just
+        // being asked (TASK-644 review #5).
+        if input.outcome == ReferralOutcome.submitted.rawValue, priorOutcome != ReferralOutcome.submitted.rawValue {
+            try logReferralEvent(
+                "Referral submitted — \(input.recipientName)",
+                occurredAt: input.submittedAt ?? Date()
             )
-            event.job = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid })).first
-            modelContext.insert(event)
         }
         try modelContext.save()
         return attempt.id

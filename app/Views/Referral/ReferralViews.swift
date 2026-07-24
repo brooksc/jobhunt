@@ -127,6 +127,7 @@ struct ReferralSection: View {
                     Label("Add outreach", systemImage: "plus")
                 }
                 .controlSize(.small)
+                .accessibilityIdentifier("referral.addOutreach")
             }
 
             if realAttempts.isEmpty {

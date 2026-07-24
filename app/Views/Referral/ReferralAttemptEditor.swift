@@ -86,6 +86,7 @@ struct ReferralAttemptEditor: View {
                 Section {
                     TextField("Recipient name or label", text: $recipientName)
                         .focused($recipientFocused)
+                        .accessibilityIdentifier("referral.recipient")
                     TextField("LinkedIn URL or email (optional)", text: $identifier)
                     TextField("Channel (LinkedIn, email, referral portal…)", text: $channel)
                     Picker("Status", selection: $outcome) {
@@ -140,6 +141,7 @@ struct ReferralAttemptEditor: View {
                 Button("Save") { attemptSave() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canSave)
+                    .accessibilityIdentifier("referral.save")
             }
             .padding()
         }

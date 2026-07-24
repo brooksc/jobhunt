@@ -30,6 +30,7 @@ struct InlineDateField: View {
                     Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.caption2)
                 }
                 .buttonStyle(.bordered)
+                .accessibilityIdentifier("dateField.\(label)")
             }
             if expanded {
                 Group {

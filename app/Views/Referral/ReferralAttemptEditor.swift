@@ -97,19 +97,19 @@ struct ReferralAttemptEditor: View {
                     TextField("Note (optional)", text: $note, axis: .vertical).lineLimit(2 ... 4)
                 }
                 Section("Timeline") {
-                    PopoverDateField(label: "Requested", date: $requestedAt)
+                    InlineDateField(label: "Requested", date: $requestedAt)
                     if respondedAt != nil {
-                        PopoverDateField(label: "Responded", date: dateBinding(\.respondedAt), lowerBound: requestedAt)
+                        InlineDateField(label: "Responded", date: dateBinding(\.respondedAt), lowerBound: requestedAt)
                     }
                     if submittedAt != nil {
-                        PopoverDateField(
+                        InlineDateField(
                             label: "Submitted",
                             date: dateBinding(\.submittedAt),
                             lowerBound: respondedAt ?? requestedAt
                         )
                     }
                     if declinedAt != nil {
-                        PopoverDateField(
+                        InlineDateField(
                             label: "Declined",
                             date: dateBinding(\.declinedAt),
                             lowerBound: respondedAt ?? requestedAt

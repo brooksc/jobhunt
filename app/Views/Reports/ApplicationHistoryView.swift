@@ -310,7 +310,9 @@ private struct ApplicationEvidenceEditor: View {
                 Section("Application date") {
                     Toggle("Set or correct the application date", isOn: $overrideDate)
                     if overrideDate {
-                        DatePicker("Date", selection: $appliedDate, displayedComponents: .date)
+                        // Click-driven calendar — a segmented date field in a sheet can lose keyboard
+                        // first-responder and become uneditable (audit follow-up to the referral fix).
+                        PopoverDateField(label: "Date", date: $appliedDate)
                     }
                 }
                 Section("Employer contact (for the ESD log)") {

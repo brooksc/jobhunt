@@ -97,19 +97,19 @@ struct ReferralAttemptEditor: View {
                     TextField("Note (optional)", text: $note, axis: .vertical).lineLimit(2 ... 4)
                 }
                 Section("Timeline") {
-                    DateRow(label: "Requested", date: $requestedAt, lowerBound: nil)
+                    PopoverDateField(label: "Requested", date: $requestedAt)
                     if respondedAt != nil {
-                        DateRow(label: "Responded", date: dateBinding(\.respondedAt), lowerBound: requestedAt)
+                        PopoverDateField(label: "Responded", date: dateBinding(\.respondedAt), lowerBound: requestedAt)
                     }
                     if submittedAt != nil {
-                        DateRow(
+                        PopoverDateField(
                             label: "Submitted",
                             date: dateBinding(\.submittedAt),
                             lowerBound: respondedAt ?? requestedAt
                         )
                     }
                     if declinedAt != nil {
-                        DateRow(
+                        PopoverDateField(
                             label: "Declined",
                             date: dateBinding(\.declinedAt),
                             lowerBound: respondedAt ?? requestedAt
@@ -149,43 +149,6 @@ struct ReferralAttemptEditor: View {
         .task {
             try? await Task.sleep(for: .milliseconds(100))
             recipientFocused = true
-        }
-    }
-
-    /// A click-driven date field: a button showing the date that opens a graphical calendar popover.
-    /// The default macOS `DatePicker` is a segmented field editor that needs keyboard first-responder,
-    /// which the job-detail window's stacked sheets can leave broken — so date entry there is
-    /// unreliable. A popover manages its own responder, so clicking a day always works.
-    private struct DateRow: View {
-        let label: String
-        @Binding var date: Date
-        /// Earliest allowed date — keeps the lifecycle ordered (a response can't predate the request).
-        /// A one-sided range avoids the lower>upper crash a two-sided range risks on odd data.
-        var lowerBound: Date?
-        @State private var showPicker = false
-
-        var body: some View {
-            HStack {
-                Text(label)
-                Spacer()
-                Button(date.formatted(date: .abbreviated, time: .omitted)) { showPicker = true }
-                    .buttonStyle(.bordered)
-                    .popover(isPresented: $showPicker, arrowEdge: .bottom) {
-                        Group {
-                            if let lowerBound {
-                                DatePicker(label, selection: $date, in: lowerBound..., displayedComponents: .date)
-                            } else {
-                                DatePicker(label, selection: $date, displayedComponents: .date)
-                            }
-                        }
-                        .datePickerStyle(.graphical)
-                        .labelsHidden()
-                        .padding()
-                        .frame(minWidth: 260)
-                        // Close the calendar as soon as a day is picked (#6).
-                        .onChange(of: date) { _, _ in showPicker = false }
-                    }
-            }
         }
     }
 

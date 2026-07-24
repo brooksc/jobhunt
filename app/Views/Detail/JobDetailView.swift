@@ -1928,8 +1928,9 @@ private struct SetNextActionSheet: View {
             TextField("What to do (e.g. Follow up with recruiter)", text: $noteText)
                 .textFieldStyle(.roundedBorder)
 
-            DatePicker("Due date", selection: $dueDate, displayedComponents: .date)
-                .datePickerStyle(.compact)
+            // Click-driven calendar rather than a segmented field editor, which can go dead in a sheet
+            // on the multi-sheet detail window (audit follow-up to the referral date fix).
+            PopoverDateField(label: "Due date", date: $dueDate)
 
             if let err = saveError {
                 Text(err).font(.caption).foregroundStyle(.red)

@@ -29,13 +29,20 @@ public struct ApplicationRecord: Sendable, Equatable, Identifiable {
     public let jobReferenceNumber: String?
     public let applicationResult: String?
 
-    public var id: String { jobID }
-    public var hasApplicationDate: Bool { appliedAt != nil }
+    public var id: String {
+        jobID
+    }
+
+    public var hasApplicationDate: Bool {
+        appliedAt != nil
+    }
 
     /// Which ESD-oriented evidence fields are still empty (AC #9) — for a "N fields to add" prompt.
     /// Only the fields ESD's log leans on; never inferred from the URL.
     public var missingEvidenceFields: [String] {
-        func blank(_ value: String?) -> Bool { (value?.trimmingCharacters(in: .whitespaces).isEmpty ?? true) }
+        func blank(_ value: String?) -> Bool {
+            (value?.trimmingCharacters(in: .whitespaces).isEmpty ?? true)
+        }
         var missing: [String] = []
         if appliedAt == nil { missing.append("application date") }
         if blank(contactMethod) { missing.append("contact method") }
@@ -207,8 +214,12 @@ public enum ApplicationHistory {
 
     /// Records whose application date falls in the inclusive `[start, end]` range (whole days), plus all
     /// missing-date records (they need attention and shouldn't silently vanish from a filtered view).
-    public static func filter(_ records: [ApplicationRecord], from start: Date?, to end: Date?,
-                              calendar: Calendar = .current) -> [ApplicationRecord] {
+    public static func filter(
+        _ records: [ApplicationRecord],
+        from start: Date?,
+        to end: Date?,
+        calendar: Calendar = .current
+    ) -> [ApplicationRecord] {
         records.filter { record in
             guard let applied = record.appliedAt else { return true }
             let day = calendar.startOfDay(for: applied)

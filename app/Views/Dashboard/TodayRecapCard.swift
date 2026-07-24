@@ -45,7 +45,9 @@ struct TodayRecapCard: View {
         }
     }
 
-    private var followUpDates: [Date] { followUps.map(\.completedAt) }
+    private var followUpDates: [Date] {
+        followUps.map(\.completedAt)
+    }
 
     private var recap: DailyRecap {
         DashboardMetrics.buildDailyRecap(events: recapEvents, followUpCompletions: followUpDates, day: day)
@@ -55,8 +57,13 @@ struct TodayRecapCard: View {
     /// Selectable look-back window for the activity strip (AC #4).
     private enum RecapRange: Int, CaseIterable, Identifiable {
         case week = 7, month = 30
-        var id: Int { rawValue }
-        var label: String { self == .week ? "7 days" : "30 days" }
+        var id: Int {
+            rawValue
+        }
+
+        var label: String {
+            self == .week ? "7 days" : "30 days"
+        }
     }
 
     @State private var range: RecapRange = .week
@@ -144,8 +151,11 @@ struct TodayRecapCard: View {
     private func metric(_ count: Int, _ category: DayActivity.Category) -> some View {
         if count > 0 {
             Button {
-                drilldown = Drilldown(id: "\(day.timeIntervalSinceReferenceDate)-\(category.rawValue)",
-                                      day: day, focus: category)
+                drilldown = Drilldown(
+                    id: "\(day.timeIntervalSinceReferenceDate)-\(category.rawValue)",
+                    day: day,
+                    focus: category
+                )
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: category.symbol).foregroundStyle(Theme.accent).frame(width: 18)
@@ -287,8 +297,10 @@ private struct DayActivitySheet: View {
                                 row(item)
                             }
                         } header: {
-                            Label("\(section.items.count) \(section.category.label)",
-                                  systemImage: section.category.symbol)
+                            Label(
+                                "\(section.items.count) \(section.category.label)",
+                                systemImage: section.category.symbol
+                            )
                         }
                     }
                 }
@@ -297,7 +309,6 @@ private struct DayActivitySheet: View {
         .frame(width: 460, height: 520)
     }
 
-    @ViewBuilder
     private func row(_ item: DayActivity.Item) -> some View {
         Button {
             if let jobID = item.jobID { onSelectJob(jobID) }

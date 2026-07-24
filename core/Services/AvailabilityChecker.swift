@@ -500,7 +500,7 @@ public enum AvailabilityChecker {
     /// WITHOUT modifying any job records. Call this to gather candidates, then show
     /// a confirmation UI before marking them expired.
     /// One job's availability-check inputs (Sendable so it crosses the task-group boundary).
-    private struct JobSpec: Sendable {
+    private struct JobSpec {
         let id: String
         let jobNumber: Int?
         let company: String?
@@ -520,7 +520,9 @@ public enum AvailabilityChecker {
     /// Race-free monotonic counter so the two interleaved availability passes report one progress stream.
     private actor CheckCounter {
         private var count = 0
-        func next() -> Int { count += 1; return count }
+        func next() -> Int {
+            count += 1; return count
+        }
     }
 
     /// Outcome of a LinkedIn guest-API check. `.throttled` (rate-limit / block / network error) means we
@@ -642,7 +644,9 @@ public enum AvailabilityChecker {
             if case .throttled = outcome {
                 // LinkedIn is rate-limiting — stop; the rest are picked up on a future run. Advance the
                 // progress counter for the skipped ones so the bar still completes.
-                for _ in (index + 1) ..< specs.count { await tick() }
+                for _ in (index + 1) ..< specs.count {
+                    await tick()
+                }
                 break
             }
             try? await Task.sleep(for: linkedInPaceDelay)
@@ -675,13 +679,15 @@ public enum AvailabilityChecker {
         }
         guard !specs.isEmpty else { return [] }
 
-        // LinkedIn aggressively rate-limits a burst of guest requests (999/blocked/redirect), which reads
-        // as "available" and misses removed postings (job #212). We stay guest-only (no login → no
-        // account-ban risk) and instead check LinkedIn GENTLY: capped + shuffled per run so a run can't
-        // fire a bursty volume, paced one-at-a-time, run INTERLEAVED with the other (concurrent) checks
-        // for wall-clock spread, and backed off the moment LinkedIn throttles. LinkedIn coverage is
-        // therefore eventual across runs, not guaranteed in one (TASK-643).
-        func isLinkedIn(_ spec: JobSpec) -> Bool { (spec.url.host?.lowercased() ?? "").hasSuffix("linkedin.com") }
+        /// LinkedIn aggressively rate-limits a burst of guest requests (999/blocked/redirect), which reads
+        /// as "available" and misses removed postings (job #212). We stay guest-only (no login → no
+        /// account-ban risk) and instead check LinkedIn GENTLY: capped + shuffled per run so a run can't
+        /// fire a bursty volume, paced one-at-a-time, run INTERLEAVED with the other (concurrent) checks
+        /// for wall-clock spread, and backed off the moment LinkedIn throttles. LinkedIn coverage is
+        /// therefore eventual across runs, not guaranteed in one (TASK-643).
+        func isLinkedIn(_ spec: JobSpec) -> Bool {
+            (spec.url.host?.lowercased() ?? "").hasSuffix("linkedin.com")
+        }
         let concurrentSpecs = specs.filter { !isLinkedIn($0) }
         var linkedInSpecs = specs.filter(isLinkedIn)
         linkedInSpecs.shuffle()

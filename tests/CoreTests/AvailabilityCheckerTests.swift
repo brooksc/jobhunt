@@ -467,8 +467,11 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
         let url = "https://jobright.ai/jobs/info/6a53a1f68a74e077472f90e2"
         MockURLProtocol.handlers = [("jobright.ai", { _ in
             // Shell markup that WOULD trip bodyGoneReason on a normal host ("job posting has expired").
-            makeResponse(url: url, status: 200,
-                         body: "<div id='index_expired-job'>this job posting has expired, was closed</div>")
+            makeResponse(
+                url: url,
+                status: 200,
+                body: "<div id='index_expired-job'>this job posting has expired, was closed</div>"
+            )
         })]
         let result = try await AvailabilityChecker.checkURL(
             XCTUnwrap(URL(string: url)), title: "Staff PM", session: session
@@ -841,10 +844,16 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         let job = try makeJobWithCapture(url: career, title: "Staff TPM", status: .applied)
         job.company = "Pinterest"
         MockURLProtocol.handlers = [
-            ("pinterestcareers.com", { _ in makeResponse(url: career, status: 200, body: "this job is no longer available") }),
+            (
+                "pinterestcareers.com",
+                { _ in makeResponse(url: career, status: 200, body: "this job is no longer available") }
+            ),
             ("boards-api.greenhouse.io/v1/boards/pinterest/jobs/7494634", { _ in
-                makeResponse(url: "https://boards-api.greenhouse.io/v1/boards/pinterest/jobs/7494634",
-                             status: 200, body: "{\"id\":7494634}")
+                makeResponse(
+                    url: "https://boards-api.greenhouse.io/v1/boards/pinterest/jobs/7494634",
+                    status: 200,
+                    body: "{\"id\":7494634}"
+                )
             })
         ]
         let gone = await AvailabilityChecker.findGoneJobs([job], session: session)
@@ -858,7 +867,10 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         let job = try makeJobWithCapture(url: career, title: "Staff TPM", status: .applied)
         job.company = "Pinterest"
         MockURLProtocol.handlers = [
-            ("pinterestcareers.com", { _ in makeResponse(url: career, status: 200, body: "this job is no longer available") }),
+            (
+                "pinterestcareers.com",
+                { _ in makeResponse(url: career, status: 200, body: "this job is no longer available") }
+            ),
             // Any boards-api request 404s (must be explicit — the mock defaults unmatched URLs to 200).
             ("boards-api.greenhouse.io", { _ in
                 makeResponse(url: "https://boards-api.greenhouse.io/x", status: 404, body: "{}")
@@ -899,12 +911,18 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         _ = try makeJobWithCapture(url: liveURL, title: "Live", status: .applied)
         MockURLProtocol.handlers = [
             ("jobs-guest/jobs/api/jobPosting/111", { _ in
-                makeResponse(url: "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/111",
-                             status: 200, body: "<figure class=\"closed-job__flavor\">no longer accepting applications</figure>")
+                makeResponse(
+                    url: "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/111",
+                    status: 200,
+                    body: "<figure class=\"closed-job__flavor\">no longer accepting applications</figure>"
+                )
             }),
             ("jobs-guest/jobs/api/jobPosting/222", { _ in
-                makeResponse(url: "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/222",
-                             status: 200, body: "<button>Apply</button> Actively recruiting")
+                makeResponse(
+                    url: "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/222",
+                    status: 200,
+                    body: "<button>Apply</button> Actively recruiting"
+                )
             })
         ]
         let gone = await AvailabilityChecker.findGoneJobs([closed], session: session)
@@ -926,7 +944,8 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
     }
 
     func testLinkedInJobID_extractsFromSearchAndViewURLs() throws {
-        let search = try XCTUnwrap(URL(string: "https://www.linkedin.com/jobs/search/?currentJobId=4442490941&keywords=x"))
+        let search =
+            try XCTUnwrap(URL(string: "https://www.linkedin.com/jobs/search/?currentJobId=4442490941&keywords=x"))
         let view = try XCTUnwrap(URL(string: "https://www.linkedin.com/jobs/view/4443545630/"))
         let noID = try XCTUnwrap(URL(string: "https://www.linkedin.com/jobs/search/?keywords=x"))
         XCTAssertEqual(AvailabilityChecker.linkedInJobID(from: search), "4442490941")

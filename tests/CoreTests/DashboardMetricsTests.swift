@@ -128,7 +128,7 @@ final class DashboardMetricsTests: XCTestCase {
         XCTAssertEqual(window.last?.total, 1, "today has 1 action")
         XCTAssertEqual(window[4].total, 2, "two days ago (index 4) has 2 actions")
         XCTAssertEqual(window.map(\.day), window.map(\.day).sorted(), "buckets ascending oldest → newest")
-        XCTAssertEqual(window.filter { $0.total == 0 }.count, 5, "the other five days are zero")
+        XCTAssertEqual(window.count(where: { $0.total == 0 }), 5, "the other five days are zero")
     }
 
     func testDayActivity_groupsJobsByCategoryExcludingBackgroundAndOtherDays() {
@@ -139,7 +139,12 @@ final class DashboardMetricsTests: XCTestCase {
                 jobID: "j1", jobNumber: 1, company: "Acme", title: "Engineer"
             ),
             DashboardMetrics.RecapEvent(
-                eventType: "status", note: "Status changed from new to applied", occurredAt: fixed(2026, 3, 15, hour: 10),
+                eventType: "status", note: "Status changed from new to applied", occurredAt: fixed(
+                    2026,
+                    3,
+                    15,
+                    hour: 10
+                ),
                 jobID: "j2", jobNumber: 2, company: "Globex", title: "PM"
             ),
             DashboardMetrics.RecapEvent( // background → excluded
@@ -172,16 +177,16 @@ final class DashboardMetricsTests: XCTestCase {
         XCTAssertEqual(recap.applied + recap.followUpsCompleted, 2)
     }
 
-    func testDailyRecap_bucketsByTheCalendarTimeZone() {
+    func testDailyRecap_bucketsByTheCalendarTimeZone() throws {
         // One instant, two zones: 06:30 UTC on Mar 15 is 22:30 Mar 14 in Los Angeles.
         var utc = Calendar(identifier: .gregorian)
-        utc.timeZone = TimeZone(identifier: "UTC")!
+        utc.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
         var la = Calendar(identifier: .gregorian)
-        la.timeZone = TimeZone(identifier: "America/Los_Angeles")!
-        let instant = utc.date(from: DateComponents(year: 2026, month: 3, day: 15, hour: 6, minute: 30))!
+        la.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let instant = try XCTUnwrap(utc.date(from: DateComponents(year: 2026, month: 3, day: 15, hour: 6, minute: 30)))
         let event = DashboardMetrics.RecapEvent(eventType: "capture", note: nil, occurredAt: instant)
-        let mar15 = utc.date(from: DateComponents(year: 2026, month: 3, day: 15, hour: 12))!
-        let mar14 = utc.date(from: DateComponents(year: 2026, month: 3, day: 14, hour: 12))!
+        let mar15 = try XCTUnwrap(utc.date(from: DateComponents(year: 2026, month: 3, day: 15, hour: 12)))
+        let mar14 = try XCTUnwrap(utc.date(from: DateComponents(year: 2026, month: 3, day: 14, hour: 12)))
 
         func captured(_ day: Date, _ cal: Calendar) -> Int {
             DashboardMetrics.buildDailyRecap(events: [event], followUpCompletions: [], day: day, calendar: cal).captured

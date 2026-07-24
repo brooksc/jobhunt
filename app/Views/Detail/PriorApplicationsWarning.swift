@@ -10,8 +10,13 @@ struct PriorApplicationsWarning: View {
     let matches: [PriorApplications.Match]
     let onOpen: (String) -> Void
 
-    private var repeats: [PriorApplications.Match] { matches.filter(\.likelyRepeat) }
-    private var isRepeat: Bool { !repeats.isEmpty }
+    private var repeats: [PriorApplications.Match] {
+        matches.filter(\.likelyRepeat)
+    }
+
+    private var isRepeat: Bool {
+        !repeats.isEmpty
+    }
 
     var body: some View {
         if !matches.isEmpty {

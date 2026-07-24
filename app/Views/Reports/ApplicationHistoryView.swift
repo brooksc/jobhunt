@@ -154,11 +154,13 @@ struct ApplicationHistoryView: View {
                     + "job-search activities, and it doesn't decide whether a week meets requirements — "
                     + "Washington ESD makes that determination.")
                     .font(.caption).foregroundStyle(.secondary)
-                Link("Washington ESD job-search requirements",
-                     destination: URL(string:
+                Link(
+                    "Washington ESD job-search requirements",
+                    destination: URL(string:
                         "https://esd.wa.gov/get-financial-help/unemployment-benefits/weekly-unemployment-claims/job-search-requirements")
-                        ?? URL(fileURLWithPath: "/"))
-                    .font(.caption)
+                        ?? URL(fileURLWithPath: "/")
+                )
+                .font(.caption)
             }
         }
         .padding(.vertical, 4)

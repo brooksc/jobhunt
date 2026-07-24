@@ -724,8 +724,18 @@ final class DuplicateDetectorTests: XCTestCase {
     func testSameFullURL_pairsAsDefinitiveDuplicate() {
         let url = "https://www.levels.fyi/jobs/title/technical-program-manager"
             + "?locationSlug=united-states&offset=5&perkIds=58&jobId=119440407640580806"
-        let a = snap(15, company: "Reddit", title: "Principal Technical Program Manager, Developer Productivity", url: url)
-        let b = snap(16, company: "Reddit", title: "Principal Technical Program Manager, Developer Productivity", url: url)
+        let a = snap(
+            15,
+            company: "Reddit",
+            title: "Principal Technical Program Manager, Developer Productivity",
+            url: url
+        )
+        let b = snap(
+            16,
+            company: "Reddit",
+            title: "Principal Technical Program Manager, Developer Productivity",
+            url: url
+        )
         let pairs = DuplicateDetector().duplicateGroups(snapshots: [a, b], resolvedHashes: [])
         XCTAssertEqual(pairs.count, 1)
         XCTAssertEqual(pairs.first?.kind, .sameURL, "identical full URL should win over the fuzzy path")

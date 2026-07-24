@@ -55,7 +55,9 @@ final class ReferralTrackingTests: XCTestCase {
     // MARK: - Per-state dates (TASK-644)
 
     private let t0 = Date(timeIntervalSince1970: 1_000_000)
-    private var now: Date { Date(timeIntervalSince1970: 2_000_000) }
+    private var now: Date {
+        Date(timeIntervalSince1970: 2_000_000)
+    }
 
     func testNormalizedDatesStampsReachedStateAndClearsLater() {
         let responded = ReferralTracking.normalizedDates(
@@ -100,29 +102,35 @@ final class ReferralTrackingTests: XCTestCase {
 
     // MARK: - Follow-up nudges (TASK-644 Phase 2)
 
-    private func dated(_ outcome: ReferralOutcome, requested: Date, responded: Date? = nil) -> ReferralTracking.Attempt {
-        .init(outcome: outcome, recipientName: "Jane", recipientIdentifier: nil,
-              requestedAt: requested, respondedAt: responded)
+    private func dated(_ outcome: ReferralOutcome, requested: Date, responded: Date? = nil) -> ReferralTracking
+        .Attempt {
+        .init(
+            outcome: outcome,
+            recipientName: "Jane",
+            recipientIdentifier: nil,
+            requestedAt: requested,
+            respondedAt: responded
+        )
     }
 
     func testFollowUpAwaitingResponseAfterGrace() {
         let old = Date(timeIntervalSince1970: 0)
-        let now = Date(timeIntervalSince1970: 5 * 86_400) // 5 days later, grace = 4
+        let now = Date(timeIntervalSince1970: 5 * 86400) // 5 days later, grace = 4
         let nudge = ReferralTracking.followUp(attempts: [dated(.requested, requested: old)], now: now)
         XCTAssertEqual(nudge?.kind, .awaitingResponse)
         XCTAssertEqual(nudge?.since, old)
     }
 
     func testFollowUpNotYetDueWithinGrace() {
-        let recent = Date(timeIntervalSince1970: 2 * 86_400)
-        let now = Date(timeIntervalSince1970: 5 * 86_400) // 3 days after request < 4-day grace
+        let recent = Date(timeIntervalSince1970: 2 * 86400)
+        let now = Date(timeIntervalSince1970: 5 * 86400) // 3 days after request < 4-day grace
         XCTAssertNil(ReferralTracking.followUp(attempts: [dated(.requested, requested: recent)], now: now))
     }
 
     func testFollowUpAwaitingSubmissionCountsFromResponse() {
         let requested = Date(timeIntervalSince1970: 0)
-        let responded = Date(timeIntervalSince1970: 1 * 86_400)
-        let now = Date(timeIntervalSince1970: 9 * 86_400) // 8 days after response, grace = 7
+        let responded = Date(timeIntervalSince1970: 1 * 86400)
+        let now = Date(timeIntervalSince1970: 9 * 86400) // 8 days after response, grace = 7
         let nudge = ReferralTracking.followUp(
             attempts: [dated(.responded, requested: requested, responded: responded)], now: now
         )
@@ -132,7 +140,7 @@ final class ReferralTrackingTests: XCTestCase {
 
     func testFollowUpNoneWhenSubmittedOrDeclinedOrNA() {
         let old = Date(timeIntervalSince1970: 0)
-        let now = Date(timeIntervalSince1970: 30 * 86_400)
+        let now = Date(timeIntervalSince1970: 30 * 86400)
         XCTAssertNil(ReferralTracking.followUp(attempts: [dated(.submitted, requested: old)], now: now))
         XCTAssertNil(ReferralTracking.followUp(attempts: [dated(.declined, requested: old)], now: now))
         XCTAssertNil(ReferralTracking.followUp(attempts: [dated(.notApplicable, requested: old)], now: now))
@@ -142,8 +150,8 @@ final class ReferralTrackingTests: XCTestCase {
     func testFollowUpRespondedSupersedesAStaleRequestToAnotherContact() {
         // One contact asked long ago (would be stale) but another responded recently → wait on them.
         let old = Date(timeIntervalSince1970: 0)
-        let now = Date(timeIntervalSince1970: 10 * 86_400)
-        let recentResponse = Date(timeIntervalSince1970: 9 * 86_400) // 1 day ago < 7-day grace
+        let now = Date(timeIntervalSince1970: 10 * 86400)
+        let recentResponse = Date(timeIntervalSince1970: 9 * 86400) // 1 day ago < 7-day grace
         let attempts = [
             dated(.requested, requested: old),
             dated(.responded, requested: old, responded: recentResponse)

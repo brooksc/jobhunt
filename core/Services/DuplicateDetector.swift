@@ -369,7 +369,9 @@ public struct DuplicateDetector {
             $0.name == $1.name ? ($0.value ?? "") < ($1.value ?? "") : $0.name < $1.name
         }
         var path = comps.path
-        while path.hasSuffix("/"), path.count > 1 { path = String(path.dropLast()) }
+        while path.hasSuffix("/"), path.count > 1 {
+            path = String(path.dropLast())
+        }
         comps.path = path
         return comps.url?.absoluteString ?? comps.string
     }

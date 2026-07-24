@@ -512,16 +512,46 @@ extension BackgroundStore {
             let submitted: Double?
         }
         let referrals: [SeedReferral] = [
-            .init(jobID: "job_001", recipient: "Alex Rivera",
-                  identifier: "https://www.linkedin.com/in/alexrivera", channel: "LinkedIn",
-                  outcome: .submitted, requested: 20, responded: 18, submitted: 16),
-            .init(jobID: "job_002", recipient: "Jordan Lee", identifier: "jordan.lee@example.com",
-                  channel: "Email", outcome: .responded, requested: 12, responded: 9, submitted: nil),
-            .init(jobID: "job_004", recipient: "Priya Nair",
-                  identifier: "https://www.linkedin.com/in/priyanair", channel: "LinkedIn",
-                  outcome: .requested, requested: 0, responded: nil, submitted: nil),
-            .init(jobID: "job_005", recipient: "Sam Chen", identifier: nil, channel: "Referral portal",
-                  outcome: .requested, requested: 6, responded: nil, submitted: nil)
+            .init(
+                jobID: "job_001",
+                recipient: "Alex Rivera",
+                identifier: "https://www.linkedin.com/in/alexrivera",
+                channel: "LinkedIn",
+                outcome: .submitted,
+                requested: 20,
+                responded: 18,
+                submitted: 16
+            ),
+            .init(
+                jobID: "job_002",
+                recipient: "Jordan Lee",
+                identifier: "jordan.lee@example.com",
+                channel: "Email",
+                outcome: .responded,
+                requested: 12,
+                responded: 9,
+                submitted: nil
+            ),
+            .init(
+                jobID: "job_004",
+                recipient: "Priya Nair",
+                identifier: "https://www.linkedin.com/in/priyanair",
+                channel: "LinkedIn",
+                outcome: .requested,
+                requested: 0,
+                responded: nil,
+                submitted: nil
+            ),
+            .init(
+                jobID: "job_005",
+                recipient: "Sam Chen",
+                identifier: nil,
+                channel: "Referral portal",
+                outcome: .requested,
+                requested: 6,
+                responded: nil,
+                submitted: nil
+            )
         ]
         for ref in referrals {
             let jid = ref.jobID

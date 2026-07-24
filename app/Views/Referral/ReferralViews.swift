@@ -115,8 +115,11 @@ struct ReferralSection: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("Referral").font(.headline)
-                ReferralBadge(summary: summary, recipient: realAttempts.first?.recipientName,
-                              lastDate: realAttempts.first?.requestedAt)
+                ReferralBadge(
+                    summary: summary,
+                    recipient: realAttempts.first?.recipientName,
+                    lastDate: realAttempts.first?.requestedAt
+                )
                 Spacer()
                 Button {
                     editorAttempt = EditorTarget(id: UUID().uuidString, existing: nil)

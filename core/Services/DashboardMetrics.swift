@@ -114,7 +114,7 @@ public enum DashboardMetrics {
             case .followUp, .none: break // follow-ups counted separately below
             }
         }
-        recap.followUpsCompleted = followUpCompletions.filter { calendar.isDate($0, inSameDayAs: day) }.count
+        recap.followUpsCompleted = followUpCompletions.count(where: { calendar.isDate($0, inSameDayAs: day) })
         return recap
     }
 
@@ -206,15 +206,15 @@ public enum DashboardMetrics {
 
 /// A humane end-of-day summary of the meaningful, user-driven work done on a given day (TASK-623).
 public struct DailyRecap: Sendable, Equatable {
-    public var captured = 0            // jobs found / captured
-    public var movedToInterested = 0  // status → pursuing
-    public var applied = 0            // status → applied
-    public var interviews = 0         // status → interview
-    public var offers = 0             // status → offer
-    public var triaged = 0            // status → passed/archived/rejected/closed/expired (cleared out)
+    public var captured = 0 // jobs found / captured
+    public var movedToInterested = 0 // status → pursuing
+    public var applied = 0 // status → applied
+    public var interviews = 0 // status → interview
+    public var offers = 0 // status → offer
+    public var triaged = 0 // status → passed/archived/rejected/closed/expired (cleared out)
     public var duplicatesResolved = 0 // a duplicate pair resolved
     public var referralsRequested = 0 // a referral outreach recorded
-    public var notesAdded = 0         // a note written
+    public var notesAdded = 0 // a note written
     public var followUpsCompleted = 0 // a follow-up action completed
 
     public init() {}
@@ -225,7 +225,9 @@ public struct DailyRecap: Sendable, Equatable {
             + triaged + duplicatesResolved + referralsRequested + notesAdded + followUpsCompleted
     }
 
-    public var hasActivity: Bool { total > 0 }
+    public var hasActivity: Bool {
+        total > 0
+    }
 }
 
 /// The jobs behind a single day's recap totals, grouped by category — the drill-in detail (TASK-623).
@@ -273,17 +275,23 @@ public struct DayActivity: Sendable, Equatable {
         public let title: String?
         public let occurredAt: Date
         /// Stable per-row id (job + instant); jobless rows still get a unique id.
-        public var id: String { "\(jobID ?? "?")|\(occurredAt.timeIntervalSinceReferenceDate)" }
+        public var id: String {
+            "\(jobID ?? "?")|\(occurredAt.timeIntervalSinceReferenceDate)"
+        }
     }
 
     public struct Section: Sendable, Equatable, Identifiable {
         public let category: Category
         public var items: [Item]
-        public var id: String { category.rawValue }
+        public var id: String {
+            category.rawValue
+        }
     }
 
     public let day: Date
     public var sections: [Section]
 
-    public var isEmpty: Bool { sections.allSatisfy { $0.items.isEmpty } }
+    public var isEmpty: Bool {
+        sections.allSatisfy(\.items.isEmpty)
+    }
 }

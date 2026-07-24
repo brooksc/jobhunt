@@ -442,9 +442,9 @@ struct JobsView: View {
                     job: job, isSelected: selectedJobIDs.contains(job.id), fitScoringAvailable: canScore,
                     referralSummary: Self.referralSummary(for: job, attempts: attemptsByJob[job.id] ?? [])
                 )
-                    .tag(job.id)
-                    .contextMenu { jobContextMenu(job) }
-                    .accessibilityIdentifier("job.row.\(job.id)")
+                .tag(job.id)
+                .contextMenu { jobContextMenu(job) }
+                .accessibilityIdentifier("job.row.\(job.id)")
             }
             .listStyle(.inset)
             // The Delete key on the focused/selected row(s) opens the same confirmation dialog as the

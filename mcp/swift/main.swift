@@ -15,8 +15,8 @@ guard let port = discoverPort() else {
     exit(1)
 }
 
-// Held mutably so a token rotation / port change from an app relaunch is picked up on the next call
-// (the bridge outlives the app it forwards to during development) — see MCPSession (TASK-629).
+/// Held mutably so a token rotation / port change from an app relaunch is picked up on the next call
+/// (the bridge outlives the app it forwards to during development) — see MCPSession (TASK-629).
 let session = MCPSession(token: token, port: port)
 
 // Read JSON-RPC 2.0 requests from stdin line by line

@@ -21,7 +21,9 @@ struct AppNotification: Identifiable {
     var actions: [() -> Void]
 
     /// Bell entries are the actionable / error notifications worth keeping; plain info is transient-only.
-    var isPersistent: Bool { kind == .error || !actions.isEmpty }
+    var isPersistent: Bool {
+        kind == .error || !actions.isEmpty
+    }
 }
 
 struct ErrorRecord: Identifiable {
@@ -96,7 +98,9 @@ final class ToastStore {
         if transient?.id == id { transient = nil }
     }
 
-    func dismissTransient() { transient = nil }
+    func dismissTransient() {
+        transient = nil
+    }
 
     func clearAll() {
         notifications.removeAll()

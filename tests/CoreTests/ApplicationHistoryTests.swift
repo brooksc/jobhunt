@@ -40,7 +40,8 @@ final class ApplicationHistoryTests: XCTestCase {
         let early = date(2026, 3, 5)
         let late = date(2026, 3, 8)
         XCTAssertEqual(
-            ApplicationHistory.build(jobs: [job(id: "a", appliedAt: appliedAt, events: [late, early])]).first?.appliedAt,
+            ApplicationHistory.build(jobs: [job(id: "a", appliedAt: appliedAt, events: [late, early])]).first?
+                .appliedAt,
             appliedAt, "appliedAt is authoritative when present"
         )
         XCTAssertEqual(
@@ -70,18 +71,22 @@ final class ApplicationHistoryTests: XCTestCase {
         let comps = cal.dateComponents([.month, .day, .weekday], from: ending)
         XCTAssertEqual(comps.weekday, 7, "week-ending is a Saturday")
         XCTAssertEqual(comps.day, 14)
-        XCTAssertEqual(ApplicationHistory.claimWeekEnding(for: date(2026, 3, 8), calendar: cal), ending, "Sunday → same week's Saturday")
+        XCTAssertEqual(
+            ApplicationHistory.claimWeekEnding(for: date(2026, 3, 8), calendar: cal),
+            ending,
+            "Sunday → same week's Saturday"
+        )
         XCTAssertEqual(
             ApplicationHistory.claimWeekEnding(for: date(2026, 3, 14, hour: 23), calendar: cal),
             cal.startOfDay(for: date(2026, 3, 14)), "Saturday → itself"
         )
     }
 
-    func testClaimWeekEndingRespectsTimeZone() {
+    func testClaimWeekEndingRespectsTimeZone() throws {
         // 06:30 UTC Sun Mar 8 is Sat Mar 7 22:30 in Los Angeles → different claim weeks.
-        var utc = cal; utc.timeZone = TimeZone(identifier: "UTC")!
-        var la = cal; la.timeZone = TimeZone(identifier: "America/Los_Angeles")!
-        let instant = utc.date(from: DateComponents(year: 2026, month: 3, day: 8, hour: 6, minute: 30))!
+        var utc = cal; utc.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        var la = cal; la.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        let instant = try XCTUnwrap(utc.date(from: DateComponents(year: 2026, month: 3, day: 8, hour: 6, minute: 30)))
         XCTAssertEqual(utc.component(.day, from: ApplicationHistory.claimWeekEnding(for: instant, calendar: utc)), 14)
         XCTAssertEqual(la.component(.day, from: ApplicationHistory.claimWeekEnding(for: instant, calendar: la)), 7)
     }
@@ -125,7 +130,12 @@ final class ApplicationHistoryTests: XCTestCase {
             correctedAppliedAt: corrected, contactMethod: "online", contactType: "application",
             employerWebsiteOrEmail: "jobs@acme.com", applicationResult: "applied"
         )
-        let records = ApplicationHistory.build(jobs: [job(id: "a", status: "interview", appliedAt: nil, evidence: evidence)])
+        let records = ApplicationHistory.build(jobs: [job(
+            id: "a",
+            status: "interview",
+            appliedAt: nil,
+            evidence: evidence
+        )])
         let record = try XCTUnwrap(records.first)
         XCTAssertEqual(record.appliedAt, corrected, "the user correction fills the missing application date")
         XCTAssertEqual(record.contactMethod, "online")
@@ -161,6 +171,9 @@ final class ApplicationHistoryTests: XCTestCase {
         )
         let csv = ExportService.applicationHistoryCSV(records: [record], calendar: cal)
         let dataLine = String(csv.split(separator: "\n")[1])
-        XCTAssertTrue(dataLine.hasPrefix(",,Job application,"), "empty application_date + claim_week, then activity_type")
+        XCTAssertTrue(
+            dataLine.hasPrefix(",,Job application,"),
+            "empty application_date + claim_week, then activity_type"
+        )
     }
 }

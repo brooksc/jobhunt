@@ -1052,8 +1052,12 @@ public actor BackgroundStore {
            ).first {
             attempt = existing
         } else {
-            attempt = ReferralAttempt(id: input.id ?? UUID().uuidString, jobID: input.jobID,
-                                      recipientName: input.recipientName, outcome: input.outcome)
+            attempt = ReferralAttempt(
+                id: input.id ?? UUID().uuidString,
+                jobID: input.jobID,
+                recipientName: input.recipientName,
+                outcome: input.outcome
+            )
             modelContext.insert(attempt)
         }
         attempt.jobID = input.jobID

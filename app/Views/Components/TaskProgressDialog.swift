@@ -23,8 +23,13 @@ final class TaskProgressModel {
         self.total = total
     }
 
-    var isIndeterminate: Bool { total <= 0 }
-    var fraction: Double { total > 0 ? min(1, Double(current) / Double(total)) : 0 }
+    var isIndeterminate: Bool {
+        total <= 0
+    }
+
+    var fraction: Double {
+        total > 0 ? min(1, Double(current) / Double(total)) : 0
+    }
 }
 
 /// A centered modal showing a long task's progress with a Cancel — so tasks like the availability check

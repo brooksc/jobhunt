@@ -35,7 +35,9 @@ public enum PriorApplications {
         public let appliedAt: Date?
         /// True when the title strongly matches the viewed job's — "Possible repeat application".
         public let likelyRepeat: Bool
-        public var id: String { jobID }
+        public var id: String {
+            jobID
+        }
     }
 
     /// Statuses that (with `appliedAt` absent) still imply a past application, for legacy rows (AC).

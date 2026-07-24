@@ -35,7 +35,10 @@ final class PriorApplicationsTests: XCTestCase {
         XCTAssertTrue(PriorApplications.priorApplications(for: viewed, among: [viewed]).isEmpty, "self excluded")
         let noCompany = job("v", company: nil)
         XCTAssertTrue(
-            PriorApplications.priorApplications(for: noCompany, among: [job("a", company: nil, status: "applied", appliedAt: Date())]).isEmpty,
+            PriorApplications.priorApplications(
+                for: noCompany,
+                among: [job("a", company: nil, status: "applied", appliedAt: Date())]
+            ).isEmpty,
             "empty company never matches"
         )
     }
@@ -43,7 +46,13 @@ final class PriorApplicationsTests: XCTestCase {
     func testLikelyRepeatWhenTitlesMatch() {
         let viewed = job("v", company: "Acme", title: "Staff Technical Program Manager")
         let others = [
-            job("same", company: "Acme", title: "Staff Technical Program Manager, Platform", status: "applied", appliedAt: Date()),
+            job(
+                "same",
+                company: "Acme",
+                title: "Staff Technical Program Manager, Platform",
+                status: "applied",
+                appliedAt: Date()
+            ),
             job("diff", company: "Acme", title: "Marketing Lead", status: "applied", appliedAt: Date())
         ]
         let matches = PriorApplications.priorApplications(for: viewed, among: others)

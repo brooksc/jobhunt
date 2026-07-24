@@ -54,7 +54,9 @@ public enum ReferralSummary: String, Sendable, CaseIterable {
     }
 
     /// Whether this summary represents an outstanding action (drives the "needs outreach" filter/count).
-    public var needsAction: Bool { self == .needsOutreach }
+    public var needsAction: Bool {
+        self == .needsOutreach
+    }
 }
 
 public enum ReferralTracking {
@@ -177,12 +179,12 @@ public enum ReferralTracking {
         if real.contains(where: { $0.outcome == .submitted }) { return nil } // already landed
         let responded = real.filter { $0.outcome == .responded }
         if let since = responded.map({ $0.respondedAt ?? $0.requestedAt }).max() {
-            return now.timeIntervalSince(since) >= Double(respondedGraceDays) * 86_400
+            return now.timeIntervalSince(since) >= Double(respondedGraceDays) * 86400
                 ? ReferralNudge(kind: .awaitingSubmission, since: since) : nil
         }
         let requested = real.filter { $0.outcome == .requested }
         if let since = requested.map(\.requestedAt).max() {
-            return now.timeIntervalSince(since) >= Double(requestedGraceDays) * 86_400
+            return now.timeIntervalSince(since) >= Double(requestedGraceDays) * 86400
                 ? ReferralNudge(kind: .awaitingResponse, since: since) : nil
         }
         return nil // only declined requests remain

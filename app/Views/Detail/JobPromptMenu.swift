@@ -125,7 +125,13 @@ struct JobPromptMenu: View {
                 onOpen: { provider, context in requestOpen(.requestReferral, provider, referralContext: context) },
                 onRecordSent: { context in
                     showReferralSheet = false
-                    recordingReferral = PendingReferral(context: context)
+                    // Let the prompt sheet fully dismiss before presenting the editor. A synchronous
+                    // sheet→sheet swap on the same view leaves the second sheet's controls unresponsive
+                    // to clicks/keystrokes on macOS.
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(350))
+                        recordingReferral = PendingReferral(context: context)
+                    }
                 }
             )
         }

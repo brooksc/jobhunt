@@ -24,6 +24,10 @@ struct ReferralAttemptEditor: View {
     @State private var submittedAt: Date?
     @State private var declinedAt: Date?
     @State private var confirmingDuplicate = false
+    /// Drives first-responder for the recipient field. Presenting this editor as one of several
+    /// coexisting sheets on the job-detail window can leave the sheet without a first responder, so
+    /// clicks/keystrokes are ignored; explicitly claiming focus on appear restores text entry.
+    @FocusState private var recipientFocused: Bool
 
     init(
         jobID: String, existing: ReferralAttempt?, priorAttempts: [ReferralAttempt],
@@ -74,6 +78,7 @@ struct ReferralAttemptEditor: View {
             Form {
                 Section {
                     TextField("Recipient name or label", text: $recipientName)
+                        .focused($recipientFocused)
                     TextField("LinkedIn URL or email (optional)", text: $identifier)
                     TextField("Channel (LinkedIn, email, referral portal…)", text: $channel)
                     Picker("Status", selection: $outcome) {
@@ -119,6 +124,12 @@ struct ReferralAttemptEditor: View {
             .padding()
         }
         .frame(width: 460, height: 540)
+        // Claim first responder once the sheet is on screen. The short hop lets the presentation settle
+        // first — focusing during the present transition is dropped when several sheets coexist.
+        .task {
+            try? await Task.sleep(for: .milliseconds(100))
+            recipientFocused = true
+        }
         .confirmationDialog(
             "Record another request to this recipient?",
             isPresented: $confirmingDuplicate

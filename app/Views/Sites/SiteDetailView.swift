@@ -32,7 +32,11 @@ struct SiteDetailView: View {
     }
 
     private var visitURL: URL? {
-        URL(string: site.jobsURL ?? site.url)
+        // Only ever hand a web link to NSWorkspace.open — never a file:// or custom-scheme URL that a
+        // forged site-review could have stored before ingestion validation (F16).
+        guard let url = URL(string: site.jobsURL ?? site.url),
+              let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return nil }
+        return url
     }
 
     var body: some View {

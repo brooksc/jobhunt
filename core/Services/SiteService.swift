@@ -95,6 +95,10 @@ public actor SiteService {
         nextReviewAt: Date? = nil,
         note: String? = nil
     ) async throws -> String {
+        // Reject non-http(s) site URLs at ingestion so a forged /site-reviews payload can't later hand a
+        // file:// or custom-scheme URL to NSWorkspace.open when the user clicks "Visit Site" (F16).
+        // Mirrors the URL policy JobService.ingestCapture already applies to captured jobs.
+        let validatedURL = try URLNormalizer.validatedForIngestion(url)
         let now = reviewedAt ?? Date()
         let next = nextReviewAt ?? Calendar.current.date(byAdding: .day, value: intervalDays, to: now)
 
@@ -115,7 +119,7 @@ public actor SiteService {
             // Create a new Site
             let site = Site(
                 origin: origin,
-                url: url,
+                url: validatedURL,
                 pageTitle: title ?? "",
                 intervalDays: intervalDays,
                 lastReviewedAt: now,
@@ -127,7 +131,7 @@ public actor SiteService {
 
         // Create a SiteReview record
         let review = SiteReview(
-            siteURL: url,
+            siteURL: validatedURL,
             siteOrigin: origin,
             pageTitle: title,
             reviewedAt: now,

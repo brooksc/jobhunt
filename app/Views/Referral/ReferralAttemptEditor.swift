@@ -23,7 +23,10 @@ struct ReferralAttemptEditor: View {
     @State private var respondedAt: Date?
     @State private var submittedAt: Date?
     @State private var declinedAt: Date?
-    @State private var confirmingDuplicate = false
+    /// Set when Save is pressed on a new request to an already-contacted recipient — reveals an inline
+    /// "Record anyway" instead of a `.confirmationDialog`, which as a modal inside this sheet is
+    /// unreliable and can break the sheet's input (TASK-644 review #2).
+    @State private var showDuplicateConfirm = false
     /// Drives first-responder for the recipient field. Presenting this editor as one of several
     /// coexisting sheets on the job-detail window can leave the sheet without a first responder, so
     /// clicks/keystrokes are ignored; explicitly claiming focus on appear restores text entry.
@@ -90,15 +93,23 @@ struct ReferralAttemptEditor: View {
                     TextField("Note (optional)", text: $note, axis: .vertical).lineLimit(2 ... 4)
                 }
                 Section("Timeline") {
-                    DateRow(label: "Requested", date: $requestedAt)
+                    DateRow(label: "Requested", date: $requestedAt, lowerBound: nil)
                     if respondedAt != nil {
-                        DateRow(label: "Responded", date: dateBinding(\.respondedAt))
+                        DateRow(label: "Responded", date: dateBinding(\.respondedAt), lowerBound: requestedAt)
                     }
                     if submittedAt != nil {
-                        DateRow(label: "Submitted", date: dateBinding(\.submittedAt))
+                        DateRow(
+                            label: "Submitted",
+                            date: dateBinding(\.submittedAt),
+                            lowerBound: respondedAt ?? requestedAt
+                        )
                     }
                     if declinedAt != nil {
-                        DateRow(label: "Declined", date: dateBinding(\.declinedAt))
+                        DateRow(
+                            label: "Declined",
+                            date: dateBinding(\.declinedAt),
+                            lowerBound: respondedAt ?? requestedAt
+                        )
                     }
                 }
                 if let duplicate {
@@ -109,6 +120,11 @@ struct ReferralAttemptEditor: View {
                             systemImage: "exclamationmark.triangle"
                         )
                         .font(.caption).foregroundStyle(.orange)
+                        if showDuplicateConfirm {
+                            Text("Recording again is fine for a follow-up or correction.")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Button("Record anyway", role: .destructive) { performSave() }
+                        }
                     }
                 }
             }
@@ -130,16 +146,6 @@ struct ReferralAttemptEditor: View {
             try? await Task.sleep(for: .milliseconds(100))
             recipientFocused = true
         }
-        .confirmationDialog(
-            "Record another request to this recipient?",
-            isPresented: $confirmingDuplicate
-        ) {
-            Button("Record anyway") { performSave() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("You've already contacted this recipient for this job. Recording again is fine for a "
-                + "follow-up or correction — just confirming it's intentional.")
-        }
     }
 
     /// A click-driven date field: a button showing the date that opens a graphical calendar popover.
@@ -149,6 +155,9 @@ struct ReferralAttemptEditor: View {
     private struct DateRow: View {
         let label: String
         @Binding var date: Date
+        /// Earliest allowed date — keeps the lifecycle ordered (a response can't predate the request).
+        /// A one-sided range avoids the lower>upper crash a two-sided range risks on odd data.
+        var lowerBound: Date?
         @State private var showPicker = false
 
         var body: some View {
@@ -158,11 +167,19 @@ struct ReferralAttemptEditor: View {
                 Button(date.formatted(date: .abbreviated, time: .omitted)) { showPicker = true }
                     .buttonStyle(.bordered)
                     .popover(isPresented: $showPicker, arrowEdge: .bottom) {
-                        DatePicker(label, selection: $date, displayedComponents: .date)
-                            .datePickerStyle(.graphical)
-                            .labelsHidden()
-                            .padding()
-                            .frame(minWidth: 260)
+                        Group {
+                            if let lowerBound {
+                                DatePicker(label, selection: $date, in: lowerBound..., displayedComponents: .date)
+                            } else {
+                                DatePicker(label, selection: $date, displayedComponents: .date)
+                            }
+                        }
+                        .datePickerStyle(.graphical)
+                        .labelsHidden()
+                        .padding()
+                        .frame(minWidth: 260)
+                        // Close the calendar as soon as a day is picked (#6).
+                        .onChange(of: date) { _, _ in showPicker = false }
                     }
             }
         }
@@ -187,9 +204,10 @@ struct ReferralAttemptEditor: View {
     }
 
     private func attemptSave() {
-        // A new request (not an edit) to an already-contacted recipient → confirm first (AC #7).
-        if existing == nil, duplicate != nil {
-            confirmingDuplicate = true
+        // A new request (not an edit) to an already-contacted recipient → reveal the inline "Record
+        // anyway" confirmation first; a second Save (or that button) commits it (AC #7).
+        if existing == nil, duplicate != nil, !showDuplicateConfirm {
+            showDuplicateConfirm = true
         } else {
             performSave()
         }

@@ -1052,6 +1052,18 @@ private extension JobSnapshot {
         job.capture = cap
         return JobSnapshot(job: job, capture: cap)
     }
+
+    // MARK: - Trapping-conversion hardening (F2)
+
+    func testRawHashDoesNotTrapOnHugeJSONLDNumber() {
+        // sortedJSON's Int(Double) used to trap on an integer-valued Double outside Int range coming
+        // from attacker-controlled JSON-LD (e.g. 1e19) — crashing the whole app on capture (CWE-190).
+        let hash = DuplicateDetector.rawHash(
+            url: "https://example.com/job", canonicalURL: nil, selectedText: nil, visibleText: nil,
+            structuredData: [["@type": "JobPosting", "salary": 1e19]]
+        )
+        XCTAssertFalse(hash.isEmpty)
+    }
 }
 
 // swiftlint:enable line_length

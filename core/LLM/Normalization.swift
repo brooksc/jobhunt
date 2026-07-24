@@ -29,14 +29,14 @@ public enum SalaryNormalizer {
                 preferredLocations: preferredLocations,
                 note: filteredSrc
             ) {
-                out["salary_min"] = Int(band.min) as Any?
-                out["salary_max"] = Int(band.max) as Any?
+                out["salary_min"] = boundedSalaryInt(band.min) as Any?
+                out["salary_max"] = boundedSalaryInt(band.max) as Any?
                 return out
             }
             let amounts = moneyAmounts(filteredSrc).filter { $0 >= 1000 }
             if let minMaxPair = minMax(amounts) {
-                out["salary_min"] = Int(minMaxPair.min) as Any?
-                out["salary_max"] = Int(minMaxPair.max) as Any?
+                out["salary_min"] = boundedSalaryInt(minMaxPair.min) as Any?
+                out["salary_max"] = boundedSalaryInt(minMaxPair.max) as Any?
             }
             return out
         }
@@ -51,8 +51,8 @@ public enum SalaryNormalizer {
             out["salary_currency"] = currency as Any?
             out["salary_hourly_min"] = minMaxPair.min as Any?
             out["salary_hourly_max"] = minMaxPair.max as Any?
-            out["salary_min"] = Int(round(minMaxPair.min * 2080)) as Any?
-            out["salary_max"] = Int(round(minMaxPair.max * 2080)) as Any?
+            out["salary_min"] = boundedSalaryInt(minMaxPair.min * 2080) as Any?
+            out["salary_max"] = boundedSalaryInt(minMaxPair.max * 2080) as Any?
             return out
         }
 
@@ -68,8 +68,8 @@ public enum SalaryNormalizer {
                 ) {
                     var out = extracted
                     out["salary_currency"] = currency as Any?
-                    out["salary_min"] = Int(band.min) as Any?
-                    out["salary_max"] = Int(band.max) as Any?
+                    out["salary_min"] = boundedSalaryInt(band.min) as Any?
+                    out["salary_max"] = boundedSalaryInt(band.max) as Any?
                     return out
                 }
             }
@@ -83,8 +83,8 @@ public enum SalaryNormalizer {
         ) {
             var out = extracted
             out["salary_currency"] = currency as Any?
-            out["salary_min"] = Int(band.min) as Any?
-            out["salary_max"] = Int(band.max) as Any?
+            out["salary_min"] = boundedSalaryInt(band.min) as Any?
+            out["salary_max"] = boundedSalaryInt(band.max) as Any?
             return out
         }
 
@@ -93,8 +93,8 @@ public enum SalaryNormalizer {
         var out = extracted
         out["salary_currency"] = currency as Any?
         if let minMaxPair = minMax(annualAmounts) {
-            out["salary_min"] = Int(minMaxPair.min) as Any?
-            out["salary_max"] = Int(minMaxPair.max) as Any?
+            out["salary_min"] = boundedSalaryInt(minMaxPair.min) as Any?
+            out["salary_max"] = boundedSalaryInt(minMaxPair.max) as Any?
         }
         return out
     }
@@ -225,6 +225,18 @@ public enum SalaryNormalizer {
         let nums = values.filter(\.isFinite)
         guard !nums.isEmpty, let minVal = nums.min(), let maxVal = nums.max() else { return nil }
         return (min: minVal, max: maxVal)
+    }
+
+    /// Non-trapping Double→Int for a salary amount. Untrusted capture text and model output can carry
+    /// values above `Int.max` (or non-finite), and the trapping `Int(Double)` would abort the whole
+    /// process (CWE-190). Clamps to `[0, 1_000_000_000]` so an absurd amount becomes a visibly-bogus
+    /// bound instead of crashing extraction (which the queue would otherwise re-run into a crash loop).
+    static func boundedSalaryInt(_ value: Double) -> Int {
+        guard value.isFinite else { return 0 }
+        let rounded = value.rounded()
+        if rounded <= 0 { return 0 }
+        let ceiling = 1_000_000_000.0 // $1B/yr — far above any real salary
+        return rounded >= ceiling ? Int(ceiling) : Int(rounded)
     }
 
     // MARK: - Currency detection

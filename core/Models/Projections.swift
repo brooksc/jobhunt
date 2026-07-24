@@ -105,7 +105,10 @@ public struct FitScoreProjection {
             guard let name = d["name"] as? String else { return nil }
             let score: Int
             if let dbl = d["score"] as? Double {
-                score = Int(dbl.rounded())
+                // LLM-produced score is untrusted (prompt-injectable): a non-finite or out-of-range
+                // value would trap `Int(_:)` and abort the app. Clamp to the 0–100 fit scale (CWE-190).
+                guard dbl.isFinite else { return nil }
+                score = Int(min(100, max(0, dbl.rounded())))
             } else if let int = d["score"] as? Int {
                 score = int
             } else {

@@ -664,6 +664,30 @@ final class JobFieldNormalizerTests: XCTestCase {
         XCTAssertNotNil(result["salary_min"])
         XCTAssertNotNil(result["salary_max"])
     }
+
+    // MARK: - Trapping-conversion hardening (F12/F13)
+
+    func testBoundedSalaryIntNeverTrapsAndClamps() {
+        // `Int(Double)` aborts the process for out-of-range/non-finite values (CWE-190); the guarded
+        // helper must clamp instead of crash.
+        XCTAssertEqual(SalaryNormalizer.boundedSalaryInt(150_000), 150_000, "normal value unchanged")
+        XCTAssertEqual(SalaryNormalizer.boundedSalaryInt(1e20), 1_000_000_000, "absurd amount clamps")
+        XCTAssertEqual(SalaryNormalizer.boundedSalaryInt(.infinity), 0)
+        XCTAssertEqual(SalaryNormalizer.boundedSalaryInt(.nan), 0)
+        XCTAssertEqual(SalaryNormalizer.boundedSalaryInt(-5), 0)
+    }
+
+    func testNormalizeDoesNotTrapOnAbsurdSalaryInSourceText() {
+        // A ~20-digit salary in untrusted capture text used to trap the process at Int(Double);
+        // reaching the assertions at all proves the crash is gone.
+        let out = SalaryNormalizer.normalize(
+            extracted: ["salary_note": ""],
+            sourceText: "Compensation: $99999999999999999999 per year"
+        )
+        if let minVal = out["salary_min"] as? Int {
+            XCTAssertLessThanOrEqual(minVal, 1_000_000_000)
+        }
+    }
 }
 
 // swiftlint:enable line_length file_length

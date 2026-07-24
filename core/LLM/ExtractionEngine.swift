@@ -171,7 +171,11 @@ public enum ExtractionEngine {
         let normalizer = JobFieldNormalizer()
         extracted = normalizer.normalize(
             extracted: extracted,
-            sourceText: description,
+            // Cap the source fed to the salary regexes to the same bound the prompt uses. The normalizer
+            // runs backtracking regexes over this text; an untrusted ~MB capture would otherwise cause
+            // quadratic (ReDoS) CPU blowup on the extraction actor (CWE-1333). PromptBuilder already
+            // prefixes to this cap for the model; mirror it here (TASK-644 review / F10/F11).
+            sourceText: String(description.prefix(LLMConstants.maxDescriptionChars)),
             url: url,
             preferredLocations: settings.locationFilterEnabled ? settings.preferredLocations : nil
         )

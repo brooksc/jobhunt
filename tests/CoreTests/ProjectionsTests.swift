@@ -290,4 +290,18 @@ final class ProjectionsTests: XCTestCase {
         XCTAssertEqual(detail.events.map(\.eventType), ["status", "note"], "events sorted by occurredAt")
         XCTAssertEqual(detail.events.first?.note, "a")
     }
+
+    // MARK: - Trapping-conversion hardening (F9)
+
+    func testFitProjection_hugeDimensionScore_doesNotTrap() {
+        // An LLM-emitted out-of-range dimension score (parses as a Double but exceeds Int) used to trap
+        // Int(_:) and abort the app (CWE-190). It must clamp to the 0–100 fit scale instead of crashing.
+        let json = """
+        {"dimensions": [{"name": "skills", "score": 1e19}, {"name": "seniority", "score": 250.5}]}
+        """
+        let p = FitScoreProjection(fitScore: JobFitScore(fitScore: 50, fitStatus: .succeeded, fitScoreJSON: json))
+        XCTAssertEqual(p.dimensions.count, 2)
+        XCTAssertEqual(p.dimensions.first(where: { $0.name == "skills" })?.score, 100, "1e19 clamps to 100")
+        XCTAssertEqual(p.dimensions.first(where: { $0.name == "seniority" })?.score, 100, "250.5 clamps to 100")
+    }
 }

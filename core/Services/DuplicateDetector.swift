@@ -775,7 +775,12 @@ public struct DuplicateDetector {
         case let intVal as Int:
             return "\(intVal)"
         case let doubleVal as Double:
-            if doubleVal.truncatingRemainder(dividingBy: 1) == 0 { return "\(Int(doubleVal))" }
+            // Guarded conversion: `Int(Double)` traps (aborts the process) for values outside Int range
+            // or non-finite, and this runs on attacker-controlled JSON-LD numbers (e.g. 1e19). Fall back
+            // to the double formatting when the value can't be represented as an Int (CWE-190).
+            if doubleVal.truncatingRemainder(dividingBy: 1) == 0, let intVal = Int(exactly: doubleVal) {
+                return "\(intVal)"
+            }
             return "\(doubleVal)"
         case let strVal as String:
             return jsonString(strVal)

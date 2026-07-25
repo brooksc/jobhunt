@@ -1930,7 +1930,7 @@ private struct SetNextActionSheet: View {
 
             // Click-driven calendar rather than a segmented field editor, which can go dead in a sheet
             // on the multi-sheet detail window (audit follow-up to the referral date fix).
-            InlineDateField(label: "Due date", date: $dueDate)
+            SheetDateField(label: "Due date", date: $dueDate)
 
             if let err = saveError {
                 Text(err).font(.caption).foregroundStyle(.red)

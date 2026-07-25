@@ -30,15 +30,16 @@ struct MigrationSummary {
     var skippedOrphanLLMRequestAttempts = 0
     var skippedOrphanContacts = 0
     var skippedOrphanCoverLetters = 0
-    // Total orphans skipped across all tables.
+    /// Total orphans skipped across all tables.
     var skippedOrphans: Int {
         skippedOrphanEvents + skippedOrphanActions + skippedOrphanDataQualityReviews +
-        skippedOrphanFitScores + skippedOrphanLLMRequests + skippedOrphanLLMRequestAttempts +
-        skippedOrphanContacts + skippedOrphanCoverLetters
+            skippedOrphanFitScores + skippedOrphanLLMRequests + skippedOrphanLLMRequestAttempts +
+            skippedOrphanContacts + skippedOrphanCoverLetters
     }
-    // True when the destination store already contained data — migration was skipped
-    // to avoid creating duplicate records (no @Attribute(.unique) DB constraint exists).
-    // Callers must ensure the destination context is empty before calling migrate().
+
+    /// True when the destination store already contained data — migration was skipped
+    /// to avoid creating duplicate records (no @Attribute(.unique) DB constraint exists).
+    /// Callers must ensure the destination context is empty before calling migrate().
     var skippedNonEmpty = false
 }
 
@@ -85,7 +86,9 @@ func migrate(src: DBHandle, context: ModelContext) -> MigrationSummary {
     // Build capture lookup for linking jobs
     var captureMap: [String: Capture] = [:]
     if let all = try? context.fetch(FetchDescriptor<Capture>()) {
-        for c in all { captureMap[c.id] = c }
+        for c in all {
+            captureMap[c.id] = c
+        }
     }
 
     // jobs

@@ -29,7 +29,9 @@ final class ReferralTrackingTests: XCTestCase {
             ReferralTracking.summary(jobStatus: "applied", attempts: [attempt(.responded), attempt(.submitted)]),
             .submitted, "submitted beats responded"
         )
-        XCTAssertEqual(ReferralTracking.summary(jobStatus: "applied", attempts: [attempt(.declined)]), .declined)
+        // An all-declined job still *in* the outreach funnel needs fresh outreach rather than going
+        // quiet — see `testAllDeclinedOnAppliedJobNeedsFreshOutreach` (TASK-644 review).
+        XCTAssertEqual(ReferralTracking.summary(jobStatus: "archived", attempts: [attempt(.declined)]), .declined)
         XCTAssertEqual(
             ReferralTracking.summary(jobStatus: "applied", attempts: [attempt(.declined), attempt(.submitted)]),
             .submitted, "submitted wins over a prior decline"
@@ -190,5 +192,77 @@ final class ReferralTrackingTests: XCTestCase {
         )
         XCTAssertNil(ReferralTracking.duplicateAttempt(name: "", identifier: nil, among: [marker]))
         XCTAssertNil(ReferralTracking.duplicateAttempt(name: "Jane", identifier: nil, among: [marker]))
+    }
+
+    // MARK: - Recipient key normalization (TASK-644 review)
+
+    /// The same LinkedIn profile written the many ways a user might paste it must collide.
+    func testIdentifierNormalizationCollapsesURLVariants() {
+        let canonical = "linkedin.com/in/jane"
+        for variant in [
+            "linkedin.com/in/jane",
+            "https://www.linkedin.com/in/jane/",
+            "http://linkedin.com/in/jane",
+            "https://www.linkedin.com/in/jane?originalSubdomain=uk",
+            "  HTTPS://WWW.LinkedIn.com/in/Jane/  "
+        ] {
+            XCTAssertEqual(ReferralTracking.normalizedIdentifier(variant), canonical, variant)
+        }
+    }
+
+    /// The bug this fixes: a contact saved with a URL wasn't recognized when re-entered by name alone,
+    /// because the key was *either* the identifier *or* the name — never both.
+    func testDuplicateMatchesIdentifierRecordByNameAlone() {
+        let prior = attempt(.requested, name: "Jane Doe", identifier: "https://www.linkedin.com/in/jane/")
+        XCTAssertNotNil(ReferralTracking.duplicateAttempt(name: "Jane Doe", identifier: nil, among: [prior]))
+        XCTAssertNotNil(
+            ReferralTracking.duplicateAttempt(name: "", identifier: "linkedin.com/in/jane", among: [prior])
+        )
+        XCTAssertNil(ReferralTracking.duplicateAttempt(name: "Bob", identifier: nil, among: [prior]))
+    }
+
+    func testRecipientKeysIgnoresEmptyComponents() {
+        XCTAssertTrue(ReferralTracking.recipientKeys(name: "  ", identifier: nil).isEmpty)
+        XCTAssertEqual(ReferralTracking.recipientKeys(name: "Jane Doe", identifier: nil), ["jane doe"])
+    }
+
+    // MARK: - All-declined re-nudges an in-funnel job (TASK-644 review)
+
+    func testAllDeclinedOnAppliedJobNeedsFreshOutreach() {
+        let declined = [attempt(.declined, name: "Jane"), attempt(.declined, name: "Bob")]
+        XCTAssertEqual(ReferralTracking.summary(jobStatus: "applied", attempts: declined), .needsOutreach)
+        // Off the outreach funnel it just reads as declined — no nudge for a job you're not pursuing.
+        XCTAssertEqual(ReferralTracking.summary(jobStatus: "archived", attempts: declined), .declined)
+        XCTAssertEqual(ReferralTracking.summary(jobStatus: "interview", attempts: declined), .declined)
+    }
+
+    func testActiveRequestStillWinsOverDeclined() {
+        let mixed = [attempt(.declined, name: "Jane"), attempt(.requested, name: "Bob")]
+        XCTAssertEqual(ReferralTracking.summary(jobStatus: "applied", attempts: mixed), .requested)
+    }
+
+    // MARK: - Follow-up grace boundaries
+
+    func testFollowUpGraceBoundariesAreInclusive() {
+        let now = Date(timeIntervalSince1970: 10_000_000)
+        func requested(daysAgo: Double) -> [ReferralTracking.Attempt] {
+            [.init(
+                outcome: .requested, recipientName: "Jane", recipientIdentifier: nil,
+                requestedAt: now.addingTimeInterval(-daysAgo * 86400)
+            )]
+        }
+        XCTAssertNotNil(ReferralTracking.followUp(attempts: requested(daysAgo: 4), now: now))
+        XCTAssertNil(ReferralTracking.followUp(attempts: requested(daysAgo: 3.99), now: now))
+    }
+
+    /// A declined request must not suppress the nudge for a still-open one.
+    func testDeclinedDoesNotSuppressAwaitingResponse() {
+        let now = Date(timeIntervalSince1970: 10_000_000)
+        let old = now.addingTimeInterval(-10 * 86400)
+        let attempts: [ReferralTracking.Attempt] = [
+            .init(outcome: .declined, recipientName: "Bob", recipientIdentifier: nil, requestedAt: old),
+            .init(outcome: .requested, recipientName: "Jane", recipientIdentifier: nil, requestedAt: old)
+        ]
+        XCTAssertEqual(ReferralTracking.followUp(attempts: attempts, now: now)?.kind, .awaitingResponse)
     }
 }

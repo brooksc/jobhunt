@@ -8,6 +8,7 @@ struct AddJobSheet: View {
     @State private var urlText: String = ""
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @FocusState private var fieldFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -18,6 +19,7 @@ struct AddJobSheet: View {
 
             TextField("https://jobs.example.com/posting/12345", text: $urlText)
                 .textFieldStyle(.roundedBorder)
+                .focused($fieldFocused)
                 .onSubmit { submit() }
 
             if let err = errorMessage {
@@ -34,6 +36,13 @@ struct AddJobSheet: View {
         }
         .padding(20)
         .frame(minWidth: 400)
+        // Claim first responder once the sheet is on screen. This window hosts several coexisting
+        // `.sheet` modifiers, which can leave a newly-presented sheet without a first responder so its
+        // text field silently ignores typing (TASK-644 review).
+        .task {
+            try? await Task.sleep(for: .milliseconds(100))
+            fieldFocused = true
+        }
     }
 
     private func submit() {

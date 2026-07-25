@@ -37,6 +37,9 @@ struct DashboardReferralCard: View {
     private var followUps: [(job: Job, nudge: ReferralTracking.ReferralNudge)] {
         let now = Date()
         return jobs
+            // Don't chase a referral for a job you've abandoned — archived/rejected/closed jobs are
+            // excluded from follow-ups everywhere else too (`FollowUpVisibility`, TASK-577).
+            .filter { !$0.status.isTerminal }
             .compactMap { job in ReferralTracking.followUp(attempts: projected(job.id), now: now).map { (job, $0) } }
             .sorted { $0.nudge.since < $1.nudge.since }
     }

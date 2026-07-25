@@ -100,7 +100,12 @@ public enum ReferralTracking {
         if real.contains(where: { $0.outcome == .submitted }) { return .submitted }
         if real.contains(where: { $0.outcome == .responded }) { return .responded }
         if real.contains(where: { $0.outcome == .requested }) { return .requested }
-        if !real.isEmpty { return .declined } // real requests exist but none active → all declined
+        // Real requests exist but none are active → everyone declined. On a job still in the outreach
+        // funnel that's precisely when *new* outreach is needed, so it keeps nudging rather than going
+        // quiet forever (TASK-644 review); off the funnel it just reads as declined.
+        if !real.isEmpty {
+            return outreachStatuses.contains(jobStatus) ? .needsOutreach : .declined
+        }
         if attempts.contains(where: { $0.outcome == .notApplicable }) { return .notApplicable }
         return outreachStatuses.contains(jobStatus) ? .needsOutreach : .none
     }
@@ -199,27 +204,57 @@ public enum ReferralTracking {
 
     // MARK: - Duplicate-recipient detection (AC #6)
 
-    /// A normalized key for a recipient: the identifier (LinkedIn URL / email, lowercased, trimmed) when
-    /// present, else the normalized name. Empty when neither is usable.
-    public static func recipientKey(name: String?, identifier: String?) -> String {
-        let id = (identifier ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        if !id.isEmpty { return id }
-        return (name ?? "")
+    /// Normalize a contact identifier so the same person written different ways collides: lowercased and
+    /// trimmed, with the URL scheme, a `www.` host prefix, any query/fragment, and trailing slashes
+    /// stripped. So `linkedin.com/in/jane`, `https://www.linkedin.com/in/jane/` and
+    /// `.../in/jane?originalSubdomain=uk` all reduce to `linkedin.com/in/jane`.
+    public static func normalizedIdentifier(_ identifier: String?) -> String {
+        var value = (identifier ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return "" }
+        for prefix in ["https://", "http://"] where value.hasPrefix(prefix) {
+            value.removeFirst(prefix.count)
+        }
+        if value.hasPrefix("www.") { value.removeFirst(4) }
+        if let cut = value.firstIndex(where: { $0 == "?" || $0 == "#" }) { value = String(value[..<cut]) }
+        while value.hasSuffix("/") {
+            value.removeLast()
+        }
+        return value
+    }
+
+    /// A normalized name key — lowercased, punctuation collapsed to single spaces.
+    public static func normalizedName(_ name: String?) -> String {
+        (name ?? "")
             .lowercased()
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
     }
 
+    /// A normalized key for a recipient: the identifier when present, else the name. Empty when neither
+    /// is usable. Kept for callers that need a single key; matching uses `recipientKeys`.
+    public static func recipientKey(name: String?, identifier: String?) -> String {
+        let id = normalizedIdentifier(identifier)
+        return id.isEmpty ? normalizedName(name) : id
+    }
+
+    /// *Every* key that identifies a recipient. Two records match when their key sets intersect, so a
+    /// contact saved with a LinkedIn URL is still recognized when re-entered by name alone — the common
+    /// case the single-key form missed entirely (TASK-644 review).
+    public static func recipientKeys(name: String?, identifier: String?) -> Set<String> {
+        Set([normalizedIdentifier(identifier), normalizedName(name)].filter { !$0.isEmpty })
+    }
+
     /// The first prior real request whose recipient matches `name`/`identifier` (AC #6) — so the UI can
     /// warn (with its date) before recording another outreach to the same person. `notApplicable` markers
     /// and empty keys never match.
     public static func duplicateAttempt(name: String?, identifier: String?, among attempts: [Attempt]) -> Attempt? {
-        let key = recipientKey(name: name, identifier: identifier)
-        guard !key.isEmpty else { return nil }
+        let keys = recipientKeys(name: name, identifier: identifier)
+        guard !keys.isEmpty else { return nil }
         return attempts.first { attempt in
             attempt.outcome != .notApplicable
-                && recipientKey(name: attempt.recipientName, identifier: attempt.recipientIdentifier) == key
+                && !recipientKeys(name: attempt.recipientName, identifier: attempt.recipientIdentifier)
+                .isDisjoint(with: keys)
         }
     }
 }

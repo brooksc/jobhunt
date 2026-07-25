@@ -101,6 +101,16 @@ struct ReferralSection: View {
         )
     }
 
+    /// The attempt the badge's summary actually came from, so the tooltip names the right person. Taking
+    /// the newest attempt instead read "Submitted · Bob" when Jane was the one who submitted it and Bob
+    /// merely declined later (TASK-644 review).
+    private var summaryAttempt: ReferralAttempt? {
+        let matching = realAttempts.filter {
+            (ReferralOutcome(rawValue: $0.outcome) ?? .requested).label == summary.label
+        }
+        return matching.first ?? realAttempts.first
+    }
+
     /// Only show the section for jobs where referral outreach is meaningful — those in the active
     /// application funnel, or any job that already has recorded attempts (AC #2/#16).
     private var isApplicable: Bool {
@@ -117,8 +127,8 @@ struct ReferralSection: View {
                 Text("Referral").font(.headline)
                 ReferralBadge(
                     summary: summary,
-                    recipient: realAttempts.first?.recipientName,
-                    lastDate: realAttempts.first?.requestedAt
+                    recipient: summaryAttempt?.recipientName,
+                    lastDate: summaryAttempt?.requestedAt
                 )
                 Spacer()
                 Button {

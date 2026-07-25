@@ -87,7 +87,11 @@ struct ReferralAttemptEditor: View {
                     TextField("Recipient name or label", text: $recipientName)
                         .focused($recipientFocused)
                         .accessibilityIdentifier("referral.recipient")
+                        // Editing the recipient invalidates a confirmation given for the *previous* one —
+                        // otherwise confirming "Alice" then retyping "Bob" commits Bob unconfirmed (review #5).
+                        .onChange(of: recipientName) { _, _ in showDuplicateConfirm = false }
                     TextField("LinkedIn URL or email (optional)", text: $identifier)
+                        .onChange(of: identifier) { _, _ in showDuplicateConfirm = false }
                     TextField("Channel (LinkedIn, email, referral portal…)", text: $channel)
                     Picker("Status", selection: $outcome) {
                         ForEach(ReferralOutcome.requestStates, id: \.self) { state in
@@ -98,22 +102,12 @@ struct ReferralAttemptEditor: View {
                     TextField("Note (optional)", text: $note, axis: .vertical).lineLimit(2 ... 4)
                 }
                 Section("Timeline") {
-                    InlineDateField(label: "Requested", date: $requestedAt)
-                    if respondedAt != nil {
-                        InlineDateField(label: "Responded", date: dateBinding(\.respondedAt), lowerBound: requestedAt)
-                    }
-                    if submittedAt != nil {
-                        InlineDateField(
-                            label: "Submitted",
-                            date: dateBinding(\.submittedAt),
-                            lowerBound: respondedAt ?? requestedAt
-                        )
-                    }
-                    if declinedAt != nil {
-                        InlineDateField(
-                            label: "Declined",
-                            date: dateBinding(\.declinedAt),
-                            lowerBound: respondedAt ?? requestedAt
+                    ForEach(visibleFields, id: \.self) { field in
+                        SheetDateField(
+                            label: field.label,
+                            date: binding(for: field),
+                            lowerBound: lowerBound(for: field),
+                            upperBound: upperBound(for: field)
                         )
                     }
                 }
@@ -154,28 +148,90 @@ struct ReferralAttemptEditor: View {
         }
     }
 
-    private func dateBinding(_ keyPath: ReferenceWritableKeyPath<ReferralAttemptEditor, Date?>) -> Binding<Date> {
-        // Optional-backed dates are only shown once set, so the fallback is never surfaced.
-        Binding(get: { self[keyPath: keyPath] ?? Date() }, set: { self[keyPath: keyPath] = $0 })
+    // MARK: - Timeline date fields
+
+    /// The four timeline dates. An enum (not a raw string) so the switches below are exhaustive — a
+    /// string-keyed lookup with a `default` arm silently routes a renamed row to the wrong date.
+    private enum TimelineField: Hashable, CaseIterable {
+        case requested, responded, submitted, declined
+
+        var label: String {
+            switch self {
+            case .requested: "Requested"
+            case .responded: "Responded"
+            case .submitted: "Submitted"
+            case .declined: "Declined"
+            }
+        }
     }
 
-    /// Stamp the newly-reached state's date (if unset) and clear dates that no longer apply, mirroring
-    /// `ReferralTracking.normalizedDates` so the visible timeline matches what will be saved.
+    /// The rows to show for the current status. Driven by `outcome` rather than by which dates happen to
+    /// be non-nil, so reverting a status hides the later rows *without* discarding their dates — picking
+    /// the status back up restores the original milestones instead of re-stamping today (review #8).
+    private var visibleFields: [TimelineField] {
+        var fields: [TimelineField] = [.requested]
+        switch outcome {
+        case .requested, .notApplicable:
+            break
+        case .responded:
+            fields.append(.responded)
+        case .submitted:
+            if respondedAt != nil { fields.append(.responded) }
+            fields.append(.submitted)
+        case .declined:
+            if respondedAt != nil { fields.append(.responded) }
+            fields.append(.declined)
+        }
+        return fields
+    }
+
+    private func binding(for field: TimelineField) -> Binding<Date> {
+        switch field {
+        case .requested: Binding(get: { requestedAt }, set: { requestedAt = $0 })
+        // The optional-backed rows are only visible once their date is set, so the fallback is unreachable.
+        case .responded: Binding(get: { respondedAt ?? Date() }, set: { respondedAt = $0 })
+        case .submitted: Binding(get: { submittedAt ?? Date() }, set: { submittedAt = $0 })
+        case .declined: Binding(get: { declinedAt ?? Date() }, set: { declinedAt = $0 })
+        }
+    }
+
+    /// Bounds keep the timeline in chronological order in *both* directions. Without an upper bound on
+    /// Requested, moving the ask date forward past a later milestone persists an inverted timeline, which
+    /// corrupts the follow-up staleness math and row sorting (review #1).
+    private func lowerBound(for field: TimelineField) -> Date? {
+        switch field {
+        case .requested: nil
+        case .responded: requestedAt
+        case .submitted, .declined: respondedAt ?? requestedAt
+        }
+    }
+
+    private func upperBound(for field: TimelineField) -> Date? {
+        switch field {
+        case .requested: [respondedAt, submittedAt, declinedAt].compactMap(\.self).min()
+        case .responded: [submittedAt, declinedAt].compactMap(\.self).min()
+        case .submitted, .declined: nil
+        }
+    }
+
+    /// Stamp a newly-reached state's date. Dates for states that no longer apply are deliberately *not*
+    /// cleared here — `performSave` normalizes them on the way to the store, so a mis-click in the Status
+    /// picker is recoverable rather than destroying the original stamps.
     private func stampDate(for new: ReferralOutcome) {
-        let dates = ReferralTracking.normalizedDates(
-            outcome: new,
-            dates: .init(requested: requestedAt, responded: respondedAt, submitted: submittedAt, declined: declinedAt),
-            now: Date()
-        )
-        respondedAt = dates.responded
-        submittedAt = dates.submitted
-        declinedAt = dates.declined
+        let now = Date()
+        switch new {
+        case .responded: if respondedAt == nil { respondedAt = now }
+        case .submitted: if submittedAt == nil { submittedAt = now }
+        case .declined: if declinedAt == nil { declinedAt = now }
+        case .requested, .notApplicable: break
+        }
     }
 
     private func attemptSave() {
-        // A new request (not an edit) to an already-contacted recipient → reveal the inline "Record
-        // anyway" confirmation first; a second Save (or that button) commits it (AC #7).
-        if existing == nil, duplicate != nil, !showDuplicateConfirm {
+        // A new request to an already-contacted recipient only ever *raises* the warning here; committing
+        // requires the explicit "Record anyway" button. Letting Save commit on the second press meant a
+        // double-Return (the field's Return fires the default button) blew straight past it (review #5).
+        if existing == nil, duplicate != nil {
             showDuplicateConfirm = true
         } else {
             performSave()

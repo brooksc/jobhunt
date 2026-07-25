@@ -312,7 +312,7 @@ private struct ApplicationEvidenceEditor: View {
                     if overrideDate {
                         // Click-driven calendar — a segmented date field in a sheet can lose keyboard
                         // first-responder and become uneditable (audit follow-up to the referral fix).
-                        InlineDateField(label: "Date", date: $appliedDate)
+                        SheetDateField(label: "Date", date: $appliedDate)
                     }
                 }
                 Section("Employer contact (for the ESD log)") {

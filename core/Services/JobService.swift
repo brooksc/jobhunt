@@ -293,6 +293,9 @@ public actor JobService {
     public func delete(jobID: String) async throws {
         let id = jobID
         try await store.deleteOne(Job.self, predicate: #Predicate { $0.id == id }, id: jobID)
+        // `ReferralAttempt` is keyed by `jobID` with no SwiftData relationship, so it isn't cascaded —
+        // without this the job's attempts and its N/A marker outlive it forever (TASK-644 review).
+        try await store.deleteReferralAttempts(jobID: jobID)
     }
 
     public func markOpened(jobID: String) async throws {

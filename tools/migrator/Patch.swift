@@ -51,7 +51,9 @@ func patch(src: DBHandle, context: ModelContext) -> PatchSummary {
     let existingJobIDs = Set((try? context.fetch(FetchDescriptor<Job>()))?.map(\.id) ?? [])
     var captureMap: [String: Capture] = [:]
     if let all = try? context.fetch(FetchDescriptor<Capture>()) {
-        for c in all { captureMap[c.id] = c }
+        for c in all {
+            captureMap[c.id] = c
+        }
     }
     if tableExists(src, "jobs") {
         for row in queryRows(src, "SELECT * FROM jobs") {
@@ -100,7 +102,10 @@ func patch(src: DBHandle, context: ModelContext) -> PatchSummary {
             do { try context.save() } catch {
                 // TASK-476: abort rather than continue — a partially-patched store is worse than a
                 // clear failure the operator can retry after fixing the cause.
-                fputs("Error: failed to save new job \(jobLabel) — aborting patch to avoid a partial store: \(error)\n", stderr)
+                fputs(
+                    "Error: failed to save new job \(jobLabel) — aborting patch to avoid a partial store: \(error)\n",
+                    stderr
+                )
                 exit(1)
             }
             if let capId, let cap = captureMap[capId] {
@@ -113,7 +118,10 @@ func patch(src: DBHandle, context: ModelContext) -> PatchSummary {
         if s.jobsInserted > 0 {
             // Final save to persist capture relationships set after each job's initial save
             do { try context.save() } catch {
-                fputs("Error: failed to save job relationships — aborting patch to avoid a partial store: \(error)\n", stderr)
+                fputs(
+                    "Error: failed to save job relationships — aborting patch to avoid a partial store: \(error)\n",
+                    stderr
+                )
                 exit(1)
             }
         }
@@ -122,13 +130,13 @@ func patch(src: DBHandle, context: ModelContext) -> PatchSummary {
     // Build existing ID sets to detect what's already there
     let existingSiteReviewIDs = Set((try? context.fetch(FetchDescriptor<SiteReview>()))?.map(\.id) ?? [])
     let existingLLMRequestIDs = Set((try? context.fetch(FetchDescriptor<LLMRequest>()))?.map(\.id) ?? [])
-    let existingAttemptIDs    = Set((try? context.fetch(FetchDescriptor<LLMRequestAttempt>()))?.map(\.id) ?? [])
+    let existingAttemptIDs = Set((try? context.fetch(FetchDescriptor<LLMRequestAttempt>()))?.map(\.id) ?? [])
 
     // Job and resume maps for linking
-    let allJobs    = (try? context.fetch(FetchDescriptor<Job>())) ?? []
+    let allJobs = (try? context.fetch(FetchDescriptor<Job>())) ?? []
     let allResumes = (try? context.fetch(FetchDescriptor<Resume>())) ?? []
-    let jobMap     = Dictionary(uniqueKeysWithValues: allJobs.map { ($0.id, $0) })
-    let resumeMap  = Dictionary(uniqueKeysWithValues: allResumes.map { ($0.id, $0) })
+    let jobMap = Dictionary(uniqueKeysWithValues: allJobs.map { ($0.id, $0) })
+    let resumeMap = Dictionary(uniqueKeysWithValues: allResumes.map { ($0.id, $0) })
 
     // site_reviews
     if tableExists(src, "site_reviews") {
@@ -240,7 +248,7 @@ func patch(src: DBHandle, context: ModelContext) -> PatchSummary {
         let existingNames = Set((try? context.fetch(FetchDescriptor<SavedSearch>()))?.map(\.name) ?? [])
         for row in queryRows(src, "SELECT * FROM saved_views") {
             guard let name = row.str("name") else { continue }
-            if (row.str("page") ?? "jobs") != "jobs" { continue }   // only job-scoped views map
+            if (row.str("page") ?? "jobs") != "jobs" { continue } // only job-scoped views map
             if existingNames.contains(name) { s.skipped += 1; continue }
             let search = SavedSearch(name: name, searchText: savedViewSearchText(row.str("rule_tree")))
             if let id = row.str("id") { search.id = id }

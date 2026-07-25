@@ -49,9 +49,9 @@ func patchFitScores(src: DBHandle, context: ModelContext) {
         return
     }
 
-    let allJobs    = (try? context.fetch(FetchDescriptor<Job>())) ?? []
+    let allJobs = (try? context.fetch(FetchDescriptor<Job>())) ?? []
     let allResumes = (try? context.fetch(FetchDescriptor<Resume>())) ?? []
-    let jobMap    = Dictionary(uniqueKeysWithValues: allJobs.map { ($0.id, $0) })
+    let jobMap = Dictionary(uniqueKeysWithValues: allJobs.map { ($0.id, $0) })
     let resumeMap = Dictionary(uniqueKeysWithValues: allResumes.map { ($0.id, $0) })
 
     // Delete all stubs (JobFitScore records with no resume link).
@@ -59,21 +59,23 @@ func patchFitScores(src: DBHandle, context: ModelContext) {
     let allScores = (try? context.fetch(FetchDescriptor<JobFitScore>())) ?? []
     let stubs = allScores.filter { $0.resume == nil }
     print("Deleting \(stubs.count) resume-less stub record(s)…")
-    for stub in stubs { context.delete(stub) }
+    for stub in stubs {
+        context.delete(stub)
+    }
     do { try context.save() } catch {
         fputs("Error deleting stubs: \(error)\n", stderr); return
     }
 
     // Import succeeded per-resume scores from SQLite
     var inserted = 0
-    var skipped  = 0
+    var skipped = 0
     let rows = queryRows(src, "SELECT * FROM job_fit_scores WHERE fit_status = 'succeeded'")
     for row in rows {
         guard let jobId = row.str("job_id") else { skipped += 1; continue }
-        guard let job   = jobMap[jobId] else { skipped += 1; continue }
+        guard let job = jobMap[jobId] else { skipped += 1; continue }
 
         let resumeId = row.str("resume_id")
-        let resume   = resumeId.flatMap { resumeMap[$0] }
+        let resume = resumeId.flatMap { resumeMap[$0] }
 
         // Skip if an identical (job, resume) pair is already present (app may have rescored)
         let alreadyPresent = job.fitScores.contains { $0.resume?.id == resumeId }
@@ -89,12 +91,12 @@ func patchFitScores(src: DBHandle, context: ModelContext) {
             updatedAt: row.dateOrNow("updated_at")
         )
         context.insert(rec)
-        rec.job    = job
+        rec.job = job
         rec.resume = resume
         inserted += 1
 
         let resumeName = resume?.name ?? resumeId ?? "?"
-        let jobLabel   = job.jobNumber.map { "#\($0)" } ?? jobId
+        let jobLabel = job.jobNumber.map { "#\($0)" } ?? jobId
         print("  \(jobLabel): \(resumeName) → score \(row.str("fit_score") ?? "?")")
     }
 

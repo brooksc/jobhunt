@@ -12,6 +12,7 @@ struct SaveSearchSheet: View {
 
     @State private var name: String = ""
     @State private var saveError: String?
+    @FocusState private var fieldFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -19,6 +20,7 @@ struct SaveSearchSheet: View {
 
             TextField("e.g. Remote Staff+, Strong fit NYC", text: $name)
                 .textFieldStyle(.roundedBorder)
+                .focused($fieldFocused)
                 .onSubmit { save() }
 
             if let saveError {
@@ -39,6 +41,13 @@ struct SaveSearchSheet: View {
         }
         .padding(20)
         .frame(minWidth: 320)
+        // Claim first responder once the sheet is on screen. This window hosts several coexisting
+        // `.sheet` modifiers, which can leave a newly-presented sheet without a first responder so its
+        // text field silently ignores typing (TASK-644 review).
+        .task {
+            try? await Task.sleep(for: .milliseconds(100))
+            fieldFocused = true
+        }
     }
 
     @ViewBuilder

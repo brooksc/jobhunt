@@ -12,6 +12,7 @@ enum Mode {
     case backfillModels(storePath: String)
     case pruneOrphanFitScores(storePath: String)
     case pruneOrphanAttempts(storePath: String)
+    case pruneOrphanReferralAttempts(storePath: String)
     case recomputeFitMirrors(storePath: String)
     case detectDuplicates(storePath: String)
     case repairDuplicateJobNumbers(storePath: String)
@@ -25,7 +26,8 @@ enum Mode {
         case .migrate, .verify:
             return false
         case .repairFitScores, .patch, .patchFitScores, .reclean, .backfillModels,
-             .pruneOrphanFitScores, .pruneOrphanAttempts, .recomputeFitMirrors, .detectDuplicates,
+             .pruneOrphanFitScores, .pruneOrphanAttempts, .pruneOrphanReferralAttempts,
+             .recomputeFitMirrors, .detectDuplicates,
              .repairDuplicateJobNumbers, .unmarkHeuristicDuplicates:
             return true
         }
@@ -47,6 +49,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
     var reclean = false
     var backfillModels = false
     var pruneOrphanFitScores = false
+    var pruneOrphanReferralAttempts = false
     var pruneOrphanAttempts = false
     var recomputeFitMirrors = false
     var detectDuplicates = false
@@ -73,6 +76,8 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
             backfillModels = true
         case "--prune-orphan-fit-scores":
             pruneOrphanFitScores = true
+        case "--prune-orphan-referral-attempts":
+            pruneOrphanReferralAttempts = true
         case "--prune-orphan-attempts":
             pruneOrphanAttempts = true
         case "--recompute-fit-mirrors":
@@ -118,6 +123,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
         ("--reclean", reclean),
         ("--backfill-models", backfillModels),
         ("--prune-orphan-fit-scores", pruneOrphanFitScores),
+        ("--prune-orphan-referral-attempts", pruneOrphanReferralAttempts),
         ("--prune-orphan-attempts", pruneOrphanAttempts),
         ("--recompute-fit-mirrors", recomputeFitMirrors),
         ("--detect-duplicates", detectDuplicates),
@@ -144,6 +150,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
     if reclean { return .reclean(storePath: storePath) }
     if backfillModels { return .backfillModels(storePath: storePath) }
     if pruneOrphanFitScores { return .pruneOrphanFitScores(storePath: storePath) }
+    if pruneOrphanReferralAttempts { return .pruneOrphanReferralAttempts(storePath: storePath) }
     if pruneOrphanAttempts { return .pruneOrphanAttempts(storePath: storePath) }
     if recomputeFitMirrors { return .recomputeFitMirrors(storePath: storePath) }
     if detectDuplicates { return .detectDuplicates(storePath: storePath) }
@@ -161,6 +168,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
         fputs("  JobhuntMigrator --reclean [--store <path>]\n", stderr)
         fputs("  JobhuntMigrator --backfill-models [--store <path>]\n", stderr)
         fputs("  JobhuntMigrator --prune-orphan-fit-scores [--store <path>]\n", stderr)
+        fputs("  JobhuntMigrator --prune-orphan-referral-attempts [--store <path>]\n", stderr)
         fputs("  JobhuntMigrator --prune-orphan-attempts [--store <path>]\n", stderr)
         fputs("  JobhuntMigrator --recompute-fit-mirrors [--store <path>]\n", stderr)
         fputs("  JobhuntMigrator --detect-duplicates [--store <path>]\n", stderr)

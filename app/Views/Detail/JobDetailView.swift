@@ -685,6 +685,11 @@ struct OverviewTabView: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
 
+                // Interviews + offer — only renders at Interview/Offer or when records exist (TASK-501).
+                MilestoneSection(job: job)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+
                 // Compensation block
                 if job.salaryMin != nil || job.salaryMax != nil || job.salaryNote != nil {
                     compensationBlock

@@ -296,6 +296,7 @@ public actor JobService {
         // `ReferralAttempt` is keyed by `jobID` with no SwiftData relationship, so it isn't cascaded —
         // without this the job's attempts and its N/A marker outlive it forever (TASK-644 review).
         try await store.deleteReferralAttempts(jobID: jobID)
+        try await store.deleteMilestones(jobID: jobID)
     }
 
     public func markOpened(jobID: String) async throws {

@@ -104,7 +104,9 @@ public enum SchemaV1: VersionedSchema {
             CoverLetter.self,
             SavedSearch.self,
             ApplicationEvidence.self,
-            ReferralAttempt.self
+            ReferralAttempt.self,
+            InterviewRecord.self,
+            OfferRecord.self
         ]
     }
 }

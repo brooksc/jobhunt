@@ -1193,6 +1193,150 @@ public actor BackgroundStore {
         try modelContext.save()
     }
 
+    // MARK: - Interview & offer milestones (TASK-501)
+
+    /// Record or update an interview, logging one timeline event per interview so the Timeline shows the
+    /// round rather than a freeform note. Follows the referral conventions: the job must exist, the
+    /// event id is derived from the record so re-saving can't duplicate it, and delete takes it with it.
+    @discardableResult
+    public func recordInterview(_ input: InterviewInput) throws -> String {
+        let jid = input.jobID
+        guard let job = try modelContext.fetch(
+            FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid })
+        ).first else { throw BackgroundStoreError.notFound(input.jobID) }
+
+        let record: InterviewRecord
+        if let id = input.id, let existing = try modelContext.fetch(
+            FetchDescriptor<InterviewRecord>(predicate: #Predicate { $0.id == id })
+        ).first {
+            record = existing
+        } else {
+            record = InterviewRecord(id: input.id ?? UUID().uuidString, jobID: input.jobID)
+            modelContext.insert(record)
+        }
+        record.jobID = input.jobID
+        record.scheduledAt = input.scheduledAt
+        record.kind = input.kind
+        record.interviewer = Self.cleaned(input.interviewer)
+        record.location = Self.cleaned(input.location)
+        record.note = Self.cleaned(input.note)
+
+        let label = (InterviewKind(rawValue: input.kind) ?? .other).label
+        try upsertMilestoneEvent(
+            id: "interview-\(record.id)", eventType: "interview", job: job,
+            note: record.interviewer.map { "\(label) — \($0)" } ?? label,
+            occurredAt: record.scheduledAt
+        )
+        try modelContext.save()
+        return record.id
+    }
+
+    public func deleteInterview(id: String) throws {
+        let rid = id
+        guard let existing = try modelContext.fetch(
+            FetchDescriptor<InterviewRecord>(predicate: #Predicate { $0.id == rid })
+        ).first else { return }
+        try deleteMilestoneEvent(id: "interview-\(rid)")
+        modelContext.delete(existing)
+        try modelContext.save()
+    }
+
+    /// Record or update the job's offer (at most one per job — an existing offer is updated).
+    @discardableResult
+    public func recordOffer(_ input: OfferInput) throws -> String {
+        let jid = input.jobID
+        guard let job = try modelContext.fetch(
+            FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid })
+        ).first else { throw BackgroundStoreError.notFound(input.jobID) }
+
+        let existing = try modelContext.fetch(
+            FetchDescriptor<OfferRecord>(predicate: #Predicate { $0.jobID == jid })
+        ).first
+        let record: OfferRecord
+        if let existing {
+            record = existing
+        } else {
+            record = OfferRecord(id: input.id ?? UUID().uuidString, jobID: input.jobID)
+            modelContext.insert(record)
+        }
+        record.offeredAt = input.offeredAt
+        record.title = Self.cleaned(input.title)
+        record.baseSalary = input.baseSalary
+        record.additionalComp = Self.cleaned(input.additionalComp)
+        // A decision deadline before the offer date is nonsense — clamp rather than persist it.
+        record.decisionBy = input.decisionBy.map { max($0, input.offeredAt) }
+        record.note = Self.cleaned(input.note)
+
+        let summary = record.baseSalary.map { "Offer — \(record.title ?? "role"), \($0.formatted())" }
+            ?? "Offer — \(record.title ?? "role")"
+        try upsertMilestoneEvent(
+            id: "offer-\(record.id)", eventType: "offer", job: job, note: summary, occurredAt: record.offeredAt
+        )
+        try modelContext.save()
+        return record.id
+    }
+
+    public func deleteOffer(id: String) throws {
+        let rid = id
+        guard let existing = try modelContext.fetch(
+            FetchDescriptor<OfferRecord>(predicate: #Predicate { $0.id == rid })
+        ).first else { return }
+        try deleteMilestoneEvent(id: "offer-\(rid)")
+        modelContext.delete(existing)
+        try modelContext.save()
+    }
+
+    private static func cleaned(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (trimmed?.isEmpty ?? true) ? nil : trimmed
+    }
+
+    /// Insert or update the single timeline event mirroring a milestone record, so editing the record
+    /// corrects the Timeline entry instead of appending a second one.
+    private func upsertMilestoneEvent(
+        id: String, eventType: String, job: Job, note: String, occurredAt: Date
+    ) throws {
+        let eid = id
+        if let event = try modelContext.fetch(
+            FetchDescriptor<JobEvent>(predicate: #Predicate { $0.id == eid })
+        ).first {
+            event.note = note
+            event.occurredAt = occurredAt
+            return
+        }
+        let event = JobEvent(id: id, eventType: eventType, note: note, occurredAt: occurredAt)
+        event.job = job
+        modelContext.insert(event)
+    }
+
+    private func deleteMilestoneEvent(id: String) throws {
+        let eid = id
+        try modelContext.fetch(FetchDescriptor<JobEvent>(predicate: #Predicate { $0.id == eid }))
+            .forEach { modelContext.delete($0) }
+    }
+
+    /// Delete every interview and offer belonging to a job — cascaded on job delete, since these are
+    /// keyed by `jobID` with no relationship.
+    public func deleteMilestones(jobID: String) throws {
+        let jid = jobID
+        let interviews = try modelContext.fetch(
+            FetchDescriptor<InterviewRecord>(predicate: #Predicate { $0.jobID == jid })
+        )
+        let offers = try modelContext.fetch(
+            FetchDescriptor<OfferRecord>(predicate: #Predicate { $0.jobID == jid })
+        )
+        guard !interviews.isEmpty || !offers.isEmpty else { return }
+        for interview in interviews {
+            try deleteMilestoneEvent(id: "interview-\(interview.id)")
+            modelContext.delete(interview)
+        }
+        for offer in offers {
+            try deleteMilestoneEvent(id: "offer-\(offer.id)")
+            modelContext.delete(offer)
+        }
+        try modelContext.save()
+    }
+
     /// Delete every referral attempt (and N/A marker) belonging to a job — used when the job itself is
     /// deleted, since `jobID` is a plain key with no cascading relationship.
     public func deleteReferralAttempts(jobID: String) throws {

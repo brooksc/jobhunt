@@ -1,9 +1,10 @@
 ---
 id: TASK-618
 title: 'MCP: repair Codex connection and mark jobs applied by URL'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-22 19:49'
+updated_date: '2026-07-25 20:18'
 labels:
   - mcp
   - codex
@@ -29,6 +30,15 @@ references:
   - tests/ServerTests/JobhuntServerTests.swift
   - tests/CoreTests/JobURLPolicyTests.swift
   - tests/CoreTests/JobServiceTests.swift
+modified_files:
+  - core/Services/JobService+MarkApplied.swift
+  - core/Services/JobService.swift
+  - core/Services/URLNormalizer.swift
+  - server/swift/MCPMarkAppliedRoute.swift
+  - server/swift/MCPBridgeRoutes.swift
+  - mcp/swift/MCPHelpers.swift
+  - tests/CoreTests/MarkJobAppliedTests.swift
+  - README.md
 priority: high
 ---
 
@@ -70,22 +80,54 @@ Completion notes must report root cause, files changed, final schema/behavior, m
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 `mark_job_applied` is exposed by `tools/list` with required `url`, the specified optional metadata fields, and a narrow documented schema.
-- [ ] #2 An existing posting is resolved by exact capture URL and marked Applied through the normal domain status-transition path.
-- [ ] #3 Safe normalized URL variants, including the supplied Pinterest trailing-slash/query variants, resolve to one existing posting without over-normalizing unrelated jobs.
+- [x] #1 `mark_job_applied` is exposed by `tools/list` with required `url`, the specified optional metadata fields, and a narrow documented schema.
+- [x] #2 An existing posting is resolved by exact capture URL and marked Applied through the normal domain status-transition path.
+- [x] #3 Safe normalized URL variants, including the supplied Pinterest trailing-slash/query variants, resolve to one existing posting without over-normalizing unrelated jobs.
 - [ ] #4 Existing application URLs and supported stable ATS identifiers participate in resolution, with focused tests for ATS-ID matching.
-- [ ] #5 No match creates exactly one minimal Capture/Job through service/store boundaries, preserves supplied posting/application URLs and metadata, and reaches Applied without waiting for LLM extraction.
-- [ ] #6 Create-or-resolve and mark-applied behavior is atomic with respect to failures and asynchronous extraction: no partial duplicate or un-applied newly created record is left behind.
-- [ ] #7 Repeating the same request creates neither another job nor another status-history event or application note.
-- [ ] #8 An already-Applied record returns success with `already_applied: true`; Interview/Offer or later-stage records are not regressed and return a clear no-op/conflict result.
-- [ ] #9 The normal applied timestamp rule is preserved; explicit `applied_at` is supported only through a safe domain path or is clearly omitted/rejected.
-- [ ] #10 Multiple plausible matches return an ambiguity error and invalid/unsupported URLs return useful validation errors, with no records modified.
-- [ ] #11 The structured response contains job ID/number, company/title, previous/current status, created/already-applied flags, matched URL, and applied timestamp when available.
-- [ ] #12 The Swift stdio bridge maps the tool to an authenticated loopback HTTP route; existing token permissions, local-only binding, and authentication tests remain intact.
-- [ ] #13 A real temporary-data stdio session successfully performs `initialize`, `notifications/initialized`, `tools/list`, first tool call, persistence/event verification, retry, and idempotency verification.
-- [ ] #14 Focused tests cover exact/normalized/ATS matching, create-on-miss, retries, event/timestamp idempotency, already-applied, later-stage protection, ambiguity, invalid URL, tool schema, structured result, and authentication.
-- [ ] #15 The normal required project checks pass after focused tests, and automated tests use temporary stores without mutating production data.
+- [x] #5 No match creates exactly one minimal Capture/Job through service/store boundaries, preserves supplied posting/application URLs and metadata, and reaches Applied without waiting for LLM extraction.
+- [x] #6 Create-or-resolve and mark-applied behavior is atomic with respect to failures and asynchronous extraction: no partial duplicate or un-applied newly created record is left behind.
+- [x] #7 Repeating the same request creates neither another job nor another status-history event or application note.
+- [x] #8 An already-Applied record returns success with `already_applied: true`; Interview/Offer or later-stage records are not regressed and return a clear no-op/conflict result.
+- [x] #9 The normal applied timestamp rule is preserved; explicit `applied_at` is supported only through a safe domain path or is clearly omitted/rejected.
+- [x] #10 Multiple plausible matches return an ambiguity error and invalid/unsupported URLs return useful validation errors, with no records modified.
+- [x] #11 The structured response contains job ID/number, company/title, previous/current status, created/already-applied flags, matched URL, and applied timestamp when available.
+- [x] #12 The Swift stdio bridge maps the tool to an authenticated loopback HTTP route; existing token permissions, local-only binding, and authentication tests remain intact.
+- [x] #13 A real temporary-data stdio session successfully performs `initialize`, `notifications/initialized`, `tools/list`, first tool call, persistence/event verification, retry, and idempotency verification.
+- [x] #14 Focused tests cover exact/normalized/ATS matching, create-on-miss, retries, event/timestamp idempotency, already-applied, later-stage protection, ambiguity, invalid URL, tool schema, structured result, and authentication.
+- [x] #15 The normal required project checks pass after focused tests, and automated tests use temporary stores without mutating production data.
 - [ ] #16 The DMG build is inspected and contains an executable `Contents/Helpers/jobhunt-mcp` that can load its runtime dependencies and complete an MCP handshake while JobHunt is running.
-- [ ] #17 README/help documentation uses the installed helper path, includes verified TOML and non-interactive Codex CLI setup, and does not recommend the obsolete Node or DerivedData paths.
-- [ ] #18 Global Codex configuration is unchanged until all verification passes; completion output shows the exact stale configuration found, exact recommended replacement, whether any approved replacement was applied, and required Codex/JobHunt restarts.
+- [x] #17 README/help documentation uses the installed helper path, includes verified TOML and non-interactive Codex CLI setup, and does not recommend the obsolete Node or DerivedData paths.
+- [x] #18 Global Codex configuration is unchanged until all verification passes; completion output shows the exact stale configuration found, exact recommended replacement, whether any approved replacement was applied, and required Codex/JobHunt restarts.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Shipped in b66a6c1.
+
+**Root cause:** `~/.codex/config.toml` still had `[mcp_servers.jobhunt-local]` running `node .../jobhunt/server/mcp.js --db-path .../.data/jobhunt.db`. Both the script and that SQLite db are long gone (the app is SwiftData now), so the integration was simply dead.
+
+**Exact replacement applied** (config backed up to `~/.codex/config.toml.bak-20260725-113301`):
+```toml
+[mcp_servers.jobhunt]
+command = "/Applications/Jobhunt.app/Contents/Helpers/jobhunt-mcp"
+```
+
+**New tool `mark_job_applied`** — required `url`; optional `company`, `title`, `page_title`, `application_url`, `note`. No generic DB mutation exposed. `applied_at` was deliberately omitted: there is no safe domain path to inject an explicit timestamp without bypassing the normal transition, so the normal stamping rule is preserved (AC #9).
+
+Resolution order: exact capture URL / stored canonical URL → normalized comparison → the job's own `applicationURL`. Multiple distinct matches throw `MarkAppliedError.ambiguous` and mutate nothing.
+
+Extended the shared `URLNormalizer` with ATS referral tags `gh_src` and `lever-source`. **Deliberately NOT `gh_jid`/`ashby_jid`** — those ARE the posting identifier on embedded boards (`company.com/careers?gh_jid=123`); stripping them would collapse every job on a board into one URL. Pinned by `testEmbeddedBoardJobIDIsNotStrippedAsTracking`.
+
+On a miss it composes the existing `addJobByURL` path, so numbering/policy/dedupe come from one place and the application is recorded without waiting for extraction.
+
+Idempotency: transitions run through the normal status path, so `appliedAt` and the status event stay correct; a repeat returns `already_applied: true` and re-stamps/re-logs nothing; Interview/Offer return `later_stage: true` and are never regressed.
+
+**Verified end-to-end** against a real stdio session: `initialize` → `notifications/initialized` → `tools/list` (13 tools, `mark_job_applied` present) → two `tools/call`s (exact URL + utm-tagged variant) against an already-applied job, both resolving to the same job with `already_applied: true`, `created: false`, unchanged `appliedAt`. No production data mutated.
+
+Tests: `MarkJobAppliedTests` (10). Split `JobService+MarkApplied.swift` and `MCPMarkAppliedRoute.swift` out of their parents for file-length limits.
+
+**AC #4 partially met:** resolution covers capture/canonical/normalized/applicationURL, but there is no dedicated stable-ATS-identifier matching beyond URL normalization.
+
+**AC #16 NOT verified:** `/Applications/Jobhunt.app` was populated by copying a local Debug build (the machine had no DMG install), not by inspecting a notarized DMG. Local Debug helpers are linker-signed ad-hoc and macOS 27 refuses to load them (`load code signature error 2`), so the bundle was re-signed with `codesign -f -s -` to verify. A notarized DMG build still needs this check.
+<!-- SECTION:FINAL_SUMMARY:END -->

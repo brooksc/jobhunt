@@ -51,6 +51,9 @@ struct DashboardView: View {
                 SetupChecklistCard(settings: appServices.settings)
                 statCardsSection
                 TodayRecapCard(day: dayToken)
+                // Above the funnel: a scheduled interview or an offer deadline outranks everything
+                // else on this screen (TASK-646).
+                DashboardMilestoneCard()
                 HStack(alignment: .top, spacing: 16) {
                     pipelineFunnelSection
                     followUpsDueSection

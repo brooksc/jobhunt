@@ -51,6 +51,8 @@ extension BackgroundStore {
         try deleteAll(DataQualityReview.self)
         try deleteAll(JobEvent.self)
         try deleteAll(ReferralAttempt.self)
+        try deleteAll(InterviewRecord.self)
+        try deleteAll(OfferRecord.self)
         try deleteAll(JobAction.self)
         try deleteAll(DuplicateDecision.self)
         try deleteAll(JobFitScore.self)
@@ -575,6 +577,53 @@ extension BackgroundStore {
             }
             modelContext.insert(event)
         }
+
+        // Interviews + an offer deadline (TASK-501/646), so the Dashboard's "Interviews & offers" card
+        // and the Needs Action "Scheduled" section have something to show in demo mode.
+        // Negative daysAgo = in the future.
+        let interviews: [(job: String, kind: InterviewKind, inDays: Double, who: String, place: String)] = [
+            ("job_003", .technical, -0.3, "Alex Rivera", "Google Meet"),
+            ("job_002", .onsite, -2, "Dana Whitfield", "Onsite — Building 4"),
+            ("job_002", .screen, 5, "Recruiting team", "Phone")
+        ]
+        for (index, entry) in interviews.enumerated() {
+            let jid = entry.job
+            let record = InterviewRecord(
+                id: "int_demo_\(index)", jobID: jid, scheduledAt: daysAgo(entry.inDays),
+                kind: entry.kind.rawValue, interviewer: entry.who, location: entry.place
+            )
+            modelContext.insert(record)
+            let event = JobEvent(
+                id: "interview-int_demo_\(index)", eventType: "interview",
+                note: "\(entry.kind.label) — \(entry.who)",
+                occurredAt: daysAgo(entry.inDays), createdAt: daysAgo(entry.inDays)
+            )
+            if let job = try modelContext.fetch(
+                FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid })
+            ).first {
+                job.events.append(event)
+            }
+            modelContext.insert(event)
+        }
+
+        let offer = OfferRecord(
+            id: "off_demo_1", jobID: "job_001", offeredAt: daysAgo(2),
+            title: "Staff Technical Program Manager", baseSalary: 215_000,
+            additionalComp: "RSUs + 10% target bonus", decisionBy: daysAgo(-4),
+            note: "Verbal offer; written packet to follow."
+        )
+        modelContext.insert(offer)
+        let offerEvent = JobEvent(
+            id: "offer-off_demo_1", eventType: "offer",
+            note: "Offer — Staff Technical Program Manager, 215,000",
+            occurredAt: daysAgo(2), createdAt: daysAgo(2)
+        )
+        if let job = try modelContext.fetch(
+            FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job_001" })
+        ).first {
+            job.events.append(offerEvent)
+        }
+        modelContext.insert(offerEvent)
 
         // A note added today, so the "Today" recap shows more than a single action.
         let noteToday = JobEvent(

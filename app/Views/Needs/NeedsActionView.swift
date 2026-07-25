@@ -60,10 +60,61 @@ struct NeedsActionView: View {
         sort: \JobAction.dueDate
     ) private var actions: [JobAction]
 
+    @Query private var allJobs: [Job]
+    @Query private var allInterviews: [InterviewRecord]
+    @Query private var allOffers: [OfferRecord]
+
     @State private var searchText: String = ""
     @State private var statusFilter: StatusFilterOption = .all
     @State private var isSnoozeAllConfirming: Bool = false
     @State private var errorMessage: String?
+
+    private var jobsByID: [String: Job] {
+        Dictionary(allJobs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// Upcoming interviews (soonest first), terminal jobs excluded — same rules as the Dashboard card
+    /// via `MilestoneSchedule`, so the two can't drift (TASK-646).
+    private var scheduledInterviews: [(job: Job, record: InterviewRecord)] {
+        let byID = jobsByID
+        let projected = allInterviews.compactMap { record -> MilestoneSchedule.Interview? in
+            guard let job = byID[record.jobID] else { return nil }
+            return .init(
+                jobID: record.jobID, scheduledAt: record.scheduledAt,
+                kind: InterviewKind(rawValue: record.kind) ?? .other,
+                interviewer: record.interviewer, jobIsTerminal: job.status.isTerminal
+            )
+        }
+        return MilestoneSchedule.upcomingInterviews(projected, now: Date()).compactMap { entry in
+            guard let job = byID[entry.jobID],
+                  let record = allInterviews.first(where: {
+                      $0.jobID == entry.jobID && $0.scheduledAt == entry.scheduledAt
+                  })
+            else { return nil }
+            return (job, record)
+        }
+    }
+
+    private var offerDeadlines: [(job: Job, record: OfferRecord)] {
+        let byID = jobsByID
+        let projected = allOffers.compactMap { record -> MilestoneSchedule.OfferDeadline? in
+            guard let job = byID[record.jobID], let decisionBy = record.decisionBy else { return nil }
+            return .init(
+                jobID: record.jobID, decisionBy: decisionBy,
+                title: record.title, jobIsTerminal: job.status.isTerminal
+            )
+        }
+        return MilestoneSchedule.offerDeadlines(projected, now: Date()).compactMap { entry in
+            guard let job = byID[entry.jobID],
+                  let record = allOffers.first(where: { $0.jobID == entry.jobID })
+            else { return nil }
+            return (job, record)
+        }
+    }
+
+    private var hasScheduledMilestones: Bool {
+        !scheduledInterviews.isEmpty || !offerDeadlines.isEmpty
+    }
 
     /// Actionable follow-ups: incomplete, not snoozed into the future, linked to a job. Uses the
     /// shared predicate so this list, the sidebar badge, Dashboard, and export can't drift (TASK-576).
@@ -120,13 +171,13 @@ struct NeedsActionView: View {
 
             Divider()
 
-            if activeActions.isEmpty {
+            if activeActions.isEmpty, !hasScheduledMilestones {
                 emptyState(
                     icon: "checkmark.circle",
                     title: "No follow-ups",
                     subtitle: "Open a job and use \"Set next action\" to schedule a check-in."
                 )
-            } else if filteredActions.isEmpty {
+            } else if filteredActions.isEmpty, !hasScheduledMilestones {
                 emptyState(
                     icon: "line.3.horizontal.decrease.circle",
                     title: "No results",
@@ -135,6 +186,14 @@ struct NeedsActionView: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 20) {
+                        NeedsActionMilestonesSection(
+                            interviews: scheduledInterviews,
+                            offers: offerDeadlines,
+                            onSelectJob: { id in
+                                router.selectedJobID = id
+                                router.selectedSection = .jobs
+                            }
+                        )
                         if !overdueActions.isEmpty {
                             needsGroup(label: "Overdue", icon: "clock", color: .red, actions: overdueActions)
                         }

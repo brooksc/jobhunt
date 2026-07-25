@@ -34,7 +34,12 @@ public enum URLNormalizer {
     /// make two otherwise-identical URLs look different.
     private static let trackingParams: Set<String> = [
         "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-        "gclid", "fbclid", "msclkid", "mc_cid", "mc_eid", "ref", "ref_src", "src", "trk"
+        "gclid", "fbclid", "msclkid", "mc_cid", "mc_eid", "ref", "ref_src", "src", "trk",
+        // ATS referral/source tags: these identify where the *click* came from, never which posting it
+        // is. Deliberately NOT included: `gh_jid` / `ashby_jid`, which ARE the posting's identifier on
+        // embedded boards (`company.com/careers?gh_jid=123`) — stripping those would collapse every job
+        // on such a board into one URL.
+        "gh_src", "lever-source"
     ]
 
     /// A canonical comparison form: lowercased scheme+host, no fragment, tracking params dropped and

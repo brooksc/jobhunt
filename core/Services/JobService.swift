@@ -5,6 +5,13 @@ import SwiftData
 // MARK: - Public types
 
 /// Capture ingestion payload (matches extension POST /captures body).
+extension String {
+    /// `nil` when the string is empty, so optional metadata doesn't overwrite real values with "".
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
+}
+
 public struct CapturePayload: Sendable {
     public let url: String
     public let pageTitle: String
@@ -73,7 +80,7 @@ public enum JobServiceError: Error, LocalizedError, Sendable {
 // MARK: - JobService
 
 public actor JobService {
-    private let store: BackgroundStore
+    let store: BackgroundStore
     private let queue: QueueActor
 
     public init(store: BackgroundStore, queue: QueueActor) {

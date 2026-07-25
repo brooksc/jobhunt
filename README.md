@@ -76,6 +76,12 @@ claude mcp add jobhunt -- /Applications/Jobhunt.app/Contents/Helpers/jobhunt-mcp
 command = "/Applications/Jobhunt.app/Contents/Helpers/jobhunt-mcp"
 ```
 
+or non-interactively:
+
+```bash
+codex mcp add jobhunt -- /Applications/Jobhunt.app/Contents/Helpers/jobhunt-mcp
+```
+
 **Gemini CLI** — add to `~/.gemini/settings.json` (same shape as Claude Desktop):
 
 ```json
@@ -88,6 +94,12 @@ so JobHunt's on-device bridge can't be registered with them yet — any MCP clie
 command works. (MCP client support changes fast; check each tool's MCP docs if a key differs.)
 
 End-user setup is also covered in the [help FAQ](https://jobhunt-app.com/help/faq).
+
+**Marking a job applied from an assistant.** `mark_job_applied` takes just the posting `url`: it
+resolves an existing job by capture URL, canonical URL, normalized variants (trailing slash, `utm_*` /
+`gh_src` tracking params) or the job's application URL, and creates a minimal job when the posting was
+never captured. It's idempotent — repeating it never creates a second job, status event, or note — and
+a job already at Interview/Offer is reported back rather than regressed.
 
 **Trust boundary:** the MCP endpoint is local-only (`127.0.0.1`) and requires a per-device bearer token at `~/.jobhunt-mcp-token` (owner-readable only). The `job_get` tool omits raw captured page text (`selected_text`, `visible_text`) by default; pass `include_raw_text: true` to include it. Do not expose the MCP port or token to remote systems.
 

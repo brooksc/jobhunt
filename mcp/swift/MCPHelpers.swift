@@ -216,6 +216,28 @@ let tools: [[String: Any]] = [
         ] as [String: Any]
     ],
     [
+        "name": "mark_job_applied",
+        "description": """
+        Mark a job as applied using its posting URL. Resolves an existing job by capture URL, canonical \
+        URL, normalized variants (tracking params / trailing slash), or its application URL. If the \
+        posting was never captured, creates a minimal job record and marks it applied without waiting \
+        for extraction. Idempotent: repeating the call does not create another job, status event, or \
+        note. A job already at Interview/Offer is not regressed.
+        """,
+        "inputSchema": [
+            "type": "object",
+            "required": ["url"],
+            "properties": [
+                "url": ["type": "string", "description": "The job posting URL"],
+                "company": ["type": "string"],
+                "title": ["type": "string"],
+                "page_title": ["type": "string"],
+                "application_url": ["type": "string"],
+                "note": ["type": "string"]
+            ] as [String: Any]
+        ] as [String: Any]
+    ],
+    [
         "name": "add_job_note",
         "description": "Add a note event to a job. Identify the job by job_number (preferred) or job_id.",
         "inputSchema": [
@@ -351,6 +373,9 @@ func resolveToolRoute(name: String, args: [String: Any]) -> Result<(String, [Str
             return .failure(MCPError("job_number or job_id, and status, required"))
         }
         return .success(("/mcp/jobs/status", args))
+    case "mark_job_applied":
+        guard args["url"] != nil else { return .failure(MCPError("url required")) }
+        return .success(("/mcp/jobs/mark-applied", args))
     case "add_job_note":
         guard args["job_number"] != nil || args["job_id"] != nil, args["note"] != nil else {
             return .failure(MCPError("job_number or job_id, and note, required"))

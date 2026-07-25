@@ -302,6 +302,8 @@
             return await handleMCPJobStatus(request, jobService: jobService, store: store)
         case "/mcp/jobs/note":
             return await handleMCPJobNote(request, jobService: jobService, store: store)
+        case "/mcp/jobs/mark-applied":
+            return await handleMCPMarkApplied(request, jobService: jobService)
         case "/mcp/jobs/rerun":
             return await handleMCPJobRerun(request, jobService: jobService, store: store)
         case "/mcp/sites/list":

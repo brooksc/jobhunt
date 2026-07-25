@@ -85,7 +85,29 @@ struct JobhuntApp: App {
         let message: String
     }
 
+    /// Activate an already-running instance and exit, so only one process ever opens the production
+    /// store. UI-test runs are exempt: `--ui-test-store` opens an isolated temp store, so coexisting
+    /// with a normal instance is safe and the suite must not be killed by this guard.
+    private static func terminateIfAnotherInstanceIsRunning() {
+        guard !CommandLine.arguments.contains("--ui-test-store") else { return }
+        guard let bundleID = Bundle.main.bundleIdentifier else { return }
+        let others = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            .filter { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }
+        guard let existing = others.first else { return }
+        existing.activate()
+        // exit(0), not NSApp.terminate: the app isn't running yet (this is `init`), and the
+        // termination coordinator would try to shut down a service graph that was never built.
+        exit(0)
+    }
+
     init() {
+        // Refuse to become a second writer on the production store. SQLite's file locking prevents raw
+        // corruption, but SwiftData/CoreData layers its own caches on top and is NOT multi-process-safe:
+        // two instances produce stale reads and lost updates. This is reachable in practice — an
+        // installed /Applications copy and a build run from DerivedData share one store (the store path
+        // is fixed, not keyed by bundle path). Hand off to the instance that's already running.
+        Self.terminateIfAnotherInstanceIsRunning()
+
         do {
             // TASK-426: parse launch arguments into an explicit plan up front. Invalid/incomplete
             // arguments throw (caught below) instead of silently falling back to production.

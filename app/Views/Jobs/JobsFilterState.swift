@@ -33,13 +33,18 @@ struct JobsFilterState: Equatable, Hashable {
     /// because `LocationCriteria` scores a silent posting as onsite — so without the split, postings
     /// that simply never mention an arrangement read as confirmed rejections.
     var criteriaBucket: JobFilterRules.CriteriaBucket?
+    /// Session-only data-quality filter (TASK-649 follow-up): nil = any job. Evaluating quality
+    /// faults each job's Capture when the byte caches are missing, so the predicate skips the work
+    /// entirely while this is nil.
+    var qualityFilter: JobFilterRules.QualityFilter?
     /// TASK-630: show only applied-funnel jobs that still need referral outreach.
     var needsReferralOutreach: Bool = false
 
     var hasActiveFilters: Bool {
         statusFilter != nil || remoteFilter != nil || !searchText.isEmpty
             || minFitScore != nil || minRating != nil || minSalary != nil || recentDays != nil
-            || extractionFilter != nil || criteriaBucket != nil || needsReferralOutreach
+            || extractionFilter != nil || criteriaBucket != nil || qualityFilter != nil
+            || needsReferralOutreach
     }
 
     var activeFilterCount: Int {
@@ -53,6 +58,7 @@ struct JobsFilterState: Equatable, Hashable {
             recentDays != nil,
             extractionFilter != nil,
             criteriaBucket != nil,
+            qualityFilter != nil,
             needsReferralOutreach
         ]
         .count(where: { $0 })

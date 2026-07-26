@@ -48,4 +48,33 @@ public enum JobFilterRules {
         guard let wanted else { return true }
         return criteriaBucket(meetsCriteria: meetsCriteria, remoteType: remoteType) == wanted
     }
+
+    /// Data-quality filter for triaging records worth repairing.
+    public enum QualityFilter: String, CaseIterable, Sendable {
+        /// Any `QualityChecker` issue at all.
+        case hasIssues
+        /// Only jobs carrying a high-severity issue (missing company/title/location, or a failed
+        /// extraction) — the ones actually worth re-sourcing from the company's own posting.
+        case highSeverity
+
+        public var label: String {
+            switch self {
+            case .hasIssues: "Any issue"
+            case .highSeverity: "High severity"
+            }
+        }
+    }
+
+    /// Whether a job's quality issues match the filter (`wanted == nil` means "any job").
+    ///
+    /// Callers should only evaluate `QualityChecker.issues(for:)` when a quality filter is active:
+    /// computing it faults each job's `Capture` when the byte-count caches are absent, which is the
+    /// per-keystroke cost TASK-610 removed from the search path.
+    public static func matchesQuality(kinds: [QualityIssueKind], wanted: QualityFilter?) -> Bool {
+        switch wanted {
+        case .none: true
+        case .hasIssues: !kinds.isEmpty
+        case .highSeverity: kinds.contains(where: \.isHighSeverity)
+        }
+    }
 }

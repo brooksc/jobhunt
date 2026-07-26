@@ -103,4 +103,37 @@ final class JobFilterRulesTests: XCTestCase {
             JobFilterRules.criteriaBucket(meetsCriteria: remoteMeets, remoteType: .remote), .meets
         )
     }
+
+    // MARK: - Data quality
+
+    func testQualityAnyMatchesEverything() {
+        XCTAssertTrue(JobFilterRules.matchesQuality(kinds: [], wanted: nil))
+        XCTAssertTrue(JobFilterRules.matchesQuality(kinds: [.missingSalary], wanted: nil))
+    }
+
+    func testHasIssuesMatchesAnyIssueButNotACleanJob() {
+        XCTAssertFalse(JobFilterRules.matchesQuality(kinds: [], wanted: .hasIssues))
+        XCTAssertTrue(JobFilterRules.matchesQuality(kinds: [.missingSalary], wanted: .hasIssues))
+    }
+
+    /// High severity is the re-sourcing shortlist: a missing salary isn't worth hunting down the
+    /// original posting for, a missing company is.
+    func testHighSeverityExcludesLowSeverityOnlyJobs() {
+        XCTAssertFalse(
+            JobFilterRules.matchesQuality(kinds: [.missingSalary, .staleExtraction], wanted: .highSeverity)
+        )
+        for kind in [QualityIssueKind.missingCompany, .missingTitle, .missingLocation, .extractionFailed] {
+            XCTAssertTrue(
+                JobFilterRules.matchesQuality(kinds: [kind, .missingSalary], wanted: .highSeverity),
+                kind.rawValue
+            )
+        }
+    }
+
+    /// A high-severity job is necessarily also matched by the broader "any issue" filter.
+    func testHighSeverityIsASubsetOfHasIssues() {
+        let kinds: [QualityIssueKind] = [.missingCompany]
+        XCTAssertTrue(JobFilterRules.matchesQuality(kinds: kinds, wanted: .highSeverity))
+        XCTAssertTrue(JobFilterRules.matchesQuality(kinds: kinds, wanted: .hasIssues))
+    }
 }

@@ -576,6 +576,14 @@ struct JobsView: View {
                         }
                     }
                     Divider()
+                    filterSection("Data quality") {
+                        HStack(spacing: 6) {
+                            qualityChip(nil, label: "Any")
+                            qualityChip(.hasIssues, label: "Any issue")
+                            qualityChip(.highSeverity, label: "High severity")
+                        }
+                    }
+                    Divider()
                     filterSection("Referral") {
                         Toggle("Needs referral outreach", isOn: Binding(
                             get: { filterState.needsReferralOutreach },
@@ -631,6 +639,22 @@ struct JobsView: View {
     private func meetsCriteriaChip(_ value: JobFilterRules.CriteriaBucket?, label: String) -> some View {
         let active = filterState.criteriaBucket == value
         return Button { filterState.criteriaBucket = value } label: {
+            Text(label).font(.caption)
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(active ? Color.accentColor : Color.secondary.opacity(0.1))
+                .foregroundStyle(active ? .white : .primary).clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(active ? .isSelected : [])
+        .accessibilityValue(active ? "on" : "off")
+    }
+
+    /// Data-quality triage chips. "High severity" is the re-sourcing shortlist — missing
+    /// company/title/location or a failed extraction, i.e. records thin enough that the original
+    /// posting needs finding on the company's own careers site or ATS.
+    private func qualityChip(_ value: JobFilterRules.QualityFilter?, label: String) -> some View {
+        let active = filterState.qualityFilter == value
+        return Button { filterState.qualityFilter = value } label: {
             Text(label).font(.caption)
                 .padding(.horizontal, 9).padding(.vertical, 4)
                 .background(active ? Color.accentColor : Color.secondary.opacity(0.1))
@@ -894,6 +918,14 @@ struct JobsView: View {
                 meetsCriteria: job.meetsCriteria, remoteType: job.remoteType,
                 wanted: filterState.criteriaBucket
             ) else { return false }
+            // Data quality — computed ONLY when the filter is on: QualityChecker faults each job's
+            // Capture when the byte-count caches are absent (131 of 547 jobs today), which is exactly
+            // the per-keystroke cost TASK-610 removed from the search path.
+            if let quality = filterState.qualityFilter {
+                guard JobFilterRules.matchesQuality(
+                    kinds: QualityChecker.issues(for: job), wanted: quality
+                ) else { return false }
+            }
             // TASK-630: only funnel jobs that still need referral outreach.
             if filterState.needsReferralOutreach {
                 let summary = Self.referralSummary(for: job, attempts: referralAttemptsByJob[job.id] ?? [])

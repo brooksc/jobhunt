@@ -130,6 +130,9 @@ public enum LLMProviderError: Error, LocalizedError {
     /// HTTP 429. `retryAfter` is the server-advised wait (seconds), parsed from the Retry-After
     /// header or response body when available (TASK-463).
     case rateLimited(retryAfter: TimeInterval?)
+    /// The model stopped because it hit the output budget, so the response is incomplete. Retrying
+    /// unchanged reproduces it exactly, so this must read as a configuration problem, not a blip.
+    case truncated(completionTokens: Int?, thinkingTokens: Int?)
 
     /// Sanitized description safe for persistence — never includes raw response bodies.
     public var errorDescription: String? {
@@ -141,6 +144,15 @@ public enum LLMProviderError: Error, LocalizedError {
             code == 401 || code == 403
                 ? "API key rejected (HTTP \(code)) — check your AI provider key in Settings"
                 : "LLM HTTP \(code)"
+        case let .truncated(produced, thinking):
+            {
+                var detail = "LLM response was cut off at the output limit"
+                if let thinking, thinking > 0 {
+                    detail += " — the model spent \(thinking) tokens on reasoning"
+                    if let produced { detail += " and \(produced) on the answer" }
+                }
+                return detail + ". Raise the output limit or choose a model that reasons less."
+            }()
         case let .timeout(seconds):
             "LLM request timed out after \(seconds)s"
         case .noResponse:

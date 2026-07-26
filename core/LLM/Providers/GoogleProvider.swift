@@ -65,6 +65,11 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
             var payload: [String: Any] = ["contents": contents]
             if wantsJSON {
                 var gen: [String: Any] = ["responseMimeType": "application/json"]
+                // Send an explicit output budget (TASK-607 parity — Anthropic and the OpenAI-compatible
+                // transport both honour request.maxTokens; Google silently ignored it). On Gemini 3 the
+                // budget also covers hidden reasoning tokens, so the model default could be consumed by
+                // thinking and truncate the JSON mid-object.
+                gen["maxOutputTokens"] = request.maxTokens ?? 16384
                 if includeSchema, let responseSchema { gen["responseSchema"] = responseSchema }
                 payload["generationConfig"] = gen
             }
@@ -98,6 +103,17 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
         // SAFETY finishReason) is a no-response, not empty success.
         guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw LLMProviderError.noResponse
+        }
+        // A MAX_TOKENS finish means the JSON is cut off. Returning it would surface downstream as a
+        // generic "could not be parsed as JSON" that repeats identically on every retry, because the
+        // input never changes. Fail loudly and actionably instead.
+        if decoded.candidates?.first?.finishReason == "MAX_TOKENS" {
+            let thoughts = decoded.usageMetadata?.thoughtsTokenCount
+            let produced = decoded.usageMetadata?.candidatesTokenCount
+            throw LLMProviderError.truncated(
+                completionTokens: produced,
+                thinkingTokens: thoughts
+            )
         }
         let modelName = decoded.modelVersion ?? request.model
 
@@ -218,6 +234,10 @@ private struct GoogleResponse: Decodable {
 
     struct Candidate: Decodable {
         let content: Content?
+        /// "STOP", "MAX_TOKENS", "SAFETY", … Needed to tell a complete answer from a truncated one:
+        /// without it, a response cut off mid-JSON looks like success and fails downstream as an
+        /// opaque parse error.
+        let finishReason: String?
     }
 
     struct Content: Decodable {
@@ -231,5 +251,8 @@ private struct GoogleResponse: Decodable {
     struct UsageMetadata: Decodable {
         let promptTokenCount: Int?
         let candidatesTokenCount: Int?
+        /// Gemini 3 spends part of the output budget on hidden reasoning; surfaced so a truncation
+        /// caused by thinking is diagnosable rather than mysterious.
+        let thoughtsTokenCount: Int?
     }
 }

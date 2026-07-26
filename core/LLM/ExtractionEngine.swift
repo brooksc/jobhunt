@@ -395,6 +395,23 @@ public enum ExtractionEngine {
 // MARK: - ExtractionEngineError
 
 public enum ExtractionEngineError: Error, LocalizedError {
+    /// Whether a response's braces/brackets never close — the signature of a truncated answer.
+    /// Quote-aware so punctuation inside strings can't skew the count.
+    static func isUnbalanced(_ text: String) -> Bool {
+        var depth = 0
+        var inString = false
+        var escaped = false
+        for ch in text {
+            if escaped { escaped = false; continue }
+            if ch == "\\", inString { escaped = true; continue }
+            if ch == "\"" { inString.toggle(); continue }
+            guard !inString else { continue }
+            if ch == "{" || ch == "[" { depth += 1 }
+            if ch == "}" || ch == "]" { depth -= 1 }
+        }
+        return depth != 0 || inString
+    }
+
     case noCaptureText
     case emptyResumeText
     case invalidJSON(String)
@@ -408,8 +425,13 @@ public enum ExtractionEngineError: Error, LocalizedError {
             "Job has no capture text to extract from"
         case .emptyResumeText:
             "Resume has no text to score against"
-        case .invalidJSON:
-            "LLM response could not be parsed as JSON"
+        case let .invalidJSON(raw):
+            // Classify WHY without ever echoing the model's text: an unbalanced response means it was
+            // cut off (the actionable case), which the bare message hid. The verbatim response is
+            // still persisted to the attempt's responsePreview for debugging.
+            ExtractionEngineError.isUnbalanced(raw)
+                ? "LLM response was incomplete — it ended mid-JSON, so the model was likely cut off"
+                : "LLM response could not be parsed as JSON"
         case .noModelSelected:
             "No model selected — choose a model in Settings → AI"
         case let .malformedField(field, reason):

@@ -518,7 +518,7 @@ struct JobsView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     filterSection("Remote") {
                         HStack(spacing: 6) {
-                            ForEach([RemoteType.remote, .hybrid, .onsite], id: \.self) { rt in
+                            ForEach([RemoteType.remote, .hybrid, .onsite, .unknown], id: \.self) { rt in
                                 remoteToggle(rt)
                             }
                         }
@@ -568,12 +568,11 @@ struct JobsView: View {
                     }
                     Divider()
                     filterSection("Location criteria") {
-                        Toggle("Meets criteria only", isOn: Binding(
-                            get: { filterState.meetsCriteriaOnly },
-                            set: { filterState.meetsCriteriaOnly = $0 }
-                        ))
-                        .toggleStyle(.checkbox)
-                        .font(.caption)
+                        HStack(spacing: 6) {
+                            meetsCriteriaChip(nil, label: "Any")
+                            meetsCriteriaChip(true, label: "Meets")
+                            meetsCriteriaChip(false, label: "Doesn\'t meet")
+                        }
                     }
                     Divider()
                     filterSection("Referral") {
@@ -621,6 +620,23 @@ struct JobsView: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("filter.remote.\(rt.rawValue)")
+        .accessibilityValue(active ? "on" : "off")
+    }
+
+    /// Tri-state location-criteria chip (TASK-649). "Doesn't meet" is the in-office review pile —
+    /// `LocationCriteria` counts an unknown/absent remote type as onsite, so with onsite disallowed
+    /// those postings land here. It's a heuristic for *review*, not a verdict: a posting that never
+    /// states its arrangement may still be remote-friendly, so nothing is archived automatically.
+    private func meetsCriteriaChip(_ value: Bool?, label: String) -> some View {
+        let active = filterState.meetsCriteria == value
+        return Button { filterState.meetsCriteria = value } label: {
+            Text(label).font(.caption)
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(active ? Color.accentColor : Color.secondary.opacity(0.1))
+                .foregroundStyle(active ? .white : .primary).clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(active ? .isSelected : [])
         .accessibilityValue(active ? "on" : "off")
     }
 
@@ -850,8 +866,8 @@ struct JobsView: View {
             if let statuses = filterState.statusFilter {
                 guard statuses.contains(job.status) else { return false }
             }
-            if let remotes = filterState.remoteFilter {
-                guard let rt = job.remoteType, remotes.contains(rt) else { return false }
+            guard JobFilterRules.matchesRemote(job.remoteType, selected: filterState.remoteFilter) else {
+                return false
             }
             if let minFit = filterState.minFitScore {
                 guard (job.fitScore ?? 0) >= minFit else { return false }
@@ -870,9 +886,11 @@ struct JobsView: View {
             if let extraction = filterState.extractionFilter {
                 guard job.extractionStatus == extraction else { return false }
             }
-            // TASK-464: only jobs that passed the location/remote criteria (nil = not computed → excluded).
-            if filterState.meetsCriteriaOnly {
-                guard job.meetsCriteria == true else { return false }
+            // Location/remote criteria verdict (TASK-464; tri-state in TASK-649). A job whose verdict
+            // was never computed (nil — e.g. extraction failed) matches neither Meets nor Doesn\'t,
+            // rather than being silently lumped in with the rejects.
+            if let wanted = filterState.meetsCriteria {
+                guard job.meetsCriteria == wanted else { return false }
             }
             // TASK-630: only funnel jobs that still need referral outreach.
             if filterState.needsReferralOutreach {

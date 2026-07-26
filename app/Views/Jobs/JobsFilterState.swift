@@ -28,15 +28,18 @@ struct JobsFilterState: Equatable, Hashable {
     var recentDays: Int?
     /// Session-only filter (not persisted to SavedSearch): extraction outcome.
     var extractionFilter: ExtractionStatus?
-    /// TASK-464: session-only filter — show only jobs that passed the location/remote criteria.
-    var meetsCriteriaOnly: Bool = false
+    /// Session-only filter (not persisted to SavedSearch) on the stored location/remote criteria
+    /// verdict: nil = any, true = only jobs that meet it, false = only jobs that DON'T (TASK-464,
+    /// tri-state in TASK-649). The false case is the in-office review pile: `LocationCriteria` treats
+    /// an unknown/absent remote type as onsite, so with onsite disallowed those jobs land here.
+    var meetsCriteria: Bool?
     /// TASK-630: show only applied-funnel jobs that still need referral outreach.
     var needsReferralOutreach: Bool = false
 
     var hasActiveFilters: Bool {
         statusFilter != nil || remoteFilter != nil || !searchText.isEmpty
             || minFitScore != nil || minRating != nil || minSalary != nil || recentDays != nil
-            || extractionFilter != nil || meetsCriteriaOnly || needsReferralOutreach
+            || extractionFilter != nil || meetsCriteria != nil || needsReferralOutreach
     }
 
     var activeFilterCount: Int {
@@ -49,7 +52,7 @@ struct JobsFilterState: Equatable, Hashable {
             minSalary != nil,
             recentDays != nil,
             extractionFilter != nil,
-            meetsCriteriaOnly,
+            meetsCriteria != nil,
             needsReferralOutreach
         ]
         .count(where: { $0 })

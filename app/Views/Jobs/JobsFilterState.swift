@@ -37,6 +37,14 @@ struct JobsFilterState: Equatable, Hashable {
     /// faults each job's Capture when the byte caches are missing, so the predicate skips the work
     /// entirely while this is nil.
     var qualityFilter: JobFilterRules.QualityFilter?
+    /// Session-only source filter: capture hosts to include (nil = any). Not persisted to
+    /// SavedSearch, like the other triage filters.
+    var sourceHosts: Set<String>?
+    /// Session-only: only jobs never opened, for "what haven't I looked at" triage.
+    var unreadOnly: Bool = false
+    /// Session-only: only jobs that were never fit-scored. Kept separate from `minFitScore` (which IS
+    /// persisted to SavedSearch) so saved searches keep working unchanged.
+    var unscoredOnly: Bool = false
     /// TASK-630: show only applied-funnel jobs that still need referral outreach.
     var needsReferralOutreach: Bool = false
 
@@ -44,7 +52,7 @@ struct JobsFilterState: Equatable, Hashable {
         statusFilter != nil || remoteFilter != nil || !searchText.isEmpty
             || minFitScore != nil || minRating != nil || minSalary != nil || recentDays != nil
             || extractionFilter != nil || criteriaBucket != nil || qualityFilter != nil
-            || needsReferralOutreach
+            || sourceHosts != nil || unreadOnly || unscoredOnly || needsReferralOutreach
     }
 
     var activeFilterCount: Int {
@@ -59,6 +67,9 @@ struct JobsFilterState: Equatable, Hashable {
             extractionFilter != nil,
             criteriaBucket != nil,
             qualityFilter != nil,
+            sourceHosts != nil,
+            unreadOnly,
+            unscoredOnly,
             needsReferralOutreach
         ]
         .count(where: { $0 })

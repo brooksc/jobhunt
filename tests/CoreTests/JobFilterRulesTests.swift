@@ -136,4 +136,55 @@ final class JobFilterRulesTests: XCTestCase {
         XCTAssertTrue(JobFilterRules.matchesQuality(kinds: kinds, wanted: .highSeverity))
         XCTAssertTrue(JobFilterRules.matchesQuality(kinds: kinds, wanted: .hasIssues))
     }
+
+    // MARK: - Source
+
+    func testNilSourceSelectionMatchesEverything() {
+        XCTAssertTrue(JobFilterRules.matchesSource(host: "linkedin.com", selected: nil))
+        XCTAssertTrue(JobFilterRules.matchesSource(host: nil, selected: nil))
+    }
+
+    func testSourceSelectionMatchesOnlyChosenHosts() {
+        let selected: Set = ["linkedin.com"]
+        XCTAssertTrue(JobFilterRules.matchesSource(host: "linkedin.com", selected: selected))
+        XCTAssertFalse(JobFilterRules.matchesSource(host: "job-boards.greenhouse.io", selected: selected))
+    }
+
+    /// A job with no capture (so no host) belongs to no named source.
+    func testHostlessJobIsExcludedWhenASourceIsChosen() {
+        XCTAssertFalse(JobFilterRules.matchesSource(host: nil, selected: ["linkedin.com"]))
+    }
+
+    func testMultipleSourcesAreUnioned() {
+        let selected: Set = ["linkedin.com", "jobs.ashbyhq.com"]
+        XCTAssertTrue(JobFilterRules.matchesSource(host: "jobs.ashbyhq.com", selected: selected))
+        XCTAssertFalse(JobFilterRules.matchesSource(host: "jobs.lever.co", selected: selected))
+    }
+
+    // MARK: - Fit score, including never-scored
+
+    func testFitScoreMinimumTreatsAbsentScoreAsFailing() {
+        XCTAssertTrue(JobFilterRules.matchesFitScore(fitScore: 80, minimum: 70, unscoredOnly: false))
+        XCTAssertFalse(JobFilterRules.matchesFitScore(fitScore: 60, minimum: 70, unscoredOnly: false))
+        XCTAssertFalse(JobFilterRules.matchesFitScore(fitScore: nil, minimum: 70, unscoredOnly: false))
+    }
+
+    func testNoFilterMatchesEverything() {
+        XCTAssertTrue(JobFilterRules.matchesFitScore(fitScore: nil, minimum: nil, unscoredOnly: false))
+        XCTAssertTrue(JobFilterRules.matchesFitScore(fitScore: 42, minimum: nil, unscoredOnly: false))
+    }
+
+    /// The gap this closes: an unscored job is excluded by every threshold, so without a dedicated
+    /// option those jobs are unreachable by any fit filter.
+    func testUnscoredOnlySelectsExactlyTheNeverScored() {
+        XCTAssertTrue(JobFilterRules.matchesFitScore(fitScore: nil, minimum: nil, unscoredOnly: true))
+        XCTAssertFalse(JobFilterRules.matchesFitScore(fitScore: 0, minimum: nil, unscoredOnly: true))
+        XCTAssertFalse(JobFilterRules.matchesFitScore(fitScore: 90, minimum: nil, unscoredOnly: true))
+    }
+
+    /// A zero score is a real judgement, not an absent one — they must not be conflated.
+    func testZeroScoreIsNotTreatedAsUnscored() {
+        XCTAssertFalse(JobFilterRules.matchesFitScore(fitScore: 0, minimum: nil, unscoredOnly: true))
+        XCTAssertTrue(JobFilterRules.matchesFitScore(fitScore: 0, minimum: 0, unscoredOnly: false))
+    }
 }

@@ -527,6 +527,7 @@ struct JobsView: View {
                     filterSection("Min Fit Score") {
                         HStack(spacing: 6) {
                             fitScoreChip(nil, label: "Any")
+                            unscoredChip()
                             fitScoreChip(55, label: "55+")
                             fitScoreChip(70, label: "70+")
                             fitScoreChip(85, label: "85+")
@@ -574,6 +575,19 @@ struct JobsView: View {
                             meetsCriteriaChip(.notStated, label: "Not stated")
                             meetsCriteriaChip(.doesNotMeet, label: "Doesn't meet")
                         }
+                    }
+                    Divider()
+                    filterSection("Source") {
+                        sourceMenu
+                    }
+                    Divider()
+                    filterSection("Reading") {
+                        Toggle("Unread only", isOn: Binding(
+                            get: { filterState.unreadOnly },
+                            set: { filterState.unreadOnly = $0 }
+                        ))
+                        .toggleStyle(.checkbox)
+                        .font(.caption)
                     }
                     Divider()
                     filterSection("Data quality") {
@@ -665,9 +679,60 @@ struct JobsView: View {
         .accessibilityValue(active ? "on" : "off")
     }
 
+    /// "Not scored" — jobs that were never fit-scored. Mutually exclusive with a minimum, since an
+    /// absent score is excluded by every threshold.
+    private func unscoredChip() -> some View {
+        let active = filterState.unscoredOnly
+        return Button {
+            filterState.unscoredOnly.toggle()
+            if filterState.unscoredOnly { filterState.minFitScore = nil }
+        } label: {
+            Text("Not scored").font(.caption)
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(active ? Color.accentColor : Color.secondary.opacity(0.1))
+                .foregroundStyle(active ? .white : .primary).clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(active ? .isSelected : [])
+        .accessibilityValue(active ? "on" : "off")
+    }
+
+    /// Capture hosts present in the library, most common first, with counts — so the aggregator vs
+    /// ATS split is visible at a glance. Multi-select; empty selection means "any source".
+    private var sourceMenu: some View {
+        let counts = Dictionary(allJobs.compactMap(\.captureHost).map { ($0, 1) }, uniquingKeysWith: +)
+        let hosts = counts.sorted { ($0.value, $1.key) > ($1.value, $0.key) }.prefix(12)
+        let selected = filterState.sourceHosts ?? []
+        return Menu {
+            if !selected.isEmpty {
+                Button("Clear source filter") { filterState.sourceHosts = nil }
+                Divider()
+            }
+            ForEach(Array(hosts), id: \.key) { host, count in
+                Button {
+                    var next = selected
+                    if next.contains(host) { next.remove(host) } else { next.insert(host) }
+                    filterState.sourceHosts = next.isEmpty ? nil : next
+                } label: {
+                    Label(
+                        "\(host) (\(count))",
+                        systemImage: selected.contains(host) ? "checkmark.circle.fill" : "circle"
+                    )
+                }
+            }
+        } label: {
+            Text(selected.isEmpty ? "Any source" : "\(selected.count) selected").font(.caption)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+    }
+
     private func fitScoreChip(_ value: Int?, label: String) -> some View {
         let active = filterState.minFitScore == value
-        return Button { filterState.minFitScore = active ? nil : value } label: {
+        return Button {
+            filterState.minFitScore = active ? nil : value
+            if filterState.minFitScore != nil { filterState.unscoredOnly = false }
+        } label: {
             Text(label).font(.caption)
                 .padding(.horizontal, 9).padding(.vertical, 4)
                 .background(active ? Color.accentColor : Color.secondary.opacity(0.1))
@@ -894,9 +959,10 @@ struct JobsView: View {
             guard JobFilterRules.matchesRemote(job.remoteType, selected: filterState.remoteFilter) else {
                 return false
             }
-            if let minFit = filterState.minFitScore {
-                guard (job.fitScore ?? 0) >= minFit else { return false }
-            }
+            guard JobFilterRules.matchesFitScore(
+                fitScore: job.fitScore, minimum: filterState.minFitScore,
+                unscoredOnly: filterState.unscoredOnly
+            ) else { return false }
             if let minRating = filterState.minRating {
                 guard (job.rating ?? 0) >= minRating else { return false }
             }
@@ -918,6 +984,10 @@ struct JobsView: View {
                 meetsCriteria: job.meetsCriteria, remoteType: job.remoteType,
                 wanted: filterState.criteriaBucket
             ) else { return false }
+            guard JobFilterRules.matchesSource(
+                host: job.captureHost, selected: filterState.sourceHosts
+            ) else { return false }
+            if filterState.unreadOnly { guard job.unread else { return false } }
             // Data quality — computed ONLY when the filter is on: QualityChecker faults each job's
             // Capture when the byte-count caches are absent (131 of 547 jobs today), which is exactly
             // the per-keystroke cost TASK-610 removed from the search path.

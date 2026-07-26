@@ -28,18 +28,18 @@ struct JobsFilterState: Equatable, Hashable {
     var recentDays: Int?
     /// Session-only filter (not persisted to SavedSearch): extraction outcome.
     var extractionFilter: ExtractionStatus?
-    /// Session-only filter (not persisted to SavedSearch) on the stored location/remote criteria
-    /// verdict: nil = any, true = only jobs that meet it, false = only jobs that DON'T (TASK-464,
-    /// tri-state in TASK-649). The false case is the in-office review pile: `LocationCriteria` treats
-    /// an unknown/absent remote type as onsite, so with onsite disallowed those jobs land here.
-    var meetsCriteria: Bool?
+    /// Session-only filter (not persisted to SavedSearch) on the location/remote criteria verdict:
+    /// nil = any (TASK-464, bucketed in TASK-649). "Not stated" is split out from "doesn't meet"
+    /// because `LocationCriteria` scores a silent posting as onsite — so without the split, postings
+    /// that simply never mention an arrangement read as confirmed rejections.
+    var criteriaBucket: JobFilterRules.CriteriaBucket?
     /// TASK-630: show only applied-funnel jobs that still need referral outreach.
     var needsReferralOutreach: Bool = false
 
     var hasActiveFilters: Bool {
         statusFilter != nil || remoteFilter != nil || !searchText.isEmpty
             || minFitScore != nil || minRating != nil || minSalary != nil || recentDays != nil
-            || extractionFilter != nil || meetsCriteria != nil || needsReferralOutreach
+            || extractionFilter != nil || criteriaBucket != nil || needsReferralOutreach
     }
 
     var activeFilterCount: Int {
@@ -52,7 +52,7 @@ struct JobsFilterState: Equatable, Hashable {
             minSalary != nil,
             recentDays != nil,
             extractionFilter != nil,
-            meetsCriteria != nil,
+            criteriaBucket != nil,
             needsReferralOutreach
         ]
         .count(where: { $0 })

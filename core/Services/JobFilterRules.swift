@@ -14,15 +14,38 @@ public enum JobFilterRules {
         return selected.contains(remoteType ?? .unknown)
     }
 
-    /// Whether a job matches the tri-state location-criteria filter: `wanted == nil` means "any",
-    /// otherwise the job's stored verdict must equal it.
+    /// How a job reads against the configured location/remote criteria.
     ///
-    /// A job whose verdict was never computed (`stored == nil` — e.g. extraction failed) matches
-    /// neither "Meets" nor "Doesn't meet". Treating unknown as "doesn't meet" would quietly sweep
-    /// un-extracted jobs into a review pile the user may act on, which is a different claim than the
-    /// data supports.
-    public static func matchesCriteria(stored: Bool?, wanted: Bool?) -> Bool {
+    /// The stored `meetsCriteria` is a Bool, which collapses two very different failures: a posting
+    /// that *states* an arrangement you disallow, and one that says nothing at all. `LocationCriteria`
+    /// scores an unknown/absent remote type as onsite, so silent postings are stored as `false` —
+    /// which reads as "rejected" when the truth is "unknown". Splitting them here needs no schema
+    /// change or re-extraction, because the distinction is already in `remoteType`.
+    public enum CriteriaBucket: String, CaseIterable, Sendable {
+        /// Passes the configured criteria.
+        case meets
+        /// Fails only because the posting never stated an arrangement — worth a look, not a verdict.
+        case notStated
+        /// Fails on a stated arrangement/location the user disallows.
+        case doesNotMeet
+    }
+
+    /// Classify a job. Returns nil when the verdict was never computed (extraction failed), so those
+    /// jobs match no bucket rather than being lumped in with rejects.
+    public static func criteriaBucket(meetsCriteria: Bool?, remoteType: RemoteType?) -> CriteriaBucket? {
+        guard let meetsCriteria else { return nil }
+        if meetsCriteria { return .meets }
+        return switch remoteType {
+        case .unknown, .none: .notStated
+        case .remote, .hybrid, .onsite: .doesNotMeet
+        }
+    }
+
+    /// Whether a job matches the selected bucket (`wanted == nil` means "any").
+    public static func matchesCriteria(
+        meetsCriteria: Bool?, remoteType: RemoteType?, wanted: CriteriaBucket?
+    ) -> Bool {
         guard let wanted else { return true }
-        return stored == wanted
+        return criteriaBucket(meetsCriteria: meetsCriteria, remoteType: remoteType) == wanted
     }
 }

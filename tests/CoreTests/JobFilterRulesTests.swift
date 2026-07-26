@@ -26,50 +26,81 @@ final class JobFilterRulesTests: XCTestCase {
         XCTAssertTrue(JobFilterRules.matchesRemote(.unknown, selected: [.unknown]))
     }
 
-    // MARK: - Location criteria (tri-state)
+    // MARK: - Location criteria buckets
 
     func testCriteriaAnyMatchesEverything() {
         for stored: Bool? in [true, false, nil] {
-            XCTAssertTrue(JobFilterRules.matchesCriteria(stored: stored, wanted: nil))
+            XCTAssertTrue(JobFilterRules.matchesCriteria(
+                meetsCriteria: stored, remoteType: .remote, wanted: nil
+            ))
         }
     }
 
-    func testCriteriaMeetsAndDoesNotMeetArePartitioned() {
-        XCTAssertTrue(JobFilterRules.matchesCriteria(stored: true, wanted: true))
-        XCTAssertFalse(JobFilterRules.matchesCriteria(stored: false, wanted: true))
-        XCTAssertTrue(JobFilterRules.matchesCriteria(stored: false, wanted: false))
-        XCTAssertFalse(JobFilterRules.matchesCriteria(stored: true, wanted: false))
+    func testMeetsBucket() {
+        XCTAssertEqual(
+            JobFilterRules.criteriaBucket(meetsCriteria: true, remoteType: .remote), .meets
+        )
     }
 
-    /// A job whose verdict was never computed (extraction failed) must not be swept into the
-    /// "doesn't meet" review pile — that would assert something the data doesn't support.
-    func testUncomputedVerdictMatchesNeitherSide() {
-        XCTAssertFalse(JobFilterRules.matchesCriteria(stored: nil, wanted: true))
-        XCTAssertFalse(JobFilterRules.matchesCriteria(stored: nil, wanted: false))
+    /// The job-443 case: extraction succeeded but the posting states no location or arrangement.
+    /// LocationCriteria scores that as onsite, so it's stored `false` — but calling it a confirmed
+    /// rejection is wrong. It must land in its own bucket.
+    func testSilentPostingIsNotStatedRatherThanRejected() {
+        for type: RemoteType? in [.unknown, nil] {
+            XCTAssertEqual(
+                JobFilterRules.criteriaBucket(meetsCriteria: false, remoteType: type), .notStated,
+                String(describing: type)
+            )
+            XCTAssertFalse(
+                JobFilterRules.matchesCriteria(meetsCriteria: false, remoteType: type, wanted: .doesNotMeet),
+                "a silent posting must not appear under Doesn't meet"
+            )
+            XCTAssertTrue(
+                JobFilterRules.matchesCriteria(meetsCriteria: false, remoteType: type, wanted: .notStated)
+            )
+        }
+    }
+
+    /// A posting that actually states an arrangement the user disallows is a real rejection.
+    func testStatedArrangementIsARealRejection() {
+        for type in [RemoteType.onsite, .hybrid] {
+            XCTAssertEqual(
+                JobFilterRules.criteriaBucket(meetsCriteria: false, remoteType: type), .doesNotMeet,
+                type.rawValue
+            )
+        }
+    }
+
+    /// A job whose verdict was never computed (extraction failed) belongs to no bucket.
+    func testUncomputedVerdictMatchesNoBucket() {
+        XCTAssertNil(JobFilterRules.criteriaBucket(meetsCriteria: nil, remoteType: .unknown))
+        for wanted in JobFilterRules.CriteriaBucket.allCases {
+            XCTAssertFalse(JobFilterRules.matchesCriteria(
+                meetsCriteria: nil, remoteType: .unknown, wanted: wanted
+            ))
+        }
     }
 
     // MARK: - The live triage case
 
-    /// End-to-end shape of the user's workflow: with onsite disallowed, `LocationCriteria` marks an
-    /// unknown/absent remote type as not meeting criteria, and the "Doesn't meet" filter selects it.
-    func testUnknownRemoteTypeLandsInTheDoesNotMeetPile() {
-        for type: RemoteType? in [.unknown, nil, .onsite] {
-            let meets = LocationCriteria.meets(
-                remoteType: type, location: "San Francisco, CA", preferredLocations: "",
-                allowRemote: true, allowHybrid: false, allowOnsite: false, filterEnabled: true
-            )
-            XCTAssertFalse(meets, "\(String(describing: type)) should not meet remote-only criteria")
-            XCTAssertTrue(
-                JobFilterRules.matchesCriteria(stored: meets, wanted: false),
-                "and must be selectable via the Doesn't-meet filter"
-            )
-        }
-        // A genuinely remote job stays out of that pile.
+    /// End-to-end: with onsite disallowed, a silent posting is stored as not meeting criteria and is
+    /// reachable only under "Not stated" — so it can be reviewed without being labelled a rejection.
+    func testUnknownRemoteTypeIsReviewableWithoutBeingCalledARejection() {
+        let meets = LocationCriteria.meets(
+            remoteType: .unknown, location: nil, preferredLocations: "",
+            allowRemote: true, allowHybrid: false, allowOnsite: false, filterEnabled: true
+        )
+        XCTAssertFalse(meets)
+        XCTAssertEqual(
+            JobFilterRules.criteriaBucket(meetsCriteria: meets, remoteType: .unknown), .notStated
+        )
+        // A genuinely remote job still passes.
         let remoteMeets = LocationCriteria.meets(
             remoteType: .remote, location: "Remote - USA", preferredLocations: "",
             allowRemote: true, allowHybrid: false, allowOnsite: false, filterEnabled: true
         )
-        XCTAssertTrue(remoteMeets)
-        XCTAssertFalse(JobFilterRules.matchesCriteria(stored: remoteMeets, wanted: false))
+        XCTAssertEqual(
+            JobFilterRules.criteriaBucket(meetsCriteria: remoteMeets, remoteType: .remote), .meets
+        )
     }
 }

@@ -570,8 +570,9 @@ struct JobsView: View {
                     filterSection("Location criteria") {
                         HStack(spacing: 6) {
                             meetsCriteriaChip(nil, label: "Any")
-                            meetsCriteriaChip(true, label: "Meets")
-                            meetsCriteriaChip(false, label: "Doesn\'t meet")
+                            meetsCriteriaChip(.meets, label: "Meets")
+                            meetsCriteriaChip(.notStated, label: "Not stated")
+                            meetsCriteriaChip(.doesNotMeet, label: "Doesn't meet")
                         }
                     }
                     Divider()
@@ -627,9 +628,9 @@ struct JobsView: View {
     /// `LocationCriteria` counts an unknown/absent remote type as onsite, so with onsite disallowed
     /// those postings land here. It's a heuristic for *review*, not a verdict: a posting that never
     /// states its arrangement may still be remote-friendly, so nothing is archived automatically.
-    private func meetsCriteriaChip(_ value: Bool?, label: String) -> some View {
-        let active = filterState.meetsCriteria == value
-        return Button { filterState.meetsCriteria = value } label: {
+    private func meetsCriteriaChip(_ value: JobFilterRules.CriteriaBucket?, label: String) -> some View {
+        let active = filterState.criteriaBucket == value
+        return Button { filterState.criteriaBucket = value } label: {
             Text(label).font(.caption)
                 .padding(.horizontal, 9).padding(.vertical, 4)
                 .background(active ? Color.accentColor : Color.secondary.opacity(0.1))
@@ -886,12 +887,13 @@ struct JobsView: View {
             if let extraction = filterState.extractionFilter {
                 guard job.extractionStatus == extraction else { return false }
             }
-            // Location/remote criteria verdict (TASK-464; tri-state in TASK-649). A job whose verdict
-            // was never computed (nil — e.g. extraction failed) matches neither Meets nor Doesn\'t,
-            // rather than being silently lumped in with the rejects.
-            if let wanted = filterState.meetsCriteria {
-                guard job.meetsCriteria == wanted else { return false }
-            }
+            // Location/remote criteria verdict (TASK-464; bucketed in TASK-649). A job whose verdict
+            // was never computed (extraction failed) matches no bucket, rather than being silently
+            // lumped in with the rejects.
+            guard JobFilterRules.matchesCriteria(
+                meetsCriteria: job.meetsCriteria, remoteType: job.remoteType,
+                wanted: filterState.criteriaBucket
+            ) else { return false }
             // TASK-630: only funnel jobs that still need referral outreach.
             if filterState.needsReferralOutreach {
                 let summary = Self.referralSummary(for: job, attempts: referralAttemptsByJob[job.id] ?? [])

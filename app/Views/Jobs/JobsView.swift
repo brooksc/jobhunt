@@ -80,6 +80,15 @@ struct JobsView: View {
             .accessibilityIdentifier("content.jobs")
     }
 
+    /// True when every selected row is already Interested, so offering to mark them Interested is a
+    /// no-op. Empty selection reads false so nothing is hidden spuriously.
+    private var allSelectedAreInterested: Bool {
+        guard !selectedJobIDs.isEmpty else { return false }
+        let selected = allJobs.filter { selectedJobIDs.contains($0.id) }
+        guard !selected.isEmpty else { return false }
+        return selected.allSatisfy { $0.status == .pursuing }
+    }
+
     private var jobListWithModifiers: some View {
         jobListWithFilterObservers
             .searchable(text: $searchText, tokens: $searchTokens, prompt: "Search jobs…") { token in
@@ -306,12 +315,17 @@ struct JobsView: View {
                     } label: {
                         Label("Re-run AI on \(selectedJobIDs.count) Selected", systemImage: "arrow.clockwise")
                     }
-                    Button {
-                        let ids = Array(selectedJobIDs)
-                        setStatusJobs(.pursuing, ids)
-                        selectedJobIDs = []
-                    } label: {
-                        Label("Mark Selected as Interested", systemImage: "bookmark")
+                    // Pointless when every selected job is already Interested — which is always the
+                    // case on the Interested view, and also when the user hand-picks interested rows
+                    // elsewhere.
+                    if !allSelectedAreInterested {
+                        Button {
+                            let ids = Array(selectedJobIDs)
+                            setStatusJobs(.pursuing, ids)
+                            selectedJobIDs = []
+                        } label: {
+                            Label("Mark Selected as Interested", systemImage: "bookmark")
+                        }
                     }
                     Button {
                         let ids = Array(selectedJobIDs)

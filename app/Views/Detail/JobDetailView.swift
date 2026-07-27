@@ -1291,6 +1291,7 @@ struct FitTabView: View {
                                     fitScore: fs,
                                     isBest: scoredCount >= 2 && fs.fitScore != nil
                                         && fs.persistentModelID == bestScore?.persistentModelID,
+                                    isPreviousVersion: fs.reflectsPreviousResumeVersion,
                                     isOpen: openResumeName == (fs.resume?.name ?? fs.model ?? ""),
                                     isRescoring: isBusy,
                                     onToggle: {
@@ -1386,13 +1387,17 @@ struct FitTabView: View {
 private struct ResumeScoreCard: View {
     let fitScore: JobFitScore
     let isBest: Bool
+    /// The résumé has been edited since this score was computed — the score is real work and still
+    /// shown, just labelled so it isn't mistaken for current.
+    let isPreviousVersion: Bool
     let isOpen: Bool
     let isRescoring: Bool
     let onToggle: () -> Void
     let onRescore: () -> Void
 
     private var resumeName: String {
-        fitScore.resume?.name ?? fitScore.model ?? "Resume"
+        let base = fitScore.resume?.name ?? fitScore.model ?? "Resume"
+        return isPreviousVersion ? "\(base) (previous version)" : base
     }
 
     /// Cached (TASK-611). FitScoreProjection.init parses fitScoreJSON; it was rebuilt up to 4× per

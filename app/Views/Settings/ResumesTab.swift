@@ -12,6 +12,17 @@ struct ResumesTab: View {
     @State private var showingAddSheet = false
     @State private var editingResume: Resume?
     @State private var deleteCandidate: Resume?
+    /// Set after a résumé edit that leaves scores describing the previous text.
+    @State private var pendingRescore: PendingRescore?
+
+    private struct PendingRescore: Identifiable {
+        let resumeID: String
+        let jobCount: Int
+        var id: String {
+            resumeID
+        }
+    }
+
     @State private var showingDeleteAlert = false
     @State private var saveError: String?
 
@@ -106,17 +117,44 @@ struct ResumesTab: View {
                 }
             })
         }
+        .confirmationDialog(
+            "Re-score \(pendingRescore?.jobCount ?? 0) job\(pendingRescore?.jobCount == 1 ? "" : "s")?",
+            isPresented: Binding(get: { pendingRescore != nil }, set: { if !$0 { pendingRescore = nil } }),
+            titleVisibility: .visible,
+            presenting: pendingRescore
+        ) { target in
+            Button("Re-score Now") {
+                let ids = target.resumeID
+                let queue = appServices.queueActor
+                let toast = appServices.toastStore
+                pendingRescore = nil
+                Task {
+                    do {
+                        let jobIDs = try await appServices.backgroundStore.staleFitJobIDs(forResumeID: ids)
+                        try await queue.enqueueFit(jobIDs: jobIDs, resumeID: ids)
+                        toast.show("Re-scoring \(jobIDs.count) job\(jobIDs.count == 1 ? "" : "s")…")
+                    } catch {
+                        toast.show("Couldn't queue re-scoring: \(error.localizedDescription)", isError: true)
+                    }
+                }
+            }
+            Button("Keep Existing Scores", role: .cancel) { pendingRescore = nil }
+        } message: { target in
+            Text(
+                "Their fit scores were calculated against the previous version of this résumé. "
+                    + "Keeping them costs nothing and they'll be labelled “previous version”; "
+                    + "re-scoring \(target.jobCount) job\(target.jobCount == 1 ? "" : "s") uses your AI provider."
+            )
+        }
         .sheet(item: $editingResume) { resume in
             ResumeEditSheet(resume: resume, onSave: { name, text in
                 let id = resume.id
-                // Editing the text invalidates this résumé's fit scores — tell the user instead of
-                // letting them silently vanish.
-                let cleared = try await appServices.resumeService.updateResume(id: id, name: name, text: text)
-                if cleared > 0 {
-                    appServices.toastStore.show(
-                        "Résumé updated — cleared \(cleared) fit score\(cleared == 1 ? "" : "s"). " +
-                            "Re-score jobs to update."
-                    )
+                // Editing the text no longer deletes this résumé's scores — they describe the previous
+                // version and are shown as such. Offer a re-score rather than spending the user's money
+                // on hundreds of LLM calls they didn't ask for.
+                let stale = try await appServices.resumeService.updateResume(id: id, name: name, text: text)
+                if stale > 0 {
+                    pendingRescore = PendingRescore(resumeID: id, jobCount: stale)
                 }
             })
         }

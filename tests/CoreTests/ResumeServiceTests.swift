@@ -56,13 +56,16 @@ final class ResumeServiceTests: XCTestCase {
         XCTAssertEqual(updated.charCount, "New text content".count)
     }
 
-    func testUpdateResumeText_deletesFitScores() async throws {
+    /// Behaviour change: editing a résumé used to DELETE every score computed against it. That
+    /// destroyed real, paid LLM work over a one-line tweak, with no way back. Scores are now kept and
+    /// marked as describing the previous version; the caller is told how many jobs a re-score covers
+    /// so the user can decide whether to spend the money.
+    func testUpdateResumeText_keepsFitScoresAndReportsStaleCount() async throws {
         try await service.addResume(name: "R", text: "Original resume text")
 
         let ctx = ModelContext(container)
         let resume = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Resume>()).first)
 
-        // Seed a job with a fit score linked to this resume
         let job = Job(jobNumber: 42, title: "SWE")
         job.fitScore = 80
         job.fitStatus = .succeeded
@@ -70,17 +73,19 @@ final class ResumeServiceTests: XCTestCase {
         let score = JobFitScore(fitScore: 80, fitStatus: .succeeded)
         score.job = job
         score.resume = resume
+        score.resumeTextHash = ResumeFingerprint.hash(resume.text)
         ctx.insert(score)
         try ctx.save()
 
-        try await service.updateResume(id: resume.id, name: "R", text: "Changed resume text")
+        let stale = try await service.updateResume(id: resume.id, name: "R", text: "Changed resume text")
 
         let scores = try ctx.fetch(FetchDescriptor<JobFitScore>())
-        XCTAssertTrue(scores.isEmpty, "Fit scores should be deleted when resume text changes")
+        XCTAssertEqual(scores.count, 1, "the score must survive the edit")
+        XCTAssertEqual(scores.first?.fitScore, 80, "and keep its value")
+        XCTAssertEqual(stale, 1, "the caller learns how many jobs a re-score would cover")
 
         let jobs = try ctx.fetch(FetchDescriptor<Job>())
-        XCTAssertNil(jobs.first?.fitScore, "Job.fitScore should be cleared after score deletion")
-        XCTAssertEqual(jobs.first?.fitStatus, FitStatus.none, "Job.fitStatus should be reset to .none")
+        XCTAssertEqual(jobs.first?.fitScore, 80, "the job mirror keeps showing the previous-version score")
     }
 
     func testUpdateResumeNameOnly_doesNotDeleteFitScores() async throws {

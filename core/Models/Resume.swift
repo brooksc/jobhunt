@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import SwiftData
 
@@ -37,5 +38,15 @@ public final class Resume {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         fitScores = []
+    }
+}
+
+public enum ResumeFingerprint {
+    /// Stable content hash used to tell whether a fit score still reflects the résumé's current text.
+    /// Whitespace-normalised so a reflow or trailing newline isn't mistaken for a substantive edit.
+    public static func hash(_ text: String) -> String {
+        let normalized = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        let digest = SHA256.hash(data: Data(normalized.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 }

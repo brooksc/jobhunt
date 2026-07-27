@@ -50,8 +50,11 @@ public actor ResumeService {
             r.updatedAt = Date()
         }
 
+        // Editing a résumé no longer deletes its fit scores. Those scores are still real work — they
+        // simply describe the PREVIOUS text, so they're marked stale for display and the caller decides
+        // whether to spend money re-scoring. Returns how many jobs a re-score would cover.
         guard textChanged else { return 0 }
-        return try await store.deleteFitScores(forResumeID: id)
+        return try await store.staleFitJobIDs(forResumeID: id).count
     }
 
     // MARK: - Delete

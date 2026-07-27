@@ -366,7 +366,9 @@ public actor BackgroundStore {
         record.model = model
         record.scoredAt = scoredAt
         record.updatedAt = Date()
-        _ = resume // resume captured for the record relationship above
+        // Record WHICH résumé text produced this score, so a later edit can mark it stale instead of
+        // deleting it.
+        record.resumeTextHash = resume.map { ResumeFingerprint.hash($0.text) }
 
         // Job-level mirror reflects the BEST score across all resumes (Electron parity).
         recomputeJobFitSummary(job)
@@ -470,6 +472,18 @@ public actor BackgroundStore {
     }
 
     /// Delete all JobFitScore records for a resume and reset denormalized fit fields on affected jobs.
+    /// Jobs whose score against this résumé no longer reflects its current text — i.e. what a
+    /// re-score would cover. Non-destructive: the old scores stay, marked stale for display.
+    public func staleFitJobIDs(forResumeID resumeID: String) throws -> [String] {
+        let all = try modelContext.fetch(FetchDescriptor<JobFitScore>())
+        let resumes = try modelContext.fetch(FetchDescriptor<Resume>(predicate: #Predicate { $0.id == resumeID }))
+        guard let resume = resumes.first else { return [] }
+        let current = ResumeFingerprint.hash(resume.text)
+        return all
+            .filter { $0.resume?.id == resumeID && $0.fitStatus == .succeeded && $0.resumeTextHash != current }
+            .compactMap { $0.job?.id }
+    }
+
     /// Called when resume text changes so stale scores are not shown as current.
     /// Returns how many fit scores were deleted (so callers can tell the user what was cleared).
     @discardableResult

@@ -606,6 +606,42 @@ private struct DetailFooter: View {
 
 // MARK: - Overview Tab
 
+/// Split out of `OverviewTabView`'s body to stay within the type-length limit. Same file because the
+/// stored properties it reads (`job`, `allJobs`) are private to it.
+extension OverviewTabView {
+    /// Other still-open roles at this company (+ any past rejection), ranked by fit so the reader can
+    /// tell which of a company's postings is the better bet before applying.
+    private var companyContext: CompanyContext.Result {
+        func role(_ j: Job) -> CompanyContext.Role {
+            CompanyContext.Role(
+                jobID: j.id, jobNumber: j.jobNumber, title: j.displayTitle,
+                status: j.status, fitScore: j.fitScore
+            )
+        }
+        return CompanyContext.build(
+            viewed: role(job),
+            company: job.company,
+            among: allJobs.map { (role($0), $0.company) }
+        )
+    }
+
+    /// Prior applications at the same company — only surfaced while the job is Interested (TASK-615).
+    private var priorApplicationMatches: [PriorApplications.Match] {
+        guard job.status == .pursuing else { return [] }
+        let viewed = PriorApplications.JobInput(
+            jobID: job.id, jobNumber: job.jobNumber, company: job.company, title: job.title,
+            currentStatus: job.status.rawValue, appliedAt: job.appliedAt
+        )
+        let others = allJobs.map {
+            PriorApplications.JobInput(
+                jobID: $0.id, jobNumber: $0.jobNumber, company: $0.company, title: $0.title,
+                currentStatus: $0.status.rawValue, appliedAt: $0.appliedAt
+            )
+        }
+        return PriorApplications.priorApplications(for: viewed, among: others)
+    }
+}
+
 struct OverviewTabView: View {
     @Environment(AppServices.self) private var appServices
     let job: Job
@@ -652,22 +688,6 @@ struct OverviewTabView: View {
         projection?.niceToHaves ?? []
     }
 
-    /// Prior applications at the same company — only surfaced while the job is Interested (TASK-615).
-    private var priorApplicationMatches: [PriorApplications.Match] {
-        guard job.status == .pursuing else { return [] }
-        let viewed = PriorApplications.JobInput(
-            jobID: job.id, jobNumber: job.jobNumber, company: job.company, title: job.title,
-            currentStatus: job.status.rawValue, appliedAt: job.appliedAt
-        )
-        let others = allJobs.map {
-            PriorApplications.JobInput(
-                jobID: $0.id, jobNumber: $0.jobNumber, company: $0.company, title: $0.title,
-                currentStatus: $0.status.rawValue, appliedAt: $0.appliedAt
-            )
-        }
-        return PriorApplications.priorApplications(for: viewed, among: others)
-    }
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -696,6 +716,15 @@ struct OverviewTabView: View {
                 MilestoneSection(job: job)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
+
+                // Company context — one subtle line, directly above the pay range so it's read before
+                // the decision to apply. Renders nothing when the company appears only once.
+                CompanyContextLine(
+                    company: job.displayCompany ?? "this company",
+                    context: companyContext,
+                    onOpen: { id in router.selectJob(id: id) }
+                )
+                .padding(.horizontal, 14)
 
                 // Compensation block
                 if job.salaryMin != nil || job.salaryMax != nil || job.salaryNote != nil {

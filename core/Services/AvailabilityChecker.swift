@@ -550,6 +550,23 @@ public enum AvailabilityChecker {
     /// that trips LinkedIn's rate limit; coverage rotates across runs (eventual, not per-run — TASK-643).
     static let maxLinkedInPerRun = 12
 
+    /// The window of LinkedIn postings to check this run: a stable order rotated by a caller-persisted
+    /// cursor.
+    ///
+    /// This replaced a random `shuffle()`. Shuffling samples with replacement across runs, so with ~100
+    /// LinkedIn jobs at 12 per run some postings were re-checked repeatedly while others went many runs
+    /// untouched — a removed posting could sit undetected indefinitely (job #132). Rotating a stable
+    /// order visits every posting exactly once per ceil(count / cap) runs. Same request volume and
+    /// pacing, so the rate-limit protection of TASK-643 is unchanged.
+    static func linkedInSlice<T>(_ specs: [T], offset: Int, id: (T) -> String) -> [T] {
+        guard !specs.isEmpty else { return [] }
+        let ordered = specs.sorted { id($0) < id($1) } // stable across runs, unlike shuffle
+        guard ordered.count > maxLinkedInPerRun else { return ordered }
+        let start = ((offset % ordered.count) + ordered.count) % ordered.count // tolerate negatives
+        let wrapped = ordered[start...] + ordered[..<start]
+        return Array(wrapped.prefix(maxLinkedInPerRun))
+    }
+
     /// Race-free monotonic counter so the two interleaved availability passes report one progress stream.
     private actor CheckCounter {
         private var count = 0
@@ -687,9 +704,27 @@ public enum AvailabilityChecker {
         return results
     }
 
+    /// `findGoneJobs` with the LinkedIn rotation cursor read and advanced, so successive runs cover
+    /// different postings. Every caller should use this rather than `findGoneJobs` directly — if the
+    /// cursor never advances, the same LinkedIn window is re-checked forever.
+    public static func findGoneJobsRotating(
+        _ jobs: [Job],
+        settings: SettingsStore,
+        session: URLSession = .shared,
+        onProgress: (@Sendable (_ checked: Int, _ total: Int) async -> Void)? = nil
+    ) async -> [GoneJobResult] {
+        let offset = settings.int(forKey: SettingsKey.linkedInRotationOffset)
+        let results = await findGoneJobs(jobs, session: session, linkedInOffset: offset, onProgress: onProgress)
+        // Advance by the cap regardless of how many LinkedIn jobs existed this run; the slice applies
+        // modulo, so an over-large cursor simply wraps.
+        settings.setInt(offset &+ maxLinkedInPerRun, forKey: SettingsKey.linkedInRotationOffset)
+        return results
+    }
+
     public static func findGoneJobs(
         _ jobs: [Job],
         session: URLSession = .shared,
+        linkedInOffset: Int = 0,
         onProgress: (@Sendable (_ checked: Int, _ total: Int) async -> Void)? = nil
     ) async -> [GoneJobResult] {
         // Interested (.pursuing) AND Applied jobs are checked: a role you applied to can be pulled
@@ -722,9 +757,8 @@ public enum AvailabilityChecker {
             (spec.url.host?.lowercased() ?? "").hasSuffix("linkedin.com")
         }
         let concurrentSpecs = specs.filter { !isLinkedIn($0) }
-        var linkedInSpecs = specs.filter(isLinkedIn)
-        linkedInSpecs.shuffle()
-        let linkedInThisRun = Array(linkedInSpecs.prefix(maxLinkedInPerRun))
+        let linkedInSpecs = specs.filter(isLinkedIn)
+        let linkedInThisRun = linkedInSlice(linkedInSpecs, offset: linkedInOffset, id: \.id)
         let total = concurrentSpecs.count + linkedInThisRun.count
 
         let counter = CheckCounter()
@@ -1014,7 +1048,7 @@ public enum AvailabilityChecker {
             return nil
         }
 
-        let found = await findGoneJobs(jobs, session: session)
+        let found = await findGoneJobsRotating(jobs, settings: settings, session: session)
         await onChecked?(Date())
         return found
     }

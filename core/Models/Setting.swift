@@ -42,6 +42,9 @@ public enum SettingsKey {
     public static let availabilityAutoCheckEnabled = "availability_auto_check_enabled"
     public static let availabilityAutoCheckIntervalDays = "availability_auto_check_interval_days"
     public static let availabilityStaleDays = "availability_stale_days"
+    /// Rotation cursor for LinkedIn availability checks. LinkedIn is capped per run, so this advances
+    /// each run to guarantee every posting is eventually checked instead of relying on random sampling.
+    public static let linkedInRotationOffset = "linkedin_rotation_offset"
     public static let availabilityLastAutoCheckAt = "availability_last_auto_check_at"
     /// ISO-8601 timestamp of the last "jobs may be gone" macOS notification, used to rate-limit it to
     /// at most once per 24h so a long foreground session can't spam the user.

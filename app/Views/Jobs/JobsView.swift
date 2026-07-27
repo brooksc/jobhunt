@@ -1259,7 +1259,9 @@ struct JobsView: View {
 
         let model = TaskProgressModel(title: "Checking availability", total: eligible.count)
         let task = Task {
-            await AvailabilityChecker.findGoneJobs(eligible) { checked, total in
+            await AvailabilityChecker.findGoneJobsRotating(
+                eligible, settings: appServices.settings
+            ) { checked, total in
                 await MainActor.run { model.current = checked; model.total = total }
             }
         }

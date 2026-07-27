@@ -283,7 +283,7 @@ struct JobsSettingsTab: View {
         }
 
         availabilityCheckMessage = "Checking \(eligible.count) jobs…"
-        let found = await AvailabilityChecker.findGoneJobs(eligible)
+        let found = await AvailabilityChecker.findGoneJobsRotating(eligible, settings: settings)
 
         let now = ISO8601DateFormatter().string(from: Date())
         settings.set(now, forKey: SettingsKey.availabilityLastAutoCheckAt)

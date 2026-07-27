@@ -251,6 +251,69 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return false;
 });
 
+
+// --- Greenhouse Boards API enrichment -----------------------------------------------------------
+// Greenhouse SPA boards render their JSON-LD client-side, after the capture snapshot is taken, so the
+// posting body/salary/location are missing from the raw capture. The public Boards API has them.
+//
+// This MUST run here in the service worker, not in the injected capture script: that script is
+// injected with world:"MAIN" (page context) so it can read page globals, which makes any fetch an
+// ordinary cross-origin request — and boards-api.greenhouse.io returns no Access-Control-Allow-Origin
+// header, so it was blocked by CORS on every capture and silently yielded nothing. The service worker
+// can make the request because the API host is declared in host_permissions.
+const GREENHOUSE_TIMEOUT_MS = 5000;
+
+// Regional boards exist (job-boards.eu.greenhouse.io), so allow an optional country subdomain.
+const GREENHOUSE_URL_RE = /(?:job-boards|boards)(?:\.[a-z]{2})?\.greenhouse\.io\/([^/?#]+)\/jobs\/(\d+)/;
+
+async function fetchGreenhouseJobData(url) {
+  const match = String(url || "").match(GREENHOUSE_URL_RE);
+  if (!match) return null;
+  const [, board, jobId] = match;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GREENHOUSE_TIMEOUT_MS);
+  try {
+    const res = await fetch(`https://boards-api.greenhouse.io/v1/boards/${board}/jobs/${jobId}`, {
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const posting = { "@type": "JobPosting", title: data.title || null, description: data.content || "" };
+    if (data.location && data.location.name) {
+      posting.jobLocation = {
+        "@type": "Place",
+        address: { "@type": "PostalAddress", addressLocality: data.location.name },
+      };
+    }
+    if (data.absolute_url) posting.url = data.absolute_url;
+    return { posting, rawTitle: data.title || "" };
+  } catch (_err) {
+    clearTimeout(timer);
+    return null; // enrichment is best-effort; a capture must never fail because of it
+  }
+}
+
+/// Merge Greenhouse API data into a capture payload, keeping `structured_data` and
+/// `structured_data_json` in sync (the server prefers the typed field, TASK-437/442).
+async function enrichWithGreenhouse(payload) {
+  const gh = await fetchGreenhouseJobData(payload.url);
+  if (!gh) return payload;
+  const structured = Array.isArray(payload.structured_data) ? [...payload.structured_data] : [];
+  structured.push(gh.posting);
+  const enriched = {
+    ...payload,
+    structured_data: structured,
+    structured_data_json: JSON.stringify(structured),
+  };
+  // Greenhouse titles the page "Job Application for …"; the API carries the real job title.
+  if (gh.rawTitle && /^Job Application\b/i.test(String(payload.page_title || ""))) {
+    enriched.page_title = gh.rawTitle;
+  }
+  return enriched;
+}
+
 async function captureCurrentTab(tab, userNote = "") {
   if (!tab.id) {
     return;
@@ -286,7 +349,7 @@ async function captureTabPayload(tabId, userNote = "") {
     world: "MAIN",
     func: () => globalThis.jobhuntCapture.capturePage(window, document),
   });
-  const payload = { ...dataInjection.result, user_note: userNote };
+  const payload = await enrichWithGreenhouse({ ...dataInjection.result, user_note: userNote });
 
   // Step 2: show the preflight dialog in the tab. If the tab closes during the countdown
   // the executeScript call will throw — we catch that and default to saving the capture.

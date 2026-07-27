@@ -281,6 +281,15 @@ struct JobInspectorView: View {
         )
     }
 
+    /// True when every selected row is already Interested, so offering to mark them Interested is a
+    /// no-op. Mirrors the same check in the Jobs Actions menu.
+    private var allSelectedAreInterested: Bool {
+        guard !selectedJobIDs.isEmpty else { return false }
+        let selected = allJobs.filter { selectedJobIDs.contains($0.id) }
+        guard !selected.isEmpty else { return false }
+        return selected.allSatisfy { $0.status == .pursuing }
+    }
+
     private var multiSelectionSummary: some View {
         VStack(spacing: 20) {
             Image(systemName: "checkmark.circle.fill")
@@ -297,20 +306,25 @@ struct JobInspectorView: View {
             Divider().frame(maxWidth: 200)
 
             VStack(spacing: 10) {
-                Button {
-                    let ids = Array(selectedJobIDs)
-                    Task {
-                        do { try await jobService?.setStatusBulk(.pursuing, jobIDs: ids) } catch {
-                            appServices.toastStore.show(
-                                "Couldn't update \(ids.count) job(s): \(error.localizedDescription)",
-                                isError: true
-                            )
+                // Hidden when every selected job is already Interested — the same rule as the Actions
+                // menu, so the two bulk-action surfaces agree.
+                if !allSelectedAreInterested {
+                    Button {
+                        let ids = Array(selectedJobIDs)
+                        Task {
+                            do { try await jobService?.setStatusBulk(.pursuing, jobIDs: ids) } catch {
+                                appServices.toastStore.show(
+                                    "Couldn't update \(ids.count) job(s): \(error.localizedDescription)",
+                                    isError: true
+                                )
+                            }
                         }
+                    } label: {
+                        Label("Mark \(selectedJobIDs.count) as Interested", systemImage: "bookmark")
+                            .frame(minWidth: 160)
                     }
-                } label: {
-                    Label("Mark \(selectedJobIDs.count) as Interested", systemImage: "bookmark").frame(minWidth: 160)
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
 
                 Button {
                     let ids = Array(selectedJobIDs)

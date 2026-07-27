@@ -391,41 +391,7 @@
   // Fetch from Greenhouse's public boards API and return a synthetic JSON-LD JobPosting.
   // Works for both job-boards.greenhouse.io (new React SPA, zero JSON-LD in DOM) and
   // the classic boards.greenhouse.io domain.
-  const GREENHOUSE_TIMEOUT_MS = 5000;
 
-  async function fetchGreenhouseJobData(url) {
-    const match = url.match(/(?:job-boards|boards)\.greenhouse\.io\/([^/?#]+)\/jobs\/(\d+)/);
-    if (!match) return null;
-    const [, board, jobId] = match;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), GREENHOUSE_TIMEOUT_MS);
-    try {
-      const res = await fetch(`https://boards-api.greenhouse.io/v1/boards/${board}/jobs/${jobId}`, {
-        headers: { Accept: 'application/json' },
-        signal: controller.signal
-      });
-      clearTimeout(timer);
-      if (!res.ok) return null;
-      const data = await res.json();
-      const posting = { '@type': 'JobPosting', title: data.title || null, description: data.content || '' };
-      if (data.location?.name) {
-        posting.jobLocation = { '@type': 'Place', address: { '@type': 'PostalAddress', addressLocality: data.location.name } };
-      }
-      // pay_input_ranges is available for postings that expose compensation publicly.
-      if (data.pay_input_ranges?.length) {
-        const r = data.pay_input_ranges[0];
-        posting.baseSalary = {
-          '@type': 'MonetaryAmount',
-          currency: r.currency_type || 'USD',
-          value: { '@type': 'QuantitativeValue', minValue: r.min_cents ? r.min_cents / 100 : null, maxValue: r.max_cents ? r.max_cents / 100 : null, unitText: 'YEAR' }
-        };
-      }
-      return { posting, rawTitle: data.title || null };
-    } catch (_) {
-      clearTimeout(timer);
-      return null;
-    }
-  }
 
   async function capturePage(win, doc) {
     // Remove any preflight dialog left over from a previous interrupted capture.
@@ -444,15 +410,10 @@
     // the structured data is rendered client-side after our capture runs. Fetch from the
     // public Boards API instead and inject a synthetic JSON-LD JobPosting so the
     // extraction pipeline gets the full description and salary.
-    const ghData = await fetchGreenhouseJobData(url);
-    if (ghData) {
-      structuredData.push(ghData.posting);
-      // The page title on job-boards.greenhouse.io is "Job Application for …" not the
-      // job title itself; the API returns the canonical job title.
-      if (ghData.rawTitle && /^Job Application\b/i.test(pageTitle)) {
-        pageTitle = ghData.rawTitle;
-      }
-    }
+    // NOTE: Greenhouse Boards API enrichment happens in the SERVICE WORKER, not here. This script is
+    // injected with world:"MAIN" (page context) so it can read page globals, which means a fetch to
+    // boards-api.greenhouse.io is an ordinary cross-origin request — and that API sends no
+    // Access-Control-Allow-Origin, so it was always blocked by CORS and silently produced nothing.
 
     // BambooHR career SPAs (*.bamboohr.com/careers/{id}) often leave document.title as
     // the generic "BambooHR" string even after the job content has rendered. Use the

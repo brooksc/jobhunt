@@ -251,12 +251,19 @@ private struct DetailHeader: View {
                 if let sal = salaryText { metaChip(sal).font(.caption.monospacedDigit()) }
                 if let emp = job.employmentType { metaChip(emp) }
                 // TASK-464: location/remote criteria pass/fail (only when computed).
-                if let meets = job.meetsCriteria {
+                // Same three-bucket vocabulary as the Jobs filter, so a posting that merely never
+                // stated its arrangement doesn't read as a rejection here while the filter files it
+                // under "Not stated".
+                if let bucket = JobFilterRules.criteriaBucket(
+                    meetsCriteria: job.meetsCriteria, remoteType: job.remoteType
+                ) {
                     Label(
-                        meets ? "Meets criteria" : "Outside criteria",
-                        systemImage: meets ? "checkmark.circle" : "xmark.circle"
+                        bucket.label,
+                        systemImage: bucket == .meets ? "checkmark.circle"
+                            : bucket == .notStated ? "questionmark.circle" : "xmark.circle"
                     )
-                    .foregroundStyle(meets ? Color.green : Color.orange)
+                    .foregroundStyle(bucket == .meets ? Color.green
+                        : bucket == .notStated ? Color.secondary : Color.orange)
                 }
             }
             .font(.caption)
@@ -2054,7 +2061,9 @@ private struct TimelineEventRow: View {
                     }
                     .padding(.top, 4)
                 } else if let note = event.note, !note.isEmpty {
-                    Text(note)
+                    // Stored notes embed the raw status token ("… to pursuing"); translate for display
+                    // only — DashboardMetrics.statusTarget parses the stored text.
+                    Text(StatusDisplay.humanizedNote(note))
                         .font(.caption)
                         .foregroundStyle(.primary)
                         .padding(.top, 4)

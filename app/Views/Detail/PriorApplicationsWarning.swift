@@ -32,7 +32,8 @@ struct PriorApplicationsWarning: View {
                                 Text("#\(number)").font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
                             }
                             Text(match.title ?? "Untitled").lineLimit(1)
-                            Text("· \(match.currentStatus.capitalized)").foregroundStyle(.secondary)
+                            Text("· \(StatusDisplay.label(forRawValue: match.currentStatus))")
+                                .foregroundStyle(.secondary)
                             if let applied = match.appliedAt {
                                 Text("· \(applied.formatted(date: .abbreviated, time: .omitted))")
                                     .foregroundStyle(.tertiary)

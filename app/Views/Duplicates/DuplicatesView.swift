@@ -568,7 +568,7 @@ private struct JobCompareColumn: View {
                 if let job {
                     compareRow(
                         field: "Status",
-                        value: job.status.rawValue.capitalized,
+                        value: job.status.displayName,
                         differs: job.status.rawValue != (other.status.lowercased())
                     )
                     compareRow(

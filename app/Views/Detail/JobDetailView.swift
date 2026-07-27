@@ -1243,7 +1243,9 @@ struct FitTabView: View {
     /// has no resume name, so it would otherwise render as the model name and hijack "Best match".
     private var sortedScores: [JobFitScore] {
         job.fitScores
-            .filter { $0.resume != nil }
+            // Active résumés only — a deactivated résumé is one the user has stopped applying with, so
+            // its score shouldn't be presented as their fit. Re-activating brings it straight back.
+            .filter { $0.resume?.active == true }
             .sorted { ($0.fitScore ?? 0) > ($1.fitScore ?? 0) }
     }
 

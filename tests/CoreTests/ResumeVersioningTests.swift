@@ -94,4 +94,56 @@ final class ResumeVersioningTests: XCTestCase {
         let count = try await service.updateResume(id: resumes[0].id, name: "Master v2", text: "Staff TPM")
         XCTAssertEqual(count, 0, "a rename alone must not offer a re-score")
     }
+
+    // MARK: - Only active résumés represent your fit
+
+    /// A deactivated résumé is one the user has stopped applying with, so its score must not drive the
+    /// job's headline number — otherwise a job shows a fit from a résumé shelved months ago.
+    func testInactiveResumeScoreDoesNotDriveTheJobMirror() async throws {
+        let store = try makeStore()
+        try await store.insert(Resume(name: "Old", text: "Old résumé", active: true))
+        try await store.insert(Job(id: "job-1", company: "Acme", title: "TPM", status: .pursuing))
+        _ = try await store.enqueueFitForActiveResumes(jobID: "job-1")
+        try await store.update(JobFitScore.self, predicate: nil) { record in
+            record.fitScore = 91
+            record.fitStatus = .succeeded
+        }
+        _ = try await store.recomputeAllJobFitMirrors()
+        var jobs = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertEqual(jobs.first?.fitScore, 91, "an active résumé's score drives the mirror")
+
+        // Deactivate it.
+        let resumes = try await store.fetch(FetchDescriptor<Resume>())
+        let rid = resumes[0].id
+        try await store.update(Resume.self, predicate: #Predicate { $0.id == rid }) { $0.active = false }
+        _ = try await store.recomputeAllJobFitMirrors()
+
+        jobs = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertNil(jobs.first?.fitScore, "an inactive résumé must not represent the user's fit")
+    }
+
+    /// Deactivating hides, it does not destroy — the score is still there to come back.
+    func testDeactivatingKeepsTheUnderlyingScoreSoReactivatingRestoresIt() async throws {
+        let store = try makeStore()
+        try await store.insert(Resume(name: "Old", text: "Old résumé", active: true))
+        try await store.insert(Job(id: "job-1", company: "Acme", title: "TPM", status: .pursuing))
+        _ = try await store.enqueueFitForActiveResumes(jobID: "job-1")
+        try await store.update(JobFitScore.self, predicate: nil) { record in
+            record.fitScore = 91
+            record.fitStatus = .succeeded
+        }
+        let resumes = try await store.fetch(FetchDescriptor<Resume>())
+        let rid = resumes[0].id
+
+        try await store.update(Resume.self, predicate: #Predicate { $0.id == rid }) { $0.active = false }
+        _ = try await store.recomputeAllJobFitMirrors()
+        let scores = try await store.fetch(FetchDescriptor<JobFitScore>())
+        XCTAssertEqual(scores.count, 1, "the score itself survives deactivation")
+        XCTAssertEqual(scores.first?.fitScore, 91)
+
+        try await store.update(Resume.self, predicate: #Predicate { $0.id == rid }) { $0.active = true }
+        _ = try await store.recomputeAllJobFitMirrors()
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertEqual(jobs.first?.fitScore, 91, "re-activating restores the headline score")
+    }
 }

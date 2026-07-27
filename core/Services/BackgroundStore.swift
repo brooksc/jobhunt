@@ -385,18 +385,22 @@ public actor BackgroundStore {
         job.updatedAt = Date()
     }
 
-    /// Pure computation of a job's denormalized fit mirror from the best-scoring resume across ALL
-    /// its fit-score records (Electron parity: jobs.fit_score = MAX across resumes). Falls back to
-    /// running/pending/failed/none when no resume has a numeric score yet. No mutation/side effects.
+    /// Pure computation of a job's denormalized fit mirror: the best score across the résumés the user
+    /// is currently applying with. Falls back to running/pending/failed/none when none has a numeric
+    /// score yet. No mutation/side effects.
     private func computedFitMirror(for job: Job) -> (score: Int?, status: FitStatus, json: String?) {
-        // Only resume-linked scores count toward the mirror — an orphaned score (no resume) is a
-        // legacy/unmigrated artifact and must not drive the headline number.
-        let scored = job.fitScores.filter { $0.fitScore != nil && $0.resume != nil }
+        // Only ACTIVE résumés count. A deactivated résumé is one the user has stopped applying with, so
+        // its score no longer describes their fit — leaving it in meant a job's headline number could
+        // come from a résumé they'd shelved months ago. Scores are kept, not deleted, so re-activating
+        // restores them (nothing is destroyed by deactivating).
+        //
+        // An orphaned score (no resume) is a legacy/unmigrated artifact and never drives the number.
+        let scored = job.fitScores.filter { $0.fitScore != nil && ($0.resume?.active ?? false) }
         if let best = scored.max(by: { ($0.fitScore ?? 0) < ($1.fitScore ?? 0) }) {
             return (best.fitScore, .succeeded, best.fitScoreJSON)
-        } else if job.fitScores.contains(where: { $0.fitStatus == .running }) {
+        } else if job.fitScores.contains(where: { $0.fitStatus == .running && ($0.resume?.active ?? false) }) {
             return (nil, .running, nil)
-        } else if job.fitScores.contains(where: { $0.fitStatus == .pending }) {
+        } else if job.fitScores.contains(where: { $0.fitStatus == .pending && ($0.resume?.active ?? false) }) {
             return (nil, .pending, nil)
         } else if job.fitScores.contains(where: { $0.fitStatus == .failed }) {
             return (nil, .failed, nil)

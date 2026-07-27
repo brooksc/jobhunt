@@ -1683,10 +1683,10 @@ final class FitScoringStateTests: XCTestCase {
 
     // MARK: - TASK-275: saveFitScore only updates Job fields for active resume
 
-    func testSaveFitScore_inactiveResume_stillUpdatesBestMirror() async throws {
-        // Best-across-resumes (Electron parity): the mirror reflects the best score regardless of
-        // which resume is active, so scoring an inactive resume still updates the job mirror when
-        // it is the best (here, the only) score.
+    /// Behaviour change: the mirror reflects ACTIVE résumés only, so scoring an inactive résumé
+    /// stores the score but must not become the job's headline fit — that number is meant to answer
+    /// "how do I fit, with the résumé I'm applying with".
+    func testSaveFitScore_inactiveResume_storesScoreButNotTheMirror() async throws {
         let container = try ModelContainerFactory.inMemory()
         let store = makeStore(container)
 
@@ -1714,12 +1714,10 @@ final class FitScoringStateTests: XCTestCase {
 
         let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-fit-1" }))
         let updatedJob = try XCTUnwrap(jobs.first)
-        XCTAssertEqual(updatedJob.fitScore, 75, "Mirror reflects the best (only) score even from an inactive resume")
-        XCTAssertEqual(updatedJob.fitStatus, .succeeded)
-        XCTAssertEqual(updatedJob.fitScoreJSON, "{\"overall\":75}")
+        XCTAssertNil(updatedJob.fitScore, "an inactive résumé's score must not drive the mirror")
 
         let scores = try await store.fetch(FetchDescriptor<JobFitScore>())
-        XCTAssertEqual(scores.count, 1, "JobFitScore record must be created even for inactive resume")
+        XCTAssertEqual(scores.count, 1, "the score is still recorded — hidden, not discarded")
         XCTAssertEqual(scores.first?.fitScore, 75)
         XCTAssertEqual(scores.first?.fitStatus, .succeeded)
     }

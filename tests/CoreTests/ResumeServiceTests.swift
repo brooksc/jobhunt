@@ -195,9 +195,11 @@ final class ResumeServiceTests: XCTestCase {
 
     // MARK: - TASK-306: Fit mirror recompute on active resume change
 
-    func testJobFitMirror_reflectsBestScoreAcrossResumes() async throws {
-        // Best-across-resumes (Electron parity): the job mirror is the MAX score across all
-        // resumes regardless of which resume is active.
+    /// Behaviour change: the mirror is the best across ACTIVE résumés, not all of them. A résumé the
+    /// user deactivated is one they've stopped applying with, so its score shouldn't be presented as
+    /// their fit — the old "best across all" rule meant a job could show a strong number sourced from
+    /// a résumé shelved months earlier.
+    func testJobFitMirror_reflectsBestScoreAmongActiveResumes() async throws {
         try await service.addResume(name: "Resume1", text: "First resume text")
         try await service.addResume(name: "Resume2", text: "Second resume text")
 
@@ -218,23 +220,22 @@ final class ResumeServiceTests: XCTestCase {
         ctx.insert(score2)
         try ctx.save()
 
-        // Mirror is the best (80) whether r1 or r2 is the active resume.
         try await service.setActiveResume(id: r1.id)
         let afterR1 = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Job>()).first)
-        XCTAssertEqual(afterR1.fitScore, 80, "Mirror should reflect the best resume score")
+        XCTAssertEqual(afterR1.fitScore, 80, "the active résumé's score drives the mirror")
         XCTAssertEqual(afterR1.fitStatus, .succeeded)
 
+        // With only r2 active, r1's higher score is no longer the user's fit.
         try await service.setActiveResume(id: r2.id)
         let afterR2 = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Job>()).first)
-        XCTAssertEqual(
-            afterR2.fitScore,
-            80,
-            "Mirror stays at the best score even when a lower-scoring resume is active"
-        )
+        XCTAssertEqual(afterR2.fitScore, 60, "an inactive résumé's higher score must not win")
     }
 
-    func testJobFitMirror_usesBestAvailableScoreIgnoringActive() async throws {
-        // Only one resume is scored; the mirror shows that score regardless of which resume is active.
+    /// Behaviour change: switching to a résumé that has never been scored now blanks the mirror rather
+    /// than keeping the previous résumé's number. Blanking is the honest answer — the user asked for a
+    /// score against the résumé they're actually using, and there isn't one yet. The score itself is
+    /// retained, so re-activating the old résumé brings it straight back.
+    func testJobFitMirror_blanksWhenTheOnlyActiveResumeIsUnscored() async throws {
         try await service.addResume(name: "Resume1", text: "First resume text")
         try await service.addResume(name: "Resume2", text: "Second resume text")
 
@@ -255,11 +256,15 @@ final class ResumeServiceTests: XCTestCase {
         let afterR1 = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Job>()).first)
         XCTAssertEqual(afterR1.fitScore, 75)
 
-        // Activating the unscored r2 does NOT clear the mirror — best-across keeps r1's 75.
+        // Activating the unscored r2 blanks the mirror: r1 is no longer in use.
         try await service.setActiveResume(id: r2.id)
         let afterR2 = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Job>()).first)
-        XCTAssertEqual(afterR2.fitScore, 75, "Best-across mirror retains the only available score")
-        XCTAssertEqual(afterR2.fitStatus, .succeeded)
+        XCTAssertNil(afterR2.fitScore, "a score from a deactivated résumé must not be shown as current")
+
+        // Nothing was destroyed — re-activating r1 restores it.
+        try await service.setActiveResume(id: r1.id)
+        let restored = try XCTUnwrap(try ctx.fetch(FetchDescriptor<Job>()).first)
+        XCTAssertEqual(restored.fitScore, 75, "re-activating restores the retained score")
     }
 
     func testSetResumeActive_togglesIndependently() async throws {

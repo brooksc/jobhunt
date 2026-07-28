@@ -66,6 +66,36 @@ public struct RequirementAssessment: Sendable, Hashable {
     public var isPreferred: Bool {
         kind == "preferred"
     }
+
+    /// Plain-English meaning of this row, for a tooltip.
+    ///
+    /// The icon and the "Preferred" tag encode two INDEPENDENT things — how well the résumé matches
+    /// (met / partial / missing) and how the job weighted the requirement (required / preferred) — so
+    /// the same "!" legitimately appears on both a required and a preferred row. Nothing on screen
+    /// said so, which made the icons look arbitrary. This spells out both axes in one sentence.
+    public var matchExplanation: String {
+        switch status {
+        case "met": "Met — your résumé shows clear evidence of this."
+        case "partial": "Partially met — there's related evidence, but not a direct match."
+        default: "Not met — no evidence of this in your résumé."
+        }
+    }
+
+    /// How the job weighted it. Empty for legacy scores written before `kind` was captured, so an
+    /// old score never claims a requirement was required when that wasn't recorded.
+    public var weightExplanation: String {
+        switch kind {
+        case "preferred": "The job lists it as preferred (nice-to-have)."
+        case "required": "The job lists it as required."
+        default: ""
+        }
+    }
+
+    /// Combined tooltip: what the icon means, then what the tag means.
+    public var explanation: String {
+        let weight = weightExplanation
+        return weight.isEmpty ? matchExplanation : "\(matchExplanation) \(weight)"
+    }
 }
 
 public struct FitScoreProjection {

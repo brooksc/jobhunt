@@ -1428,6 +1428,7 @@ private struct ResumeScoreCard: View {
             Text(title)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
+                .help(Self.columnLegend)
             ForEach(items, id: \.self) { item in
                 HStack(alignment: .top, spacing: 5) {
                     Image(systemName: Self.assessmentIcon(item.status))
@@ -1456,10 +1457,22 @@ private struct ResumeScoreCard: View {
                             .fixedSize()
                     }
                 }
+                // Tooltip on the whole row, not the icon: the glyph is 10pt, far too small to hover.
+                .contentShape(Rectangle())
+                .help(item.explanation)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(item.requirement). \(item.explanation)")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    /// Legend for the column headings — states that the icon and the "Preferred" tag mean different
+    /// things, which is the ambiguity the icons alone create.
+    private static let columnLegend = """
+    ✓ met · ! partially met · ✗ not met — how well your résumé matches.
+    Rows tagged "Preferred" are nice-to-haves; untagged rows are required by the job.
+    """
 
     private static func assessmentIcon(_ status: String) -> String {
         switch status {

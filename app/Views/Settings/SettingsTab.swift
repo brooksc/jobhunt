@@ -537,6 +537,20 @@ struct ExpiredConfirmationSheet: View {
                                 .foregroundStyle(.blue)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
+                            // LinkedIn's guest pages are the least trustworthy "gone" signal we have:
+                            // it rate-limits background checks and serves a generic/feed page that can
+                            // read as removed while the posting is still live. Say so rather than let
+                            // the user expire a live job (TASK-643 pacing exists for the same reason).
+                            if AvailabilityChecker.isLinkedInURL(job.url) {
+                                Label(
+                                    "LinkedIn often hides postings from signed-out checks — "
+                                        + "open it to confirm before expiring.",
+                                    systemImage: "exclamationmark.triangle"
+                                )
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                                .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
                         Spacer()
                     }

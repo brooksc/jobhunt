@@ -268,6 +268,17 @@ public enum AvailabilityChecker {
             || bodyUnreliableHosts.contains { registrable.hasSuffix(".\($0)") }
     }
 
+    /// Whether a URL points at LinkedIn.
+    ///
+    /// Exact host or a true subdomain — NOT a suffix match, which would also accept `notlinkedin.com`
+    /// and `linkedin.com.evil.example`. Used to caution the user before expiring a LinkedIn posting:
+    /// its signed-out pages are the least trustworthy "gone" signal we have (job #566 was listed as
+    /// gone while still live).
+    public static func isLinkedInURL(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+        return host == "linkedin.com" || host.hasSuffix(".linkedin.com")
+    }
+
     /// True when a LinkedIn public guest job page carries the structured "closed job" banner LinkedIn
     /// renders for a posting no longer accepting applications
     /// (`<figure class="closed-job …"><figcaption class="closed-job__flavor--closed">…`). The visible

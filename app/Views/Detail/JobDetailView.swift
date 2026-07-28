@@ -609,6 +609,44 @@ private struct DetailFooter: View {
 /// Split out of `OverviewTabView`'s body to stay within the type-length limit. Same file because the
 /// stored properties it reads (`job`, `allJobs`) are private to it.
 extension OverviewTabView {
+    /// One line naming the other job and why they matched, with a route into the review screen.
+    /// Deliberately informational — TASK-624 established that suspected duplicates are never acted on
+    /// automatically, only confirmed by the user.
+    @ViewBuilder
+    func duplicateNotice(_ pair: DuplicatePair) -> some View {
+        let other = pair.candidate.id == job.id ? pair.original : pair.candidate
+        HStack(spacing: 6) {
+            Image(systemName: "doc.on.doc")
+            Text(duplicateNoticeText(other: other, pair: pair))
+            Button("Review") { router.navigateToSection(.duplicates) }
+                .buttonStyle(.link)
+            Spacer()
+        }
+        .font(.caption)
+        .foregroundStyle(.orange)
+        .help("\(pair.reason). Nothing is changed until you resolve it in the Duplicates screen.")
+    }
+
+    func duplicateNoticeText(other: JobSnapshot, pair: DuplicatePair) -> String {
+        let who = other.company ?? other.title ?? "another job"
+        let number = other.jobNumber.map { "#\($0) " } ?? ""
+        let percent = Int((pair.confidence * 100).rounded())
+        return "Possible duplicate of \(number)\(who) — \(percent)% match"
+    }
+
+    /// Recompute the suspected-duplicate pair for this job. Runs off the render path (see the
+    /// property's note) and only for jobs that are themselves reviewable.
+    func refreshSuspectedDuplicate() {
+        let corpus = DuplicateDetector.reviewSnapshots(jobs: allJobs)
+        guard let candidate = corpus.first(where: { $0.id == job.id }) else {
+            suspectedDuplicate = nil // terminal/marked jobs aren't reviewable
+            return
+        }
+        let resolved = Set(duplicateDecisions.map(\.cleanedHash))
+        suspectedDuplicate = DuplicateDetector()
+            .duplicatePairForCandidate(candidate, among: corpus, resolvedHashes: resolved)
+    }
+
     /// Other still-open roles at this company (+ any past rejection), ranked by fit so the reader can
     /// tell which of a company's postings is the better bet before applying.
     private var companyContext: CompanyContext.Result {
@@ -653,6 +691,15 @@ struct OverviewTabView: View {
     @Query private var resumes: [Resume]
     /// All jobs — for the prior-application safeguard (TASK-615).
     @Query private var allJobs: [Job]
+    /// Resolved duplicate decisions, so an already-reviewed pair stops being flagged.
+    @Query private var duplicateDecisions: [DuplicateDecision]
+
+    /// The unresolved duplicate pair this job belongs to, if any.
+    ///
+    /// Computed in `.task`, never in `body`: building snapshots touches every job's Capture, which is
+    /// exactly the per-render faulting cost TASK-610 removed from search and TASK-364 moved off the
+    /// sidebar's render path. Recomputed when the selected job changes.
+    @State private var suspectedDuplicate: DuplicatePair?
 
     @State private var skills: [String] = []
     @State private var newSkillText = ""
@@ -717,6 +764,14 @@ struct OverviewTabView: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
 
+                // Suspected duplicate — a job in an unresolved review pair otherwise looks completely
+                // ordinary here; the only hint lived on the Duplicates screen.
+                if let pair = suspectedDuplicate {
+                    duplicateNotice(pair)
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 4)
+                }
+
                 // Company context — one subtle line, directly above the pay range so it's read before
                 // the decision to apply. Renders nothing when the company appears only once.
                 CompanyContextLine(
@@ -772,6 +827,8 @@ struct OverviewTabView: View {
         // Rebuild only when the parsed source changes — e.g. after an inline edit commits (TASK-611).
         .onChange(of: job.extractedJSON) { _, _ in projection = JobDetailProjection(job: job) }
         .onChange(of: job.manualOverridesJSON) { _, _ in projection = JobDetailProjection(job: job) }
+        // Keyed on the job so it recomputes per selection, and runs off the render path.
+        .task(id: job.id) { refreshSuspectedDuplicate() }
     }
 
     // MARK: Decision strip

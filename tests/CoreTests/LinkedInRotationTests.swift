@@ -74,3 +74,29 @@ final class LinkedInRotationTests: XCTestCase {
         XCTAssertEqual(slice(all, offset: 5), slice(all.reversed(), offset: 5))
     }
 }
+
+/// The expired-confirmation sheet cautions on LinkedIn rows because LinkedIn's signed-out pages are
+/// the least trustworthy "gone" signal — job #566 (Microsoft) was listed as gone while still live.
+final class LinkedInHostDetectionTests: XCTestCase {
+    /// Exercises the real helper — a copy of the logic here would let the two drift.
+    private func isLinkedIn(_ s: String) -> Bool {
+        guard let url = URL(string: s) else { return false }
+        return AvailabilityChecker.isLinkedInURL(url)
+    }
+
+    func testLinkedInHostsAreRecognised() {
+        XCTAssertTrue(isLinkedIn("https://www.linkedin.com/jobs/view/123"))
+        XCTAssertTrue(isLinkedIn("https://linkedin.com/jobs/collections/similar-jobs/?currentJobId=4409460449"))
+    }
+
+    func testOtherHostsAreNot() {
+        XCTAssertFalse(isLinkedIn("https://job-boards.greenhouse.io/acme/jobs/1"))
+        XCTAssertFalse(isLinkedIn("https://vsp.wd1.myworkdayjobs.com/x/job/y"))
+    }
+
+    /// Suffix matching, so a lookalike domain doesn't inherit the caution.
+    func testLookalikeDomainsAreNotTreatedAsLinkedIn() {
+        XCTAssertFalse(isLinkedIn("https://notlinkedin.com/jobs/view/1"))
+        XCTAssertFalse(isLinkedIn("https://linkedin.com.evil.example/jobs/1"))
+    }
+}

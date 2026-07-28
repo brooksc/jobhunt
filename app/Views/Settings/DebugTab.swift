@@ -22,6 +22,7 @@ struct DebugTab: View {
     var body: some View {
         Form {
             environmentSection
+            demoSection
             maintenanceSection
             llmStatsSection
             settingsErrorSection
@@ -164,7 +165,60 @@ struct DebugTab: View {
                     return "Seeded demo data"
                 }
             }
-            .help("Adds sample jobs / résumés / sites for testing. Does not wipe existing data.")
+            .help(
+                "Adds sample jobs / résumés / sites to THIS store, and only when it has no jobs yet — "
+                    + "on a store with data it does nothing. To show the app to someone, use Demo Mode below."
+            )
+        }
+    }
+
+    // MARK: - Demo mode
+
+    /// A demo can't swap the live store in place — SwiftData binds the container at launch, and the
+    /// store is single-writer — so this opens a SECOND instance against the isolated demo store
+    /// instead. That instance never touches Application Support, carries no API keys (settings come
+    /// from its own store), and is wiped and re-seeded on every launch.
+    private var demoSection: some View {
+        Section("Demo Mode") {
+            LabeledContent("This window") {
+                Text(isDemoInstance ? "Demo data (isolated)" : "Your real data")
+                    .foregroundStyle(isDemoInstance ? Color.orange : .secondary)
+            }
+
+            Button("Open Demo Window") { launchDemoInstance() }
+                .help("Launches a second Jobhunt with ~15 sample jobs. Your real data is untouched.")
+
+            Text(
+                "Opens a second window with sample jobs across every status — for screen-sharing or "
+                    + "showing someone the app. It uses a separate, throwaway store: nothing you do there "
+                    + "affects your real data, and it resets each launch. Quit your real window first if "
+                    + "you want browser capture to work in the demo, since only one can hold the local port."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var isDemoInstance: Bool {
+        CommandLine.arguments.contains("--ui-test-store")
+    }
+
+    private func launchDemoInstance() {
+        let config = NSWorkspace.OpenConfiguration()
+        config.arguments = ["--ui-test-store", "--seed-demo-data"]
+        // Without this the running instance is merely activated and the arguments are ignored.
+        config.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config) { _, error in
+            Task { @MainActor in
+                if let error {
+                    appServices.toastStore.show(
+                        "Couldn't open demo window: \(error.localizedDescription)", isError: true
+                    )
+                } else {
+                    appServices.toastStore.show("Demo window opened — your real data is untouched")
+                }
+            }
         }
     }
 

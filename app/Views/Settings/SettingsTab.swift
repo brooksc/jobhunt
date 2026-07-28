@@ -101,6 +101,7 @@ struct JobsSettingsTab: View {
     @State private var isRunningAvailabilityCheck = false
     @State private var availabilityCheckMessage: String?
     @State private var goneJobs: [GoneJobResult] = []
+    @State private var unverifiedJobs: [UnverifiedJobResult] = []
     @State private var showingExpiredConfirmation = false
 
     @Environment(AppServices.self) private var appServices
@@ -122,6 +123,7 @@ struct JobsSettingsTab: View {
         .sheet(isPresented: $showingExpiredConfirmation) {
             ExpiredConfirmationSheet(
                 goneJobs: goneJobs,
+                unverifiedJobs: unverifiedJobs,
                 onConfirm: { markExpired($0) },
                 onDismiss: {
                     showingExpiredConfirmation = false
@@ -329,15 +331,23 @@ struct JobsSettingsTab: View {
         }
 
         availabilityCheckMessage = "Checking \(eligible.count) jobs…"
-        let found = await AvailabilityChecker.findGoneJobsRotating(eligible, settings: settings)
+        let sweep = await AvailabilityChecker.findGoneJobsRotating(eligible, settings: settings)
 
         let now = ISO8601DateFormatter().string(from: Date())
         settings.set(now, forKey: SettingsKey.availabilityLastAutoCheckAt)
 
-        if found.isEmpty {
-            availabilityCheckMessage = "All \(eligible.count) jobs are still available"
+        unverifiedJobs = sweep.unverified
+        if sweep.gone.isEmpty {
+            // Never claim jobs are "still available" when some were never actually reached — a
+            // bot-challenged or rate-limited posting is unknown, not live.
+            let verified = eligible.count - sweep.unverified.count
+            var message = sweep.unverified.isEmpty
+                ? "All \(eligible.count) jobs are still available"
+                : "No expired postings found — \(verified) of \(eligible.count) verified"
+            if let summary = sweep.unverifiedSummary { message += ". \(summary)" }
+            availabilityCheckMessage = message
         } else {
-            goneJobs = found
+            goneJobs = sweep.gone
             showingExpiredConfirmation = true
             availabilityCheckMessage = nil
         }
@@ -537,16 +547,30 @@ struct DataSettingsTab: View {
 /// Internal (not private) so the main-window availability check (ContentView) can present it too.
 struct ExpiredConfirmationSheet: View {
     let goneJobs: [GoneJobResult]
+    /// Jobs the sweep could not verify either way. Shown so the result never reads as an exhaustive
+    /// "these are the only expired ones" — a check that was blocked proves nothing.
+    let unverifiedJobs: [UnverifiedJobResult]
     let onConfirm: ([GoneJobResult]) -> Void
     let onDismiss: () -> Void
 
     @State private var selected: Set<String>
+    @State private var showingUnverifiedDetail = false
 
-    init(goneJobs: [GoneJobResult], onConfirm: @escaping ([GoneJobResult]) -> Void, onDismiss: @escaping () -> Void) {
+    init(
+        goneJobs: [GoneJobResult],
+        unverifiedJobs: [UnverifiedJobResult] = [],
+        onConfirm: @escaping ([GoneJobResult]) -> Void,
+        onDismiss: @escaping () -> Void
+    ) {
         self.goneJobs = goneJobs
+        self.unverifiedJobs = unverifiedJobs
         self.onConfirm = onConfirm
         self.onDismiss = onDismiss
         _selected = State(initialValue: Set(goneJobs.map(\.jobID)))
+    }
+
+    private var sweep: AvailabilitySweep {
+        AvailabilitySweep(gone: goneJobs, unverified: unverifiedJobs)
     }
 
     var body: some View {
@@ -611,6 +635,37 @@ struct ExpiredConfirmationSheet: View {
             .background(Color(nsColor: .controlBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 8))
 
+            if let summary = sweep.unverifiedSummary {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label(summary, systemImage: "questionmark.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button(showingUnverifiedDetail ? "Hide details" : "Show details") {
+                        showingUnverifiedDetail.toggle()
+                    }
+                    .buttonStyle(.link)
+                    .font(.caption)
+
+                    if showingUnverifiedDetail {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(unverifiedJobs, id: \.jobID) { job in
+                                Text("\(unverifiedLabel(job)) — \(job.reason.summary)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                        }
+                        .padding(.leading, 4)
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+
             HStack {
                 Button("Dismiss") { onDismiss() }
                     .buttonStyle(.bordered)
@@ -630,6 +685,12 @@ struct ExpiredConfirmationSheet: View {
     private func jobLabel(_ job: GoneJobResult) -> String {
         if let num = job.jobNumber { return "#\(num) \(job.title)" }
         return job.title
+    }
+
+    private func unverifiedLabel(_ job: UnverifiedJobResult) -> String {
+        let name = [job.company, job.title].compactMap(\.self).filter { !$0.isEmpty }.joined(separator: " — ")
+        if let num = job.jobNumber { return "#\(num) \(name)" }
+        return name
     }
 
     private func friendlyReason(_ reason: String) -> String {

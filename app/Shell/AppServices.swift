@@ -156,9 +156,9 @@ final class AppServices {
                                 )
                             }
                         }
-                        if let candidates, !candidates.isEmpty {
+                        if let candidates, !candidates.gone.isEmpty {
                             await MainActor.run {
-                                Self.notifyJobsMaybeUnavailable(count: candidates.count, settings: settingsStore)
+                                Self.notifyJobsMaybeUnavailable(count: candidates.gone.count, settings: settingsStore)
                             }
                         }
                     }

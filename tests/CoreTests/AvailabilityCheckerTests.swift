@@ -868,7 +868,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
                 )
             })
         ]
-        let gone = await AvailabilityChecker.findGoneJobs([job], session: session)
+        let gone = await AvailabilityChecker.findGoneJobs([job], session: session).gone
         XCTAssertTrue(gone.isEmpty, "Greenhouse 200 must override the gone-looking career HTML")
     }
 
@@ -888,7 +888,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
                 makeResponse(url: "https://boards-api.greenhouse.io/x", status: 404, body: "{}")
             })
         ]
-        let gone = await AvailabilityChecker.findGoneJobs([job], session: session)
+        let gone = await AvailabilityChecker.findGoneJobs([job], session: session).gone
         XCTAssertEqual(gone.count, 1, "Greenhouse 404 must fall through to the gone HTML result")
     }
 
@@ -910,7 +910,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         MockURLProtocol.handlers = [("jobs-guest/jobs/api/jobPosting/999", { _ in
             makeResponse(url: "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/999", status: 404, body: "")
         })]
-        let gone = await AvailabilityChecker.findGoneJobs([job], session: session)
+        let gone = await AvailabilityChecker.findGoneJobs([job], session: session).gone
         XCTAssertEqual(gone.count, 1, "a removed LinkedIn posting (guest API 404) is caught")
         XCTAssertEqual(gone.first?.jobID, job.id)
     }
@@ -937,7 +937,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
                 )
             })
         ]
-        let gone = await AvailabilityChecker.findGoneJobs([closed], session: session)
+        let gone = await AvailabilityChecker.findGoneJobs([closed], session: session).gone
         XCTAssertEqual(gone.count, 1, "closed LinkedIn posting is gone")
         XCTAssertEqual(gone.first?.jobID, closed.id)
     }
@@ -951,7 +951,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         MockURLProtocol.handlers = [("jobs-guest/jobs/api/jobPosting/777", { _ in
             makeResponse(url: "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/777", status: 429, body: "")
         })]
-        let gone = await AvailabilityChecker.findGoneJobs([job], session: session)
+        let gone = await AvailabilityChecker.findGoneJobs([job], session: session).gone
         XCTAssertTrue(gone.isEmpty, "a throttled LinkedIn check must not false-expire the job")
     }
 
@@ -1290,8 +1290,8 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         let found = await AvailabilityChecker.maybeFindStaleGoneJobs(
             store: store, settings: settings, session: session
         )
-        XCTAssertEqual(found?.count, 1, "an Applied job that 404s must be returned as a candidate")
-        XCTAssertEqual(found?.first?.title, "Applied Gone Job")
+        XCTAssertEqual(found?.gone.count, 1, "an Applied job that 404s must be returned as a candidate")
+        XCTAssertEqual(found?.gone.first?.title, "Applied Gone Job")
 
         // Confirm-first: the candidate must NOT be auto-expired.
         let refetched = try await store.fetch(FetchDescriptor<Job>())

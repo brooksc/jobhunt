@@ -51,6 +51,7 @@ struct JobsView: View {
     // Availability check (Actions menu) — finds Pursuing jobs whose postings appear gone, then offers
     // to mark them Expired (same confirmation flow as Settings → Availability).
     @State private var goneJobs: [GoneJobResult] = []
+    @State private var unverifiedJobs: [UnverifiedJobResult] = []
     @State private var showingExpiredConfirmation = false
     @State private var isCheckingAvailability = false
     @State private var isScanningDuplicates = false
@@ -106,6 +107,7 @@ struct JobsView: View {
             .sheet(isPresented: $showingExpiredConfirmation) {
                 ExpiredConfirmationSheet(
                     goneJobs: goneJobs,
+                    unverifiedJobs: unverifiedJobs,
                     onConfirm: { markExpired($0) },
                     onDismiss: { showingExpiredConfirmation = false }
                 )
@@ -1267,16 +1269,24 @@ struct JobsView: View {
         }
         model.onCancel = { task.cancel() }
         progress = model
-        let found = await task.value
+        let sweep = await task.value
+        let found = sweep.gone
         guard !task.isCancelled else { progress = nil; return } // user cancelled — leave everything untouched
 
         appServices.settings.set(
             ISO8601DateFormatter().string(from: Date()),
             forKey: SettingsKey.availabilityLastAutoCheckAt
         )
+        unverifiedJobs = sweep.unverified
         if found.isEmpty {
             // Show the result in the dialog itself (no transient toast) — the user dismisses it.
-            model.completion = "All \(eligible.count) Interested or Applied jobs are still available."
+            // A blocked or deferred check proves nothing, so don't report those jobs as available.
+            let verified = eligible.count - sweep.unverified.count
+            var completion = sweep.unverified.isEmpty
+                ? "All \(eligible.count) Interested or Applied jobs are still available."
+                : "No expired postings found — \(verified) of \(eligible.count) verified."
+            if let summary = sweep.unverifiedSummary { completion += " \(summary)" }
+            model.completion = completion
             model.onDone = { progress = nil }
         } else {
             progress = nil
@@ -1287,7 +1297,9 @@ struct JobsView: View {
         }
         notifyIfBackgrounded(
             title: "Availability check complete",
-            body: found.isEmpty ? "All \(eligible.count) still available" : "\(found.count) job(s) may be gone"
+            body: found.isEmpty
+                ? "\(eligible.count - sweep.unverified.count) of \(eligible.count) verified available"
+                : "\(found.count) job(s) may be gone"
         )
     }
 

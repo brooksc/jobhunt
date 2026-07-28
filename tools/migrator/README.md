@@ -5,6 +5,36 @@ SwiftData store usable by the native Jobhunt macOS app.
 
 This tool is **not shipped** in the app. It is included in the DMG scheme for developer use only.
 
+## Building it
+
+```bash
+./scripts/build-migrator.sh              # Debug-DMG (default)
+./scripts/build-migrator.sh --config Release-DMG
+```
+
+The script prints the exact executable path and its build time. **Use it** rather than a bare
+`xcodebuild` — there are two DerivedData trees, and getting this wrong is a data-integrity hazard, not
+an inconvenience (TASK-652):
+
+- `scripts/rebuild-and-run.sh` pins `-derivedDataPath ~/Library/Developer/Xcode/DerivedData/Jobhunt-local`.
+- A bare `xcodebuild` writes to Xcode's default *hashed* path instead.
+
+So `xcodebuild build -scheme JobhuntMigrator` reports **BUILD SUCCEEDED** while the binary you then run
+from `Jobhunt-local` stays untouched — its mtime never moves, and it silently keeps running old logic.
+That is exactly how `--recompute-fit-mirrors` once reported "0 job mirror(s) corrected" against 206
+provably-wrong rows; a rebuilt binary corrected them immediately. Note `xcodebuild -target
+JobhuntMigrator` is worse still: it reports success while emitting only a `.swiftmodule`, no executable.
+
+The migrator prints its build time on every run, and warns when the binary is more than a day old:
+
+```
+JobhuntMigrator (built 2026-07-27 20:00)
+```
+
+If that timestamp predates a change you're relying on, rebuild before running anything against the
+store. "0 corrected" and "already correct" look identical from the outside.
+
+
 ## Usage
 
 ```

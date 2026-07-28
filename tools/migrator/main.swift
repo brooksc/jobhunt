@@ -14,6 +14,32 @@ import JobhuntCore
 import SQLite3
 import SwiftData
 
+/// Announce which build is about to touch the store.
+///
+/// TASK-652: a stale binary silently ran superseded logic — `--recompute-fit-mirrors` reported
+/// "0 corrected" against 206 provably-wrong mirrors, and "0 corrected" is indistinguishable from
+/// "already correct". The cause was two DerivedData trees, so builds succeeded into a directory other
+/// than the binary being run. Printing the compile date makes a months-old binary obvious BEFORE it
+/// mutates anything. Build with scripts/build-migrator.sh, which pins the same path.
+func printBuildIdentity() {
+    // __DATE__/__TIME__ have no Swift equivalent; the executable's own mtime is the build time.
+    let path = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+    let built = (try? FileManager.default.attributesOfItem(atPath: path.path)[.modificationDate] as? Date)
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd HH:mm"
+    let stamp = built.map { formatter.string(from: $0) } ?? "unknown"
+    FileHandle.standardError.write(Data("JobhuntMigrator (built \(stamp))\n".utf8))
+    if let built, Date().timeIntervalSince(built) > 24 * 3600 {
+        FileHandle.standardError.write(Data(
+            "  ⚠︎ This binary is more than a day old. If the code has changed since, rebuild first:\n"
+                .utf8
+        ))
+        FileHandle.standardError.write(Data("     ./scripts/build-migrator.sh\n".utf8))
+    }
+}
+
+printBuildIdentity()
+
 guard let mode = parseArgs() else { exit(1) }
 
 /// The SwiftData store is single-writer and not multi-process-safe. Refuse to open it read-write

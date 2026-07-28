@@ -468,7 +468,10 @@ public actor BackgroundStore {
             return raw == "true" || raw == "1"
         }
         return try recomputeMeetsCriteria(
-            preferredLocations: byKey[SettingsKey.preferredLocations],
+            preferredLocations: combinedPreferredLocations(
+                locations: byKey[SettingsKey.preferredLocations],
+                metros: byKey[SettingsKey.preferredMetros]
+            ),
             allowRemote: flag(SettingsKey.locationAllowRemote),
             allowHybrid: flag(SettingsKey.locationAllowHybrid),
             allowOnsite: flag(SettingsKey.locationAllowOnsite),

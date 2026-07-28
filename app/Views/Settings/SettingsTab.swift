@@ -118,6 +118,7 @@ struct JobsSettingsTab: View {
             customJDText = settings.string(forKey: SettingsKey.jobDescriptionMarkdown)
             applicationDetailsText = settings.string(forKey: SettingsKey.applicationPersonalInfo)
         }
+        .task(id: locationCriteriaSignature) { await recomputeCriteriaAfterEdit() }
         .sheet(isPresented: $showingExpiredConfirmation) {
             ExpiredConfirmationSheet(
                 goneJobs: goneJobs,
@@ -127,6 +128,51 @@ struct JobsSettingsTab: View {
                     availabilityCheckMessage = "\(goneJobs.count) potential expiration(s) — none marked"
                 }
             )
+        }
+    }
+
+    // MARK: - Location criteria recompute
+
+    /// Every input `LocationCriteria` reads. `.task(id:)` cancels and restarts whenever one changes,
+    /// so the sleep below debounces per-keystroke edits of the text fields into one recompute.
+    private var locationCriteriaSignature: String {
+        [
+            settings.preferredLocations,
+            settings.preferredMetros,
+            String(settings.locationFilterEnabled),
+            String(settings.locationAllowRemote),
+            String(settings.locationAllowHybrid),
+            String(settings.locationAllowOnsite)
+        ].joined(separator: "\u{1F}")
+    }
+
+    /// Changing the location settings used to affect only jobs extracted *afterwards* — the existing
+    /// library kept its old verdicts until someone ran `JobhuntMigrator --recompute-criteria`, which
+    /// meant the Jobs filter silently disagreed with the settings. Re-judging is pure (no LLM calls,
+    /// no network) so it just happens on save.
+    ///
+    /// Values are read here and passed explicitly rather than re-read inside `BackgroundStore`: the
+    /// settings live in a different `ModelContext`, so a fetch there could still see the old row.
+    private func recomputeCriteriaAfterEdit() async {
+        try? await Task.sleep(for: .seconds(1))
+        guard !Task.isCancelled else { return }
+
+        let preferred = combinedPreferredLocations(
+            locations: settings.preferredLocations, metros: settings.preferredMetros
+        )
+        let (enabled, remote) = (settings.locationFilterEnabled, settings.locationAllowRemote)
+        let (hybrid, onsite) = (settings.locationAllowHybrid, settings.locationAllowOnsite)
+        do {
+            let changed = try await appServices.backgroundStore.recomputeMeetsCriteria(
+                preferredLocations: preferred, allowRemote: remote, allowHybrid: hybrid,
+                allowOnsite: onsite, filterEnabled: enabled
+            )
+            // Silent when nothing moved — this also runs once on appear, which must not toast.
+            if changed > 0 {
+                appServices.toastStore.show("Criteria re-checked — \(changed) job\(changed == 1 ? "" : "s") updated")
+            }
+        } catch {
+            appServices.toastStore.show("Could not re-check criteria: \(error.localizedDescription)", isError: true)
         }
     }
 

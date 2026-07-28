@@ -442,6 +442,23 @@ public func parsePreferredMetros(_ str: String?) -> [ParsedMetro] {
         }
 }
 
+/// The location terms a job is judged against: the manually-entered preferred locations plus the
+/// expanded preferred metros, deduped and comma-joined.
+///
+/// Shared so the live extraction path and the after-the-fact recompute can't disagree about what
+/// "preferred" means — a job would otherwise meet the criteria when extracted and fail on recompute.
+public func combinedPreferredLocations(locations: String?, metros: String?) -> String {
+    let manual = (locations ?? "")
+        .split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    var combined: [String] = []
+    var seen = Set<String>()
+    for loc in manual + expandMetros(metros) where !seen.contains(loc.lowercased()) {
+        seen.insert(loc.lowercased())
+        combined.append(loc)
+    }
+    return combined.joined(separator: ", ")
+}
+
 /// Expands a metro preference string to a deduplicated list of city/state names.
 ///
 /// Mirrors metros.js `expandMetros`.

@@ -322,20 +322,13 @@ public final class SettingsStore {
         let consentGranted = ConsentHelper.isConsented(provider: provider, settings: self)
         // Combine manual preferred locations with expanded preferred metros (Electron parity:
         // makeExtractorFromSettings expanded metros into the location context), deduped.
-        let manual = preferredLocations
-            .split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        var combined: [String] = []
-        var seen = Set<String>()
-        for loc in manual + expandMetros(preferredMetros) where !seen.contains(loc.lowercased()) {
-            seen.insert(loc.lowercased())
-            combined.append(loc)
-        }
+        let combined = combinedPreferredLocations(locations: preferredLocations, metros: preferredMetros)
         return ExtractionSettings(
             llmModel: llmModel,
             llmProvider: provider,
             llmBaseURL: baseURL,
             consentGranted: consentGranted,
-            preferredLocations: combined.joined(separator: ", "),
+            preferredLocations: combined,
             locationFilterEnabled: locationFilterEnabled,
             locationAllowRemote: locationAllowRemote,
             locationAllowHybrid: locationAllowHybrid,

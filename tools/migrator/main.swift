@@ -313,6 +313,30 @@ case let .recomputeFitMirrors(storePath):
         fputs("Error: recompute failed: \(error)\n", stderr); exit(1)
     }
 
+case let .recomputeCriteria(storePath):
+    guard FileManager.default.fileExists(atPath: storePath) else {
+        fputs("Error: store not found at '\(storePath)'\n", stderr); exit(1)
+    }
+    print("=== Recompute Location Criteria ===")
+    print("Store: \(storePath)")
+    print("(Run with the Jobhunt app quit — the store is single-writer.)")
+    let storeURL = URL(fileURLWithPath: storePath)
+    let schema = Schema(SchemaV1.models)
+    let config = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
+    let container: ModelContainer
+    do {
+        container = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
+    } catch {
+        fputs("Error: could not open store: \(error)\n", stderr); exit(1)
+    }
+    let store = BackgroundStore(modelContainer: container)
+    do {
+        let changed = try await store.recomputeMeetsCriteriaFromSettings()
+        print("Recompute complete: \(changed) job(s) re-judged against the current location settings.")
+    } catch {
+        fputs("Error: recompute failed: \(error)\n", stderr); exit(1)
+    }
+
 case let .detectDuplicates(storePath):
     guard FileManager.default.fileExists(atPath: storePath) else {
         fputs("Error: store not found at '\(storePath)'\n", stderr); exit(1)

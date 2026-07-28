@@ -15,6 +15,18 @@ public enum JobStatus: String, Codable, CaseIterable, Sendable {
     case duplicate
     case expired
 
+    /// Statuses whose unread jobs are still awaiting a first review — what the dock badge counts.
+    /// Everything else has either already been triaged (applied/interview/offer/rejected) or set
+    /// aside (archived/expired/duplicate/…), and counting those made the badge report 144 against
+    /// 56 jobs actually needing attention.
+    public var awaitsReview: Bool {
+        switch self {
+        case .new, .pursuing: true
+        case .applied, .interview, .offer, .rejected, .passed, .archived, .closed, .duplicate,
+             .expired: false
+        }
+    }
+
     /// Statuses where the job is no longer an active pursuit, so it shouldn't surface actionable
     /// follow-ups (TASK-577). `rejected` is intentionally NOT terminal here — a user may still want a
     /// follow-up (e.g. ask for feedback). Used by `FollowUpVisibility`.

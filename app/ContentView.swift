@@ -55,7 +55,7 @@ struct ContentView: View {
             KeyboardShortcutsView(dismiss: { router.showKeyboardShortcuts = false })
         }
         .modifier(KeyboardShortcutMonitor(router: router))
-        .background(DockBadgeUpdater(unreadCount: unreadJobs.count))
+        .background(DockBadgeUpdater(unreadCount: unreadJobs.count { $0.status.awaitsReview }))
         .onAppear {
             applyAppearance(theme.colorSchemePreference)
         }

@@ -28,10 +28,13 @@ public enum LocationCriteria {
             }
         }
 
-        // Preferred locations set → remote ignores them; hybrid/onsite (and unknown) also require a
-        // location match.
+        // Preferred locations set → a remote role must still be offered somewhere the user can work
+        // (only ruled out when the location positively names foreign places and nothing eligible);
+        // hybrid/onsite (and unknown) also require a location match.
         switch remoteType {
-        case .remote: return allowRemote
+        case .remote:
+            guard allowRemote else { return false }
+            return RemoteGeography.classify(location: location, preferredTerms: terms) != .outOfBounds
         case .hybrid: return allowHybrid && hasMatch
         case .onsite: return allowOnsite && hasMatch
         case .unknown, .none: return allowOnsite && hasMatch

@@ -731,7 +731,8 @@ private let stateAbbrevToName: [String: String] = [
     "tn": "tennessee", "tx": "texas", "ut": "utah", "vt": "vermont", "va": "virginia",
     "wa": "washington", "wv": "west virginia", "wi": "wisconsin", "wy": "wyoming"
 ]
-private let stateNameToAbbrev: [String: String] = Dictionary(uniqueKeysWithValues: stateAbbrevToName.map { abbr, name in
+/// Internal (not file-private) so `RemoteGeography` can build its US-token set from the same table.
+let stateNameToAbbrev: [String: String] = Dictionary(uniqueKeysWithValues: stateAbbrevToName.map { abbr, name in
     (
         name,
         abbr

@@ -431,6 +431,51 @@ public actor BackgroundStore {
         return changed
     }
 
+    /// Re-evaluate every job's `meetsCriteria` from its already-extracted remote mode + location
+    /// against the current location settings. Pure — no LLM calls — so it's the way to apply a
+    /// settings change (or the remote-geography rule) to the existing library. Returns the count
+    /// changed. Run via JobhuntMigrator.
+    public func recomputeMeetsCriteria(
+        preferredLocations: String?,
+        allowRemote: Bool,
+        allowHybrid: Bool,
+        allowOnsite: Bool,
+        filterEnabled: Bool
+    ) throws -> Int {
+        var changed = 0
+        for job in try modelContext.fetch(FetchDescriptor<Job>()) {
+            let meets = LocationCriteria.meets(
+                remoteType: job.remoteType, location: job.location,
+                preferredLocations: preferredLocations, allowRemote: allowRemote,
+                allowHybrid: allowHybrid, allowOnsite: allowOnsite, filterEnabled: filterEnabled
+            )
+            guard job.meetsCriteria != meets else { continue }
+            job.meetsCriteria = meets
+            job.updatedAt = Date()
+            changed += 1
+        }
+        if changed > 0 { try modelContext.save() }
+        return changed
+    }
+
+    /// `recomputeMeetsCriteria` against the location settings as stored. Used by JobhuntMigrator,
+    /// which has no `SettingsStore`.
+    public func recomputeMeetsCriteriaFromSettings() throws -> Int {
+        let rows = try modelContext.fetch(FetchDescriptor<Setting>())
+        let byKey = Dictionary(rows.map { ($0.key, $0.value) }, uniquingKeysWith: { first, _ in first })
+        func flag(_ key: String) -> Bool {
+            guard let raw = byKey[key] else { return true }
+            return raw == "true" || raw == "1"
+        }
+        return try recomputeMeetsCriteria(
+            preferredLocations: byKey[SettingsKey.preferredLocations],
+            allowRemote: flag(SettingsKey.locationAllowRemote),
+            allowHybrid: flag(SettingsKey.locationAllowHybrid),
+            allowOnsite: flag(SettingsKey.locationAllowOnsite),
+            filterEnabled: flag(SettingsKey.locationFilterEnabled)
+        )
+    }
+
     /// One-time cleanup: delete LLM request attempts whose parent request is gone. Historical orphans
     /// from prunes that predate the cascade delete rule. Returns the number deleted. Run via
     /// JobhuntMigrator.

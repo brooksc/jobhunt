@@ -153,12 +153,52 @@ private func extractJsonLdDescription(_ structuredData: [[String: Any]]) -> Stri
         if let locType = posting["jobLocationType"] as? String, locType == "TELECOMMUTE" {
             parts.append("Work arrangement: Remote")
         }
+        // JSON-LD carries the pay band as STRUCTURED data (baseSalary.value.minValue/maxValue). It was
+        // being dropped entirely: only `description` and `jobLocationType` were surfaced, so a posting
+        // whose salary lives solely in markup — or whose visible salary line the boilerplate stripper
+        // removes — reached the model with no pay information at all and extracted as null (job #581,
+        // LiveKit: "$225K – $265K" present in the capture, absent from the cleaned text).
+        if let salary = jsonLdSalaryLine(posting) { parts.append(salary) }
         if let desc = posting["description"] as? String, !desc.trimmingCharacters(in: .whitespaces).isEmpty {
             parts.append(stripHtml(desc))
         }
         if !parts.isEmpty { return parts.joined(separator: "\n") }
     }
     return ""
+}
+
+/// A plain-text pay line from JSON-LD `baseSalary`, or nil when absent/unusable.
+///
+/// schema.org allows the amount as a `QuantitativeValue` (min/max or a single `value`) and the numbers
+/// as either JSON numbers or strings, so both are accepted. Emitted as text rather than written
+/// straight to the job's salary fields so it flows through the existing normalization and stays
+/// visible to a reader of the description.
+private func jsonLdSalaryLine(_ posting: [String: Any]) -> String? {
+    guard let base = posting["baseSalary"] as? [String: Any] else { return nil }
+    let currency = (base["currency"] as? String) ?? (base["salaryCurrency"] as? String) ?? ""
+    guard let value = base["value"] as? [String: Any] else { return nil }
+
+    func number(_ key: String) -> Double? {
+        if let n = value[key] as? Double { return n }
+        if let n = value[key] as? Int { return Double(n) }
+        if let s = value[key] as? String { return Double(s.filter { $0.isNumber || $0 == "." }) }
+        return nil
+    }
+    func format(_ n: Double) -> String {
+        n == n.rounded() ? String(Int(n)) : String(n)
+    }
+
+    let unit = (value["unitText"] as? String)?.lowercased()
+    let period = unit.map { " per \($0)" } ?? ""
+    let amount: String
+    if let min = number("minValue"), let max = number("maxValue"), min > 0, max > 0 {
+        amount = min == max ? format(min) : "\(format(min))–\(format(max))"
+    } else if let single = number("value"), single > 0 {
+        amount = format(single)
+    } else {
+        return nil
+    }
+    return "Base salary: \(amount)\(currency.isEmpty ? "" : " \(currency)")\(period)"
 }
 
 private func findJobPosting(_ value: Any) -> [String: Any]? {

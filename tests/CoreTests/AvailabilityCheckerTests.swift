@@ -567,6 +567,18 @@ final class AvailabilityCheckerCheckURLTests: XCTestCase {
             finalURLString: "https://www.linkedin.com/jobs/view/1",
             body: "<figure class=\"closed-job closed-job__flavor\">"
         ))
+
+        // A lookalike domain must not inherit LinkedIn's closed-job rule.
+        XCTAssertFalse(AvailabilityChecker.isLinkedInClosedJob(
+            finalURLString: "https://notlinkedin.com/jobs/view/1", body: "closed-job__flavor"
+        ), "suffix/substring matching would wrongly accept this")
+        XCTAssertFalse(AvailabilityChecker.isLinkedInClosedJob(
+            finalURLString: "https://linkedin.com.evil.example/jobs/1", body: "closed-job__flavor"
+        ))
+        // A genuine subdomain still matches.
+        XCTAssertTrue(AvailabilityChecker.isLinkedInClosedJob(
+            finalURLString: "https://www.linkedin.com/jobs/view/1", body: "closed-job__flavor"
+        ))
     }
 
     func testLinkedInLoginRedirectIsNotGone() async throws {

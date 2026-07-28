@@ -288,8 +288,10 @@ public enum AvailabilityChecker {
     /// sometimes redirects an un-authenticated check to an auth wall instead of the guest view (see
     /// `isAuthWallURL`); when it does, this marker is absent and the job is left available, not gone.
     static func isLinkedInClosedJob(finalURLString: String, body: String) -> Bool {
-        guard let host = URLComponents(string: finalURLString)?.host?.lowercased(),
-              host.contains("linkedin.com") else { return false }
+        // Exact host or true subdomain via the shared helper. `contains("linkedin.com")` also matched
+        // notlinkedin.com and linkedin.com.evil.example — the marker check made that low-risk, but a
+        // host test shouldn't be the loose part of a rule that expires the user's jobs.
+        guard let url = URL(string: finalURLString), isLinkedInURL(url) else { return false }
         return body.contains("closed-job__flavor")
     }
 

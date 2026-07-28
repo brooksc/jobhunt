@@ -274,6 +274,7 @@ private struct DetailHeader: View {
             // Row 4: action bar
             HStack(spacing: 6) {
                 StatusPickerButton(job: job)
+                    .layoutPriority(1)
 
                 Divider().frame(height: 16).padding(.horizontal, 2)
 
@@ -452,6 +453,10 @@ private struct StatusPickerButton: View {
                 Text(job.status.displayName)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.primary)
+                    // The chip is a fixed-size control in a horizontally-compressed strip; without
+                    // this the longest label ("Interested") wraps mid-word to "Interest-ed".
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(.tertiary)

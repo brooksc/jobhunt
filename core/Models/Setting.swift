@@ -35,6 +35,10 @@ public enum SettingsKey {
     public static let locationAllowRemote = "location_allow_remote"
     public static let locationAllowHybrid = "location_allow_hybrid"
     public static let locationAllowOnsite = "location_allow_onsite"
+    /// Minimum acceptable salary. 0 disables the check. Compared against the TOP of a job's range.
+    public static let minSalary = "min_salary"
+    /// Minimum acceptable fit score (0–100). 0 disables the check.
+    public static let minFitScore = "min_fit_score"
     public static let llmQueuePaused = "llm_queue_paused"
     /// Hide the Debug settings tab. Default false (shown). Re-enable from General settings.
     public static let hideDebugTab = "hide_debug_tab"

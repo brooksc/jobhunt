@@ -254,9 +254,19 @@ private struct DetailHeader: View {
                 // Same three-bucket vocabulary as the Jobs filter, so a posting that merely never
                 // stated its arrangement doesn't read as a rejection here while the filter files it
                 // under "Not stated".
-                if let bucket = JobFilterRules.criteriaBucket(
-                    meetsCriteria: job.meetsCriteria, remoteType: job.remoteType
+                if let verdict = JobRequirements.evaluate(
+                    meetsCriteria: job.meetsCriteria,
+                    remoteType: job.remoteType,
+                    salaryMin: job.salaryMin,
+                    salaryMax: job.salaryMax,
+                    salaryCurrency: job.salaryCurrency,
+                    fitScore: job.fitScore,
+                    thresholds: JobRequirements.Thresholds(
+                        minSalary: appServices.settings.minSalary,
+                        minFitScore: appServices.settings.minFitScore
+                    )
                 ) {
+                    let bucket = verdict.bucket
                     Label(
                         bucket.label,
                         systemImage: bucket == .meets ? "checkmark.circle"
@@ -264,6 +274,9 @@ private struct DetailHeader: View {
                     )
                     .foregroundStyle(bucket == .meets ? Color.green
                         : bucket == .notStated ? Color.secondary : Color.orange)
+                    // Which requirement, not just that one failed — otherwise the badge says
+                    // "Outside criteria" with no way to tell salary from location.
+                    .help(verdict.summary)
                 }
             }
             .font(.caption)

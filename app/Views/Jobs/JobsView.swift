@@ -584,7 +584,7 @@ struct JobsView: View {
                         }
                     }
                     Divider()
-                    filterSection("Location criteria") {
+                    filterSection("Requirements") {
                         HStack(spacing: 6) {
                             meetsCriteriaChip(nil, label: "Any")
                             meetsCriteriaChip(.meets, label: "Meets")
@@ -660,6 +660,23 @@ struct JobsView: View {
         .buttonStyle(.plain)
         .accessibilityIdentifier("filter.remote.\(rt.rawValue)")
         .accessibilityValue(active ? "on" : "off")
+    }
+
+    /// The job's standing against every configured requirement. Thresholds come from settings and are
+    /// applied at read time, so changing one re-filters immediately with no recompute.
+    private func requirementsVerdict(for job: Job) -> JobRequirements.Verdict? {
+        JobRequirements.evaluate(
+            meetsCriteria: job.meetsCriteria,
+            remoteType: job.remoteType,
+            salaryMin: job.salaryMin,
+            salaryMax: job.salaryMax,
+            salaryCurrency: job.salaryCurrency,
+            fitScore: job.fitScore,
+            thresholds: JobRequirements.Thresholds(
+                minSalary: appServices.settings.minSalary,
+                minFitScore: appServices.settings.minFitScore
+            )
+        )
     }
 
     /// Tri-state location-criteria chip (TASK-649). "Doesn't meet" is the in-office review pile —
@@ -996,10 +1013,10 @@ struct JobsView: View {
             // Location/remote criteria verdict (TASK-464; bucketed in TASK-649). A job whose verdict
             // was never computed (extraction failed) matches no bucket, rather than being silently
             // lumped in with the rejects.
-            guard JobFilterRules.matchesCriteria(
-                meetsCriteria: job.meetsCriteria, remoteType: job.remoteType,
-                wanted: filterState.criteriaBucket
-            ) else { return false }
+            if let wanted = filterState.criteriaBucket {
+                // Location + salary floor + fit floor, evaluated together (see JobRequirements).
+                guard requirementsVerdict(for: job)?.bucket == wanted else { return false }
+            }
             guard JobFilterRules.matchesSource(
                 host: job.captureHost, selected: filterState.sourceHosts
             ) else { return false }

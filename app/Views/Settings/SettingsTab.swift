@@ -110,6 +110,7 @@ struct JobsSettingsTab: View {
     var body: some View {
         Form {
             locationSection
+            requirementsSection
             availabilitySection
             customExtractionSection
             applicationDetailsSection
@@ -212,6 +213,70 @@ struct JobsSettingsTab: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    // MARK: - Requirements section
+
+    /// Salary and fit floors feed the same Meets / Not stated / Doesn't meet buckets as the location
+    /// filter, so the Jobs list can triage on all three at once. Both default to 0 (off) — a floor
+    /// only applies once the user sets their own number.
+    private var requirementsSection: some View {
+        Section("Requirements") {
+            LabeledContent("Minimum salary") {
+                HStack(spacing: 6) {
+                    TextField(
+                        "0",
+                        value: Binding(
+                            get: { settings.minSalary },
+                            set: { settings.minSalary = $0 }
+                        ),
+                        format: .number
+                    )
+                    .labelsHidden()
+                    .frame(width: 110)
+                    .multilineTextAlignment(.trailing)
+                    Text(settings.minSalary > 0 ? "USD / year" : "off")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Text(
+                "Compared against the TOP of a job's range, so a posting is only flagged when even its "
+                    + "ceiling falls short. Jobs that don't publish a salary are never flagged — they go to "
+                    + "“Not stated”. 0 turns the check off."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+            LabeledContent("Minimum fit score") {
+                HStack(spacing: 6) {
+                    TextField(
+                        "0",
+                        value: Binding(
+                            get: { settings.minFitScore },
+                            set: { settings.minFitScore = $0 }
+                        ),
+                        format: .number
+                    )
+                    .labelsHidden()
+                    .frame(width: 110)
+                    .multilineTextAlignment(.trailing)
+                    Text(settings.minFitScore > 0 ? "of 100" : "off")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Text(
+                "Jobs scoring below this are flagged as not meeting your requirements. Unscored jobs go "
+                    + "to “Not stated”. 0 turns the check off."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+
+            Text("Filter on these in Jobs → Filter → Requirements.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
     }
 

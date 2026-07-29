@@ -27,6 +27,9 @@ private let settingsDefaults: [String: String] = [
     SettingsKey.locationAllowRemote: "true",
     SettingsKey.locationAllowHybrid: "true",
     SettingsKey.locationAllowOnsite: "true",
+    // Both default to 0 (off) — a requirement is only applied once the user sets their own number.
+    SettingsKey.minSalary: "0",
+    SettingsKey.minFitScore: "0",
     SettingsKey.llmQueuePaused: "false",
     SettingsKey.llmOpenRouterFreeRotate: "false",
     SettingsKey.availabilityAutoCheckEnabled: "true",
@@ -208,6 +211,19 @@ public final class SettingsStore {
     public var preferredLocations: String {
         get { string(forKey: SettingsKey.preferredLocations) }
         set { set(newValue, forKey: SettingsKey.preferredLocations) }
+    }
+
+    /// Minimum acceptable salary; 0 means no salary requirement. Compared against the top of a
+    /// job's range, so a posting is only rejected when even its ceiling falls short.
+    public var minSalary: Int {
+        get { int(forKey: SettingsKey.minSalary) }
+        set { setInt(max(0, newValue), forKey: SettingsKey.minSalary) }
+    }
+
+    /// Minimum acceptable fit score (0–100); 0 means no fit requirement.
+    public var minFitScore: Int {
+        get { int(forKey: SettingsKey.minFitScore) }
+        set { setInt(min(100, max(0, newValue)), forKey: SettingsKey.minFitScore) }
     }
 
     public var preferredMetros: String {

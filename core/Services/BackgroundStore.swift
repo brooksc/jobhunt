@@ -444,13 +444,22 @@ public actor BackgroundStore {
     ) throws -> Int {
         var changed = 0
         for job in try modelContext.fetch(FetchDescriptor<Job>()) {
+            // Repair a missing arrangement the location already states, before judging against it —
+            // a null arrangement is treated as on-site, so "United States - Remote" would otherwise
+            // keep failing the criteria (job #525).
+            let inferred = RemoteTypeInference.infer(remoteType: job.remoteType, location: job.location)
+            let arrangementChanged = inferred != job.remoteType
+            if arrangementChanged { job.remoteType = inferred }
+
             let meets = LocationCriteria.meets(
-                remoteType: job.remoteType, location: job.location,
+                remoteType: inferred, location: job.location,
                 preferredLocations: preferredLocations, allowRemote: allowRemote,
                 allowHybrid: allowHybrid, allowOnsite: allowOnsite, filterEnabled: filterEnabled
             )
-            guard job.meetsCriteria != meets else { continue }
-            job.meetsCriteria = meets
+            let verdictChanged = job.meetsCriteria != meets
+            if verdictChanged { job.meetsCriteria = meets }
+
+            guard arrangementChanged || verdictChanged else { continue }
             job.updatedAt = Date()
             changed += 1
         }

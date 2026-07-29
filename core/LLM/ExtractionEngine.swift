@@ -188,6 +188,11 @@ public enum ExtractionEngine {
         let remoteTypeStr = extracted["remote_type"] as? String
         var remoteType: RemoteType? = remoteTypeStr.flatMap { RemoteType(rawValue: $0) }
 
+        // The model sometimes returns a location that states the arrangement outright ("United States
+        // - Remote") while leaving remote_type null. Fill it from the location before it's used for
+        // the criteria verdict, or the job reads as on-site (job #525).
+        remoteType = RemoteTypeInference.infer(remoteType: remoteType, location: extracted["location"] as? String)
+
         // TASK-464: compute meets_criteria from the EXTRACTED remote mode (before the clamp below) +
         // location against the user's location/remote settings — Electron parity.
         let meetsCriteria = LocationCriteria.meets(

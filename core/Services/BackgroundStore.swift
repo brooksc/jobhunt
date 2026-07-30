@@ -488,6 +488,24 @@ public actor BackgroundStore {
         )
     }
 
+    /// Clear stored `<link rel="canonical">` values that don't identify the posting they're attached
+    /// to — search/listing-page canonicals from single-page boards. Ingestion treats a canonical match
+    /// as proof two captures are the same posting and rewrites the existing capture in place, so a
+    /// canonical shared across postings silently overwrites one job with another's content. Returns
+    /// the number cleared. Run via JobhuntMigrator.
+    public func repairUntrustworthyCanonicalURLs() throws -> Int {
+        var cleared = 0
+        for capture in try modelContext.fetch(FetchDescriptor<Capture>()) {
+            guard let canonical = capture.canonicalURL, !canonical.isEmpty else { continue }
+            guard CanonicalURLPolicy.trustworthyCanonical(canonical, captureURL: capture.url) == nil
+            else { continue }
+            capture.canonicalURL = nil
+            cleared += 1
+        }
+        if cleared > 0 { try modelContext.save() }
+        return cleared
+    }
+
     /// One-time cleanup: delete LLM request attempts whose parent request is gone. Historical orphans
     /// from prunes that predate the cascade delete rule. Returns the number deleted. Run via
     /// JobhuntMigrator.

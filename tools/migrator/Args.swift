@@ -18,6 +18,7 @@ enum Mode {
     case repairDuplicateJobNumbers(storePath: String)
     case unmarkHeuristicDuplicates(storePath: String)
     case recomputeCriteria(storePath: String)
+    case repairCanonicalURLs(storePath: String)
 
     /// True for modes that open the live store read-WRITE. The store is single-writer, so these
     /// must not run while the Jobhunt app is running (TASK-470). `migrate` writes a NEW output
@@ -29,7 +30,8 @@ enum Mode {
         case .repairFitScores, .patch, .patchFitScores, .reclean, .backfillModels,
              .pruneOrphanFitScores, .pruneOrphanAttempts, .pruneOrphanReferralAttempts,
              .recomputeFitMirrors, .detectDuplicates,
-             .repairDuplicateJobNumbers, .unmarkHeuristicDuplicates, .recomputeCriteria:
+             .repairDuplicateJobNumbers, .unmarkHeuristicDuplicates, .recomputeCriteria,
+             .repairCanonicalURLs:
             return true
         }
     }
@@ -57,6 +59,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
     var repairDuplicateJobNumbers = false
     var unmarkHeuristicDuplicates = false
     var recomputeCriteria = false
+    var repairCanonicalURLs = false
     var storePath = defaultStorePath
     var inputPath = defaultInputPath
     var outputPath: String? = nil
@@ -92,6 +95,8 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
             unmarkHeuristicDuplicates = true
         case "--recompute-criteria":
             recomputeCriteria = true
+        case "--repair-canonical-urls":
+            repairCanonicalURLs = true
         case "--store":
             i += 1
             guard i < args.count, !args[i].hasPrefix("--") else {
@@ -134,6 +139,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
         ("--repair-duplicate-job-numbers", repairDuplicateJobNumbers),
         ("--unmark-heuristic-duplicates", unmarkHeuristicDuplicates),
         ("--recompute-criteria", recomputeCriteria),
+        ("--repair-canonical-urls", repairCanonicalURLs),
     ]
     let setFlags = modeFlags.filter(\.set).map(\.name)
     // `--output` with no operation flag means migrate; combining it with one is also ambiguous.
@@ -162,6 +168,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
     if repairDuplicateJobNumbers { return .repairDuplicateJobNumbers(storePath: storePath) }
     if unmarkHeuristicDuplicates { return .unmarkHeuristicDuplicates(storePath: storePath) }
     if recomputeCriteria { return .recomputeCriteria(storePath: storePath) }
+    if repairCanonicalURLs { return .repairCanonicalURLs(storePath: storePath) }
 
     guard let out = outputPath else {
         fputs("Error: --output <path> is required.\n", stderr)
@@ -180,6 +187,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
         fputs("  JobhuntMigrator --detect-duplicates [--store <path>]\n", stderr)
         fputs("  JobhuntMigrator --unmark-heuristic-duplicates [--store <path>]\n", stderr)
         fputs("  JobhuntMigrator --recompute-criteria [--store <path>]\n", stderr)
+        fputs("  JobhuntMigrator --repair-canonical-urls [--store <path>]\n", stderr)
         return nil
     }
     return .migrate(inputPath: inputPath, outputPath: out)

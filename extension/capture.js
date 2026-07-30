@@ -193,10 +193,33 @@
     return parts.join('\n\n---\n\n');
   }
 
-  function collectCanonicalUrl(doc) {
+  // Query params whose value identifies a specific posting. Mirrors CanonicalURLPolicy in the app.
+  const POSTING_ID_PARAMS = new Set([
+    "pid", "jid", "id", "jobid", "job_id", "jobpostingid", "postingid", "posting_id",
+    "requisitionid", "requisition_id", "reqid", "gh_jid", "ashby_jid", "currentjobid", "lever_jid"
+  ]);
+
+  function postingIdInQuery(urlString) {
+    try {
+      for (const [name, value] of new URL(urlString).searchParams) {
+        if (POSTING_ID_PARAMS.has(name.toLowerCase()) && value && value.trim()) return value.trim();
+      }
+    } catch (_) { /* not an absolute URL — nothing to check */ }
+    return null;
+  }
+
+  // A single-page board renders the posting in a detail pane while the address bar carries the
+  // posting id, but emits ONE canonical for the whole search page — the same for every job. The app
+  // treats a canonical match as proof two captures are the same posting and overwrites in place, so
+  // sending that collapses every job on the board into one record. If the page URL names a posting
+  // and the canonical doesn't mention it, the canonical describes something broader: drop it.
+  function collectCanonicalUrl(doc, pageUrl) {
     const canonical = doc.querySelector('link[rel="canonical"]');
     const href = canonical && canonical.href ? canonical.href.trim() : "";
-    return href || null;
+    if (!href) return null;
+    const id = postingIdInQuery(pageUrl);
+    if (id && !href.toLowerCase().includes(id.toLowerCase())) return null;
+    return href;
   }
 
   function extractStructuredDescriptions(structuredData) {
@@ -428,7 +451,7 @@
       schema_version: 1,
       captured_at: new Date().toISOString(),
       url,
-      canonical_url: collectCanonicalUrl(doc),
+      canonical_url: collectCanonicalUrl(doc, url),
       page_title: pageTitle,
       selected_text: collectSelectedText(win),
       visible_text: collectVisibleText(doc, win),

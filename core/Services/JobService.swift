@@ -104,9 +104,14 @@ public actor JobService {
         }
         // A canonical URL is optional metadata; normalize it if valid, otherwise drop it (don't fail
         // the whole capture over a malformed <link rel="canonical"> the site emitted).
+        // A canonical that doesn't identify this posting is dropped, not stored: ingestion treats a
+        // canonical match as proof of sameness and overwrites the existing capture, so a search-page
+        // canonical shared by every job on an SPA board silently destroys data (see
+        // CanonicalURLPolicy).
         let validatedCanonical: String? = payload.canonicalURL
             .flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
             .flatMap { try? URLNormalizer.validatedForIngestion($0) }
+            .flatMap { CanonicalURLPolicy.trustworthyCanonical($0, captureURL: validatedURL) }
         guard !payload.pageTitle.trimmingCharacters(in: .whitespaces).isEmpty else {
             throw JobServiceError.missingPageTitle
         }

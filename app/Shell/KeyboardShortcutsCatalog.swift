@@ -107,6 +107,13 @@ enum KeyboardShortcutCatalog {
             key: "1", modifiers: .option, section: .changeStatus, glyphOverride: "1–6"
         ),
         AppShortcut(
+            id: "status.interested",
+            title: "Mark Interested",
+            key: "i",
+            modifiers: [.command, .control],
+            section: .changeStatus
+        ),
+        AppShortcut(
             id: "status.archive",
             title: "Archive",
             key: "a",

@@ -29,18 +29,45 @@ public enum JobRequirements {
         public static let none = Thresholds(minSalary: 0, minFitScore: 0)
     }
 
+    /// One requirement's outcome, in two lengths: `short` rides inline on the badge so the reason is
+    /// visible without hovering, `long` is the full sentence for the tooltip.
+    public struct Reason: Equatable, Sendable {
+        public let short: String
+        public let long: String
+
+        public init(short: String, long: String) {
+            self.short = short
+            self.long = long
+        }
+    }
+
     /// What a job was measured against and how it fared.
     public struct Verdict: Equatable, Sendable {
         public let bucket: JobFilterRules.CriteriaBucket
-        /// Requirements the job definitively failed, phrased for display.
-        public let failures: [String]
+        /// Requirements the job definitively failed.
+        public let failures: [Reason]
         /// Requirements that couldn't be judged because the posting didn't say.
-        public let unstated: [String]
+        public let unstated: [Reason]
 
+        /// The reasons that decided the bucket — failures when there are any, otherwise the gaps.
+        private var deciding: [Reason] {
+            failures.isEmpty ? unstated : failures
+        }
+
+        /// Full sentence(s) for the tooltip.
         public var summary: String {
-            if !failures.isEmpty { return failures.joined(separator: " · ") }
-            if !unstated.isEmpty { return unstated.joined(separator: " · ") }
-            return "Meets your requirements"
+            deciding.isEmpty ? "Meets your requirements" : deciding.map(\.long).joined(separator: " · ")
+        }
+
+        /// Compact form for the badge itself, e.g. "fit 44 < 50".
+        public var shortSummary: String? {
+            deciding.isEmpty ? nil : deciding.map(\.short).joined(separator: ", ")
+        }
+
+        /// What the badge reads: the verdict plus, when it isn't a pass, why.
+        public func badgeText(_ label: String) -> String {
+            guard let shortSummary else { return label }
+            return "\(label): \(shortSummary)"
         }
     }
 
@@ -68,13 +95,16 @@ public enum JobRequirements {
             meetsCriteria: meetsCriteria, remoteType: remoteType
         ) else { return nil }
 
-        var failures: [String] = []
-        var unstated: [String] = []
+        var failures: [Reason] = []
+        var unstated: [Reason] = []
 
         switch locationBucket {
-        case .doesNotMeet: failures.append("Location outside your criteria")
-        case .notStated: unstated.append("Work arrangement not stated")
-        case .meets: break
+        case .doesNotMeet:
+            failures.append(Reason(short: "location", long: "Location outside your criteria"))
+        case .notStated:
+            unstated.append(Reason(short: "arrangement not stated", long: "Work arrangement not stated"))
+        case .meets:
+            break
         }
 
         if thresholds.minSalary > 0 {
@@ -82,23 +112,32 @@ public enum JobRequirements {
             if !currency.isEmpty, currency != "USD" {
                 // Comparing a foreign figure against a USD floor would be meaningless, not merely
                 // imprecise — treat it as unknown rather than converting at an invented rate.
-                unstated.append("Salary in \(currency) — not comparable")
+                unstated.append(Reason(
+                    short: "salary in \(currency)",
+                    long: "Salary in \(currency) — not comparable"
+                ))
             } else if let salary = comparableSalary(min: salaryMin, max: salaryMax) {
                 if salary < thresholds.minSalary {
-                    failures.append("Pays up to \(money(salary)), below your \(money(thresholds.minSalary)) floor")
+                    failures.append(Reason(
+                        short: "pays ≤ \(money(salary)) < \(money(thresholds.minSalary))",
+                        long: "Pays up to \(money(salary)), below your \(money(thresholds.minSalary)) floor"
+                    ))
                 }
             } else {
-                unstated.append("No salary stated")
+                unstated.append(Reason(short: "no salary stated", long: "No salary stated"))
             }
         }
 
         if thresholds.minFitScore > 0 {
             if let fitScore {
                 if fitScore < thresholds.minFitScore {
-                    failures.append("Fit \(fitScore), below your minimum of \(thresholds.minFitScore)")
+                    failures.append(Reason(
+                        short: "fit \(fitScore) < \(thresholds.minFitScore)",
+                        long: "Fit \(fitScore), below your minimum of \(thresholds.minFitScore)"
+                    ))
                 }
             } else {
-                unstated.append("Not scored yet")
+                unstated.append(Reason(short: "not scored", long: "Not scored yet"))
             }
         }
 

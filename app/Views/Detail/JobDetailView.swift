@@ -267,15 +267,18 @@ private struct DetailHeader: View {
                     )
                 ) {
                     let bucket = verdict.bucket
+                    // The reason rides ON the badge, not only in the tooltip: "Outside criteria"
+                    // alone gives no way to tell a salary miss from a location one, and a verdict
+                    // you have to hover to understand isn't usable while triaging (job #612 read as
+                    // outside criteria purely because its fit was 44 against a floor of 50).
                     Label(
-                        bucket.label,
+                        verdict.badgeText(bucket.label),
                         systemImage: bucket == .meets ? "checkmark.circle"
                             : bucket == .notStated ? "questionmark.circle" : "xmark.circle"
                     )
                     .foregroundStyle(bucket == .meets ? Color.green
                         : bucket == .notStated ? Color.secondary : Color.orange)
-                    // Which requirement, not just that one failed — otherwise the badge says
-                    // "Outside criteria" with no way to tell salary from location.
+                    .fixedSize(horizontal: false, vertical: true)
                     .help(verdict.summary)
                 }
             }

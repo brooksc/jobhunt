@@ -127,6 +127,12 @@ struct JobMenuCommands: Commands {
                 .keyboardShortcut("r", modifiers: [.command, .control])
                 .disabled(!enabled)
             Divider()
+            // The two triage verdicts, bound as a pair. Interested is also reachable via ⌥2 with the
+            // other status shortcuts, but while reviewing a queue the only two calls are "keep" and
+            // "archive", and they should sit under the same modifier.
+            Button("Mark Interested") { handlers?.setStatus(.pursuing) }
+                .keyboardShortcut("i", modifiers: [.command, .control])
+                .disabled(!enabled)
             Button("Archive") { handlers?.archive() }
                 .keyboardShortcut("a", modifiers: [.command, .control])
                 .disabled(!enabled)

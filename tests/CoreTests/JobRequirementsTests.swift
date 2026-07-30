@@ -33,7 +33,7 @@ final class JobRequirementsTests: XCTestCase {
     func testSalaryCeilingBelowFloorFails() {
         let verdict = evaluate(salaryMin: 120_000, salaryMax: 180_000, minSalary: 200_000)
         XCTAssertEqual(verdict?.bucket, .doesNotMeet)
-        XCTAssertEqual(verdict?.failures.first, "Pays up to $180k, below your $200k floor")
+        XCTAssertEqual(verdict?.failures.first?.long, "Pays up to $180k, below your $200k floor")
     }
 
     /// Judged on the TOP of the range — a band straddling the floor still qualifies.
@@ -55,7 +55,7 @@ final class JobRequirementsTests: XCTestCase {
     func testMissingSalaryIsNotStatedRatherThanFailing() {
         let verdict = evaluate(minSalary: 200_000)
         XCTAssertEqual(verdict?.bucket, .notStated)
-        XCTAssertEqual(verdict?.unstated, ["No salary stated"])
+        XCTAssertEqual(verdict?.unstated.map(\.long), ["No salary stated"])
         XCTAssertTrue(verdict?.failures.isEmpty ?? false)
     }
 
@@ -67,7 +67,7 @@ final class JobRequirementsTests: XCTestCase {
     func testForeignCurrencyIsNotComparedAgainstAUSDFloor() {
         let verdict = evaluate(salaryMax: 100_000, currency: "EUR", minSalary: 200_000)
         XCTAssertEqual(verdict?.bucket, .notStated)
-        XCTAssertEqual(verdict?.unstated.first, "Salary in EUR — not comparable")
+        XCTAssertEqual(verdict?.unstated.first?.long, "Salary in EUR — not comparable")
     }
 
     func testAbsentCurrencyIsAssumedUSD() {
@@ -79,7 +79,7 @@ final class JobRequirementsTests: XCTestCase {
     func testFitBelowFloorFails() {
         let verdict = evaluate(fit: 42, minFit: 50)
         XCTAssertEqual(verdict?.bucket, .doesNotMeet)
-        XCTAssertEqual(verdict?.failures.first, "Fit 42, below your minimum of 50")
+        XCTAssertEqual(verdict?.failures.first?.long, "Fit 42, below your minimum of 50")
     }
 
     func testFitAtFloorQualifies() {
@@ -89,7 +89,7 @@ final class JobRequirementsTests: XCTestCase {
     func testUnscoredJobIsNotStatedRatherThanFailing() {
         let verdict = evaluate(minFit: 50)
         XCTAssertEqual(verdict?.bucket, .notStated)
-        XCTAssertEqual(verdict?.unstated, ["Not scored yet"])
+        XCTAssertEqual(verdict?.unstated.map(\.long), ["Not scored yet"])
     }
 
     // MARK: - Combining
@@ -99,7 +99,7 @@ final class JobRequirementsTests: XCTestCase {
         let verdict = evaluate(salaryMax: 100_000, fit: nil, minSalary: 200_000, minFit: 50)
         XCTAssertEqual(verdict?.bucket, .doesNotMeet)
         XCTAssertEqual(verdict?.failures.count, 1)
-        XCTAssertEqual(verdict?.unstated, ["Not scored yet"])
+        XCTAssertEqual(verdict?.unstated.map(\.long), ["Not scored yet"])
     }
 
     func testEveryFailedRequirementIsReported() {
@@ -120,13 +120,47 @@ final class JobRequirementsTests: XCTestCase {
     func testUnstatedArrangementIsNotAFailure() {
         let verdict = evaluate(meets: false, remote: nil)
         XCTAssertEqual(verdict?.bucket, .notStated)
-        XCTAssertEqual(verdict?.unstated, ["Work arrangement not stated"])
+        XCTAssertEqual(verdict?.unstated.map(\.long), ["Work arrangement not stated"])
     }
 
     /// Contract preserved from `criteriaBucket`: a job whose verdict was never computed matches no
     /// bucket rather than being lumped in with the rejects.
     func testUncomputedVerdictReturnsNil() {
         XCTAssertNil(evaluate(meets: nil))
+    }
+
+    // MARK: - Badge text (the reason must be readable without hovering)
+
+    /// The reported case: job #612 read as "Outside criteria" with nothing indicating that its fit of
+    /// 44 against a floor of 50 was the sole cause.
+    func testBadgeNamesTheFailingRequirementInline() {
+        let verdict = evaluate(salaryMax: 267_900, fit: 44, minSalary: 200_000, minFit: 50)
+        XCTAssertEqual(verdict?.bucket, .doesNotMeet)
+        XCTAssertEqual(verdict?.badgeText("Outside criteria"), "Outside criteria: fit 44 < 50")
+        XCTAssertEqual(verdict?.summary, "Fit 44, below your minimum of 50")
+    }
+
+    func testBadgeIsUnadornedWhenEverythingPasses() {
+        let verdict = evaluate(salaryMax: 250_000, fit: 80, minSalary: 200_000, minFit: 50)
+        XCTAssertEqual(verdict?.badgeText("Meets criteria"), "Meets criteria")
+        XCTAssertNil(verdict?.shortSummary)
+    }
+
+    func testBadgeShowsTheGapWhenNothingFailed() {
+        let verdict = evaluate(minSalary: 200_000)
+        XCTAssertEqual(verdict?.badgeText("Not stated"), "Not stated: no salary stated")
+    }
+
+    /// With several misses the badge lists them rather than picking one arbitrarily.
+    func testBadgeListsEveryFailure() {
+        let verdict = evaluate(salaryMax: 100_000, fit: 10, minSalary: 200_000, minFit: 50)
+        XCTAssertEqual(verdict?.badgeText("Outside criteria"), "Outside criteria: pays ≤ $100k < $200k, fit 10 < 50")
+    }
+
+    /// Failures decide the bucket, so the badge must not dilute them with unrelated gaps.
+    func testBadgeOmitsUnknownsWhenSomethingDefinitelyFailed() {
+        let verdict = evaluate(fit: 10, minSalary: 200_000, minFit: 50)
+        XCTAssertEqual(verdict?.badgeText("Outside criteria"), "Outside criteria: fit 10 < 50")
     }
 
     func testMeetingEverythingSaysSo() {

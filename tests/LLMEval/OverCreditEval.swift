@@ -55,13 +55,15 @@ final class OverCreditEval: XCTestCase {
     ]
 
     func testAdjacentEvidenceIsNotScoredAsMet() async throws {
-        guard let providerURL = ProcessInfo.processInfo.environment["JOBHUNT_LLM_URL"] else {
-            throw XCTSkip("No LLM provider configured — set JOBHUNT_LLM_URL to run this eval")
+        guard let config = EvalProvider.resolveConfig() else {
+            throw XCTSkip(
+                "No provider configured — set JOBHUNT_EVAL_PROVIDER + JOBHUNT_EVAL_MODEL "
+                    + "(+ JOBHUNT_EVAL_API_KEY for a hosted provider)"
+            )
         }
-        guard let model = ProcessInfo.processInfo.environment["JOBHUNT_LLM_MODEL"] else {
-            throw XCTSkip("No model configured — set JOBHUNT_LLM_MODEL to run this eval")
-        }
-        let provider = LMStudioProvider(baseURL: providerURL, model: model)
+        let (maybeProvider, reason) = EvalProvider.make(config)
+        guard let provider = maybeProvider else { throw XCTSkip(reason ?? "provider unavailable") }
+        let model = config.model
 
         print("\n=== Over-credit eval (named-technology rule) ===")
         var failures: [String] = []

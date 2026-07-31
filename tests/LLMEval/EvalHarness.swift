@@ -231,19 +231,20 @@ final class LLMEvalHarness: XCTestCase {
     // MARK: - Test
 
     func testExtractionAccuracy() async throws {
-        let providerURL = resolveProviderURL()
-        guard let providerURL else {
-            throw XCTSkip("No LLM provider configured — set JOBHUNT_LLM_URL env var to run eval")
+        guard let config = EvalProvider.resolveConfig() else {
+            throw XCTSkip(
+                "No provider configured — set JOBHUNT_EVAL_PROVIDER + JOBHUNT_EVAL_MODEL "
+                    + "(+ JOBHUNT_EVAL_API_KEY for a hosted provider)"
+            )
         }
-
-        guard let model = resolveModel() else {
-            throw XCTSkip("No model configured — set JOBHUNT_LLM_MODEL env var to run eval")
-        }
-        let provider = LMStudioProvider(baseURL: providerURL, model: model)
+        let (maybeProvider, reason) = EvalProvider.make(config)
+        guard let provider = maybeProvider else { throw XCTSkip(reason ?? "provider unavailable") }
+        let model = config.model
+        let providerURL = config.baseURL
         let minAccuracy = resolveMinAccuracy()
 
         print("\n=== LLM Extraction Eval ===")
-        print("Provider URL: \(providerURL)")
+        print("Provider: \(config.provider)  \(providerURL.isEmpty ? "" : providerURL)")
         print("Model: \(model)")
         if let min = minAccuracy {
             print("Threshold mode: fail below \(min)%")

@@ -1,87 +1,97 @@
-# LLM Extraction Eval
+# LLM evals
 
-An XCTest harness that runs synthetic job description fixtures through
-`ExtractionEngine.extract` — the same production path used at runtime —
-and prints a field-by-field accuracy report.
+Opt-in benchmarks that call a real model. Kept out of the fast gate — run them deliberately, and
+always before switching the model the app scores with.
 
-## Modes
+Three suites, measuring different halves of the pipeline:
 
-### Reporting mode (default)
+| Suite | Question it answers |
+|---|---|
+| `LLMEvalHarness` | **Extraction** — are title, company, location, remote type, salary and requirements pulled out correctly? |
+| `FitScoringEval` | **Judgment** — are requirement assessments honest, or does the model over-credit adjacent experience? |
+| `OverCreditEval` | The two originally-reported over-credit cases (CUDA, PCI), kept as a focused regression. |
 
-The test **skips** gracefully when no provider is reachable and **never
-fails** on low accuracy. Use this for local experimentation.
+`FitScoringEval` exists because nothing measured scoring judgment. Extraction accuracy says nothing
+about whether "expertise in CUDA" was scored *met* from a GPU migration — and that judgment is what
+every score, filter and triage decision rests on.
 
-### Threshold mode
+## Configuration
 
-Set `JOBHUNT_LLM_MIN_ACCURACY` to an integer percentage. The test fails
-when overall accuracy falls below that value. Use this as a release gate
-or in CI to prevent regressions.
+`xcodebuild` does **not** forward the shell environment to the test process, so an exported variable
+never arrives. Write the values to dotfiles in your **home directory** instead — which also means an
+API key can't be committed by accident.
 
-## Prerequisites
+```sh
+echo openrouter                       > ~/.jobhunt-eval-provider
+echo deepseek/deepseek-v4-flash-0731  > ~/.jobhunt-eval-model
+echo sk-or-...                        > ~/.jobhunt-eval-api-key
+chmod 600 ~/.jobhunt-eval-api-key
+```
 
-A running OpenAI-compatible LLM endpoint (e.g. LM Studio on port 1234) with a model loaded.
-Both the endpoint URL and the model id are **required** — there is no hardcoded default model.
+Providers: `lmstudio` (needs `~/.jobhunt-eval-base-url`, no key), `openrouter`, `google`,
+`anthropic`, `openai`. OpenRouter rotation is disabled in evals, so the model you name is the model
+you measure.
+
+The legacy `~/.jobhunt-lmstudio-url` / `~/.jobhunt-lmstudio-model` pair still selects LM Studio, and
+`scripts/run-eval.sh <model> [threshold]` still works for that path.
 
 ## Running
 
-The eval has its own scheme (`Jobhunt-Eval`), kept out of the normal test gate. Simplest path is
-the wrapper script:
-
 ```sh
-# Reporting mode (prints accuracy, never fails)
-scripts/run-eval.sh gemma-4-e2b-it-mlx
-
-# Threshold mode (fail below 80%)
-scripts/run-eval.sh gemma-4-e2b-it-mlx 80
+xcodebuild test -project Jobhunt.xcodeproj -scheme Jobhunt-Eval \
+  -configuration Debug-DMG -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO
 ```
 
-It defaults the endpoint to `http://127.0.0.1:1234`; override with `JOBHUNT_LLM_URL`.
+Both suites **report** by default and fail nothing, so a run always shows the full picture. To gate:
 
-### Or invoke xcodebuild directly
+- extraction — `~/.jobhunt-lmstudio-min-accuracy` (integer percentage)
+- fit scoring — `JOBHUNT_EVAL_STRICT=1`
+
+An unconfigured or misconfigured run **skips with the reason** rather than passing silently.
+
+## Comparing two models
 
 ```sh
-JOBHUNT_LLM_URL=http://127.0.0.1:1234 \
-JOBHUNT_LLM_MODEL=gemma-4-e2b-it-mlx \
+for m in gemini-3.1-flash-lite deepseek/deepseek-v4-flash-0731; do
+  echo "$m" > ~/.jobhunt-eval-model
+  echo "=== $m ==="
   xcodebuild test -project Jobhunt.xcodeproj -scheme Jobhunt-Eval \
-  -destination 'platform=macOS' -only-testing:LLMEval CODE_SIGNING_ALLOWED=NO
+    -configuration Debug-DMG -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO 2>&1 \
+    | grep -E "checks passed|Overall:|→ score|Misses"
+done
 ```
 
-Set `JOBHUNT_LLM_MIN_ACCURACY` to enable threshold mode. The base URL may also be written to
-`~/.jobhunt-lmstudio-url` instead of passing `JOBHUNT_LLM_URL`.
+Judge on the **checks-passed percentage of `FitScoringEval`**, not on the scores themselves. A model
+that rates everything 95 passes no checks; a model that scores conservatively for the right reasons
+passes them all.
 
 ## Fixtures
 
-Synthetic job postings covering two paths:
+**Extraction** — synthetic postings covering two paths:
 
-**Extraction-only** (pre-cleaned `description` → extract):
-- Remote role with salary bands and application URL
-- Hybrid/contract role with hourly pay
-- Multi-band US salary with metro override
+- *Extraction-only* (pre-cleaned description → extract): remote role with salary bands and
+  application URL; hybrid/contract role with hourly pay; multi-band US salary with metro override
+  and a days-in-office work site.
+- *End-to-end* (raw text → `cleanDescription` → extract), which also exercises boilerplate
+  stripping, JSON-LD preference and selection dedupe.
 
-**End-to-end** (raw `selectedText`/`visibleText`/`structuredData` → `cleanDescription` → extract) — these
-also exercise the cleaning pipeline (boilerplate stripping, JSON-LD preference, selection dedupe):
-- Boilerplate-heavy page with the salary only in JSON-LD
-- Substantial JSON-LD body that should be preferred over page nav
+**Fit scoring** — every case is a real posting where the scorer was demonstrably wrong, with the
+rationale recorded alongside it:
 
-## Output
+| Case | Failure it pins |
+|---|---|
+| Akamai #607 | "CUDA ecosystem" scored *met* from an H100/H200 migration |
+| Mainspring #231 | "hardware or controls engineering" scored *met* via the word "software" in a parenthetical, on a generator-manufacturing role; `domain_fit` 90 |
+| Akamai #718 | "or capacity to learn JIRA" charged as a gap — satisfiable by anyone |
+| Zip #182 | "Alignment with core values" graded at all |
+| Pinterest #619 | A *one-or-more* preferred list marked missing — the inverse error |
 
-```
-=== LLM Extraction Eval ===
-Provider URL: http://127.0.0.1:1234
-Model: gemma-4-e4b-it-mlx
-Reporting mode: no accuracy threshold
+When you find a new failure:
 
---- remote salary bands and application URL ---
-  Model: gemma-4-e4b-it-mlx  chars: 842
-  [PASS] company: got=ExampleCloud  expected=ExampleCloud
-  [PASS] title: got=Principal Technical Program Manager, AI Platform  expected=contains 'Technical Program Manager'
-  ...
-  Score: 7/8 (87%)
+1. Add a case with the **JD context** that makes the judgment decidable — domain judgments need it.
+2. State the expectation as a **set** of acceptable statuses. `partial` and `missing` are often both
+   defensible; pinning one makes the eval brittle without making it stricter.
+3. Record *why* in `rationale`, so a future regression explains itself instead of looking arbitrary.
 
-=== Overall: 21/24 checks passed (87%) ===
-```
-
-In threshold mode, the test fails with a message like:
-```
-XCTAssertGreaterThanOrEqual failed: ("72") is less than ("80") - Accuracy 72% is below threshold 80%.
-```
+Fixtures must be revisited when scoring rules change. `FitScorer.assessmentPromptVersion` is printed
+on every run, so a result can always be traced to the rules that produced it.

@@ -44,6 +44,24 @@ public func cleanDescription(
     if jsonLdDesc.count < jsonLdMinChars, !jsonLdDesc.isEmpty, !isContained(jsonLdDesc, in: primary) {
         parts.append(jsonLdDesc)
     }
+    // Promoting JSON-LD discards the visible text wholesale, which loses anything the structured
+    // description omits. Pay-transparency blurbs are the common casualty: they're appended to the
+    // page separately from the posting body, so a JSON-LD `description` routinely ends at the
+    // qualifications with `baseSalary` null (Microsoft #676 — "USD $142,800 - $274,800 per year" was
+    // captured and then thrown away). Recover just the pay sentences rather than re-appending the
+    // whole page, which would drag the site chrome back in.
+    if jsonLdDesc.count >= jsonLdMinChars, !visible.isEmpty {
+        for line in salarySentences(in: visible) {
+            // Judge duplication on the AMOUNTS, not the surrounding prose. `isContained`'s 80-char
+            // prefix probe compares the start of the excerpt, which for a windowed statement is
+            // qualifications text the JSON-LD also contains — so a real pay band read as "already
+            // present" and was dropped (Microsoft #676's first band).
+            let amounts = moneyAmounts(in: line)
+            let body = parts.joined(separator: "\n")
+            if !amounts.isEmpty, amounts.allSatisfy({ body.contains($0) }) { continue }
+            parts.append(line)
+        }
+    }
     if parts.isEmpty { parts.append(selected) } // last resort: selection only
 
     return normalizeWhitespace(parts.joined(separator: "\n\n"))
@@ -142,6 +160,110 @@ private func isSerializedDataLine(_ rawLine: String) -> Bool {
         if Double(structural) / Double(line.count) > 0.18 { return true }
     }
     return false
+}
+
+// MARK: - Salary recovery from visible text
+
+/// Sentences in `text` that state pay, for re-adding when the structured description omitted it.
+///
+/// Requires BOTH a currency amount and a pay keyword: a bare "$" is far too common on a careers page
+/// ("$1B in revenue", "save customers $500") and a bare "salary" often appears in benefits prose with
+/// no figure. Both together is a reliable pay statement.
+///
+/// Capped at three sentences — enough for a base range plus a location-specific variant (Microsoft
+/// states a separate SF/NYC band) without pulling in a benefits essay.
+func salarySentences(in text: String) -> [String] {
+    guard text.range(of: #"[$€£]\s?[\d,]{3,}"#, options: .regularExpression) != nil else { return [] }
+
+    let payKeyword = #"(?i)\b(base pay|pay range|salary range|base salary|pay scale|compensation range|"#
+        + #"typical pay|per year|per hour|per annum|annually|hourly rate|annual salary)\b"#
+    var found: [String] = []
+    var seen = Set<String>()
+
+    // innerText collapses the page into few newlines, so split on sentence ends as well as lines.
+    for raw in text.components(separatedBy: CharacterSet(charactersIn: "\n")) {
+        for sentence in splitIntoSentences(raw) {
+            let trimmed = sentence.trimmingCharacters(in: .whitespaces)
+            guard trimmed.count >= 20 else { continue }
+            guard let money = trimmed.range(of: #"[$€£]\s?[\d,]{3,}"#, options: .regularExpression) else { continue }
+            guard trimmed.range(of: payKeyword, options: .regularExpression) != nil else { continue }
+            // Pages glue sections together without spaces ("…product demos).#wss#ISEngineeringTechnical
+            // Program Management IC5 - The typical base pay range…"), so a "sentence" can run for
+            // thousands of characters. Discarding it would throw away the pay statement it contains;
+            // take a window around the amount instead.
+            let statement = trimmed.count <= maxPaySentenceChars
+                ? trimmed
+                : payWindow(in: trimmed, around: money)
+            let key = compactForCompare(statement)
+            if seen.contains(key) { continue }
+            seen.insert(key)
+            found.append(statement)
+            if found.count == 3 { return found }
+        }
+    }
+    return found
+}
+
+/// The currency amounts appearing in `text`, e.g. ["$142,800", "$274,800"].
+func moneyAmounts(in text: String) -> [String] {
+    let pattern = #"[$€£]\s?[\d,]{3,}"#
+    var amounts: [String] = []
+    var searchStart = text.startIndex
+    while let found = text.range(of: pattern, options: .regularExpression, range: searchStart ..< text.endIndex) {
+        amounts.append(String(text[found]))
+        searchStart = found.upperBound
+    }
+    return amounts
+}
+
+/// Longest pay statement kept verbatim; beyond this a window around the amount is taken instead.
+private let maxPaySentenceChars = 400
+
+/// A readable excerpt around a pay amount, for when the surrounding "sentence" is really a run of
+/// glued-together page sections. Reaches back far enough to include the phrase that introduces the
+/// figure ("The typical base pay range for this role across the U.S. is …") and stops shortly after,
+/// snapping to word boundaries so it doesn't start or end mid-word.
+private func payWindow(in text: String, around money: Range<String.Index>) -> String {
+    let before = 220
+    let after = 90
+    let lower = text.index(money.lowerBound, offsetBy: -before, limitedBy: text.startIndex) ?? text.startIndex
+    let upper = text.index(money.upperBound, offsetBy: after, limitedBy: text.endIndex) ?? text.endIndex
+    var slice = String(text[lower ..< upper])
+    // Drop a partial leading word unless we started at the very beginning.
+    if lower != text.startIndex, let space = slice.firstIndex(of: " ") {
+        slice = String(slice[slice.index(after: space)...])
+    }
+    if upper != text.endIndex, let space = slice.lastIndex(of: " ") {
+        slice = String(slice[..<space])
+    }
+    return slice.trimmingCharacters(in: .whitespaces)
+}
+
+/// Abbreviations whose trailing period does not end a sentence. Without these, Microsoft's "…across
+/// the U.S. is USD $142,800 - $274,800 per year." splits after "U.S." and the recovered fragment
+/// loses the "base pay range" context that makes it readable.
+private let sentenceSafeAbbreviations: Set<String> = [
+    "u.s.", "u.s.a.", "u.k.", "e.g.", "i.e.", "etc.", "vs.", "approx.", "inc.", "ltd.", "co.",
+    "corp.", "dept.", "est.", "no.", "yr.", "yrs.", "hr.", "hrs.", "mr.", "ms.", "mrs.", "dr.", "st."
+]
+
+/// Split on sentence terminators followed by whitespace, keeping known abbreviations intact.
+private func splitIntoSentences(_ text: String) -> [String] {
+    let characters = Array(text)
+    var sentences: [String] = []
+    var current = ""
+    for (index, char) in characters.enumerated() {
+        current.append(char)
+        guard char == ".", index + 1 < characters.count,
+              characters[index + 1] == " " || characters[index + 1] == "\n" else { continue }
+        // The token ending at this period — "U.S." rather than the whole clause.
+        let token = current.split(whereSeparator: { $0 == " " || $0 == "\n" }).last.map(String.init) ?? ""
+        if sentenceSafeAbbreviations.contains(token.lowercased()) { continue }
+        sentences.append(current)
+        current = ""
+    }
+    if !current.isEmpty { sentences.append(current) }
+    return sentences
 }
 
 // MARK: - JSON-LD helpers

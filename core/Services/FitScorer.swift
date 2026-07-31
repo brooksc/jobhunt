@@ -106,6 +106,20 @@ public enum FitScorer {
 
     public static let penaltyCap: Int = 60
 
+    // MARK: Assessment prompt version
+
+    /// Bumped whenever the scoring prompt changes in a way that alters what the model returns, and
+    /// stamped into every stored score.
+    ///
+    /// Without it a corpus silently mixes populations: after the named-technology rule tightened what
+    /// counts as "met", new scores are stricter than the 171 already stored, and a `min_score` filter
+    /// would compare the two as if they were the same measurement. Recomputing can't reconcile them —
+    /// the arithmetic is unchanged, it's the model's judgment that moved — so consumers need to be
+    /// able to tell which prompt produced a score.
+    ///
+    /// v1 = original. v2 = named technologies require literal evidence to score "met".
+    public static let assessmentPromptVersion = 2
+
     /// Build the gap list from the LLM's `requirement_assessments` (raw dicts). Only `partial`/`missing`
     /// items become gaps (`met` is not a gap). `kind` comes from the assessment; when it's absent
     /// (legacy scores that predate the tag) it defaults to `.required` so an unknown gap is treated as
@@ -281,6 +295,11 @@ public enum FitScorer {
         merged["penalty"] = result.penalty
         merged["penaltyReasons"] = result.penaltyReasons
         merged["scoreWeights"] = result.scoreWeights
+        // Preserve the version a score was ASSESSED under. A recompute re-runs the arithmetic over
+        // the model's existing judgments, so it must not relabel an old assessment as a new one.
+        if merged["assessment_prompt_version"] == nil {
+            merged["assessment_prompt_version"] = rawLLMDict["assessment_prompt_version"] ?? 1
+        }
         // Ensure requirements_not_met key matches projection expectations
         if merged["requirements_not_met"] == nil {
             merged["requirements_not_met"] = result.penaltyReasons

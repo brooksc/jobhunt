@@ -309,7 +309,11 @@ public enum ExtractionEngine {
         }
 
         let score = FitScorer.computeScore(dimensions: dimensions, gaps: gaps)
-        let mergedJSON = FitScorer.buildMergedJSON(result: score, rawLLMDict: raw)
+        // A live scoring call IS a fresh assessment, so stamp the current prompt version. Recompute
+        // takes the other branch and preserves whatever the score was originally assessed under.
+        var stamped = raw
+        stamped["assessment_prompt_version"] = FitScorer.assessmentPromptVersion
+        let mergedJSON = FitScorer.buildMergedJSON(result: score, rawLLMDict: stamped)
         return FitScoreOutput(
             score: score, fitScoreJSON: mergedJSON, promptChars: promptChars,
             responseChars: responseChars,

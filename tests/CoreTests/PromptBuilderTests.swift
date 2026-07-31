@@ -268,6 +268,33 @@ final class ValuesRequirementPromptTests: XCTestCase {
         }
     }
 
+    // MARK: - Named-technology evidence standard
+
+    /// Assessments over-credited by mapping adjacent experience onto specifically-named technologies:
+    /// Akamai #607 scored "Expertise in GPU architectures and CUDA ecosystem" as MET from an
+    /// H100/H200 migration, and Pinterest #619 scored PCI as MET from FTC/EU DSA compliance work.
+    /// Both are fuzzy semantic matches where the requirement demands literal evidence.
+    func testScoringDemandsLiteralEvidenceForNamedTechnologies() {
+        let prompt = fitPrompt
+        XCTAssertTrue(prompt.contains("named-technology rule"), "the rule must be stated")
+        XCTAssertTrue(prompt.contains("cuda"), "the reported failure should be the worked example")
+        XCTAssertTrue(
+            prompt.contains("unambiguous equivalent"),
+            "an equivalent term must still qualify — this is not a literal string match"
+        )
+    }
+
+    /// Capping at "partial" rather than "missing" matters: adjacent experience is real, just not the
+    /// named thing, and calling it missing would be its own distortion.
+    func testAdjacentEvidenceIsCappedAtPartialNotMissing() {
+        XCTAssertTrue(fitPrompt.contains("is \"partial\" at best"), fitPrompt)
+    }
+
+    /// The evidence string is what a reader trusts; an invented one is worse than a low score.
+    func testEvidenceMustQuoteTheResume() {
+        XCTAssertTrue(fitPrompt.contains("never assert a capability the resume does not state"))
+    }
+
     /// The existing submission-mechanics carve-out uses the same shape and must survive.
     func testSubmissionMechanicsExclusionIsIntact() {
         XCTAssertTrue(fitPrompt.contains("submission mechanics"))

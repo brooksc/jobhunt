@@ -302,3 +302,40 @@ final class FitScorerTests: XCTestCase {
         }
     }
 }
+
+// MARK: - Assessment prompt version
+
+/// Tightening what counts as "met" makes new scores stricter than the 171 already stored, and a
+/// recompute can't reconcile them — the arithmetic is unchanged, it's the model's judgment that
+/// moved. Without a stamp, a `min_score` filter silently compares two different measurements.
+final class AssessmentPromptVersionTests: XCTestCase {
+    private func merged(_ raw: [String: Any]) throws -> [String: Any] {
+        let result = FitScorer.computeScore(dimensions: [:], gaps: [])
+        let json = try XCTUnwrap(FitScorer.buildMergedJSON(result: result, rawLLMDict: raw))
+        let data = try XCTUnwrap(json.data(using: .utf8))
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    /// A fresh assessment carries whatever version the caller stamped.
+    func testAFreshAssessmentKeepsTheStampedVersion() throws {
+        let out = try merged(["assessment_prompt_version": FitScorer.assessmentPromptVersion])
+        XCTAssertEqual(out["assessment_prompt_version"] as? Int, FitScorer.assessmentPromptVersion)
+    }
+
+    /// Recompute re-runs the arithmetic over an OLD judgment, so it must not relabel it as current —
+    /// that would erase exactly the distinction the stamp exists to preserve.
+    func testRecomputePreservesAnOlderVersionRatherThanRelabelling() throws {
+        let out = try merged(["assessment_prompt_version": 1, "dimensions": []])
+        XCTAssertEqual(out["assessment_prompt_version"] as? Int, 1)
+    }
+
+    /// Scores stored before the stamp existed are v1 by definition.
+    func testUnstampedLegacyScoresDefaultToVersionOne() throws {
+        let out = try merged(["dimensions": []])
+        XCTAssertEqual(out["assessment_prompt_version"] as? Int, 1)
+    }
+
+    func testVersionIsAheadOfLegacy() {
+        XCTAssertGreaterThan(FitScorer.assessmentPromptVersion, 1)
+    }
+}

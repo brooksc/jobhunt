@@ -236,6 +236,8 @@ public enum PromptBuilder {
           - requirement: the qualification text (verbatim or lightly paraphrased)
           - kind: "required" if the qualification is listed under "Required qualifications", or "preferred" if it is listed under "Preferred / nice-to-have"
           - status: "met" (clear, direct evidence in the resume), "partial" (some or indirect evidence), or "missing" (no clear evidence in the resume)
+          - NAMED-TECHNOLOGY RULE: when the qualification names a specific technology, framework, product, certification, standard or regulation (e.g. CUDA, Kubernetes, InfiniBand, Terraform, PCI DSS, SOC 2, ISO 27001, FedRAMP, HIPAA, GDPR), "met" requires the resume to name that same thing or an unambiguous equivalent. Adjacent, analogical or one-layer-removed experience is "partial" at best — working with hardware that runs CUDA is not CUDA expertise, and compliance experience with one regime is not experience with a different named regime. Do not generalise across named things that merely share a domain.
+          - The evidence string must quote or closely paraphrase what the resume actually says. Never assert a capability the resume does not state.
           - evidence: one sentence citing the specific resume evidence, or stating what is absent
           Exclude any submission mechanics.
         - dimensions: array of exactly \(fitDimensions.count) objects, one per dimension, each with:

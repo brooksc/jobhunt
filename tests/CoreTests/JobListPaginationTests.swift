@@ -220,6 +220,60 @@ final class JobListPaginationTests: XCTestCase {
         XCTAssertEqual(all.total, 1)
     }
 
+    // MARK: - Metadata completeness
+
+    /// `salary_min`/`salary_max` were exposed without the currency, so a EUR or CAD posting read as
+    /// dollars — wrong data rather than missing data. Four postings in the corpus are non-USD.
+    func testSalaryCurrencyAccompaniesTheAmounts() async throws {
+        let euro = Job(
+            jobNumber: 1, title: "Berlin PM",
+            salaryMin: 145_000, salaryMax: 180_000, salaryCurrency: "EUR", status: .new
+        )
+        try await store.insert(euro)
+        let page = try await svc.listJobs(JobQuery(limit: 10))
+        XCTAssertEqual(page.records.first?.salaryCurrency, "EUR")
+    }
+
+    func testHourlyRatesAreExposed() async throws {
+        let contract = Job(jobNumber: 1, title: "Contract", status: .new)
+        contract.salaryHourlyMin = 80
+        contract.salaryHourlyMax = 100
+        try await store.insert(contract)
+        let page = try await svc.listJobs(JobQuery(limit: 10))
+        XCTAssertEqual(page.records.first?.salaryHourlyMin, 80)
+        XCTAssertEqual(page.records.first?.salaryHourlyMax, 100)
+    }
+
+    /// The requirements verdict drives the app's triage filter, so a caller doing the same triage
+    /// needs it.
+    func testRequirementsVerdictIsExposed() async throws {
+        let job = Job(jobNumber: 1, title: "Job", status: .pursuing)
+        job.meetsCriteria = false
+        try await store.insert(job)
+        let page = try await svc.listJobs(JobQuery(limit: 10))
+        XCTAssertEqual(page.records.first?.meetsCriteria, false)
+    }
+
+    /// `query` searches the cleaned description, but it wasn't retrievable — a caller could find a
+    /// match and not see what matched, short of pulling the raw page dump.
+    func testJobDetailExposesTheCleanedDescriptionAndAnalysis() async throws {
+        _ = try await svc.ingestCapture(CapturePayload(
+            url: "https://example.com/1", pageTitle: "Staff TPM",
+            visibleText: "We need someone to own SOC 2 compliance across the platform."
+        ))
+        let all = try await store.fetch(FetchDescriptor<Job>())
+        let job = try XCTUnwrap(all.first)
+        job.extractedJSON = #"{"summary":"Own compliance","requirements":["SOC 2"],"skills":["Audit"]}"#
+        try await store.save()
+
+        let fetched: JobDetailRecord? = try await svc.getJob(byID: job.id)
+        let detail = try XCTUnwrap(fetched)
+        XCTAssertTrue((detail.cleanedDescription ?? "").contains("SOC 2"))
+        XCTAssertEqual(detail.summary, "Own compliance")
+        XCTAssertEqual(detail.requirements, ["SOC 2"])
+        XCTAssertEqual(detail.skills, ["Audit"])
+    }
+
     // MARK: - Contract
 
     func testInvalidStatusIsRejected() async throws {

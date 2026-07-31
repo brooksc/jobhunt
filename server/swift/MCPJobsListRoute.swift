@@ -37,6 +37,8 @@
         let salaryMax: Int?
         let sourceURL: String?
         let fitScore: Int?
+        /// Without this the amounts read as USD — four postings in the corpus are EUR/CAD.
+        let salaryCurrency: String?
         enum CodingKeys: String, CodingKey {
             case jobNumber = "job_number"
             case company, title, status, location
@@ -44,6 +46,7 @@
             case salaryMax = "salary_max"
             case sourceURL = "source_url"
             case fitScore = "fit_score"
+            case salaryCurrency = "salary_currency"
         }
     }
 
@@ -136,7 +139,7 @@
             jobNumber: r.jobNumber, company: r.company, title: r.title,
             status: r.status.rawValue, location: r.location,
             salaryMin: r.salaryMin, salaryMax: r.salaryMax, sourceURL: r.sourceURL,
-            fitScore: r.fitScore
+            fitScore: r.fitScore, salaryCurrency: r.salaryCurrency
         )
     }
 
@@ -162,7 +165,14 @@
             seniority: r.seniority,
             duplicateOfJobID: r.duplicateOfJobID,
             fitScore: r.fitScore,
-            fitStatus: r.fitStatus.rawValue
+            fitStatus: r.fitStatus.rawValue,
+            salaryCurrency: r.salaryCurrency,
+            salaryHourlyMin: r.salaryHourlyMin,
+            salaryHourlyMax: r.salaryHourlyMax,
+            meetsCriteria: r.meetsCriteria,
+            appliedAt: formatDate(r.appliedAt),
+            updatedAt: formatDate(r.updatedAt as Date?),
+            unread: r.unread
         )
     }
 

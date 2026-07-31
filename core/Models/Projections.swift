@@ -207,6 +207,16 @@ public struct JobListRecord: Sendable {
     /// Absent from the MCP payload entirely until now, so score-based triage wasn't possible.
     public let fitScore: Int?
     public let fitStatus: FitStatus
+    /// Exposed alongside the amounts: `salaryMin`/`salaryMax` without it read as USD, so a EUR or
+    /// CAD posting was silently reported as dollars.
+    public let salaryCurrency: String?
+    public let salaryHourlyMin: Double?
+    public let salaryHourlyMax: Double?
+    /// The requirements verdict (location + salary + fit floors) the Jobs list filters on.
+    public let meetsCriteria: Bool?
+    public let appliedAt: Date?
+    public let updatedAt: Date
+    public let unread: Bool
 
     init(job: Job) {
         id = job.id
@@ -230,6 +240,13 @@ public struct JobListRecord: Sendable {
         duplicateOfJobID = job.duplicateOfJobID
         fitScore = job.fitScore
         fitStatus = job.fitStatus
+        salaryCurrency = job.salaryCurrency
+        salaryHourlyMin = job.salaryHourlyMin
+        salaryHourlyMax = job.salaryHourlyMax
+        meetsCriteria = job.meetsCriteria
+        appliedAt = job.appliedAt
+        updatedAt = job.updatedAt
+        unread = job.unread
     }
 }
 
@@ -344,6 +361,31 @@ public struct JobDetailRecord: Sendable {
     /// Denormalized overall fit (active résumés only), matching `JobListRecord`.
     public let fitScore: Int?
     public let fitStatus: FitStatus
+    public let salaryCurrency: String?
+    public let salaryHourlyMin: Double?
+    public let salaryHourlyMax: Double?
+    public let meetsCriteria: Bool?
+    public let appliedAt: Date?
+    public let updatedAt: Date
+    public let unread: Bool
+    public let lastOpenedAt: Date?
+    public let applicationURL: String?
+    /// The text the extractor and the search actually read — far more useful than the raw page dump,
+    /// and previously unreachable even though `query` searches it.
+    public let cleanedDescription: String?
+    public let userNote: String?
+    public let canonicalURL: String?
+    /// Structured extraction output: summary, requirements, nice-to-haves, skills.
+    public let summary: String?
+    public let requirements: [String]
+    public let niceToHaves: [String]
+    public let skills: [String]
+    public let extractedAt: Date?
+    public let extractionModel: String?
+    public let extractionConfidence: Double?
+    /// Field names the user edited by hand. Those values are authoritative; the rest are the model's.
+    public let manuallyOverriddenFields: [String]
+    public let duplicateConfidence: Double?
 
     init(job: Job) {
         id = job.id
@@ -373,9 +415,38 @@ public struct JobDetailRecord: Sendable {
             .map { JobEventRecord(eventType: $0.eventType, note: $0.note, occurredAt: $0.occurredAt) }
         fitScore = job.fitScore
         fitStatus = job.fitStatus
+        salaryCurrency = job.salaryCurrency
+        salaryHourlyMin = job.salaryHourlyMin
+        salaryHourlyMax = job.salaryHourlyMax
+        meetsCriteria = job.meetsCriteria
+        appliedAt = job.appliedAt
+        updatedAt = job.updatedAt
+        unread = job.unread
+        lastOpenedAt = job.lastOpenedAt
+        applicationURL = job.applicationURL
+        cleanedDescription = job.capture?.cleanedDescription
+        userNote = job.capture?.userNote
+        canonicalURL = job.capture?.canonicalURL
+        let projection = JobDetailProjection(job: job)
+        summary = projection.summary
+        requirements = projection.requirements
+        niceToHaves = projection.niceToHaves
+        skills = projection.skills
+        extractedAt = job.extractedAt
+        extractionModel = job.extractionModel
+        extractionConfidence = job.extractionConfidence
+        manuallyOverriddenFields = Self.overriddenFields(job.manualFieldOverridesJSON)
+        duplicateConfidence = job.duplicateConfidence
         fitScores = job.fitScores
             .sorted { ($0.fitScore ?? -1) > ($1.fitScore ?? -1) }
             .map { JobFitScoreRecord(fitScore: $0) }
+    }
+
+    /// `manualFieldOverridesJSON` is a JSON array of field names the user edited by hand.
+    private static func overriddenFields(_ json: String?) -> [String] {
+        guard let json, let data = json.data(using: .utf8),
+              let names = try? JSONSerialization.jsonObject(with: data) as? [String] else { return [] }
+        return names
     }
 }
 

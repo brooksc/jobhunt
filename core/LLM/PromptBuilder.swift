@@ -189,7 +189,7 @@ public enum PromptBuilder {
             "preferred_qualifications": "how well the resume satisfies the nice-to-have / preferred qualifications",
             "skills": "overlap between the candidate's skills and the skills the job lists",
             "experience_level": "alignment between the candidate's seniority/years and the role's level",
-            "domain_fit": "relevance of the candidate's industry/domain background to this role"
+            "domain_fit": "relevance of the candidate's INDUSTRY and PRODUCT background to this role — the field the company operates in and the kind of thing it builds, NOT how transferable the candidate's craft is. Excellent program management in one industry is not domain fit for another: score domain_fit low when the candidate has not worked in this industry or on this class of product, however strong they are otherwise. The other dimensions already credit transferable skill; do not credit it twice here."
         ]
 
         func block(_ label: String, _ value: String?) -> String {
@@ -238,6 +238,7 @@ public enum PromptBuilder {
           - status: "met" (clear, direct evidence in the resume), "partial" (some or indirect evidence), or "missing" (no clear evidence in the resume)
           - NAMED-TECHNOLOGY RULE: when the qualification names a specific technology, framework, product, certification, standard or regulation (e.g. CUDA, Kubernetes, InfiniBand, Terraform, PCI DSS, SOC 2, ISO 27001, FedRAMP, HIPAA, GDPR), "met" requires the resume to name that same thing or an unambiguous equivalent. Adjacent, analogical or one-layer-removed experience is "partial" at best — working with hardware that runs CUDA is not CUDA expertise, and compliance experience with one regime is not experience with a different named regime. Do not generalise across named things that merely share a domain.
           - The evidence string must quote or closely paraphrase what the resume actually says. Never assert a capability the resume does not state.
+          - ALTERNATIVES RULE: when a qualification offers a menu ("A or B or C", "electrical, software, mechanical, or systems") or an escape clause ("or equivalent experience", "or related field"), do NOT simply pick whichever option the candidate happens to satisfy. Judge against the option this POSTING is actually about, inferred from what the rest of the job description emphasises. If the candidate satisfies only a peripheral option while the emphasised one is absent, that is "partial", not "met". A single word inside a parenthetical does not outweigh the role's evident subject matter.
           - evidence: one sentence citing the specific resume evidence, or stating what is absent
           Exclude any submission mechanics.
         - dimensions: array of exactly \(fitDimensions.count) objects, one per dimension, each with:

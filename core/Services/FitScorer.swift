@@ -117,8 +117,11 @@ public enum FitScorer {
     /// the arithmetic is unchanged, it's the model's judgment that moved — so consumers need to be
     /// able to tell which prompt produced a score.
     ///
-    /// v1 = original. v2 = named technologies require literal evidence to score "met".
-    public static let assessmentPromptVersion = 2
+    /// v1 = original.
+    /// v2 = named technologies require literal evidence to score "met".
+    /// v3 = a menu of alternatives is judged against the option the posting emphasises, and
+    ///      domain_fit means the industry and product rather than transferable craft.
+    public static let assessmentPromptVersion = 3
 
     /// Build the gap list from the LLM's `requirement_assessments` (raw dicts). Only `partial`/`missing`
     /// items become gaps (`met` is not a gap). `kind` comes from the assessment; when it's absent

@@ -464,6 +464,18 @@ public actor JobService {
         try await queue.enqueue(jobIDs: [jobID], mode: .extract)
     }
 
+    /// Re-run fit scoring for these jobs against every active résumé.
+    ///
+    /// Distinct from `recomputeAllFitScores`, which re-derives the arithmetic from stored judgments
+    /// for free: this discards the model's judgments and asks again, which is what a scoring-prompt
+    /// change requires. Returns the number of scoring requests enqueued.
+    @discardableResult
+    public func rescoreFit(jobIDs: [String]) async throws -> Int {
+        try await queue.enqueueFitForActiveResumes(jobIDs: jobIDs)
+        await queue.kick()
+        return jobIDs.count
+    }
+
     public func resetExtractionBulk(jobIDs: [String]) async throws {
         for jobID in jobIDs {
             try await resetExtraction(jobID: jobID)

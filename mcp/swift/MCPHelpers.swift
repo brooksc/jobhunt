@@ -299,6 +299,20 @@ let tools: [[String: Any]] = [
         ] as [String: Any]
     ],
     [
+        "name": "rescore_fit",
+        "description": "Re-run fit scoring for a job against every active résumé. Unlike a " +
+            "recompute (which re-derives the arithmetic from judgments already made, for free), " +
+            "this asks the model again — which is what evaluating a scoring-prompt change requires.",
+        "inputSchema": [
+            "type": "object",
+            "required": [],
+            "properties": [
+                "job_number": ["type": "integer"],
+                "job_id": ["type": "string"]
+            ] as [String: Any]
+        ] as [String: Any]
+    ],
+    [
         "name": "rerun_extraction",
         "description": "Reset extraction so it will be retried on the next run. " +
             "Identify the job by job_number (preferred) or job_id.",
@@ -433,6 +447,14 @@ func resolveToolRoute(name: String, args: [String: Any]) -> Result<(String, [Str
             return .failure(MCPError("job_number or job_id, and note, required"))
         }
         return .success(("/mcp/jobs/note", args))
+    case "rescore_fit":
+        guard args["job_number"] != nil || args["job_id"] != nil else {
+            return .failure(MCPError("job_number or job_id required"))
+        }
+        var b: [String: Any] = [:]
+        if let num = args["job_number"] { b["job_number"] = num }
+        if let jid = args["job_id"] { b["job_id"] = jid }
+        return .success(("/mcp/jobs/rescore-fit", b))
     case "rerun_extraction":
         guard args["job_number"] != nil || args["job_id"] != nil else {
             return .failure(MCPError("job_number or job_id required"))

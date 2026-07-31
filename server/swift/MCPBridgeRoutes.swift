@@ -272,6 +272,8 @@
             return await handleMCPJobNote(request, jobService: jobService, store: store)
         case "/mcp/jobs/mark-applied":
             return await handleMCPMarkApplied(request, jobService: jobService)
+        case "/mcp/jobs/rescore-fit":
+            return await handleMCPJobRescoreFit(request, jobService: jobService, store: store)
         case "/mcp/jobs/rerun":
             return await handleMCPJobRerun(request, jobService: jobService, store: store)
         case "/mcp/sites/list":
@@ -425,6 +427,28 @@
             return HTTPResponse.ok(MCPOKResponse(ok: true))
         } catch {
             return HTTPResponse.error(safeServerError(error, context: "handleMCPJobNote"), code: 500)
+        }
+    }
+
+    /// Re-run fit scoring against the active résumés. Needed to evaluate a scoring-prompt change:
+    /// `recompute` only re-derives arithmetic from judgments already made.
+    private func handleMCPJobRescoreFit(
+        _ request: HTTPRequest,
+        jobService: JobService,
+        store: BackgroundStore
+    ) async -> HTTPResponse {
+        guard let req = try? request.decodeBody(as: MCPJobRerunRequest.self) else {
+            return HTTPResponse.error("Invalid JSON body")
+        }
+        do {
+            let jobID = try await resolveJob(jobNumber: req.jobNumber, jobId: req.jobId, store: store)?.id
+            guard let jobID else {
+                return HTTPResponse.error("job not found", code: 404)
+            }
+            try await jobService.rescoreFit(jobIDs: [jobID])
+            return HTTPResponse.ok(MCPOKResponse(ok: true))
+        } catch {
+            return HTTPResponse.error(safeServerError(error, context: "handleMCPJobRescoreFit"), code: 500)
         }
     }
 

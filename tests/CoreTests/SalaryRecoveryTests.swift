@@ -173,6 +173,38 @@ final class SalaryRecoveryTests: XCTestCase {
         XCTAssertTrue(salarySentences(in: "Founded in 2011. Over 1,500,000 customers served.").isEmpty)
     }
 
+    // MARK: - Work arrangement (same loss, different field)
+
+    /// Job #675 stated "Work site: 0 days / week in-office – remote" in the page's metadata card,
+    /// which JSON-LD promotion discards. It reached the model with nothing, extracted as unknown,
+    /// and a null arrangement is judged as on-site — so a remote role read as outside criteria.
+    func testWorkSiteLineIsRecoveredFromTheMetadataCard() {
+        let visible = "Job number 200045943 Date posted Jul 29, 2026 "
+            + "Work site 0 days / week in-office – remote Travel Less than 25%"
+        let cleaned = clean(visible: visible)
+        XCTAssertTrue(cleaned.lowercased().contains("in-office"), cleaned)
+        XCTAssertTrue(cleaned.contains("0 days"), cleaned)
+    }
+
+    /// The days count carries the arrangement even when the word "remote" never appears.
+    func testDaysInOfficePhrasingIsCapturedWithoutTheWordRemote() {
+        let found = workArrangementSentences(in: "Work site 3 days / week in-office Travel Less than 25%")
+        XCTAssertEqual(found.count, 1)
+        XCTAssertTrue(found[0].contains("3 days"), found[0])
+    }
+
+    func testNothingIsRecoveredWhenThePageOmitsTheArrangement() {
+        XCTAssertTrue(workArrangementSentences(in: "Job number 123. Travel Less than 25%.").isEmpty)
+    }
+
+    /// It must not duplicate an arrangement the structured description already states.
+    func testNoDuplicationWhenTheJSONLDAlreadyStatesTheArrangement() {
+        let body = jsonLdBody + " Work site 0 days / week in-office – remote."
+        let cleaned = clean(visible: "Work site 0 days / week in-office – remote", jsonLd: body)
+        let occurrences = cleaned.components(separatedBy: "0 days").count - 1
+        XCTAssertEqual(occurrences, 1, cleaned)
+    }
+
     // MARK: - salarySentences directly
 
     func testRecognisesCommonPayPhrasings() {

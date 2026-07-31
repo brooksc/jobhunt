@@ -51,6 +51,15 @@ public func cleanDescription(
     // captured and then thrown away). Recover just the pay sentences rather than re-appending the
     // whole page, which would drag the site chrome back in.
     if jsonLdDesc.count >= jsonLdMinChars, !visible.isEmpty {
+        // The same promotion also discards the page's metadata card, which is where some boards
+        // state the work arrangement. Microsoft #675 captured "Work site 0 days / week in-office –
+        // remote" and reached the model with nothing, so it extracted as unknown and read as
+        // on-site (its JSON-LD says nothing about remote either).
+        for phrase in workArrangementSentences(in: visible) {
+            // Compare on the phrase, not the labelled line we emit — the body states it unlabelled.
+            guard !parts.joined(separator: "\n").localizedCaseInsensitiveContains(phrase) else { continue }
+            parts.append("Work site: \(phrase)")
+        }
         for line in salarySentences(in: visible) {
             // Judge duplication on the AMOUNTS, not the surrounding prose. `isContained`'s 80-char
             // prefix probe compares the start of the excerpt, which for a windowed statement is
@@ -160,6 +169,22 @@ private func isSerializedDataLine(_ rawLine: String) -> Bool {
         if Double(structural) / Double(line.count) > 0.18 { return true }
     }
     return false
+}
+
+// MARK: - Work-arrangement recovery from visible text
+
+/// Statements of the work arrangement that a structured description omitted.
+///
+/// Boards that render a metadata card ("Work site: 0 days / week in-office – remote") state the
+/// arrangement there rather than in the posting body, so promoting the JSON-LD description drops it
+/// entirely and the job extracts as "unknown" — which the criteria check then treats as on-site.
+func workArrangementSentences(in text: String) -> [String] {
+    // The days-in-office count is the informative part — it states the arrangement even when the
+    // word "remote" never appears ("3 days / week in-office"). The optional trailing word picks up
+    // Microsoft's "– remote" without running on into the next card field ("Travel …").
+    let pattern = #"(?i)\d+\s*days?\s*/?\s*week\s+in[- ]office(?:\s*[–—-]\s*[a-z]+)?"#
+    guard let range = text.range(of: pattern, options: .regularExpression) else { return [] }
+    return [String(text[range]).trimmingCharacters(in: .whitespaces)]
 }
 
 // MARK: - Salary recovery from visible text

@@ -18,22 +18,57 @@ every score, filter and triage decision rests on.
 ## Configuration
 
 `xcodebuild` does **not** forward the shell environment to the test process, so an exported variable
-never arrives. Write the values to dotfiles in your **home directory** instead — which also means an
-API key can't be committed by accident.
+never arrives — config is read from files instead. Keeping them outside the repo also means an API
+key can't be committed by accident.
+
+Config lives in `~/.config/jobhunt/`:
+
+| File | Purpose |
+|---|---|
+| `eval-models` | One `model` or `provider:model` per line — **the multi-model list**. `#` comments allowed. |
+| `eval-model` | A single model, when you only want one. |
+| `eval-provider` | Default provider for lines that don't name one. |
+| `eval-api-key-<provider>` | Per-provider key, e.g. `eval-api-key-openrouter`. |
+| `eval-api-key` | Shared key, when every model uses one provider. |
+| `eval-base-url` | LM Studio endpoint. |
+| `eval-resume.md` | **The résumé evals score against.** |
 
 ```sh
-echo openrouter                       > ~/.jobhunt-eval-provider
-echo deepseek/deepseek-v4-flash-0731  > ~/.jobhunt-eval-model
-echo sk-or-...                        > ~/.jobhunt-eval-api-key
-chmod 600 ~/.jobhunt-eval-api-key
+mkdir -p ~/.config/jobhunt
+cat > ~/.config/jobhunt/eval-models <<'EOF'
+openrouter:deepseek/deepseek-v4-flash-0731
+google:gemini-3.1-flash-lite
+EOF
+echo sk-or-...  > ~/.config/jobhunt/eval-api-key-openrouter
+echo AIza...    > ~/.config/jobhunt/eval-api-key-google
+chmod 600 ~/.config/jobhunt/eval-api-key-*
 ```
 
-Providers: `lmstudio` (needs `~/.jobhunt-eval-base-url`, no key), `openrouter`, `google`,
-`anthropic`, `openai`. OpenRouter rotation is disabled in evals, so the model you name is the model
-you measure.
+Providers: `lmstudio` (needs `eval-base-url`, no key), `openrouter`, `google`, `anthropic`,
+`openai`. OpenRouter rotation is disabled in evals, so the model you name is the model you measure.
 
-The legacy `~/.jobhunt-lmstudio-url` / `~/.jobhunt-lmstudio-model` pair still selects LM Studio, and
-`scripts/run-eval.sh <model> [threshold]` still works for that path.
+The pre-XDG `~/.jobhunt-eval-*` and `~/.jobhunt-lmstudio-*` files are still read as a fallback, and
+`scripts/run-eval.sh <model> [threshold]` still works.
+
+### The résumé
+
+Evals score against `~/.config/jobhunt/eval-resume.md` when present, otherwise a synthetic stand-in.
+
+Export your real one:
+
+```sh
+sqlite3 ~/Library/Application\ Support/Jobhunt/jobhunt.store \
+  "SELECT ZTEXT FROM ZRESUME WHERE ZNAME='Brooks_Cutter_Resume_Master';" \
+  > ~/.config/jobhunt/eval-resume.md
+chmod 600 ~/.config/jobhunt/eval-resume.md
+```
+
+**It is deliberately not committed.** This repo is public, and a résumé is a full work history —
+employers, dates, scope. Keeping it in config gives honest evals without publishing it.
+
+Note the fixtures' expectations depend on what the résumé *lacks* — no CUDA development, no hardware
+or controls engineering, no named PM tooling. If yours gains any of those, revisit the affected case
+rather than assuming the model regressed.
 
 ## Running
 
@@ -44,26 +79,33 @@ xcodebuild test -project Jobhunt.xcodeproj -scheme Jobhunt-Eval \
 
 Both suites **report** by default and fail nothing, so a run always shows the full picture. To gate:
 
-- extraction — `~/.jobhunt-lmstudio-min-accuracy` (integer percentage)
+- extraction — `~/.config/jobhunt/eval-min-accuracy` (integer percentage)
 - fit scoring — `JOBHUNT_EVAL_STRICT=1`
 
 An unconfigured or misconfigured run **skips with the reason** rather than passing silently.
 
-## Comparing two models
+## Comparing models
 
-```sh
-for m in gemini-3.1-flash-lite deepseek/deepseek-v4-flash-0731; do
-  echo "$m" > ~/.jobhunt-eval-model
-  echo "=== $m ==="
-  xcodebuild test -project Jobhunt.xcodeproj -scheme Jobhunt-Eval \
-    -configuration Debug-DMG -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO 2>&1 \
-    | grep -E "checks passed|Overall:|→ score|Misses"
-done
+List them in `eval-models` and run once. `FitScoringEval` evaluates every model against **identical
+fixtures in a single run** and prints a comparison:
+
+```
+=== Comparison ===
+model                                       checks   scores
+google:gemini-3.1-flash-lite                9/10 (90%)   62 61 86 74 99
+openrouter:deepseek/deepseek-v4-flash-0731  7/10 (70%)   88 91 92 80 95
+
+score columns, in order:
+  1. #607 Akamai — GPU migration is not CUDA expertise
+  ...
 ```
 
-Judge on the **checks-passed percentage of `FitScoringEval`**, not on the scores themselves. A model
-that rates everything 95 passes no checks; a model that scores conservatively for the right reasons
-passes them all.
+Running them together is the point: this scorer's run-to-run variance has been measured at **23
+points on identical input**, so a difference observed across separate runs of separate models means
+very little.
+
+Judge on the **checks column**, not the scores. A model that rates everything 95 passes no checks; a
+model that scores conservatively for the right reasons passes them all.
 
 ## Fixtures
 

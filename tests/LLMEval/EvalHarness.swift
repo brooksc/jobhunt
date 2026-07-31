@@ -312,7 +312,10 @@ final class LLMEvalHarness: XCTestCase {
 
     /// Returns the minimum accuracy percentage (env or file), or nil for reporting mode.
     private func resolveMinAccuracy() -> Int? {
-        guard let raw = resolveConfig(env: "JOBHUNT_LLM_MIN_ACCURACY", file: ".jobhunt-lmstudio-min-accuracy"),
+        let raw = EvalProvider.fileContents("eval-min-accuracy")?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? resolveConfig(env: "JOBHUNT_LLM_MIN_ACCURACY", file: ".jobhunt-lmstudio-min-accuracy")
+        guard let raw,
               let value = Int(raw), value > 0 else { return nil }
         return value
     }

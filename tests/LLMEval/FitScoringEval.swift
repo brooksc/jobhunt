@@ -8,16 +8,12 @@ import XCTest
 /// triage decision rests on. Each case below is a real posting where the scorer was demonstrably
 /// wrong, so this doubles as a regression suite for the prompt rules added to fix them.
 ///
-/// Run against whichever model you're evaluating:
+/// Runs every model listed in `~/.config/jobhunt/eval-models` against identical fixtures and prints
+/// a comparison. Comparing in ONE run matters: this scorer's run-to-run variance has been measured at
+/// 23 points on identical input, so a difference seen across separate runs of separate models means
+/// very little.
 ///
-///     JOBHUNT_EVAL_PROVIDER=openrouter \
-///     JOBHUNT_EVAL_MODEL=deepseek/deepseek-v4-flash-0731 \
-///     JOBHUNT_EVAL_API_KEY=sk-or-... \
-///       xcodebuild test -project Jobhunt.xcodeproj -scheme Jobhunt-DMG \
-///         -destination 'platform=macOS' -only-testing:LLMEval/FitScoringEval
-///
-/// Reporting mode by default. Set `JOBHUNT_EVAL_STRICT=1` to fail the run on any miss, which is what
-/// you want when comparing two candidate models.
+/// Reporting mode by default. `JOBHUNT_EVAL_STRICT=1` fails the run if the best model still misses.
 final class FitScoringEval: XCTestCase {
     // MARK: - Fixtures
 
@@ -31,7 +27,6 @@ final class FitScoringEval: XCTestCase {
         let niceToHaves: [String]
         /// Job text the model sees beyond the requirement list. Domain judgments depend on it.
         let jobContext: String
-        let resume: String
         /// Requirement substring → statuses that are acceptable.
         let expectedStatuses: [(needle: String, allowed: Set<String>)]
         /// Requirements that must not be assessed at all (no candidate could fail them).
@@ -40,9 +35,10 @@ final class FitScoringEval: XCTestCase {
         let maxDomainFit: Int?
     }
 
-    /// A résumé stub in the shape of the real master: software/AI-infrastructure program leadership,
-    /// no hardware engineering, no CUDA development, no named PM tooling.
-    private static let resume = """
+    /// Fallback résumé, used when no real one is configured. Shaped like the master —
+    /// software/AI-infrastructure program leadership, no hardware engineering, no CUDA development,
+    /// no named PM tooling — because every expectation below depends on those absences.
+    private static let fallbackResume = """
     Senior Technical Program Manager — 20+ years in software and platform program leadership.
     Led production migration of large training workloads onto NVIDIA H100/H200 and AMD MI350X
     clusters, coordinating capacity, scheduling and rollout across infrastructure and research teams.
@@ -64,7 +60,6 @@ final class FitScoringEval: XCTestCase {
             niceToHaves: [],
             jobContext: "Own the GPU compute product line: instance types, scheduling, and the CUDA "
                 + "developer experience for customers running training and inference workloads.",
-            resume: resume,
             expectedStatuses: [(needle: "CUDA", allowed: ["partial", "missing"])],
             expectedOmitted: [],
             maxDomainFit: nil
@@ -84,7 +79,6 @@ final class FitScoringEval: XCTestCase {
                 + "generator platform: design validation, manufacturing scale-up, supplier "
                 + "qualification, production ramp and field reliability across mechanical, "
                 + "electrical and controls teams.",
-            resume: resume,
             expectedStatuses: [(needle: "hardware or controls", allowed: ["partial", "missing"])],
             expectedOmitted: [],
             maxDomainFit: 70
@@ -98,7 +92,6 @@ final class FitScoringEval: XCTestCase {
             requirements: ["Experience with, or capacity to learn, JIRA, Confluence, and Aha"],
             niceToHaves: [],
             jobContext: "Run delivery for platform programs; maintain plans and dependencies.",
-            resume: resume,
             expectedStatuses: [],
             expectedOmitted: ["JIRA"],
             maxDomainFit: nil
@@ -112,7 +105,6 @@ final class FitScoringEval: XCTestCase {
             requirements: ["10+ years in program management", "Alignment with Zip's core values"],
             niceToHaves: [],
             jobContext: "Lead cross-functional programs across the payments platform.",
-            resume: resume,
             expectedStatuses: [(needle: "10+ years", allowed: ["met"])],
             expectedOmitted: ["core values"],
             maxDomainFit: nil
@@ -129,7 +121,6 @@ final class FitScoringEval: XCTestCase {
                     + "account security, PCI/compliance, vulnerability management, business continuity"
             ],
             jobContext: "Drive security and compliance programs across the platform.",
-            resume: resume,
             expectedStatuses: [(needle: "one or more", allowed: ["met", "partial"])],
             expectedOmitted: [],
             maxDomainFit: nil
@@ -138,117 +129,178 @@ final class FitScoringEval: XCTestCase {
 
     // MARK: - Run
 
-    func testFitScoringJudgment() async throws {
-        guard let config = EvalProvider.resolveConfig() else {
-            throw XCTSkip(
-                "No provider configured — set JOBHUNT_EVAL_PROVIDER + JOBHUNT_EVAL_MODEL "
-                    + "(+ JOBHUNT_EVAL_API_KEY for a hosted provider)"
-            )
-        }
-        let (maybeProvider, reason) = EvalProvider.make(config)
-        guard let provider = maybeProvider else { throw XCTSkip(reason ?? "provider unavailable") }
-        let strict = ProcessInfo.processInfo.environment["JOBHUNT_EVAL_STRICT"] == "1"
-
-        print("\n=== Fit-scoring judgment eval ===")
-        print("Provider: \(config.provider)   Model: \(config.model)")
-        print("Prompt version: \(FitScorer.assessmentPromptVersion)\n")
-
+    private struct Result {
+        let model: String
         var checks = 0
         var passed = 0
         var failures: [String] = []
+        var scores: [String: Int] = [:]
+        var error: String?
+    }
 
-        for testCase in Self.cases {
-            let extracted: [String: Any] = [
-                "requirements": testCase.requirements,
-                "nice_to_have": testCase.niceToHaves,
-                "skills": [] as [String],
-                "summary": testCase.jobContext
-            ]
-            let json = (try? JSONSerialization.data(withJSONObject: extracted))
-                .flatMap { String(data: $0, encoding: .utf8) }
-            let job = JobFitSnapshot(
-                title: testCase.jobTitle, company: testCase.company, seniority: nil,
-                extractedJSON: json, extractionModel: config.model
+    func testFitScoringJudgment() async throws {
+        let configs = EvalProvider.resolveConfigs()
+        guard !configs.isEmpty else {
+            throw XCTSkip(
+                "No model configured — write one per line to ~/.config/jobhunt/eval-models "
+                    + "(or a single ~/.config/jobhunt/eval-model), plus eval-provider and eval-api-key"
             )
+        }
+        let (resumeText, isRealResume) = EvalProvider.resume(fallback: Self.fallbackResume)
+        let strict = ProcessInfo.processInfo.environment["JOBHUNT_EVAL_STRICT"] == "1"
 
-            let output: FitScoreOutput
-            do {
-                output = try await ExtractionEngine.scoreFit(
-                    job: job, resume: ResumeSnapshot(text: testCase.resume),
-                    model: config.model, provider: provider
+        print("\n=== Fit-scoring judgment eval ===")
+        print("Prompt version: \(FitScorer.assessmentPromptVersion)")
+        print("Résumé: \(isRealResume ? "real (~/.config/jobhunt/eval-resume.md)" : "synthetic fallback")"
+            + " — \(resumeText.count) chars")
+        print("Models: \(configs.map(\.model).joined(separator: ", "))\n")
+
+        var results: [Result] = []
+        for config in configs {
+            var result = Result(model: "\(config.provider):\(config.model)")
+            let (maybeProvider, reason) = EvalProvider.make(config)
+            guard let provider = maybeProvider else {
+                result.error = reason
+                results.append(result)
+                print("  \(result.model): SKIPPED — \(reason ?? "unavailable")")
+                continue
+            }
+            print("  --- \(result.model) ---")
+            for testCase in Self.cases {
+                await run(
+                    testCase,
+                    provider: provider,
+                    model: config.model,
+                    resume: resumeText,
+                    into: &result
                 )
-            } catch {
-                failures.append("\(testCase.name): scoring threw — \(error)")
-                continue
             }
+            results.append(result)
+        }
 
-            guard let raw = output.fitScoreJSON?.data(using: .utf8),
-                  let dict = try? JSONSerialization.jsonObject(with: raw) as? [String: Any] else {
-                failures.append("\(testCase.name): unparseable response")
-                continue
+        report(results)
+
+        let best = results.filter { $0.error == nil }.map { $0.checks - $0.passed }.min()
+        if strict, let best, best > 0 {
+            XCTFail("Fit-scoring eval: the best model still missed \(best) check(s)")
+        }
+        if results.allSatisfy({ $0.error != nil }) {
+            throw XCTSkip(results.compactMap(\.error).joined(separator: "; "))
+        }
+    }
+
+    private func run(
+        _ testCase: Case,
+        provider: any LLMProvider,
+        model: String,
+        resume: String,
+        into result: inout Result
+    ) async {
+        let extracted: [String: Any] = [
+            "requirements": testCase.requirements,
+            "nice_to_have": testCase.niceToHaves,
+            "skills": [] as [String],
+            "summary": testCase.jobContext
+        ]
+        let json = (try? JSONSerialization.data(withJSONObject: extracted))
+            .flatMap { String(data: $0, encoding: .utf8) }
+        let job = JobFitSnapshot(
+            title: testCase.jobTitle, company: testCase.company, seniority: nil,
+            extractedJSON: json, extractionModel: model
+        )
+
+        let output: FitScoreOutput
+        do {
+            output = try await ExtractionEngine.scoreFit(
+                job: job, resume: ResumeSnapshot(text: resume), model: model, provider: provider
+            )
+        } catch {
+            result.failures.append("\(testCase.name): scoring threw — \(error)")
+            result.checks += 1
+            return
+        }
+
+        guard let raw = output.fitScoreJSON?.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: raw) as? [String: Any] else {
+            result.failures.append("\(testCase.name): unparseable response")
+            result.checks += 1
+            return
+        }
+        let assessments = (dict["requirement_assessments"] as? [[String: Any]]) ?? []
+        let dimensions = (dict["dimensions"] as? [[String: Any]]) ?? []
+        result.scores[testCase.name] = output.score.overall
+        print("    \(testCase.name) → \(output.score.overall)")
+
+        for expectation in testCase.expectedStatuses {
+            result.checks += 1
+            let match = assessments.first {
+                (($0["requirement"] as? String) ?? "").localizedCaseInsensitiveContains(expectation.needle)
             }
-            let assessments = (dict["requirement_assessments"] as? [[String: Any]]) ?? []
-            let dimensions = (dict["dimensions"] as? [[String: Any]]) ?? []
-            print("  \(testCase.name)  → score \(output.score.overall)")
-
-            for expectation in testCase.expectedStatuses {
-                checks += 1
-                let match = assessments.first {
-                    (($0["requirement"] as? String) ?? "").localizedCaseInsensitiveContains(expectation.needle)
-                }
-                let status = (match?["status"] as? String) ?? "<absent>"
-                if expectation.allowed.contains(status) {
-                    passed += 1
-                } else {
-                    failures.append(
-                        "\(testCase.name)\n      '\(expectation.needle)' → \(status), "
-                            + "expected one of \(expectation.allowed.sorted())\n      why: \(testCase.rationale)"
-                    )
-                }
-                print("      '\(expectation.needle)' → \(status)")
+            let status = (match?["status"] as? String) ?? "<absent>"
+            if expectation.allowed.contains(status) {
+                result.passed += 1
+            } else {
+                result.failures.append(
+                    "\(testCase.name): '\(expectation.needle)' → \(status), expected "
+                        + "\(expectation.allowed.sorted()) — \(testCase.rationale)"
+                )
             }
+            print("       '\(expectation.needle)' → \(status)")
+        }
 
-            for omitted in testCase.expectedOmitted {
-                checks += 1
-                let present = assessments.contains {
-                    (($0["requirement"] as? String) ?? "").localizedCaseInsensitiveContains(omitted)
-                }
-                // The deterministic filter drops these before they can cost anything, so the check
-                // that matters is that they contribute no penalty — not that the model omitted them.
-                let gaps = FitScorer.requirementGaps(fromAssessments: assessments)
-                let penalised = gaps.contains { $0.requirement.localizedCaseInsensitiveContains(omitted) }
-                if penalised {
-                    failures.append(
-                        "\(testCase.name)\n      '\(omitted)' was penalised\n      why: \(testCase.rationale)"
-                    )
-                } else {
-                    passed += 1
-                }
-                print("      '\(omitted)' assessed=\(present) penalised=\(penalised)")
-            }
-
-            if let maxDomain = testCase.maxDomainFit {
-                checks += 1
-                let score = dimensions.first { ($0["name"] as? String) == "domain_fit" }
-                    .flatMap { $0["score"] as? Int } ?? 100
-                if score <= maxDomain {
-                    passed += 1
-                } else {
-                    failures.append(
-                        "\(testCase.name)\n      domain_fit \(score) > \(maxDomain)\n      why: \(testCase.rationale)"
-                    )
-                }
-                print("      domain_fit \(score) (max \(maxDomain))")
+        for omitted in testCase.expectedOmitted {
+            result.checks += 1
+            // The deterministic filter drops these before they cost anything, so what matters is
+            // that they contribute no penalty — not whether the model chose to omit them.
+            let gaps = FitScorer.requirementGaps(fromAssessments: assessments)
+            if gaps.contains(where: { $0.requirement.localizedCaseInsensitiveContains(omitted) }) {
+                result.failures.append("\(testCase.name): '\(omitted)' was penalised — \(testCase.rationale)")
+            } else {
+                result.passed += 1
             }
         }
 
-        let pct = checks > 0 ? Int(Double(passed) / Double(checks) * 100) : 0
-        print("\n=== \(passed)/\(checks) checks passed (\(pct)%) ===")
-        if !failures.isEmpty {
-            print("\nMisses:\n" + failures.joined(separator: "\n"))
+        if let maxDomain = testCase.maxDomainFit {
+            result.checks += 1
+            let score = dimensions.first { ($0["name"] as? String) == "domain_fit" }
+                .flatMap { $0["score"] as? Int } ?? 100
+            if score <= maxDomain {
+                result.passed += 1
+            } else {
+                result.failures.append(
+                    "\(testCase.name): domain_fit \(score) > \(maxDomain) — \(testCase.rationale)"
+                )
+            }
+            print("       domain_fit \(score) (max \(maxDomain))")
         }
-        if strict, !failures.isEmpty {
-            XCTFail("Fit-scoring eval: \(checks - passed)/\(checks) checks failed")
+    }
+
+    /// Side-by-side, because the useful question is which model is better on identical fixtures —
+    /// not whether one clears an absolute bar.
+    private func report(_ results: [Result]) {
+        print("\n=== Comparison ===")
+        let width = max(24, results.map(\.model.count).max() ?? 24)
+        print("\("model".padding(toLength: width, withPad: " ", startingAt: 0))  checks   scores")
+        for r in results.sorted(by: { ($0.checks - $0.passed) < ($1.checks - $1.passed) }) {
+            let name = r.model.padding(toLength: width, withPad: " ", startingAt: 0)
+            if let error = r.error {
+                print("\(name)  SKIPPED  \(error)")
+                continue
+            }
+            let pct = r.checks > 0 ? Int(Double(r.passed) / Double(r.checks) * 100) : 0
+            let scores = Self.cases.map { r.scores[$0.name].map(String.init) ?? "-" }.joined(separator: " ")
+            print("\(name)  \(r.passed)/\(r.checks) (\(pct)%)  \(scores)")
+        }
+        print("\nscore columns, in order:")
+        for (i, c) in Self.cases.enumerated() {
+            print("  \(i + 1). \(c.name)")
+        }
+
+        for r in results where !r.failures.isEmpty {
+            print("\n--- \(r.model) misses ---")
+            for f in r.failures {
+                print("  • \(f)")
+            }
         }
     }
 }

@@ -107,7 +107,7 @@ final class JobRequirementsTests: XCTestCase {
             meets: false, remote: .remote, salaryMax: 100_000, fit: 10, minSalary: 200_000, minFit: 50
         )
         XCTAssertEqual(verdict?.failures.count, 3, verdict?.summary ?? "")
-        XCTAssertTrue(verdict?.summary.contains("Location") ?? false)
+        XCTAssertTrue(verdict?.summary.contains("Work location") ?? false)
         XCTAssertTrue(verdict?.summary.contains("$200k") ?? false)
         XCTAssertTrue(verdict?.summary.contains("Fit 10") ?? false)
     }
@@ -120,7 +120,7 @@ final class JobRequirementsTests: XCTestCase {
     func testUnstatedArrangementIsNotAFailure() {
         let verdict = evaluate(meets: false, remote: nil)
         XCTAssertEqual(verdict?.bucket, .notStated)
-        XCTAssertEqual(verdict?.unstated.map(\.long), ["Work arrangement not stated"])
+        XCTAssertTrue(verdict?.unstated.first?.long.hasPrefix("Work location not stated") ?? false)
     }
 
     /// Contract preserved from `criteriaBucket`: a job whose verdict was never computed matches no
@@ -145,7 +145,7 @@ final class JobRequirementsTests: XCTestCase {
     func testBadgeDoesNotRepeatTheBucketLabel() {
         let verdict = evaluate(meets: false, remote: nil)
         let text = verdict?.badgeText("Not stated") ?? ""
-        XCTAssertEqual(text, "Work arrangement not stated")
+        XCTAssertEqual(text, "Work location not stated")
         XCTAssertFalse(text.contains(":"), "the label must not be prefixed onto the reason: \(text)")
     }
 

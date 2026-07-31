@@ -101,9 +101,17 @@ public enum JobRequirements {
 
         switch locationBucket {
         case .doesNotMeet:
-            failures.append(Reason(short: "Location outside your criteria", long: "Location outside your criteria"))
+            failures.append(Reason(
+                short: "Work location outside your criteria",
+                long: "Work location outside your criteria"
+            ))
         case .notStated:
-            unstated.append(Reason(short: "Work arrangement not stated", long: "Work arrangement not stated"))
+            // "Arrangement" read as jargon on the badge; name the thing it describes.
+            unstated.append(Reason(
+                short: "Work location not stated",
+                long: "Work location not stated — the posting doesn't say whether the role is "
+                    + "remote, hybrid, or on-site"
+            ))
         case .meets:
             break
         }

@@ -693,6 +693,21 @@ public enum AvailabilityChecker {
     /// reports gone only when the posting is genuinely gone, and reports *why* when it couldn't be
     /// checked. LinkedIn is handled separately, gently.
     private static func goneResult(for spec: JobSpec, session: URLSession) async -> SpecOutcome {
+        // Ask the posting's own ATS first when we can. It answers definitively in BOTH directions,
+        // whereas the page heuristics can only recognise removal wording a JS shell never renders.
+        if let ghjid = spec.greenhouseJobID,
+           let alive = await greenhouseAvailability(
+               ghjid: ghjid, company: spec.company, urlString: spec.url.absoluteString, session: session
+           ) {
+            guard alive else {
+                return .gone(GoneJobResult(
+                    jobID: spec.id, jobNumber: spec.jobNumber, company: spec.company,
+                    title: spec.title, url: spec.url,
+                    reason: "greenhouse posting \(ghjid) no longer listed"
+                ))
+            }
+            return .live
+        }
         let result = await checkURL(spec.url, title: spec.title, session: session)
         let reason: String
         switch result {
@@ -709,16 +724,8 @@ public enum AvailabilityChecker {
         case let .error(error):
             return .unverified(unverified(spec, .unreachable, error.localizedDescription))
         }
-        // Authoritative override (TASK-631): the flaky career-site HTML (Cloudflare / JS shell) said
-        // gone, but if this posting carries a Greenhouse gh_jid and the public Job Board API confirms it
-        // 200-alive, it's NOT gone. Only runs on a would-be-gone result, so it can only remove a false
-        // positive.
-        if let ghjid = spec.greenhouseJobID,
-           await greenhouseConfirmsAlive(
-               ghjid: ghjid, company: spec.company, urlString: spec.url.absoluteString, session: session
-           ) {
-            return .live
-        }
+        // The TASK-631 alive-override that used to sit here is gone: a Greenhouse posting is now
+        // resolved authoritatively up front, so reaching this point means there was no usable gh_jid.
         return .gone(GoneJobResult(
             jobID: spec.id, jobNumber: spec.jobNumber, company: spec.company,
             title: spec.title, url: spec.url, reason: reason
@@ -983,12 +990,21 @@ public enum AvailabilityChecker {
         return candidates.filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
-    /// True when Greenhouse's PUBLIC Job Board API (no key) returns HTTP 200 for `ghjid` on any derived
-    /// board token — an authoritative "this posting is live". A non-200 / unreachable returns false so
-    /// the caller falls back to its HTML result (this can only clear a false positive, never add one).
-    static func greenhouseConfirmsAlive(
+    /// Authoritative availability for a Greenhouse-backed posting: `true` alive, `false` removed,
+    /// `nil` when no board could be resolved.
+    ///
+    /// This used to be consulted ONLY to veto a would-be-gone HTML result, which meant a board whose
+    /// career page never *looks* gone could never be detected at all. Nebius (#341) is exactly that:
+    /// `careers.nebius.com/?gh_jid=…` serves a 754 KB JavaScript shell at HTTP 200 with no removal
+    /// wording for a posting the Greenhouse API reports as `404 Job not found`. The definitive answer
+    /// was sitting there unread.
+    ///
+    /// A job 404 is only trusted once the BOARD itself resolves. Guessing the board slug from the
+    /// company name is inherently fallible, and without that guard a wrong guess would 404 for every
+    /// posting on it and mass-expire live jobs.
+    static func greenhouseAvailability(
         ghjid: String, company: String?, urlString: String, session: URLSession = .shared
-    ) async -> Bool {
+    ) async -> Bool? {
         for board in greenhouseBoardCandidates(company: company, urlString: urlString).prefix(4) {
             guard let url = URL(string: "https://boards-api.greenhouse.io/v1/boards/\(board)/jobs/\(ghjid)")
             else { continue }
@@ -997,8 +1013,22 @@ public enum AvailabilityChecker {
             guard let (_, response) = try? await session.data(for: request),
                   let http = response as? HTTPURLResponse else { continue }
             if http.statusCode == 200 { return true }
+            // Not 404 (rate limit, 5xx, network hiccup) tells us nothing — try the next candidate.
+            guard http.statusCode == 404 else { continue }
+            if await greenhouseBoardExists(board, session: session) { return false }
         }
-        return false
+        return nil
+    }
+
+    /// Whether a Greenhouse board slug is real, so a job-level 404 can be read as "removed" rather
+    /// than "wrong board".
+    private static func greenhouseBoardExists(_ board: String, session: URLSession) async -> Bool {
+        guard let url = URL(string: "https://boards-api.greenhouse.io/v1/boards/\(board)") else { return false }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 8
+        guard let (_, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse else { return false }
+        return http.statusCode == 200
     }
 
     // MARK: - checkJobs

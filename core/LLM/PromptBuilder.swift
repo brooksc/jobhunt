@@ -133,6 +133,7 @@ public enum PromptBuilder {
         - Extract every distinct concrete skill, technology, tool, or domain named anywhere in the posting (responsibilities, requirements, role scope, and team/charter description), even when there is no "Skills" heading. Aim for completeness (typically 6-15); do not stop at a handful. Do not invent skills that are not in the posting.
         - Extract hard requirements into requirements. If the posting lists qualifications without separating "required" from "preferred" (e.g. a single "What we're looking for", "Qualifications", or "Minimum qualifications" list), treat every bullet in that list as a requirement and capture them all.
         - Extract preferred qualifications and useful background signals into nice_to_haves. When the posting has no explicit "Preferred" or "Nice to have" section, mine the responsibilities, role summary, and required qualifications for domain signals: technologies, industry verticals, cross-functional partner teams (e.g. "engineering, design, research"), and products or platforms mentioned as context. Even a single mention is enough — nice_to_haves must not be empty when the posting names any relevant domain, partner, product, or technology.
+        - Do NOT record statements about cultural fit or alignment with the company's values, mission, or principles (e.g. "Alignment with Acme's core values", "Embodies our culture", "Passion for our mission") as requirements or nice_to_haves. They describe a disposition the posting cannot define and a resume cannot evidence, so they are not qualifications. Concrete requirements that merely sound soft — communication, leadership, mentoring, stakeholder management — ARE qualifications; keep those.
         - Use concise noun phrases copied or closely paraphrased from the posting.
         \(locationRules)
         \(locationPrefRules)
@@ -250,6 +251,7 @@ public enum PromptBuilder {
         - Do not provide an overall score. The application computes it from the dimension scores.
         - In requirement_assessments, judge against the listed qualifications, not generic praise; when evidence is indirect mark "partial", and when there is none mark "missing" (explain what is absent).
         - Application instructions (labeled above as "submission mechanics") describe HOW to apply, not whether the candidate is qualified. Do NOT include them in requirement_assessments. Do NOT penalize any dimension score for them — they can be acted on at application time.
+        - Statements about cultural fit or alignment with the company's values, mission, or principles (e.g. "Alignment with Acme's core values") are not assessable from a resume: the posting never defines what would satisfy them, so marking one "missing" says nothing about the candidate. Omit them from requirement_assessments and do NOT let them lower any dimension score. This does not apply to concrete professional qualifications that happen to sound soft (communication, leadership, mentoring, stakeholder management) — assess those normally.
 
         Job posting:
         \(jobSection)

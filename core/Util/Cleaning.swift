@@ -173,20 +173,34 @@ private func isSerializedDataLine(_ rawLine: String) -> Bool {
 /// Capped at three sentences — enough for a base range plus a location-specific variant (Microsoft
 /// states a separate SF/NYC band) without pulling in a benefits essay.
 func salarySentences(in text: String) -> [String] {
-    guard text.range(of: #"[$€£]\s?[\d,]{3,}"#, options: .regularExpression) != nil else { return [] }
+    guard text.range(of: moneyPattern, options: .regularExpression) != nil else { return [] }
 
-    let payKeyword = #"(?i)\b(base pay|pay range|salary range|base salary|pay scale|compensation range|"#
-        + #"typical pay|per year|per hour|per annum|annually|hourly rate|annual salary)\b"#
+    // Bare "salary"/"compensation" are included: an amount is required alongside, so "competitive
+    // salary" (no figure) and "$1.2M in funding" (no keyword) are both still rejected. Ashby labels
+    // the field with nothing but the word "Compensation".
+    let payKeyword = #"(?i)\b(salary|salaries|compensation|base pay|pay ranges?|pay scale|"#
+        + #"estimated pay|typical pay|per year|per hour|per annum|annually|a year|an hour|"#
+        + #"hourly rate|remuneration)\b"#
     var found: [String] = []
     var seen = Set<String>()
+    // Sentences remaining in which a bare amount still counts as pay, set by a lead-in like
+    // "The estimated pay ranges for this role are as follows:" whose figures live in the bullets
+    // that follow rather than in the sentence itself (Twilio #8067440).
+    var carryOver = 0
 
     // innerText collapses the page into few newlines, so split on sentence ends as well as lines.
     for raw in text.components(separatedBy: CharacterSet(charactersIn: "\n")) {
         for sentence in splitIntoSentences(raw) {
             let trimmed = sentence.trimmingCharacters(in: .whitespaces)
-            guard trimmed.count >= 20 else { continue }
-            guard let money = trimmed.range(of: #"[$€£]\s?[\d,]{3,}"#, options: .regularExpression) else { continue }
-            guard trimmed.range(of: payKeyword, options: .regularExpression) != nil else { continue }
+            let hasKeyword = trimmed.range(of: payKeyword, options: .regularExpression) != nil
+            guard let money = trimmed.range(of: moneyPattern, options: .regularExpression) else {
+                // A lead-in announcing pay makes the next couple of numeric lines count.
+                if hasKeyword { carryOver = 2 }
+                continue
+            }
+            guard trimmed.count >= 12 else { continue }
+            guard hasKeyword || carryOver > 0 else { continue }
+            if !hasKeyword { carryOver -= 1 }
             // Pages glue sections together without spaces ("…product demos).#wss#ISEngineeringTechnical
             // Program Management IC5 - The typical base pay range…"), so a "sentence" can run for
             // thousands of characters. Discarding it would throw away the pay statement it contains;
@@ -204,9 +218,16 @@ func salarySentences(in text: String) -> [String] {
     return found
 }
 
+/// A salary figure, in the three shapes postings actually use:
+///   - with a currency symbol, commas optional, "K"/"M" allowed — `$95`, `$142,800`, `$153K` (Ashby)
+///   - bare but comma-grouped — `188,240.00` (Twilio states ranges with no symbol at all)
+/// A bare number without commas is deliberately NOT a match: it would hit every year and headcount
+/// on the page. Callers pair this with a pay keyword, so a stray "10,000" can't be read as salary.
+let moneyPattern = #"(?:[$€£]\s?\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?\s?[KkMm]?|\d{1,3}(?:,\d{3})+(?:\.\d{2})?)"#
+
 /// The currency amounts appearing in `text`, e.g. ["$142,800", "$274,800"].
 func moneyAmounts(in text: String) -> [String] {
-    let pattern = #"[$€£]\s?[\d,]{3,}"#
+    let pattern = moneyPattern
     var amounts: [String] = []
     var searchStart = text.startIndex
     while let found = text.range(of: pattern, options: .regularExpression, range: searchStart ..< text.endIndex) {

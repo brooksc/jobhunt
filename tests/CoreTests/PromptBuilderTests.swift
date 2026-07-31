@@ -222,3 +222,54 @@ final class PromptBuilderTests: XCTestCase {
         XCTAssertGreaterThan(withCtx.extractChars, noCtx.extractChars)
     }
 }
+
+// MARK: - Culture / values requirements
+
+/// Job #182 (Zip) listed "Alignment with Zip's core values" as a hard requirement, and the scorer
+/// dutifully assessed the résumé as not meeting it. The posting never defines what would satisfy it
+/// and a résumé cannot evidence it, so the assessment carries no information — it just reads as a
+/// gap the candidate can't close.
+final class ValuesRequirementPromptTests: XCTestCase {
+    /// The whole prompt as the model receives it — the rules live in the user message, and which
+    /// message carries them is an implementation detail these tests shouldn't pin.
+    private var extractionPrompt: String {
+        PromptBuilder.buildExtractionPrompt(description: "d", url: "u", pageTitle: "t")
+            .map(\.content).joined(separator: "\n").lowercased()
+    }
+
+    private var fitPrompt: String {
+        PromptBuilder.buildFitPrompt(extractedJob: ExtractedJobContext(), resumeText: "r")
+            .map(\.content).joined(separator: "\n").lowercased()
+    }
+
+    /// Preferred fix: they never become requirements in the first place.
+    func testExtractionIsToldNotToRecordValuesStatements() {
+        let prompt = extractionPrompt
+        XCTAssertTrue(prompt.contains("cultural fit"), "extraction must exclude culture/values statements")
+        XCTAssertTrue(prompt.contains("core values"), "the instruction should give a concrete example")
+    }
+
+    /// Backstop: if one is already stored (or slips through), don't score against it.
+    func testScoringIsToldToSkipValuesStatements() {
+        let prompt = fitPrompt
+        XCTAssertTrue(prompt.contains("cultural fit"))
+        XCTAssertTrue(
+            prompt.contains("omit them from requirement_assessments"),
+            "a values statement must not appear as an assessed requirement"
+        )
+    }
+
+    /// The exclusion must not swallow real qualifications that merely sound soft — those are
+    /// evidenced in a résumé and belong in the assessment.
+    func testSoftButConcreteQualificationsAreExplicitlyPreserved() {
+        for prompt in [extractionPrompt, fitPrompt] {
+            XCTAssertTrue(prompt.contains("communication"), "must carve out genuine soft skills")
+            XCTAssertTrue(prompt.contains("leadership"))
+        }
+    }
+
+    /// The existing submission-mechanics carve-out uses the same shape and must survive.
+    func testSubmissionMechanicsExclusionIsIntact() {
+        XCTAssertTrue(fitPrompt.contains("submission mechanics"))
+    }
+}

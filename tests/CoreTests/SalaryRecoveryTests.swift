@@ -126,6 +126,53 @@ final class SalaryRecoveryTests: XCTestCase {
         XCTAssertFalse(cleaned.lowercased().contains("pay range"), cleaned)
     }
 
+    // MARK: - The shapes real postings actually use
+
+    /// Every one of these is a posting the user reported as showing no salary. They differ in ways
+    /// the original matcher didn't allow for: a bare comma-grouped figure with no symbol at all, a
+    /// "K" suffix, and a field labelled with nothing but the word "Compensation".
+    func testRealWorldSalaryFormats() {
+        let cases: [(String, String)] = [
+            (
+                "Microsoft — symbol + commas, mid-sentence",
+                "The typical base pay range for this role across the U.S. is USD $142,800 - $274,800 per year."
+            ),
+            (
+                "Twilio — no currency symbol, figures in a list under a lead-in",
+                "The estimated pay ranges for this role are as follows: Based in Colorado: 188,240.00 - 235,300.00."
+            ),
+            (
+                "Ashby — K suffix under a bare \"Compensation\" label",
+                "Compensation $153K – $180K • Offers Equity"
+            ),
+            (
+                "Lever — \"a year\" rather than \"per year\"",
+                "The base salary is $220,000 - $240,000 a year."
+            )
+        ]
+        for (label, text) in cases {
+            XCTAssertEqual(salarySentences(in: text).count, 1, label)
+        }
+    }
+
+    /// A lead-in sentence can announce the pay while the figures live in the bullets beneath it, so
+    /// a bare number counts only in the couple of lines following such a lead-in.
+    func testFiguresFollowingALeadInAreRecovered() {
+        let text = "The estimated pay ranges for this role are as follows: "
+            + "Based in Colorado, Hawaii or Illinois: 188,240.00 - 235,300.00. "
+            + "Based in New York or California: 199,280.00 - 249,100.00."
+        let found = salarySentences(in: text)
+        XCTAssertFalse(found.isEmpty)
+        XCTAssertTrue(found.joined().contains("188,240"), "\(found)")
+    }
+
+    /// A bare number with no pay lead-in anywhere near it must stay ignored, or every headcount and
+    /// funding figure on the page becomes a salary.
+    func testBareNumbersFarFromAnyPayContextAreIgnored() {
+        XCTAssertTrue(salarySentences(in: "We have 10,000 employees across 25 offices.").isEmpty)
+        XCTAssertTrue(salarySentences(in: "Founded in 2011. Over 1,500,000 customers served.").isEmpty)
+    }
+
     // MARK: - salarySentences directly
 
     func testRecognisesCommonPayPhrasings() {

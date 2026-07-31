@@ -123,6 +123,44 @@ public enum FitScorer {
     ///      domain_fit means the industry and product rather than transferable craft.
     public static let assessmentPromptVersion = 3
 
+    // MARK: - Non-discriminating requirements
+
+    /// A requirement no candidate could fail, so a gap against it is invented rather than found.
+    ///
+    /// Handled in code rather than in the prompt on purpose. Instructing the model to "omit" this
+    /// class made things markedly worse on a weak model (gemini-3.1-flash-lite): it scored the items
+    /// `met` instead of omitting them, and the extra broad rule diluted the alternatives and
+    /// domain-fit rules that were working — job #231 went back from a correct 60 to 96 and #718 from
+    /// 75 to 99. A deterministic filter can't be misapplied, can't compete with other instructions,
+    /// and applies to already-stored scores on recompute at no cost.
+    ///
+    /// Two families, both satisfiable by disposition rather than by anything the candidate has done:
+    ///   - an escape clause that reduces the requirement to aptitude — "experience with, or capacity
+    ///     to learn, JIRA" is satisfied by anyone, so #718 losing 6 points to it was noise;
+    ///   - alignment with company values or culture, which a résumé cannot evidence either way.
+    ///
+    /// Deliberately narrow: it matches the *escape clause*, not the underlying skill. "Experience
+    /// with JIRA" is still a real, assessable requirement — only "or capacity to learn JIRA" is not.
+    public static func isNonDiscriminating(requirement: String) -> Bool {
+        let text = requirement.lowercased()
+        let aptitudeEscapes = [
+            "capacity to learn", "ability to learn", "willingness to learn", "eagerness to learn",
+            "aptitude to learn", "willing to learn", "open to learning", "interest in learning"
+        ]
+        if aptitudeEscapes.contains(where: { text.contains($0) }) { return true }
+        // "Alignment with <company>'s core values", "embodies our culture", "passion for our mission".
+        let dispositionMarkers = [
+            "core values",
+            "company values",
+            "our values",
+            "cultural fit",
+            "culture fit",
+            "embodies our culture",
+            "passion for our mission"
+        ]
+        return dispositionMarkers.contains(where: { text.contains($0) })
+    }
+
     /// Build the gap list from the LLM's `requirement_assessments` (raw dicts). Only `partial`/`missing`
     /// items become gaps (`met` is not a gap). `kind` comes from the assessment; when it's absent
     /// (legacy scores that predate the tag) it defaults to `.required` so an unknown gap is treated as
@@ -132,6 +170,8 @@ public enum FitScorer {
             guard let requirement = item["requirement"] as? String,
                   let statusRaw = item["status"] as? String,
                   let status = RequirementGap.Status(rawValue: statusRaw) else { return nil }
+            // Never penalise something no candidate could fail.
+            guard !isNonDiscriminating(requirement: requirement) else { return nil }
             let kind = RequirementGap.Kind(rawValue: (item["kind"] as? String) ?? "") ?? .required
             return RequirementGap(requirement: requirement, kind: kind, status: status)
         }

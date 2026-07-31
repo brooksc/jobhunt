@@ -112,6 +112,10 @@ public struct FitScoreProjection {
             .compactMap { a -> RequirementAssessment? in
                 guard let requirement = a["requirement"] as? String,
                       let status = a["status"] as? String else { return nil }
+                // Dropped from the READ MODEL, not just from the penalty: "Experience with, or
+                // capacity to learn, JIRA" showing under Gaps is noise even at zero cost — it reads
+                // as something to fix when there is nothing to fix (job #718).
+                guard !FitScorer.isNonDiscriminating(requirement: requirement) else { return nil }
                 return RequirementAssessment(
                     requirement: requirement,
                     kind: a["kind"] as? String ?? "unknown",

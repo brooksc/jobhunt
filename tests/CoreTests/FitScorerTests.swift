@@ -448,3 +448,114 @@ final class BaseScoreTests: XCTestCase {
         XCTAssertEqual(FitScorer.baseScore(breakdown: [:]), 0)
     }
 }
+
+// MARK: - Non-discriminating requirements
+
+/// Job #718 lost 6 points to "Experience with, or capacity to learn, JIRA, Confluence, and Aha" —
+/// a requirement satisfied by anyone. The gap was manufactured by the named-technology rule itself:
+/// JIRA is a named tool the résumé doesn't mention, so it scored partial.
+///
+/// Filtered in code rather than by prompt. Telling gemini-3.1-flash-lite to "omit" this class made
+/// things markedly worse — it scored the items met instead of omitting them, and the extra rule
+/// diluted the ones that worked (#231 regressed from a correct 60 back to 96).
+final class NonDiscriminatingRequirementTests: XCTestCase {
+    func testTheReportedCaseIsFiltered() {
+        XCTAssertTrue(FitScorer.isNonDiscriminating(
+            requirement: "Experience with, or capacity to learn, JIRA, Confluence, and Aha"
+        ))
+    }
+
+    func testAptitudeEscapeClausesAreFiltered() {
+        for text in [
+            "Willingness to learn new frameworks",
+            "Ability to learn our internal tooling quickly",
+            "Experience with Kubernetes or eagerness to learn it"
+        ] {
+            XCTAssertTrue(FitScorer.isNonDiscriminating(requirement: text), text)
+        }
+    }
+
+    func testValuesAlignmentIsFiltered() {
+        for text in ["Alignment with Zip's core values", "Strong cultural fit", "Passion for our mission"] {
+            XCTAssertTrue(FitScorer.isNonDiscriminating(requirement: text), text)
+        }
+    }
+
+    /// The narrowness that matters: the filter targets the ESCAPE CLAUSE, not the skill. Dropping
+    /// real tool requirements would hide genuine gaps.
+    func testRealRequirementsAreNotFiltered() {
+        for text in [
+            "Experience with JIRA, Confluence, and Aha",
+            "5+ years of Kubernetes in production",
+            "Exceptional written and verbal communication skills",
+            "Ability to influence stakeholders at all levels",
+            "Ability to navigate ambiguity"
+        ] {
+            XCTAssertFalse(FitScorer.isNonDiscriminating(requirement: text), text)
+        }
+    }
+
+    /// The behaviour that fixes #718: no penalty, without pretending the item was met.
+    func testAFilteredRequirementCostsNoPenalty() {
+        let assessments: [[String: Any]] = [
+            ["requirement": "Experience with, or capacity to learn, JIRA", "status": "partial", "kind": "required"],
+            ["requirement": "5+ years of Kubernetes in production", "status": "partial", "kind": "required"]
+        ]
+        let gaps = FitScorer.requirementGaps(fromAssessments: assessments)
+        XCTAssertEqual(gaps.count, 1, "only the real gap survives")
+        XCTAssertEqual(gaps.first?.requirement, "5+ years of Kubernetes in production")
+        XCTAssertEqual(FitScorer.computeScore(dimensions: [:], gaps: gaps).penalty, 6)
+    }
+
+    /// Filtering happens when gaps are built, so a recompute applies it to already-stored scores
+    /// for free — no re-scoring cost.
+    func testRecomputeAppliesTheFilterToStoredScores() {
+        let json = """
+        {"dimensions":[{"name":"required_qualifications","score":90},
+        {"name":"preferred_qualifications","score":90},{"name":"skills","score":90},
+        {"name":"domain_fit","score":90},{"name":"experience_level","score":90}],
+        "requirement_assessments":[
+        {"requirement":"Experience with, or capacity to learn, JIRA","status":"missing","kind":"required"}]}
+        """
+        let result = FitScorer.rescoreFromJSON(json)
+        XCTAssertEqual(result?.penalty, 0, "the invented gap must not survive a recompute")
+        XCTAssertEqual(result?.overall, 90)
+    }
+}
+
+/// The gap LIST, not just the penalty. A zero-cost gap still reads as something to fix — which is
+/// how job #718 surfaced: "Experience with, or capacity to learn, JIRA, Confluence, and Aha" sat
+/// under Gaps with a warning icon.
+final class NonDiscriminatingProjectionTests: XCTestCase {
+    private func projection(_ requirements: [(String, String)]) -> FitScoreProjection {
+        let assessments = requirements.map {
+            ["requirement": $0.0, "status": $0.1, "kind": "required", "evidence": ""] as [String: Any]
+        }
+        let json = (try? JSONSerialization.data(withJSONObject: ["requirement_assessments": assessments]))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        let record = JobFitScore()
+        record.fitScoreJSON = json
+        return FitScoreProjection(fitScore: record)
+    }
+
+    func testAFilteredRequirementDoesNotAppearAsAGap() {
+        let p = projection([
+            ("Experience with, or capacity to learn, JIRA, Confluence, and Aha", "partial"),
+            ("5+ years of Kubernetes in production", "partial")
+        ])
+        XCTAssertEqual(p.requirementsNotMet, ["5+ years of Kubernetes in production"])
+        XCTAssertFalse(p.requirementAssessments.contains { $0.requirement.contains("JIRA") })
+    }
+
+    /// …and it isn't quietly recorded as met either — it simply isn't a requirement.
+    func testAFilteredRequirementIsNotCountedAsMet() {
+        let p = projection([("Alignment with Acme's core values", "met")])
+        XCTAssertTrue(p.requirementsMet.isEmpty)
+        XCTAssertTrue(p.requirementAssessments.isEmpty)
+    }
+
+    func testRealGapsStillSurface() {
+        let p = projection([("Experience with JIRA, Confluence, and Aha", "missing")])
+        XCTAssertEqual(p.requirementsNotMet.count, 1)
+    }
+}

@@ -339,3 +339,61 @@ final class AssessmentPromptVersionTests: XCTestCase {
         XCTAssertGreaterThan(FitScorer.assessmentPromptVersion, 1)
     }
 }
+
+// MARK: - Recompute refuses an incomplete dimension set
+
+/// `computeScore` scores a missing dimension as 0, which is right when validating a live response —
+/// a partial answer must not inflate — but wrong on recompute. Recompute is advertised as free and
+/// safe, so a stored score missing one dimension would quietly lose up to 40 points on an operation
+/// the user was told just re-runs the arithmetic. The live path already rejects these.
+final class RescoreDimensionValidationTests: XCTestCase {
+    private func json(dimensions: [String: Double]) -> String {
+        let arr = dimensions.map { ["name": $0.key, "score": $0.value] as [String: Any] }
+        let data = (try? JSONSerialization.data(withJSONObject: ["dimensions": arr])) ?? Data()
+        return String(data: data, encoding: .utf8) ?? "{}"
+    }
+
+    private var complete: [String: Double] {
+        [
+            "required_qualifications": 90,
+            "preferred_qualifications": 85,
+            "skills": 90,
+            "domain_fit": 90,
+            "experience_level": 95
+        ]
+    }
+
+    func testACompleteSetRescoresNormally() {
+        let result = FitScorer.rescoreFromJSON(json(dimensions: complete))
+        XCTAssertEqual(result?.overall, 90, "base with no gaps")
+    }
+
+    /// The reported risk: dropping domain_fit is a silent −13.5 without this guard.
+    func testAnIncompleteSetIsRefusedRatherThanScoredAsZero() {
+        var partial = complete
+        partial.removeValue(forKey: "domain_fit")
+        XCTAssertNil(
+            FitScorer.rescoreFromJSON(json(dimensions: partial)),
+            "an incomplete set must leave the stored score untouched, not deflate it"
+        )
+    }
+
+    func testEveryMissingDimensionIsCaught() {
+        for name in FitScorer.dimensionWeights.keys {
+            var partial = complete
+            partial.removeValue(forKey: name)
+            XCTAssertNil(FitScorer.rescoreFromJSON(json(dimensions: partial)), "missing \(name)")
+        }
+    }
+
+    func testAnEmptySetIsStillRefused() {
+        XCTAssertNil(FitScorer.rescoreFromJSON(json(dimensions: [:])))
+    }
+
+    /// Extra dimensions beyond the expected set don't make it incomplete.
+    func testUnknownExtraDimensionsDoNotBlockRescore() {
+        var extra = complete
+        extra["some_future_dimension"] = 50
+        XCTAssertNotNil(FitScorer.rescoreFromJSON(json(dimensions: extra)))
+    }
+}

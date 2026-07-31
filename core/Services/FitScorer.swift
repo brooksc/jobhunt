@@ -263,7 +263,15 @@ public enum FitScorer {
             return nil
         }
 
-        guard !dimensionScores.isEmpty else { return nil }
+        // An INCOMPLETE dimension set is refused, not silently scored. `computeScore` treats a
+        // missing dimension as 0 — correct when validating a live response (a partial answer must not
+        // inflate), but wrong here: recompute is advertised as free and safe, and a stored score
+        // missing one dimension would quietly lose up to 40 points on an operation the user was told
+        // just re-runs the arithmetic. Returning nil leaves the existing score untouched instead.
+        // (The live path already rejects these via `validateDimensions`.)
+        guard !dimensionScores.isEmpty,
+              Set(dimensionWeights.keys).isSubset(of: Set(dimensionScores.keys))
+        else { return nil }
 
         // Gaps: prefer the structured per-requirement assessments (kind + partial/missing). Fall back
         // to the legacy free-form requirements_not_met (treated as missing *required* gaps) for old

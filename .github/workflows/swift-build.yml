@@ -1,11 +1,24 @@
 name: Swift Build
 
+# macOS runners cost 10x a Linux one, and this is the only macOS job that runs on every push.
+# Backlog and documentation commits can't affect the build, so they don't start one — roughly a third
+# of pushes here are task-file updates. A code change still always builds.
 on:
   push:
     branches: [main, swift-rewrite]
     tags-ignore: ['v*']
+    paths-ignore:
+      - '.backlog/**'
+      - 'docs/**'
+      - 'chromestore/**'
+      - '**/*.md'
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '.backlog/**'
+      - 'docs/**'
+      - 'chromestore/**'
+      - '**/*.md'
 
 permissions:
   contents: read

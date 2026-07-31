@@ -69,7 +69,9 @@ public extension JobFilterRules.CriteriaBucket {
     var label: String {
         switch self {
         case .meets: "Meets criteria"
-        case .notStated: "Arrangement not stated"
+        // Generic: the bucket covers a missing salary or an unscored job too, not just a
+        // missing work arrangement. The specific cause rides on the badge alongside it.
+        case .notStated: "Not stated"
         case .doesNotMeet: "Outside criteria"
         }
     }

@@ -64,10 +64,11 @@ public enum JobRequirements {
             deciding.isEmpty ? nil : deciding.map(\.short).joined(separator: ", ")
         }
 
-        /// What the badge reads: the verdict plus, when it isn't a pass, why.
+        /// What the badge reads. The reason replaces the bucket label rather than being appended to
+        /// it — the icon already distinguishes pass / unknown / fail, and prefixing produced
+        /// "Arrangement not stated: arrangement not stated" for the location case.
         public func badgeText(_ label: String) -> String {
-            guard let shortSummary else { return label }
-            return "\(label): \(shortSummary)"
+            shortSummary ?? label
         }
     }
 
@@ -100,9 +101,9 @@ public enum JobRequirements {
 
         switch locationBucket {
         case .doesNotMeet:
-            failures.append(Reason(short: "location", long: "Location outside your criteria"))
+            failures.append(Reason(short: "Location outside your criteria", long: "Location outside your criteria"))
         case .notStated:
-            unstated.append(Reason(short: "arrangement not stated", long: "Work arrangement not stated"))
+            unstated.append(Reason(short: "Work arrangement not stated", long: "Work arrangement not stated"))
         case .meets:
             break
         }
@@ -113,18 +114,18 @@ public enum JobRequirements {
                 // Comparing a foreign figure against a USD floor would be meaningless, not merely
                 // imprecise — treat it as unknown rather than converting at an invented rate.
                 unstated.append(Reason(
-                    short: "salary in \(currency)",
+                    short: "Salary in \(currency) — not comparable",
                     long: "Salary in \(currency) — not comparable"
                 ))
             } else if let salary = comparableSalary(min: salaryMin, max: salaryMax) {
                 if salary < thresholds.minSalary {
                     failures.append(Reason(
-                        short: "pays ≤ \(money(salary)) < \(money(thresholds.minSalary))",
+                        short: "Pays ≤ \(money(salary)), under your \(money(thresholds.minSalary)) floor",
                         long: "Pays up to \(money(salary)), below your \(money(thresholds.minSalary)) floor"
                     ))
                 }
             } else {
-                unstated.append(Reason(short: "no salary stated", long: "No salary stated"))
+                unstated.append(Reason(short: "No salary stated", long: "No salary stated"))
             }
         }
 
@@ -132,12 +133,12 @@ public enum JobRequirements {
             if let fitScore {
                 if fitScore < thresholds.minFitScore {
                     failures.append(Reason(
-                        short: "fit \(fitScore) < \(thresholds.minFitScore)",
+                        short: "Fit \(fitScore), under your minimum of \(thresholds.minFitScore)",
                         long: "Fit \(fitScore), below your minimum of \(thresholds.minFitScore)"
                     ))
                 }
             } else {
-                unstated.append(Reason(short: "not scored", long: "Not scored yet"))
+                unstated.append(Reason(short: "Not scored yet", long: "Not scored yet"))
             }
         }
 

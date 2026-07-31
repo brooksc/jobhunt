@@ -136,8 +136,17 @@ final class JobRequirementsTests: XCTestCase {
     func testBadgeNamesTheFailingRequirementInline() {
         let verdict = evaluate(salaryMax: 267_900, fit: 44, minSalary: 200_000, minFit: 50)
         XCTAssertEqual(verdict?.bucket, .doesNotMeet)
-        XCTAssertEqual(verdict?.badgeText("Outside criteria"), "Outside criteria: fit 44 < 50")
+        XCTAssertEqual(verdict?.badgeText("Outside criteria"), "Fit 44, under your minimum of 50")
         XCTAssertEqual(verdict?.summary, "Fit 44, below your minimum of 50")
+    }
+
+    /// "Arrangement not stated: arrangement not stated" — the label was being prefixed onto a reason
+    /// that already said the same thing.
+    func testBadgeDoesNotRepeatTheBucketLabel() {
+        let verdict = evaluate(meets: false, remote: nil)
+        let text = verdict?.badgeText("Not stated") ?? ""
+        XCTAssertEqual(text, "Work arrangement not stated")
+        XCTAssertFalse(text.contains(":"), "the label must not be prefixed onto the reason: \(text)")
     }
 
     func testBadgeIsUnadornedWhenEverythingPasses() {
@@ -148,19 +157,22 @@ final class JobRequirementsTests: XCTestCase {
 
     func testBadgeShowsTheGapWhenNothingFailed() {
         let verdict = evaluate(minSalary: 200_000)
-        XCTAssertEqual(verdict?.badgeText("Not stated"), "Not stated: no salary stated")
+        XCTAssertEqual(verdict?.badgeText("Not stated"), "No salary stated")
     }
 
     /// With several misses the badge lists them rather than picking one arbitrarily.
     func testBadgeListsEveryFailure() {
         let verdict = evaluate(salaryMax: 100_000, fit: 10, minSalary: 200_000, minFit: 50)
-        XCTAssertEqual(verdict?.badgeText("Outside criteria"), "Outside criteria: pays ≤ $100k < $200k, fit 10 < 50")
+        XCTAssertEqual(
+            verdict?.badgeText("Outside criteria"),
+            "Pays ≤ $100k, under your $200k floor, Fit 10, under your minimum of 50"
+        )
     }
 
     /// Failures decide the bucket, so the badge must not dilute them with unrelated gaps.
     func testBadgeOmitsUnknownsWhenSomethingDefinitelyFailed() {
         let verdict = evaluate(fit: 10, minSalary: 200_000, minFit: 50)
-        XCTAssertEqual(verdict?.badgeText("Outside criteria"), "Outside criteria: fit 10 < 50")
+        XCTAssertEqual(verdict?.badgeText("Outside criteria"), "Fit 10, under your minimum of 50")
     }
 
     func testMeetingEverythingSaysSo() {

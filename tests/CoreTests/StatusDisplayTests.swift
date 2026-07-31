@@ -95,10 +95,13 @@ final class StatusDisplayTests: XCTestCase {
     /// The inconsistency reported on job 327: a posting that never stated its arrangement showed
     /// "Outside criteria" on the detail while the filter classified it as "Not stated", so it read as
     /// rejected in one place and was missing from the matching filter in the other.
+    ///
+    /// The label is generic now that the bucket also covers a missing salary or an unscored job; the
+    /// specific cause is supplied by the requirement reason shown alongside it.
     func testSilentPostingReadsAsNotStatedNotRejected() {
         let bucket = JobFilterRules.criteriaBucket(meetsCriteria: false, remoteType: .unknown)
         XCTAssertEqual(bucket, .notStated)
-        XCTAssertEqual(bucket?.label, "Arrangement not stated")
+        XCTAssertEqual(bucket?.label, "Not stated")
     }
 
     func testStatedRejectionStillReadsAsOutsideCriteria() {

@@ -314,6 +314,107 @@ async function enrichWithGreenhouse(payload) {
   return enriched;
 }
 
+
+// ── Lever / Ashby compensation enrichment ─────────────────────────────────────
+//
+// Both boards state pay OUTSIDE the description body, so no amount of text parsing can recover it:
+// Lever returns a structured `salaryRange` object and omits the figures from the description
+// entirely (saviynt/c34f16eb — $220,000-$240,000 appears nowhere in the text), and Ashby renders
+// compensation in a sidebar the page capture doesn't include. Both expose it on a public API, so
+// fetch it here for the same CORS reason as Greenhouse above.
+const ATS_TIMEOUT_MS = 5000;
+const LEVER_URL_RE = /jobs\.(?:eu\.)?lever\.co\/([^/?#]+)\/([0-9a-f-]{36})/i;
+const ASHBY_URL_RE = /jobs\.ashbyhq\.com\/([^/?#]+)\/([0-9a-f-]{36})/i;
+
+async function fetchJSON(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ATS_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal });
+    clearTimeout(timer);
+    return res.ok ? await res.json() : null;
+  } catch (_err) {
+    clearTimeout(timer);
+    return null; // enrichment is best-effort; a capture must never fail because of it
+  }
+}
+
+/// A schema.org baseSalary from Lever's structured salaryRange.
+function leverSalaryPosting(data) {
+  const r = data && data.salaryRange;
+  if (!r || (!r.min && !r.max)) return null;
+  // "per-year-salary" / "per-hour-wage" → the schema.org unit the cleaner understands.
+  const interval = String(r.interval || "");
+  const unit = /hour/i.test(interval) ? "HOUR" : /week/i.test(interval) ? "WEEK"
+    : /month/i.test(interval) ? "MONTH" : "YEAR";
+  return {
+    "@type": "MonetaryAmount",
+    currency: r.currency || "USD",
+    value: { "@type": "QuantitativeValue", minValue: r.min, maxValue: r.max, unitText: unit },
+  };
+}
+
+async function fetchLeverJobData(url) {
+  const match = String(url || "").match(LEVER_URL_RE);
+  if (!match) return null;
+  const [, org, id] = match;
+  const data = await fetchJSON(`https://api.lever.co/v0/postings/${org}/${id}`);
+  if (!data) return null;
+  const posting = { "@type": "JobPosting", title: data.text || null, description: data.description || "" };
+  const salary = leverSalaryPosting(data);
+  if (salary) posting.baseSalary = salary;
+  if (data.categories && data.categories.location) {
+    posting.jobLocation = {
+      "@type": "Place",
+      address: { "@type": "PostalAddress", addressLocality: data.categories.location },
+    };
+  }
+  return { posting, rawTitle: data.text || "" };
+}
+
+async function fetchAshbyJobData(url) {
+  const match = String(url || "").match(ASHBY_URL_RE);
+  if (!match) return null;
+  const [, board, id] = match;
+  // Ashby has no per-job endpoint; the board feed carries every posting with compensation attached.
+  const data = await fetchJSON(
+    `https://api.ashbyhq.com/posting-api/job-board/${board}?includeCompensation=true`
+  );
+  const job = data && Array.isArray(data.jobs)
+    ? data.jobs.find((j) => String(j.id || "") === id || String(j.jobUrl || "").includes(id))
+    : null;
+  if (!job) return null;
+  const posting = { "@type": "JobPosting", title: job.title || null, description: job.descriptionPlain || "" };
+  // Ashby gives a rendered string ("$153K – $180K • Offers Equity") rather than numbers; pass it
+  // through as text so the salary sentence matcher picks it up.
+  const summary = job.compensation
+    && (job.compensation.scrapeableCompensationSalarySummary || job.compensation.compensationTierSummary);
+  if (summary) posting.description = `Compensation: ${summary}\n\n${posting.description}`;
+  if (job.location) {
+    posting.jobLocation = {
+      "@type": "Place",
+      address: { "@type": "PostalAddress", addressLocality: job.location },
+    };
+  }
+  return { posting, rawTitle: job.title || "" };
+}
+
+/// Merge whichever ATS recognises this URL. Greenhouse keeps its own richer path above.
+async function enrichWithATS(payload) {
+  for (const fetcher of [fetchLeverJobData, fetchAshbyJobData]) {
+    const hit = await fetcher(payload.url);
+    if (!hit) continue;
+    const structured = Array.isArray(payload.structured_data) ? [...payload.structured_data] : [];
+    structured.push(hit.posting);
+    return {
+      ...payload,
+      structured_data: structured,
+      structured_data_json: JSON.stringify(structured),
+    };
+  }
+  return payload;
+}
+
 async function captureCurrentTab(tab, userNote = "") {
   if (!tab.id) {
     return;
@@ -349,7 +450,8 @@ async function captureTabPayload(tabId, userNote = "") {
     world: "MAIN",
     func: () => globalThis.jobhuntCapture.capturePage(window, document),
   });
-  const payload = await enrichWithGreenhouse({ ...dataInjection.result, user_note: userNote });
+  const greenhoused = await enrichWithGreenhouse({ ...dataInjection.result, user_note: userNote });
+  const payload = await enrichWithATS(greenhoused);
 
   // Step 2: show the preflight dialog in the tab. If the tab closes during the countdown
   // the executeScript call will throw — we catch that and default to saving the capture.

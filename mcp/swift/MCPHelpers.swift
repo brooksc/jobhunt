@@ -131,7 +131,8 @@ let tools: [[String: Any]] = [
             "projection that pages up to 1000 rows at a time, and query for a server-side keyword " +
             "search so corpus-wide questions don't require paging every record. " +
             "Each row carries fit_score; use min_score to filter on it, and job_get for the full " +
-            "per-résumé breakdown.",
+            "per-résumé breakdown. requirements_verdict is the composite pass/fail across " +
+            "location, salary and fit — prefer it over meets_criteria, which is location-only.",
         "inputSchema": [
             "type": "object",
             "properties": [
@@ -165,6 +166,11 @@ let tools: [[String: Any]] = [
                     "description": "Keeps jobs whose salary ceiling reaches this. Jobs with no " +
                         "stated salary are excluded when set."
                 ] as [String: Any],
+                "requirements_verdict": [
+                    "type": "string", "enum": ["meets", "not_stated", "does_not_meet"],
+                    "description": "Filter on the COMPOSITE verdict across location, salary floor " +
+                        "and fit floor. Prefer this over meets_criteria, which is location-only."
+                ] as [String: Any],
                 "min_score": [
                     "type": "integer", "minimum": 0, "maximum": 100,
                     "description": "Keeps jobs whose fit score against your active résumés is at " +
@@ -178,7 +184,9 @@ let tools: [[String: Any]] = [
         "description": "Fetch full job metadata. Identify the job by job_number (preferred) or job_id. " +
             "Raw captured page text (selected_text, visible_text) is omitted by default; " +
             "pass include_raw_text: true to include it. Includes fit_scores: the stored per-résumé " +
-            "analysis with dimension scores and per-requirement met/partial/missing assessments.",
+            "analysis with dimension scores and per-requirement met/partial/missing assessments, " +
+            "plus base/penalty (the score before and after gap penalties) and " +
+            "assessment_prompt_version — scores from different versions are not comparable.",
         "inputSchema": [
             "type": "object",
             "required": [],
@@ -387,7 +395,7 @@ func resolveToolRoute(name: String, args: [String: Any]) -> Result<(String, [Str
         var b: [String: Any] = [:]
         for key in [
             "status", "limit", "offset", "summary", "query", "company",
-            "captured_after", "min_salary", "min_score"
+            "captured_after", "min_salary", "min_score", "requirements_verdict"
         ] {
             if let value = args[key] { b[key] = value }
         }

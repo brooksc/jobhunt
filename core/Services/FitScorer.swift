@@ -180,6 +180,26 @@ public enum FitScorer {
     ///   - gaps: Qualifications the candidate does not fully satisfy (kind + partial/missing), which
     ///     drive the severity-weighted penalty.
     /// - Returns: `FitScoreResult` with the final score, breakdown, and penalty details.
+    /// The weighted dimension score before penalties.
+    ///
+    /// One implementation, shared by scoring and by anything reporting the base separately. When the
+    /// projection layer reimplemented this it diverged on the first try — `weights.values.reduce`
+    /// sums in dictionary order, and 89.5 / 1.0000000000000002 rounds to 89 rather than 90.
+    public static func baseScore(breakdown: [String: Double]) -> Int {
+        var weightedSum: Double = 0
+        var totalWeight: Double = 0
+        // Sorted order in BOTH accumulations: floating-point addition isn't associative, so summing
+        // the weights in a different order than the scores can shift the quotient across a rounding
+        // boundary.
+        for name in dimensionWeights.keys.sorted() {
+            let weight = dimensionWeights[name] ?? 0
+            totalWeight += weight
+            weightedSum += min(100, max(0, (breakdown[name] ?? 0).rounded())) * weight
+        }
+        guard totalWeight > 0 else { return 0 }
+        return Int((weightedSum / totalWeight).rounded())
+    }
+
     public static func computeScore(
         dimensions: [String: Double],
         gaps: [RequirementGap] = []
@@ -190,24 +210,11 @@ public enum FitScorer {
         // associative, and Dictionary iteration order is nondeterministic, so an unordered sum could
         // land just above/below a .5 boundary and round to a different integer across runs/machines
         // (bit us in CI: 70 vs 71 for the same input). Sorted order makes the score deterministic.
-        var weightedSum: Double = 0
-        var totalWeight: Double = 0
         var breakdown: [String: Double] = [:]
-
         for name in dimensionWeights.keys.sorted() {
-            let weight = dimensionWeights[name] ?? 0
-            totalWeight += weight
-            let raw = dimensions[name] ?? 0
-            let clamped = min(100, max(0, raw.rounded()))
-            breakdown[name] = clamped
-            weightedSum += clamped * weight
+            breakdown[name] = min(100, max(0, (dimensions[name] ?? 0).rounded()))
         }
-
-        let baseScore = if totalWeight > 0 {
-            Int((weightedSum / totalWeight).rounded())
-        } else {
-            0
-        }
+        let baseScore = baseScore(breakdown: breakdown)
 
         // Penalty: sum the kind×status cost per gap, capped.
         var penaltyTotal = 0

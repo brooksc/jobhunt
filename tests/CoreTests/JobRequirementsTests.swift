@@ -181,3 +181,36 @@ final class JobRequirementsTests: XCTestCase {
         XCTAssertEqual(verdict?.summary, "Meets your requirements")
     }
 }
+
+// MARK: - Wire names
+
+/// The MCP reports the verdict and also filters on it. If the reported value and the accepted filter
+/// value differ, a consumer can't feed one back into the other — and the Swift `rawValue` is
+/// camelCase ("notStated") while a JSON API wants "not_stated".
+final class CriteriaBucketWireNameTests: XCTestCase {
+    func testEveryBucketRoundTrips() {
+        for bucket in JobFilterRules.CriteriaBucket.allCases {
+            XCTAssertEqual(
+                JobFilterRules.CriteriaBucket(wireName: bucket.wireName), bucket,
+                "\(bucket) must survive a round trip through its wire name"
+            )
+        }
+    }
+
+    func testWireNamesAreSnakeCase() {
+        XCTAssertEqual(JobFilterRules.CriteriaBucket.meets.wireName, "meets")
+        XCTAssertEqual(JobFilterRules.CriteriaBucket.notStated.wireName, "not_stated")
+        XCTAssertEqual(JobFilterRules.CriteriaBucket.doesNotMeet.wireName, "does_not_meet")
+    }
+
+    /// The camelCase rawValue must NOT be accepted, or the two spellings would drift apart in use.
+    func testCamelCaseRawValuesAreRejected() {
+        XCTAssertNil(JobFilterRules.CriteriaBucket(wireName: "notStated"))
+        XCTAssertNil(JobFilterRules.CriteriaBucket(wireName: "doesNotMeet"))
+    }
+
+    func testUnknownValuesAreRejectedRatherThanDefaulted() {
+        XCTAssertNil(JobFilterRules.CriteriaBucket(wireName: "maybe"))
+        XCTAssertNil(JobFilterRules.CriteriaBucket(wireName: ""))
+    }
+}

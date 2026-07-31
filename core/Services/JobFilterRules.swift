@@ -28,6 +28,25 @@ public enum JobFilterRules {
         case notStated
         /// Fails on a stated arrangement/location the user disallows.
         case doesNotMeet
+
+        /// Stable wire name. The Swift `rawValue` is camelCase, which would mean a consumer reading
+        /// `"notStated"` from a response couldn't feed it back into a `"not_stated"` filter.
+        public var wireName: String {
+            switch self {
+            case .meets: "meets"
+            case .notStated: "not_stated"
+            case .doesNotMeet: "does_not_meet"
+            }
+        }
+
+        public init?(wireName: String) {
+            switch wireName.lowercased() {
+            case "meets": self = .meets
+            case "not_stated": self = .notStated
+            case "does_not_meet": self = .doesNotMeet
+            default: return nil
+            }
+        }
     }
 
     /// Classify a job. Returns nil when the verdict was never computed (extraction failed), so those

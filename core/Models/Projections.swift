@@ -466,9 +466,27 @@ public struct JobFitScoreRecord: Sendable {
     public let reflectsPreviousResumeVersion: Bool
     public let dimensions: [FitDimension]
     public let requirementAssessments: [RequirementAssessment]
+    /// The weighted dimension score before penalties. "90 base, −16 penalty" is far more
+    /// interpretable than "74", and lets a consumer re-weight without re-deriving.
+    public let base: Int?
+    public let penalty: Int?
+    public let penaltyReasons: [String]
+    /// Which scoring prompt produced this assessment. Scores from different versions are different
+    /// measurements — a threshold filter that mixes them is comparing unlike things.
+    public let assessmentPromptVersion: Int
+    /// When the résumé record was last changed. `reflectsPreviousResumeVersion` compares hashes of
+    /// the text stored IN the app, so editing the source file without re-importing leaves it false
+    /// while the score is stale; exposing this alongside `scoredAt` lets a consumer judge for itself.
+    public let resumeUpdatedAt: Date?
 
     init(fitScore: JobFitScore) {
         let projection = FitScoreProjection(fitScore: fitScore)
+        let stored = Self.storedFields(fitScore.fitScoreJSON)
+        base = stored.base
+        penalty = stored.penalty
+        penaltyReasons = stored.reasons
+        assessmentPromptVersion = stored.promptVersion
+        resumeUpdatedAt = fitScore.resume?.updatedAt
         resumeID = fitScore.resume?.id
         resumeName = fitScore.resume?.name
         resumeActive = fitScore.resume?.active ?? false
@@ -479,6 +497,24 @@ public struct JobFitScoreRecord: Sendable {
         reflectsPreviousResumeVersion = fitScore.reflectsPreviousResumeVersion
         dimensions = projection.dimensions
         requirementAssessments = projection.requirementAssessments
+    }
+
+    /// Fields the scorer merges into `fitScoreJSON` but no projection surfaced.
+    private static func storedFields(
+        _ json: String?
+    ) -> (base: Int?, penalty: Int?, reasons: [String], promptVersion: Int) {
+        guard let json, let data = json.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return (nil, nil, [], 1) }
+        let penalty = dict["penalty"] as? Int
+        // From the stored breakdown rather than `overall + penalty`: the overall is floored at 0, so
+        // adding the penalty back would report a base the scorer never produced (base 30 with a 60
+        // penalty stores 0, which would read back as 60). Uses the scorer's own arithmetic — an
+        // independent reimplementation here disagreed by a point on the very first job.
+        let base = (dict["breakdown"] as? [String: Double]).map(FitScorer.baseScore(breakdown:))
+        let reasons = (dict["penaltyReasons"] as? [String]) ?? []
+        let version = (dict["assessment_prompt_version"] as? Int) ?? 1
+        return (base, penalty, reasons, version)
     }
 }
 

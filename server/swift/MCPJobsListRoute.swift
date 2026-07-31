@@ -16,9 +16,13 @@
         let capturedAfter: String?
         let minSalary: Int?
         let minScore: Int?
+        /// "meets" / "not_stated" / "does_not_meet" — the composite verdict, not the stored
+        /// location-only flag.
+        let requirementsVerdict: String?
         let summary: Bool?
         enum CodingKeys: String, CodingKey {
             case status, limit, offset, query, company, summary
+            case requirementsVerdict = "requirements_verdict"
             case capturedAfter = "captured_after"
             case minSalary = "min_salary"
             case minScore = "min_score"
@@ -39,6 +43,8 @@
         let fitScore: Int?
         /// Without this the amounts read as USD — four postings in the corpus are EUR/CAD.
         let salaryCurrency: String?
+        /// The composite verdict across location, salary floor and fit floor.
+        let requirementsVerdict: String?
         enum CodingKeys: String, CodingKey {
             case jobNumber = "job_number"
             case company, title, status, location
@@ -47,6 +53,7 @@
             case sourceURL = "source_url"
             case fitScore = "fit_score"
             case salaryCurrency = "salary_currency"
+            case requirementsVerdict = "requirements_verdict"
         }
     }
 
@@ -76,7 +83,9 @@
     private let mcpJobsListMaxSummaryLimit = 1000
     private let mcpJobsListDefaultLimit = 50
 
-    func handleMCPJobsList(_ request: HTTPRequest, jobService: JobService) async -> HTTPResponse {
+    func handleMCPJobsList(
+        _ request: HTTPRequest, jobService: JobService, store: BackgroundStore
+    ) async -> HTTPResponse {
         let req = try? request.decodeBody(as: MCPJobsListRequest.self)
         let rawLimit = req?.limit ?? mcpJobsListDefaultLimit
         guard rawLimit >= mcpJobsListMinLimit else {
@@ -115,18 +124,36 @@
             limit: limit
         )
 
-        do {
-            let page = try await jobService.listJobs(query)
-            if wantsSummary {
-                return HTTPResponse.ok(MCPJobsListResponse(
-                    jobs: page.records.map(compactRow), total: page.total, offset: page.offset,
-                    limit: page.limit, hasMore: page.hasMore, nextOffset: page.nextOffset, notice: notice
-                ))
+        // The composite verdict isn't stored, so it can't be a JobQuery predicate — filter after
+        // fetching and report a total that reflects the filter rather than the unfiltered set.
+        var wantedBucket: JobFilterRules.CriteriaBucket?
+        if let raw = req?.requirementsVerdict, !raw.isEmpty {
+            guard let bucket = JobFilterRules.CriteriaBucket(wireName: raw) else {
+                return HTTPResponse.error(
+                    "invalid requirements_verdict '\(raw)'; valid: meets, not_stated, does_not_meet", code: 400
+                )
             }
-            return HTTPResponse.ok(MCPJobsListResponse(
-                jobs: page.records.map(fullRow), total: page.total, offset: page.offset,
-                limit: page.limit, hasMore: page.hasMore, nextOffset: page.nextOffset, notice: notice
-            ))
+            wantedBucket = bucket
+        }
+
+        do {
+            let thresholds = await requirementThresholds(store)
+            if let wantedBucket {
+                // Page over everything, keep the matches, then slice — the alternative is a filtered
+                // page whose `total` describes a different set than the rows returned.
+                var all = query
+                all.offset = 0
+                all.limit = Int.max
+                let everything = try await jobService.listJobs(all)
+                let matching = everything.records.filter {
+                    requirementsVerdict($0, thresholds: thresholds)?.bucket == wantedBucket
+                }
+                let slice = Array(matching.dropFirst(offset).prefix(limit))
+                let page = JobListPage(records: slice, total: matching.count, offset: offset, limit: limit)
+                return respond(page: page, thresholds: thresholds, summary: wantsSummary, notice: notice)
+            }
+            let page = try await jobService.listJobs(query)
+            return respond(page: page, thresholds: thresholds, summary: wantsSummary, notice: notice)
         } catch let error as JobServiceError {
             return HTTPResponse.error(error.errorDescription ?? "invalid request", code: 400)
         } catch {
@@ -134,16 +161,37 @@
         }
     }
 
-    private func compactRow(_ r: JobListRecord) -> MCPJobSummaryCompact {
+    private func respond(
+        page: JobListPage,
+        thresholds: JobRequirements.Thresholds,
+        summary: Bool,
+        notice: String?
+    ) -> HTTPResponse {
+        if summary {
+            return HTTPResponse.ok(MCPJobsListResponse(
+                jobs: page.records.map { compactRow($0, thresholds: thresholds) }, total: page.total,
+                offset: page.offset, limit: page.limit, hasMore: page.hasMore,
+                nextOffset: page.nextOffset, notice: notice
+            ))
+        }
+        return HTTPResponse.ok(MCPJobsListResponse(
+            jobs: page.records.map { fullRow($0, thresholds: thresholds) }, total: page.total,
+            offset: page.offset, limit: page.limit, hasMore: page.hasMore,
+            nextOffset: page.nextOffset, notice: notice
+        ))
+    }
+
+    private func compactRow(_ r: JobListRecord, thresholds: JobRequirements.Thresholds) -> MCPJobSummaryCompact {
         MCPJobSummaryCompact(
             jobNumber: r.jobNumber, company: r.company, title: r.title,
             status: r.status.rawValue, location: r.location,
             salaryMin: r.salaryMin, salaryMax: r.salaryMax, sourceURL: r.sourceURL,
-            fitScore: r.fitScore, salaryCurrency: r.salaryCurrency
+            fitScore: r.fitScore, salaryCurrency: r.salaryCurrency,
+            requirementsVerdict: requirementsVerdict(r, thresholds: thresholds)?.bucket.wireName
         )
     }
 
-    private func fullRow(_ r: JobListRecord) -> MCPJobSummary {
+    private func fullRow(_ r: JobListRecord, thresholds: JobRequirements.Thresholds) -> MCPJobSummary {
         MCPJobSummary(
             jobNumber: r.jobNumber,
             jobID: r.id,
@@ -170,9 +218,38 @@
             salaryHourlyMin: r.salaryHourlyMin,
             salaryHourlyMax: r.salaryHourlyMax,
             meetsCriteria: r.meetsCriteria,
+            requirementsVerdict: requirementsVerdict(r, thresholds: thresholds)?.bucket.wireName,
             appliedAt: formatDate(r.appliedAt),
             updatedAt: formatDate(r.updatedAt as Date?),
             unread: r.unread
+        )
+    }
+
+    /// The user's configured floors, read from the settings rows the app writes.
+    ///
+    /// The composite verdict is computed at read time in the app (thresholds are settings, so a
+    /// change re-filters instantly with no stored state). Computing it here too means MCP consumers
+    /// can both SEE and FILTER on it — exposing a field that couldn't be queried would be worse than
+    /// not exposing it.
+    func requirementThresholds(_ store: BackgroundStore) async -> JobRequirements.Thresholds {
+        guard let settings = try? await store.fetch(FetchDescriptor<Setting>()) else {
+            return .none
+        }
+        let byKey = Dictionary(settings.map { ($0.key, $0.value) }, uniquingKeysWith: { first, _ in first })
+        return JobRequirements.Thresholds(
+            minSalary: Int(byKey[SettingsKey.minSalary] ?? "0") ?? 0,
+            minFitScore: Int(byKey[SettingsKey.minFitScore] ?? "0") ?? 0
+        )
+    }
+
+    func requirementsVerdict(
+        _ record: JobListRecord, thresholds: JobRequirements.Thresholds
+    ) -> JobRequirements.Verdict? {
+        JobRequirements.evaluate(
+            meetsCriteria: record.meetsCriteria, remoteType: record.remoteType,
+            salaryMin: record.salaryMin, salaryMax: record.salaryMax,
+            salaryCurrency: record.salaryCurrency, fitScore: record.fitScore,
+            thresholds: thresholds
         )
     }
 

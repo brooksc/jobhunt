@@ -147,7 +147,13 @@
         let salaryCurrency: String?
         let salaryHourlyMin: Double?
         let salaryHourlyMax: Double?
+        /// The stored LOCATION-ONLY verdict. Kept for continuity but rarely what a caller wants:
+        /// it reads false for a posting that merely never stated its arrangement, and true for one
+        /// that fails the salary floor. Prefer `requirements`.
         let meetsCriteria: Bool?
+        /// The composite verdict across location, salary floor and fit floor. Named distinctly from
+        /// the extracted `requirements` list, which is a different thing entirely.
+        let requirementsVerdict: String?
         let appliedAt: String?
         let updatedAt: String?
         let unread: Bool?
@@ -163,6 +169,7 @@
             case salaryHourlyMin = "salary_hourly_min"
             case salaryHourlyMax = "salary_hourly_max"
             case meetsCriteria = "meets_criteria"
+            case requirementsVerdict = "requirements_verdict"
             case appliedAt = "applied_at"
             case updatedAt = "updated_at"
             case unread
@@ -252,9 +259,9 @@
 
         switch request.path {
         case "/mcp/jobs/list":
-            return await handleMCPJobsList(request, jobService: jobService)
+            return await handleMCPJobsList(request, jobService: jobService, store: store)
         case "/mcp/jobs/get":
-            return await handleMCPJobGet(request, jobService: jobService)
+            return await handleMCPJobGet(request, jobService: jobService, store: store)
         case "/mcp/captures/add":
             return await handleMCPCaptureAdd(request, jobService: jobService)
         case "/mcp/jobs/update":

@@ -397,3 +397,54 @@ final class RescoreDimensionValidationTests: XCTestCase {
         XCTAssertNotNil(FitScorer.rescoreFromJSON(json(dimensions: extra)))
     }
 }
+
+// MARK: - base score is one implementation
+
+/// Reporting "90 base, −16 penalty" means two places need the base. When the projection layer
+/// reimplemented the weighted sum it disagreed with the scorer on the first real job: summing the
+/// weights in dictionary order made 89.5 / 1.0000000000000002 round to 89 instead of 90.
+final class BaseScoreTests: XCTestCase {
+    /// The exact Akamai #607 breakdown that exposed the divergence.
+    private let breakdown: [String: Double] = [
+        "required_qualifications": 90, "preferred_qualifications": 85,
+        "skills": 90, "domain_fit": 90, "experience_level": 95
+    ]
+
+    func testBaseMatchesTheReportedCase() {
+        XCTAssertEqual(FitScorer.baseScore(breakdown: breakdown), 90, "89.5 must round to 90, not 89")
+    }
+
+    /// The property that matters: base and overall must agree whenever the score didn't floor.
+    func testBasePlusPenaltyReconstructsTheOverall() {
+        let gaps = [
+            FitScorer.RequirementGap(requirement: "a", kind: .required, status: .partial),
+            FitScorer.RequirementGap(requirement: "b", kind: .preferred, status: .partial),
+            FitScorer.RequirementGap(requirement: "c", kind: .preferred, status: .partial)
+        ]
+        let result = FitScorer.computeScore(dimensions: breakdown, gaps: gaps)
+        XCTAssertEqual(result.overall, 74)
+        XCTAssertEqual(FitScorer.baseScore(breakdown: result.breakdown), result.overall + result.penalty)
+    }
+
+    /// …and why the base can't just be derived as overall + penalty: the overall floors at 0.
+    func testBaseIsNotRecoverableFromAFlooredOverall() {
+        let low = [
+            "required_qualifications": 20.0,
+            "preferred_qualifications": 20,
+            "skills": 20,
+            "domain_fit": 20,
+            "experience_level": 20
+        ]
+        let gaps = (0 ..< 6).map {
+            FitScorer.RequirementGap(requirement: "g\($0)", kind: .required, status: .missing)
+        }
+        let result = FitScorer.computeScore(dimensions: low, gaps: gaps)
+        XCTAssertEqual(result.overall, 0, "floored")
+        XCTAssertEqual(FitScorer.baseScore(breakdown: result.breakdown), 20)
+        XCTAssertNotEqual(result.overall + result.penalty, 20, "overall+penalty would misreport it")
+    }
+
+    func testAnEmptyBreakdownScoresZeroRatherThanCrashing() {
+        XCTAssertEqual(FitScorer.baseScore(breakdown: [:]), 0)
+    }
+}

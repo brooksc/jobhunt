@@ -35,9 +35,24 @@
         let reflectsPreviousResumeVersion: Bool
         let dimensions: [Dimension]
         let requirements: [Requirement]
+        /// Weighted dimension score before penalties — "90 base, −16 penalty" reads far better than
+        /// a bare 74, and lets a consumer re-weight without re-deriving.
+        let base: Int?
+        let penalty: Int?
+        let penaltyReasons: [String]
+        /// Scores from different prompt versions are different measurements; a threshold filter that
+        /// mixes them compares unlike things.
+        let assessmentPromptVersion: Int
+        /// `reflects_previous_resume_version` compares the text stored IN the app, so editing the
+        /// source file without re-importing leaves it false while the score is stale. Compare this
+        /// against `scored_at` to judge for yourself.
+        let resumeUpdatedAt: String?
 
         enum CodingKeys: String, CodingKey {
-            case score, status, model, dimensions, requirements
+            case score, status, model, dimensions, requirements, base, penalty
+            case penaltyReasons = "penalty_reasons"
+            case assessmentPromptVersion = "assessment_prompt_version"
+            case resumeUpdatedAt = "resume_updated_at"
             case resumeID = "resume_id"
             case resumeName = "resume_name"
             case resumeActive = "resume_active"
@@ -76,7 +91,13 @@
         let salaryCurrency: String?
         let salaryHourlyMin: Double?
         let salaryHourlyMax: Double?
+        /// The stored LOCATION-ONLY verdict. Rarely what a caller wants: it reads false for a
+        /// posting that merely never stated its arrangement (#607) and true for one that fails the
+        /// salary floor (#688). Prefer `requirements_verdict`.
         let meetsCriteria: Bool?
+        /// The composite verdict across location, salary floor and fit floor. Named distinctly from
+        /// the extracted `requirements` list, which is a different thing entirely.
+        let requirementsVerdict: String?
         let appliedAt: String?
         let updatedAt: String?
         let unread: Bool
@@ -135,6 +156,7 @@
             case salaryHourlyMin = "salary_hourly_min"
             case salaryHourlyMax = "salary_hourly_max"
             case meetsCriteria = "meets_criteria"
+            case requirementsVerdict = "requirements_verdict"
             case appliedAt = "applied_at"
             case updatedAt = "updated_at"
             case unread
@@ -155,7 +177,9 @@
 
     /// Builds the full job payload. Split from the route so the handler stays inside the
     /// function-length limit as the exposed metadata grew.
-    private func jobDetailPayload(_ r: JobDetailRecord, includeRawText: Bool) -> MCPJobDetail {
+    private func jobDetailPayload(
+        _ r: JobDetailRecord, includeRawText: Bool, requirementsVerdict: String?
+    ) -> MCPJobDetail {
         MCPJobDetail(
             jobNumber: r.jobNumber,
             jobID: r.id,
@@ -204,13 +228,19 @@
                             requirement: $0.requirement, kind: $0.kind,
                             status: $0.status, evidence: $0.evidence
                         )
-                    }
+                    },
+                    base: fit.base,
+                    penalty: fit.penalty,
+                    penaltyReasons: fit.penaltyReasons,
+                    assessmentPromptVersion: fit.assessmentPromptVersion,
+                    resumeUpdatedAt: formatDate(fit.resumeUpdatedAt)
                 )
             },
             salaryCurrency: r.salaryCurrency,
             salaryHourlyMin: r.salaryHourlyMin,
             salaryHourlyMax: r.salaryHourlyMax,
             meetsCriteria: r.meetsCriteria,
+            requirementsVerdict: requirementsVerdict,
             appliedAt: formatDate(r.appliedAt),
             updatedAt: formatDate(r.updatedAt as Date?),
             unread: r.unread,
@@ -231,7 +261,9 @@
         )
     }
 
-    func handleMCPJobGet(_ request: HTTPRequest, jobService: JobService) async -> HTTPResponse {
+    func handleMCPJobGet(
+        _ request: HTTPRequest, jobService: JobService, store: BackgroundStore
+    ) async -> HTTPResponse {
         guard let req = try? request.decodeBody(as: MCPJobGetRequest.self) else {
             return HTTPResponse.error("job_number or job_id required")
         }
@@ -250,7 +282,17 @@
                 return HTTPResponse.error("job not found", code: 404)
             }
 
-            let detail = jobDetailPayload(r, includeRawText: req.includeRawText == true)
+            // Same composite the list route reports, so detail and list never disagree.
+            let thresholds = await requirementThresholds(store)
+            let verdict = JobRequirements.evaluate(
+                meetsCriteria: r.meetsCriteria, remoteType: r.remoteType,
+                salaryMin: r.salaryMin, salaryMax: r.salaryMax,
+                salaryCurrency: r.salaryCurrency, fitScore: r.fitScore, thresholds: thresholds
+            )
+            let detail = jobDetailPayload(
+                r, includeRawText: req.includeRawText == true,
+                requirementsVerdict: verdict?.bucket.wireName
+            )
             return HTTPResponse.ok(detail)
         } catch {
             return HTTPResponse.error(safeServerError(error, context: "handleMCPJobGet"), code: 500)

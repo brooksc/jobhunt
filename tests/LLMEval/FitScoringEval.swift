@@ -198,7 +198,7 @@ final class FitScoringEval: XCTestCase {
     ) async {
         let extracted: [String: Any] = [
             "requirements": testCase.requirements,
-            "nice_to_have": testCase.niceToHaves,
+            "nice_to_haves": testCase.niceToHaves,
             "skills": [] as [String],
             "summary": testCase.jobContext
         ]

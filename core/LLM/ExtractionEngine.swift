@@ -362,7 +362,10 @@ public enum ExtractionEngine {
         return nil
     }
 
-    private static func buildJobContext(from job: JobFitSnapshot) -> ExtractedJobContext {
+    /// Internal rather than private so a test can pin the JSON keys it reads. An eval fixture
+    /// written with `nice_to_have` instead of `nice_to_haves` silently dropped the preferred list,
+    /// and the resulting miss was recorded as a model regression.
+    static func buildJobContext(from job: JobFitSnapshot) -> ExtractedJobContext {
         var title = job.title
         var company = job.company
         var seniority = job.seniority

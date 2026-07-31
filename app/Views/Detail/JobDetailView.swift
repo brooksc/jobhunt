@@ -1514,12 +1514,17 @@ private struct ResumeScoreCard: View {
                         .foregroundStyle(Self.assessmentColor(item.status))
                         .frame(width: 10)
                     VStack(alignment: .leading, spacing: 1) {
+                        // Selectable like the rest of the detail view — these were the only text in
+                        // the pane you couldn't copy, and a compound requirement is exactly the thing
+                        // you want to quote a clause out of.
                         Text(item.requirement).font(.caption2).lineSpacing(2)
+                            .textSelection(.enabled)
                         if !item.evidence.isEmpty {
                             Text(item.evidence)
                                 .font(.system(size: 10))
                                 .foregroundStyle(.secondary)
                                 .lineSpacing(1)
+                                .textSelection(.enabled)
                         }
                     }
                     // Flag nice-to-haves so a gap here reads as lower-stakes than a required one.

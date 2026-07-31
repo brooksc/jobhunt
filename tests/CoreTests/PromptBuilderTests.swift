@@ -300,3 +300,29 @@ final class ValuesRequirementPromptTests: XCTestCase {
         XCTAssertTrue(fitPrompt.contains("submission mechanics"))
     }
 }
+
+/// `ExtractionEngine.scoreFit` reads the preferred list from `nice_to_haves` (plural). An eval
+/// fixture written with the singular key silently dropped the item, and BOTH models were recorded as
+/// failing that case — a fixture typo read as a model regression.
+final class ExtractedJobContextKeyTests: XCTestCase {
+    func testPreferredQualificationsReachThePrompt() {
+        let json = #"{"requirements":["Req A"],"nice_to_haves":["Pref B"],"skills":[]}"#
+        let job = JobFitSnapshot(
+            title: "T", company: "C", seniority: nil, extractedJSON: json, extractionModel: "m"
+        )
+        let prompt = PromptBuilder.buildFitPrompt(
+            extractedJob: ExtractionEngine.buildJobContext(from: job), resumeText: "r"
+        ).map(\.content).joined()
+        XCTAssertTrue(prompt.contains("Req A"))
+        XCTAssertTrue(prompt.contains("Pref B"), "the preferred list must reach the model")
+    }
+
+    /// The singular key is NOT read — pinning it means a future rename breaks loudly here.
+    func testSingularKeyIsNotSilentlyAccepted() {
+        let json = #"{"requirements":[],"nice_to_have":["Pref B"],"skills":[]}"#
+        let job = JobFitSnapshot(
+            title: "T", company: "C", seniority: nil, extractedJSON: json, extractionModel: "m"
+        )
+        XCTAssertTrue(ExtractionEngine.buildJobContext(from: job).niceToHaves.isEmpty)
+    }
+}

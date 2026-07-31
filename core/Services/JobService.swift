@@ -62,6 +62,7 @@ public enum JobServiceError: Error, LocalizedError, Sendable {
     case actionNotFound(String)
     case contactNotFound(String)
     case coverLetterNotFound(String)
+    case invalidStatus(String)
 
     public var errorDescription: String? {
         switch self {
@@ -73,6 +74,8 @@ public enum JobServiceError: Error, LocalizedError, Sendable {
         case .actionNotFound: "Action item not found"
         case .contactNotFound: "Contact not found"
         case .coverLetterNotFound: "Cover letter not found"
+        case let .invalidStatus(raw):
+            "Invalid status '\(raw)'; valid values: " + JobStatus.allCases.map(\.rawValue).joined(separator: ", ")
         }
     }
 }
@@ -550,46 +553,73 @@ public actor JobService {
 
     // MARK: - MCP read queries
 
-    public func listJobs(status: String?, limit: Int) async throws -> [JobListRecord] {
-        if let statusRaw = status, let jobStatus = JobStatus(rawValue: statusRaw) {
-            // Status filter: SwiftData can't predicate on the enum `status`, so page through the
-            // table newest-first in bounded chunks and filter each page in memory, stopping once we
-            // have `limit` matches (TASK-366). This bounds peak memory to one page instead of
-            // materialising every row, and stops early in the common case where the requested
-            // status has plenty of recent matches. A stable id tiebreaker keeps page boundaries
-            // from skipping/duplicating rows that share a createdAt.
-            guard limit > 0 else { return [] }
-            let pageSize = max(limit, 200)
-            var offset = 0
-            var matches: [Job] = []
-            while matches.count < limit {
-                var descriptor = FetchDescriptor<Job>(
-                    sortBy: [
-                        SortDescriptor(\Job.createdAt, order: .reverse),
-                        SortDescriptor(\Job.id, order: .reverse)
-                    ]
-                )
-                descriptor.fetchLimit = pageSize
-                descriptor.fetchOffset = offset
-                let page = try await store.fetch(descriptor)
-                if page.isEmpty { break }
-                for job in page where job.status == jobStatus {
-                    matches.append(job)
-                    if matches.count == limit { break }
-                }
-                offset += page.count
-                if page.count < pageSize { break } // reached the end of the table
-            }
-            return matches.map { JobListRecord(job: $0) }
-        } else {
-            // No filter: fetchLimit lets SwiftData avoid materialising every row.
-            var descriptor = FetchDescriptor<Job>(
-                sortBy: [SortDescriptor(\Job.createdAt, order: .reverse)]
-            )
-            descriptor.fetchLimit = limit
-            let jobs = try await store.fetch(descriptor)
-            return jobs.map { JobListRecord(job: $0) }
+    /// Filtered, offset-paged job list with an exact `total`.
+    ///
+    /// Every filter is applied in memory after one sorted fetch. SwiftData can't predicate on the
+    /// enum `status` or reach through to the capture's cleaned text, and an exact `total` requires
+    /// counting all matches anyway — so the chunked scan this replaces couldn't produce one. At this
+    /// app's scale (hundreds of jobs, per the project conventions) a single pass is imperceptible and
+    /// far easier to reason about than paging with predicates that can't express the filters.
+    public func listJobs(_ query: JobQuery) async throws -> JobListPage {
+        let offset = max(0, query.offset)
+        let limit = max(0, query.limit)
+
+        if let statusRaw = query.status, JobStatus(rawValue: statusRaw) == nil {
+            throw JobServiceError.invalidStatus(statusRaw)
         }
+        let wantedStatus = query.status.flatMap { JobStatus(rawValue: $0) }
+        let needle = query.query?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let companyNeedle = query.company?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        let descriptor = FetchDescriptor<Job>(
+            sortBy: [
+                SortDescriptor(\Job.createdAt, order: .reverse),
+                SortDescriptor(\Job.id, order: .reverse)
+            ]
+        )
+        let all = try await store.fetch(descriptor)
+
+        let matches = all.filter { job in
+            if let wantedStatus, job.status != wantedStatus { return false }
+            if let companyNeedle, !companyNeedle.isEmpty {
+                guard (job.company ?? "").lowercased().contains(companyNeedle) else { return false }
+            }
+            if let after = query.capturedAfter {
+                let captured = job.capture?.capturedAt ?? job.capture?.createdAt ?? job.createdAt
+                guard captured >= after else { return false }
+            }
+            if let scoreFloor = query.minScore {
+                // An unscored job can't be shown to clear a threshold, so it's excluded rather than
+                // assumed to pass.
+                guard let score = job.fitScore, score >= scoreFloor else { return false }
+            }
+            if let floor = query.minSalary {
+                // No stated salary can't clear a floor — excluded only because a floor was asked for.
+                guard let ceiling = job.salaryMax ?? job.salaryMin, ceiling >= floor else { return false }
+            }
+            if let needle, !needle.isEmpty {
+                guard Self.matchesText(job, needle: needle) else { return false }
+            }
+            return true
+        }
+
+        let page = matches.dropFirst(offset).prefix(limit)
+        return JobListPage(
+            records: page.map { JobListRecord(job: $0) },
+            total: matches.count,
+            offset: offset,
+            limit: limit
+        )
+    }
+
+    /// Substring match across the fields a keyword question would plausibly target, including the
+    /// cleaned description — the whole point is not having to pull every record to grep it.
+    private static func matchesText(_ job: Job, needle: String) -> Bool {
+        let haystacks = [
+            job.title, job.company, job.location, job.seniority, job.employmentType,
+            job.capture?.pageTitle, job.capture?.cleanedDescription
+        ]
+        return haystacks.contains { ($0 ?? "").lowercased().contains(needle) }
     }
 
     public func getJob(byNumber number: Int) async throws -> JobDetailRecord? {

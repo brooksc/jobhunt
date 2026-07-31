@@ -203,6 +203,10 @@ public struct JobListRecord: Sendable {
     public let employmentType: String?
     public let seniority: String?
     public let duplicateOfJobID: String?
+    /// Denormalized overall fit against the active résumés — the number the Jobs list shows.
+    /// Absent from the MCP payload entirely until now, so score-based triage wasn't possible.
+    public let fitScore: Int?
+    public let fitStatus: FitStatus
 
     init(job: Job) {
         id = job.id
@@ -224,6 +228,78 @@ public struct JobListRecord: Sendable {
         employmentType = job.employmentType
         seniority = job.seniority
         duplicateOfJobID = job.duplicateOfJobID
+        fitScore = job.fitScore
+        fitStatus = job.fitStatus
+    }
+}
+
+/// A filtered, offset-paged slice of the job list, with the totals a caller needs to know whether
+/// it has seen everything.
+///
+/// The list API previously returned a bare array capped at 200 with no offset, so any status with
+/// more rows was partly unreachable and the truncation was invisible — an "analysis of all archived
+/// jobs" silently ran against the 200 most recent of 474.
+public struct JobListPage: Sendable {
+    /// The records for this page.
+    public let records: [JobListRecord]
+    /// Total matching the filters, ignoring offset/limit.
+    public let total: Int
+    public let offset: Int
+    /// The limit actually applied, which may be lower than the one requested.
+    public let limit: Int
+
+    public init(records: [JobListRecord], total: Int, offset: Int, limit: Int) {
+        self.records = records
+        self.total = total
+        self.offset = offset
+        self.limit = limit
+    }
+
+    public var hasMore: Bool {
+        offset + records.count < total
+    }
+
+    public var nextOffset: Int? {
+        hasMore ? offset + records.count : nil
+    }
+}
+
+/// Filters for `JobService.listJobs`. All are optional and combine with AND.
+public struct JobQuery: Sendable {
+    public var status: String?
+    /// Case-insensitive substring matched against title, company, page title, location and the
+    /// cleaned description — so a corpus-wide keyword question ("SOC 2") doesn't require paging
+    /// every record to the caller.
+    public var query: String?
+    public var company: String?
+    public var capturedAfter: Date?
+    /// Keeps jobs whose salary ceiling reaches this figure; jobs with no salary are excluded only
+    /// when this is set.
+    public var minSalary: Int?
+    /// Keeps jobs scoring at least this against the active résumés. Unscored jobs are excluded when
+    /// set — a job with no score can't be shown to clear a threshold.
+    public var minScore: Int?
+    public var offset: Int
+    public var limit: Int
+
+    public init(
+        status: String? = nil,
+        query: String? = nil,
+        company: String? = nil,
+        capturedAfter: Date? = nil,
+        minSalary: Int? = nil,
+        minScore: Int? = nil,
+        offset: Int = 0,
+        limit: Int = 50
+    ) {
+        self.status = status
+        self.query = query
+        self.company = company
+        self.capturedAfter = capturedAfter
+        self.minSalary = minSalary
+        self.minScore = minScore
+        self.offset = offset
+        self.limit = limit
     }
 }
 
@@ -262,6 +338,12 @@ public struct JobDetailRecord: Sendable {
     public let seniority: String?
     public let duplicateOfJobID: String?
     public let events: [JobEventRecord]
+    /// Every stored fit analysis, one per résumé — the structured breakdown the app shows in the Fit
+    /// tab. Previously computed and stored but unreachable through the MCP.
+    public let fitScores: [JobFitScoreRecord]
+    /// Denormalized overall fit (active résumés only), matching `JobListRecord`.
+    public let fitScore: Int?
+    public let fitStatus: FitStatus
 
     init(job: Job) {
         id = job.id
@@ -289,6 +371,43 @@ public struct JobDetailRecord: Sendable {
         events = job.events
             .sorted { $0.occurredAt < $1.occurredAt }
             .map { JobEventRecord(eventType: $0.eventType, note: $0.note, occurredAt: $0.occurredAt) }
+        fitScore = job.fitScore
+        fitStatus = job.fitStatus
+        fitScores = job.fitScores
+            .sorted { ($0.fitScore ?? -1) > ($1.fitScore ?? -1) }
+            .map { JobFitScoreRecord(fitScore: $0) }
+    }
+}
+
+/// One résumé's fit analysis, flattened for MCP callers so they don't have to parse `fitScoreJSON`.
+public struct JobFitScoreRecord: Sendable {
+    public let resumeID: String?
+    public let resumeName: String?
+    /// Only active résumés feed the job's headline score, so a caller can tell why a stored
+    /// analysis isn't reflected in `fitScore`.
+    public let resumeActive: Bool
+    public let score: Int?
+    public let status: FitStatus
+    public let model: String?
+    public let scoredAt: Date?
+    /// True when the résumé has been edited since this was scored, so the analysis describes older
+    /// text (see `JobFitScore.reflectsPreviousResumeVersion`).
+    public let reflectsPreviousResumeVersion: Bool
+    public let dimensions: [FitDimension]
+    public let requirementAssessments: [RequirementAssessment]
+
+    init(fitScore: JobFitScore) {
+        let projection = FitScoreProjection(fitScore: fitScore)
+        resumeID = fitScore.resume?.id
+        resumeName = fitScore.resume?.name
+        resumeActive = fitScore.resume?.active ?? false
+        score = fitScore.fitScore
+        status = fitScore.fitStatus
+        model = fitScore.model
+        scoredAt = fitScore.scoredAt
+        reflectsPreviousResumeVersion = fitScore.reflectsPreviousResumeVersion
+        dimensions = projection.dimensions
+        requirementAssessments = projection.requirementAssessments
     }
 }
 

@@ -103,6 +103,44 @@ final class MCPTests: XCTestCase {
         }
     }
 
+    // MARK: - jobs_list pagination (previously a silent 200-row cap)
+
+    /// Every pagination/filter argument must reach the server, or the tool silently ignores it —
+    /// which is how a 480-row request came back as 200 with no indication anything was dropped.
+    func testJobsListForwardsPaginationAndFilterArgs() {
+        let args: [String: Any] = [
+            "status": "archived", "limit": 500, "offset": 200, "summary": true,
+            "query": "SOC 2", "company": "Acme", "captured_after": "2026-07-01", "min_salary": 200_000
+        ]
+        guard case let .success((path, body)) = resolveToolRoute(name: "jobs_list", args: args) else {
+            return XCTFail("expected success")
+        }
+        XCTAssertEqual(path, "/mcp/jobs/list")
+        for key in args.keys {
+            XCTAssertNotNil(body[key], "\(key) was dropped before reaching the server")
+        }
+    }
+
+    func testJobsListOmitsArgsThatWereNotProvided() {
+        guard case let .success((_, body)) = resolveToolRoute(name: "jobs_list", args: ["limit": 10]) else {
+            return XCTFail("expected success")
+        }
+        XCTAssertEqual(body.count, 1, "absent filters must not be sent as defaults")
+    }
+
+    /// The schema is the only place a caller learns pagination exists; without these it will keep
+    /// assuming one call returned the whole corpus.
+    func testJobsListSchemaAdvertisesPagination() throws {
+        let tool = try XCTUnwrap(tools.first { $0["name"] as? String == "jobs_list" })
+        let schema = try XCTUnwrap(tool["inputSchema"] as? [String: Any])
+        let props = try XCTUnwrap(schema["properties"] as? [String: Any])
+        for key in ["offset", "summary", "query", "company", "captured_after", "min_salary"] {
+            XCTAssertNotNil(props[key], "schema is missing \(key)")
+        }
+        let description = try XCTUnwrap(tool["description"] as? String)
+        XCTAssertTrue(description.contains("has_more"), "callers must be told to check has_more")
+    }
+
     func testResolveToolRoute_addCapture_missingRequired_returnsFailure() {
         let result = resolveToolRoute(name: "add_capture", args: ["url": "https://example.com"])
         if case let .failure(err) = result {

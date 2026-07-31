@@ -634,8 +634,11 @@ final class JobServiceTests: XCTestCase {
             _ = try await svc.ingestCapture(p)
         }
 
-        let records = try await svc.listJobs(status: nil, limit: 3)
-        XCTAssertEqual(records.count, 3)
+        let page = try await svc.listJobs(JobQuery(limit: 3))
+        XCTAssertEqual(page.records.count, 3)
+        XCTAssertEqual(page.total, 5, "total counts all matches, not just this page")
+        XCTAssertTrue(page.hasMore)
+        XCTAssertEqual(page.nextOffset, 3)
     }
 
     func testListJobs_statusFilter_returnsOnlyMatching() async throws {
@@ -653,7 +656,7 @@ final class JobServiceTests: XCTestCase {
         let job1 = try XCTUnwrap(all.first(where: { $0.jobNumber == r1.jobNumber }))
         try await svc.setStatus(.pursuing, for: job1.id)
 
-        let pursuing = try await svc.listJobs(status: "pursuing", limit: 50)
+        let pursuing = try await svc.listJobs(JobQuery(status: "pursuing", limit: 50)).records
         XCTAssertTrue(pursuing.allSatisfy { $0.status == .pursuing })
     }
 
@@ -691,19 +694,19 @@ final class JobServiceTests: XCTestCase {
             try await store.insert(job)
         }
 
-        let pursuing = try await svc.listJobs(status: "pursuing", limit: 50)
+        let pursuing = try await svc.listJobs(JobQuery(status: "pursuing", limit: 50)).records
         XCTAssertEqual(pursuing.count, 5, "All pursuing rows found even though they sort beyond page 1")
         XCTAssertTrue(pursuing.allSatisfy { $0.status == .pursuing })
         XCTAssertEqual(Set(pursuing.map(\.id)), pursuingIDs)
 
-        let newCapped = try await svc.listJobs(status: "new", limit: 10)
+        let newCapped = try await svc.listJobs(JobQuery(status: "new", limit: 10)).records
         XCTAssertEqual(newCapped.count, 10, "limit bounds a status with many matches")
         XCTAssertTrue(newCapped.allSatisfy { $0.status == .new })
 
-        let offers = try await svc.listJobs(status: "offer", limit: 10)
+        let offers = try await svc.listJobs(JobQuery(status: "offer", limit: 10)).records
         XCTAssertTrue(offers.isEmpty, "Zero-match status returns empty after scanning all pages")
 
-        let none = try await svc.listJobs(status: "new", limit: 0)
+        let none = try await svc.listJobs(JobQuery(status: "new", limit: 0)).records
         XCTAssertTrue(none.isEmpty, "limit 0 returns empty")
     }
 

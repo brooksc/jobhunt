@@ -125,12 +125,51 @@ func errorResponse(id: Any?, code: Int, message: String) -> [String: Any] {
 let tools: [[String: Any]] = [
     [
         "name": "jobs_list",
-        "description": "List jobs with extraction metadata.",
+        "description": "List jobs with extraction metadata. Paginated: the response is an object " +
+            "with jobs, total, offset, limit, has_more and next_offset — always check has_more " +
+            "rather than assuming one call returned everything. Use summary: true for a compact " +
+            "projection that pages up to 1000 rows at a time, and query for a server-side keyword " +
+            "search so corpus-wide questions don't require paging every record. " +
+            "Each row carries fit_score; use min_score to filter on it, and job_get for the full " +
+            "per-résumé breakdown.",
         "inputSchema": [
             "type": "object",
             "properties": [
-                "status": ["type": "string"],
-                "limit": ["type": "integer", "default": 50, "minimum": 1]
+                "status": ["type": "string", "description": "Exact job status, e.g. archived."] as [String: Any],
+                "limit": [
+                    "type": "integer", "default": 50, "minimum": 1,
+                    "description": "Max 200, or 1000 when summary is true. A higher value is " +
+                        "reduced and reported in the response notice."
+                ] as [String: Any],
+                "offset": [
+                    "type": "integer", "default": 0, "minimum": 0,
+                    "description": "Rows to skip. Pass the response's next_offset to get the next page."
+                ] as [String: Any],
+                "summary": [
+                    "type": "boolean", "default": false,
+                    "description": "Return only job_number, company, title, status, location, " +
+                        "salary and source_url."
+                ] as [String: Any],
+                "query": [
+                    "type": "string",
+                    "description": "Case-insensitive substring matched against title, company, " +
+                        "location and the cleaned job description."
+                ] as [String: Any],
+                "company": ["type": "string", "description": "Case-insensitive company substring."] as [String: Any],
+                "captured_after": [
+                    "type": "string",
+                    "description": "ISO-8601 timestamp or YYYY-MM-DD; keeps jobs captured on/after it."
+                ] as [String: Any],
+                "min_salary": [
+                    "type": "integer",
+                    "description": "Keeps jobs whose salary ceiling reaches this. Jobs with no " +
+                        "stated salary are excluded when set."
+                ] as [String: Any],
+                "min_score": [
+                    "type": "integer", "minimum": 0, "maximum": 100,
+                    "description": "Keeps jobs whose fit score against your active résumés is at " +
+                        "least this. Unscored jobs are excluded when set."
+                ] as [String: Any]
             ] as [String: Any]
         ] as [String: Any]
     ],
@@ -138,7 +177,8 @@ let tools: [[String: Any]] = [
         "name": "job_get",
         "description": "Fetch full job metadata. Identify the job by job_number (preferred) or job_id. " +
             "Raw captured page text (selected_text, visible_text) is omitted by default; " +
-            "pass include_raw_text: true to include it.",
+            "pass include_raw_text: true to include it. Includes fit_scores: the stored per-résumé " +
+            "analysis with dimension scores and per-requirement met/partial/missing assessments.",
         "inputSchema": [
             "type": "object",
             "required": [],
@@ -345,8 +385,12 @@ func resolveToolRoute(name: String, args: [String: Any]) -> Result<(String, [Str
     switch name {
     case "jobs_list":
         var b: [String: Any] = [:]
-        if let s = args["status"] { b["status"] = s }
-        if let l = args["limit"] { b["limit"] = l }
+        for key in [
+            "status", "limit", "offset", "summary", "query", "company",
+            "captured_after", "min_salary", "min_score"
+        ] {
+            if let value = args[key] { b[key] = value }
+        }
         return .success(("/mcp/jobs/list", b))
     case "job_get":
         // TASK-464: accept either job_number (primary) or job_id (Electron back-compat).

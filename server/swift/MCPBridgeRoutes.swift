@@ -3,12 +3,14 @@
     import JobhuntCore
     import SwiftData
 
-    // MARK: - MCP request/response types
+    /// Shared by both MCP route files, so timestamps are formatted identically.
+    let mcpISOFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
 
-    private struct MCPJobsListRequest: Decodable {
-        let status: String?
-        let limit: Int?
-    }
+    // MARK: - MCP request/response types
 
     private struct MCPJobGetRequest: Decodable {
         let jobNumber: Int?
@@ -118,7 +120,8 @@
         let ok: Bool
     }
 
-    private struct MCPJobSummary: Encodable {
+    /// Internal, not private: the extracted jobs-list route builds these.
+    struct MCPJobSummary: Encodable {
         let jobNumber: Int?
         let jobID: String
         let status: String
@@ -138,12 +141,16 @@
         let employmentType: String?
         let seniority: String?
         let duplicateOfJobID: String?
+        let fitScore: Int?
+        let fitStatus: String?
 
         enum CodingKeys: String, CodingKey {
             case jobNumber = "job_number"
             case jobID = "job_id"
             case status
             case extractionStatus = "extraction_status"
+            case fitScore = "fit_score"
+            case fitStatus = "fit_status"
             case company, title, location
             case employmentType = "employment_type"
             case seniority
@@ -157,6 +164,45 @@
             case sourceURL = "source_url"
             case capturedAt = "captured_at"
             case createdAt = "created_at"
+        }
+    }
+
+    /// The stored fit analysis for one résumé, flattened for MCP callers. JobHunt computed and
+    /// stored all of this but returned none of it, so score-based questions couldn't be answered.
+    private struct MCPFitScore: Encodable {
+        struct Dimension: Encodable {
+            let name: String
+            let score: Int
+            let rationale: String?
+        }
+
+        struct Requirement: Encodable {
+            let requirement: String
+            /// "required" / "preferred" — how the job weighted it ("unknown" on legacy scores).
+            let kind: String
+            /// "met" / "partial" / "missing".
+            let status: String
+            let evidence: String
+        }
+
+        let resumeID: String?
+        let resumeName: String?
+        let resumeActive: Bool
+        let score: Int?
+        let status: String
+        let model: String?
+        let scoredAt: String?
+        let reflectsPreviousResumeVersion: Bool
+        let dimensions: [Dimension]
+        let requirements: [Requirement]
+
+        enum CodingKeys: String, CodingKey {
+            case score, status, model, dimensions, requirements
+            case resumeID = "resume_id"
+            case resumeName = "resume_name"
+            case resumeActive = "resume_active"
+            case scoredAt = "scored_at"
+            case reflectsPreviousResumeVersion = "reflects_previous_resume_version"
         }
     }
 
@@ -184,6 +230,9 @@
         let seniority: String?
         let duplicateOfJobID: String?
         let events: [MCPJobEvent]
+        let fitScore: Int?
+        let fitStatus: String?
+        let fitScores: [MCPFitScore]
 
         struct MCPJobEvent: Encodable {
             let eventType: String
@@ -218,6 +267,9 @@
             case seniority
             case duplicateOfJobID = "duplicate_of_job_id"
             case events
+            case fitScore = "fit_score"
+            case fitStatus = "fit_status"
+            case fitScores = "fit_scores"
         }
     }
 
@@ -323,68 +375,13 @@
 
     // MARK: - Route handlers
 
-    private let isoFormatter: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        return f
-    }()
-
-    private func formatDate(_ date: Date?) -> String? {
+    func formatDate(_ date: Date?) -> String? {
         guard let date else { return nil }
-        return isoFormatter.string(from: date)
+        return mcpISOFormatter.string(from: date)
     }
 
-    private func formatDate(_ date: Date) -> String {
-        isoFormatter.string(from: date)
-    }
-
-    private let mcpJobsListMinLimit = 1
-    private let mcpJobsListMaxLimit = 200
-    private let mcpJobsListDefaultLimit = 50
-
-    private func handleMCPJobsList(_ request: HTTPRequest, jobService: JobService) async -> HTTPResponse {
-        let req = try? request.decodeBody(as: MCPJobsListRequest.self)
-        let rawLimit = req?.limit ?? mcpJobsListDefaultLimit
-        guard rawLimit >= mcpJobsListMinLimit else {
-            return HTTPResponse.error("limit must be at least \(mcpJobsListMinLimit)", code: 400)
-        }
-        let limit = min(rawLimit, mcpJobsListMaxLimit)
-        let statusFilter = req?.status
-
-        if let statusRaw = statusFilter, JobStatus(rawValue: statusRaw) == nil {
-            let valid = JobStatus.allCases.map(\.rawValue).joined(separator: ", ")
-            return HTTPResponse.error("invalid status '\(statusRaw)'; valid values: \(valid)", code: 400)
-        }
-
-        do {
-            let records = try await jobService.listJobs(status: statusFilter, limit: limit)
-            let summaries = records.map { r in
-                MCPJobSummary(
-                    jobNumber: r.jobNumber,
-                    jobID: r.id,
-                    status: r.status.rawValue,
-                    extractionStatus: r.extractionStatus.rawValue,
-                    company: r.company,
-                    title: r.title,
-                    location: r.location,
-                    remoteType: r.remoteType?.rawValue,
-                    salaryMin: r.salaryMin,
-                    salaryMax: r.salaryMax,
-                    salaryNote: r.salaryNote,
-                    rating: r.rating,
-                    pageTitle: r.pageTitle,
-                    sourceURL: r.sourceURL,
-                    capturedAt: formatDate(r.capturedAt),
-                    createdAt: formatDate(r.createdAt),
-                    employmentType: r.employmentType,
-                    seniority: r.seniority,
-                    duplicateOfJobID: r.duplicateOfJobID
-                )
-            }
-            return HTTPResponse.ok(summaries)
-        } catch {
-            return HTTPResponse.error(safeServerError(error, context: "handleMCPJobsList"), code: 500)
-        }
+    func formatDate(_ date: Date) -> String {
+        mcpISOFormatter.string(from: date)
     }
 
     private func handleMCPJobGet(_ request: HTTPRequest, jobService: JobService) async -> HTTPResponse {
@@ -432,6 +429,29 @@
                 events: r.events.map {
                     MCPJobDetail.MCPJobEvent(
                         eventType: $0.eventType, note: $0.note, occurredAt: formatDate($0.occurredAt)
+                    )
+                },
+                fitScore: r.fitScore,
+                fitStatus: r.fitStatus.rawValue,
+                fitScores: r.fitScores.map { fit in
+                    MCPFitScore(
+                        resumeID: fit.resumeID,
+                        resumeName: fit.resumeName,
+                        resumeActive: fit.resumeActive,
+                        score: fit.score,
+                        status: fit.status.rawValue,
+                        model: fit.model,
+                        scoredAt: formatDate(fit.scoredAt),
+                        reflectsPreviousResumeVersion: fit.reflectsPreviousResumeVersion,
+                        dimensions: fit.dimensions.map {
+                            MCPFitScore.Dimension(name: $0.name, score: $0.score, rationale: $0.rationale)
+                        },
+                        requirements: fit.requirementAssessments.map {
+                            MCPFitScore.Requirement(
+                                requirement: $0.requirement, kind: $0.kind,
+                                status: $0.status, evidence: $0.evidence
+                            )
+                        }
                     )
                 }
             )

@@ -29,7 +29,7 @@ func captureIngestionErrorResponse(_ error: Error, context: String) -> HTTPRespo
         switch svcError {
         case .missingURL, .invalidURL, .missingPageTitle, .missingText:
             return HTTPResponse.error(svcError.errorDescription ?? "Invalid capture", code: 400)
-        case .jobNotFound, .actionNotFound, .contactNotFound, .coverLetterNotFound:
+        case .jobNotFound, .actionNotFound, .contactNotFound, .coverLetterNotFound, .invalidStatus:
             break // not reachable from ingestion, but treat as unexpected → safe 500
         }
     }

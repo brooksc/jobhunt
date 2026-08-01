@@ -30,6 +30,7 @@ private let settingsDefaults: [String: String] = [
     // Both default to 0 (off) — a requirement is only applied once the user sets their own number.
     SettingsKey.minSalary: "0",
     SettingsKey.minFitScore: "0",
+    SettingsKey.scoringFeedback: "[]",
     SettingsKey.llmQueuePaused: "false",
     SettingsKey.llmOpenRouterFreeRotate: "false",
     SettingsKey.availabilityAutoCheckEnabled: "true",
@@ -224,6 +225,31 @@ public final class SettingsStore {
     public var minFitScore: Int {
         get { int(forKey: SettingsKey.minFitScore) }
         set { setInt(min(100, max(0, newValue)), forKey: SettingsKey.minFitScore) }
+    }
+
+    /// Corrections the user made to requirement assessments. Applied deterministically when gaps
+    /// are built, so adding one fixes every stored score on the next recompute at no LLM cost.
+    public var scoringFeedback: [ScoringFeedback] {
+        get {
+            guard let data = string(forKey: SettingsKey.scoringFeedback).data(using: .utf8),
+                  let decoded = try? JSONDecoder().decode([ScoringFeedback].self, from: data)
+            else { return [] }
+            return decoded
+        }
+        set {
+            guard let data = try? JSONEncoder().encode(newValue),
+                  let json = String(data: data, encoding: .utf8)
+            else { return }
+            set(json, forKey: SettingsKey.scoringFeedback)
+        }
+    }
+
+    public func addScoringFeedback(_ entry: ScoringFeedback) {
+        scoringFeedback += [entry]
+    }
+
+    public func removeScoringFeedback(id: String) {
+        scoringFeedback = scoringFeedback.filter { $0.id != id }
     }
 
     public var preferredMetros: String {

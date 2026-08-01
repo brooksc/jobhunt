@@ -165,11 +165,28 @@ public enum FitScorer {
     /// items become gaps (`met` is not a gap). `kind` comes from the assessment; when it's absent
     /// (legacy scores that predate the tag) it defaults to `.required` so an unknown gap is treated as
     /// the heavier tier.
-    public static func requirementGaps(fromAssessments assessments: [[String: Any]]) -> [RequirementGap] {
+    public static func requirementGaps(
+        fromAssessments assessments: [[String: Any]],
+        feedback: [ScoringFeedback] = [],
+        jobNumber: Int? = nil
+    ) -> [RequirementGap] {
         assessments.compactMap { item in
             guard let requirement = item["requirement"] as? String,
                   let statusRaw = item["status"] as? String,
-                  let status = RequirementGap.Status(rawValue: statusRaw) else { return nil }
+                  var status = RequirementGap.Status(rawValue: statusRaw) else {
+                // A `met` assessment is normally not a gap — unless the user has said they don't
+                // have the thing, in which case their correction outranks the model's judgment.
+                guard let requirement = item["requirement"] as? String,
+                      feedback.verdict(forRequirement: requirement, jobNumber: jobNumber) == .forceMissing
+                else { return nil }
+                let kind = RequirementGap.Kind(rawValue: (item["kind"] as? String) ?? "") ?? .required
+                return RequirementGap(requirement: requirement, kind: kind, status: .missing)
+            }
+            switch feedback.verdict(forRequirement: requirement, jobNumber: jobNumber) {
+            case .forceMissing: status = .missing
+            case .ignore: return nil
+            case .none: break
+            }
             // Never penalise something no candidate could fail.
             guard !isNonDiscriminating(requirement: requirement) else { return nil }
             let kind = RequirementGap.Kind(rawValue: (item["kind"] as? String) ?? "") ?? .required
@@ -285,7 +302,11 @@ public enum FitScorer {
     /// This mirrors rescore.js: parse the stored JSON, re-run weighting + penalty,
     /// and return the updated result. Returns `nil` if the JSON is invalid or
     /// contains no usable dimension data.
-    public static func rescoreFromJSON(_ json: String) -> FitScoreResult? {
+    public static func rescoreFromJSON(
+        _ json: String,
+        feedback: [ScoringFeedback] = [],
+        jobNumber: Int? = nil
+    ) -> FitScoreResult? {
         guard let data = json.data(using: .utf8),
               let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
@@ -328,7 +349,7 @@ public enum FitScorer {
         // scores that predate the assessments array.
         let gaps: [RequirementGap]
         if let assessments = raw["requirement_assessments"] as? [[String: Any]], !assessments.isEmpty {
-            gaps = requirementGaps(fromAssessments: assessments)
+            gaps = requirementGaps(fromAssessments: assessments, feedback: feedback, jobNumber: jobNumber)
         } else {
             let legacy = (raw["requirements_not_met"] as? [String]) ?? []
             gaps = legacy.map { RequirementGap(requirement: $0, kind: .required, status: .missing) }

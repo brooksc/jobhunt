@@ -39,6 +39,9 @@ public enum SettingsKey {
     public static let minSalary = "min_salary"
     /// Minimum acceptable fit score (0–100). 0 disables the check.
     public static let minFitScore = "min_fit_score"
+    /// JSON array of `ScoringFeedback`. Stored as a setting rather than a SwiftData model so no
+    /// schema migration is needed for what is a short, user-curated list.
+    public static let scoringFeedback = "scoring_feedback"
     public static let llmQueuePaused = "llm_queue_paused"
     /// Hide the Debug settings tab. Default false (shown). Re-enable from General settings.
     public static let hideDebugTab = "hide_debug_tab"

@@ -104,13 +104,15 @@ struct JobsSettingsTab: View {
     @State private var unverifiedJobs: [UnverifiedJobResult] = []
     @State private var showingExpiredConfirmation = false
 
-    @Environment(AppServices.self) private var appServices
+    /// Internal, not private: the extracted scoring-feedback section is an extension on this view.
+    @Environment(AppServices.self) var appServices
     @Query private var allJobs: [Job]
 
     var body: some View {
         Form {
             locationSection
             requirementsSection
+            scoringFeedbackSection
             availabilitySection
             customExtractionSection
             applicationDetailsSection

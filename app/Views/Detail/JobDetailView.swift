@@ -1484,6 +1484,11 @@ private struct ResumeScoreCard: View {
     /// render (the derived vars below) across every visible résumé card. Recompute only when the score
     /// JSON changes (e.g. a re-score lands).
     @State private var fitProjection: FitScoreProjection?
+    /// The requirement whose correction sheet is open, identified by text — the assessments have no
+    /// stable id of their own.
+    @State private var feedbackTarget: String?
+
+    @Environment(AppServices.self) private var appServices
 
     private var requirementsMet: [String] {
         fitProjection?.requirementsMet ?? []
@@ -1508,45 +1513,89 @@ private struct ResumeScoreCard: View {
                 .foregroundStyle(.secondary)
                 .help(Self.columnLegend)
             ForEach(items, id: \.self) { item in
-                HStack(alignment: .top, spacing: 5) {
-                    Image(systemName: Self.assessmentIcon(item.status))
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(Self.assessmentColor(item.status))
-                        .frame(width: 10)
-                    VStack(alignment: .leading, spacing: 1) {
-                        // Selectable like the rest of the detail view — these were the only text in
-                        // the pane you couldn't copy, and a compound requirement is exactly the thing
-                        // you want to quote a clause out of.
-                        Text(item.requirement).font(.caption2).lineSpacing(2)
-                            .textSelection(.enabled)
-                        if !item.evidence.isEmpty {
-                            Text(item.evidence)
-                                .font(.system(size: 10))
-                                .foregroundStyle(.secondary)
-                                .lineSpacing(1)
-                                .textSelection(.enabled)
-                        }
-                    }
-                    // Flag nice-to-haves so a gap here reads as lower-stakes than a required one.
-                    // Required is the norm and left untagged to keep the list uncluttered.
-                    if item.isPreferred {
-                        Spacer(minLength: 4)
-                        Text("Preferred")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundStyle(Theme.accent)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(Capsule().fill(Theme.accent.opacity(0.14)))
-                            .fixedSize()
-                    }
-                }
-                // Tooltip on the whole row, not the icon: the glyph is 10pt, far too small to hover.
-                .contentShape(Rectangle())
-                .help(item.explanation)
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("\(item.requirement). \(item.explanation)")
+                assessmentRow(item)
             }
         }
+    }
+
+    private func assessmentRow(_ item: RequirementAssessment) -> some View {
+        requirementRowBody(item)
+            .contextMenu {
+                Button("This assessment is wrong…") { feedbackTarget = item.requirement }
+            }
+            .sheet(isPresented: Binding(
+                get: { feedbackTarget == item.requirement },
+                set: { if !$0 { feedbackTarget = nil } }
+            )) {
+                ScoringFeedbackSheet(
+                    requirement: item.requirement,
+                    jobNumber: fitScore.job?.jobNumber,
+                    onSave: { saveScoringFeedback($0) },
+                    onCancel: { feedbackTarget = nil }
+                )
+            }
+    }
+
+    /// Adding feedback changes gaps for every stored score, so the affected ones are recomputed
+    /// immediately — no LLM call, and the number the user is looking at updates rather than going
+    /// stale until something else triggers a pass.
+    private func saveScoringFeedback(_ entry: ScoringFeedback) {
+        feedbackTarget = nil
+        appServices.settings.addScoringFeedback(entry)
+        Task {
+            do {
+                let updated = try await appServices.jobService.recomputeAllFitScores()
+                appServices.toastStore.show(
+                    "Correction saved — \(updated) score\(updated == 1 ? "" : "s") updated"
+                )
+            } catch {
+                appServices.toastStore.show(
+                    "Correction saved, but scores couldn't be updated: \(error.localizedDescription)",
+                    isError: true
+                )
+            }
+        }
+    }
+
+    private func requirementRowBody(_ item: RequirementAssessment) -> some View {
+        HStack(alignment: .top, spacing: 5) {
+            Image(systemName: Self.assessmentIcon(item.status))
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(Self.assessmentColor(item.status))
+                .frame(width: 10)
+            VStack(alignment: .leading, spacing: 1) {
+                // Selectable like the rest of the detail view — these were the only text in
+                // the pane you couldn't copy, and a compound requirement is exactly the thing
+                // you want to quote a clause out of.
+                Text(item.requirement).font(.caption2).lineSpacing(2)
+                    .textSelection(.enabled)
+                if !item.evidence.isEmpty {
+                    Text(item.evidence)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .lineSpacing(1)
+                        .textSelection(.enabled)
+                }
+            }
+            // Correcting a wrong assessment lives on the row that's wrong — a context menu
+            // rather than a visible control, so the list stays readable when nothing needs
+            // correcting (which is most of the time).
+            Spacer(minLength: 4)
+            if item.isPreferred {
+                Text("Preferred")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Theme.accent.opacity(0.14)))
+                    .fixedSize()
+            }
+        }
+        // Tooltip on the whole row, not the icon: the glyph is 10pt, far too small to hover.
+        .contentShape(Rectangle())
+        .help(item.explanation)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(item.requirement). \(item.explanation)")
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 

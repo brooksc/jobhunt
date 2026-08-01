@@ -251,7 +251,9 @@ public enum ExtractionEngine {
         job: JobFitSnapshot,
         resume: ResumeSnapshot,
         model: String,
-        provider: any LLMProvider
+        provider: any LLMProvider,
+        feedback: [ScoringFeedback] = [],
+        jobNumber: Int? = nil
     ) async throws -> FitScoreOutput {
         guard !resume.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw ExtractionEngineError.emptyResumeText
@@ -305,7 +307,9 @@ public enum ExtractionEngine {
             let legacy = (raw["requirements_not_met"] as? [Any])?.compactMap { $0 as? String } ?? []
             gaps = legacy.map { .init(requirement: $0, kind: .required, status: .missing) }
         } else {
-            gaps = FitScorer.requirementGaps(fromAssessments: assessments)
+            gaps = FitScorer.requirementGaps(
+                fromAssessments: assessments, feedback: feedback, jobNumber: jobNumber
+            )
         }
 
         let score = FitScorer.computeScore(dimensions: dimensions, gaps: gaps)

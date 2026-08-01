@@ -488,6 +488,16 @@ public actor BackgroundStore {
         )
     }
 
+    /// Scoring corrections, decoded from the settings row the app writes.
+    func storedScoringFeedback() throws -> [ScoringFeedback] {
+        let rows = try modelContext.fetch(FetchDescriptor<Setting>())
+        guard let json = rows.first(where: { $0.key == SettingsKey.scoringFeedback })?.value,
+              let data = json.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([ScoringFeedback].self, from: data)
+        else { return [] }
+        return decoded
+    }
+
     /// Clear stored `<link rel="canonical">` values that don't identify the posting they're attached
     /// to — search/listing-page canonicals from single-page boards. Ingestion treats a canonical match
     /// as proof two captures are the same posting and rewrites the existing capture in place, so a
@@ -523,13 +533,18 @@ public actor BackgroundStore {
     /// Recompute every stored fit score from its saved JSON using the current weights/penalty
     /// model — no LLM calls (Electron parity: rescore.js). Returns the count updated.
     public func recomputeAllFitScores() throws -> Int {
+        // User corrections are applied when gaps are rebuilt, so a recompute propagates a newly
+        // flagged requirement to every stored score without spending an LLM call.
+        let feedback = try storedScoringFeedback()
         let allScores = try modelContext.fetch(FetchDescriptor<JobFitScore>())
         var updated = 0
         var affectedJobIDs = Set<String>()
         for record in allScores {
             guard record.fitStatus == .succeeded,
                   let json = record.fitScoreJSON,
-                  let result = FitScorer.rescoreFromJSON(json) else { continue }
+                  let result = FitScorer.rescoreFromJSON(
+                      json, feedback: feedback, jobNumber: record.job?.jobNumber
+                  ) else { continue }
             // Preserve explanation fields (dimensions/rationales); overlay recomputed scores.
             if let data = json.data(using: .utf8),
                let rawDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

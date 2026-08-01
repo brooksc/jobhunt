@@ -113,36 +113,37 @@ Two things make it differ from the GitHub release notes rather than being a copy
    from the App Store; Sparkle is excluded via `TUIST_MAS_ONLY=1`).
 
 Plain text only — the field renders no Markdown. Match the existing listing's convention:
-ALL-CAPS section headers, `•` for bullets.
+ALL-CAPS section headers, `-` for bullets. Keep it ASCII apart from the em dash (proven
+accepted in the live description) — the validator rejects `→` outright, and `•` is unverified.
 
 ### 1.3.0 (covers 1.2.0 + 1.3.0 — last delivered was `mas-v1.1.3`)
 ```
 WHAT YOU'LL ACCEPT, IN YOUR OWN NUMBERS
-Settings → Jobs → Requirements now takes a minimum salary and a minimum fit score. Jobs sort into Meets, Not stated and Doesn't meet against everything at once — location, pay and fit — so a long Interested list narrows to what's worth applying to. Both start switched off; nothing is filtered until you set your own numbers. A job's badge says which requirement it missed ("Outside criteria: fit 44 < 50") instead of leaving you to guess.
+Settings > Jobs > Requirements now takes a minimum salary and a minimum fit score. Jobs sort into Meets, Not stated and Doesn't meet against everything at once — location, pay and fit — so a long Interested list narrows to what's worth applying to. Both start switched off; nothing is filtered until you set your own numbers. A job's badge says which requirement it missed ("Outside criteria: fit 44 < 50") instead of leaving you to guess.
 
 A posting that doesn't publish a salary is never rejected for it. Missing information isn't a failure, so those land in Not stated for you to look at separately.
 
 TELL JOBHUNT WHEN IT SCORES YOU WRONG
-Every requirement in a job's Fit tab now has a small flag. Click it and say "I do have this", "I don't have this", or "This isn't a real requirement". The correction applies to every job from then on, instantly, with no AI call and no cost. Everything you've corrected is listed under Settings → Jobs → Scoring Corrections, where removing it puts the scores straight back.
+Every requirement in a job's Fit tab now has a small flag. Click it and say "I do have this", "I don't have this", or "This isn't a real requirement". The correction applies to every job from then on, instantly, with no AI call and no cost. Everything you've corrected is listed under Settings > Jobs > Scoring Corrections, where removing it puts the scores straight back.
 
 FIT SCORES ARE MARKEDLY LESS CREDULOUS
 They were rewarding experience merely adjacent to what a job asked for, which put almost everything in the high eighties and nineties.
-• A posting naming a specific technology, standard or certification now needs your resume to actually name it. Related work counts as a partial match, not a full one.
-• Where a requirement lists alternatives, JobHunt weighs the one the posting is really about.
-• Domain fit now means the industry and the product, not how transferable your skills are.
-• Requirements nobody could fail — "capacity to learn Jira", "alignment with our values" — no longer count against you.
-• A bullet asking for two different things is assessed as two requirements, so meeting one and missing the other is visible instead of averaging into a vague "partial".
+- A posting naming a specific technology, standard or certification now needs your resume to actually name it. Related work counts as a partial match, not a full one.
+- Where a requirement lists alternatives, JobHunt weighs the one the posting is really about.
+- Domain fit now means the industry and the product, not how transferable your skills are.
+- Requirements nobody could fail — "capacity to learn Jira", "alignment with our values" — no longer count against you.
+- A bullet asking for two different things is assessed as two requirements, so meeting one and missing the other is visible instead of averaging into a vague "partial".
 Expect some scores to drop. That's the point: a list where everything scores 95 can't tell you where to spend your time.
 
 REMOTE NOW MEANS REMOTE SOMEWHERE YOU CAN WORK
 A remote role used to be accepted no matter where remote was offered, so Europe-only postings sat in your list looking qualified. Vague ("Global") or multi-region postings still pass — the check only rules out what it can positively identify as out of bounds. Changing your location settings also re-checks the jobs you already have, which costs no AI credit.
 
 FIXED
-• Salary missing from postings that clearly state one. Several separate causes, including pay written without a currency symbol, "$153K" rather than "$153,000", and ranges published apart from the structured job data and then discarded. Already-captured jobs can be repaired without re-capturing.
-• Jobs from search-style boards overwriting each other. On sites that show a posting in a side pane while you browse — Microsoft careers, levels.fyi — every job claimed the same underlying address, so capturing a second one silently replaced the first.
-• Microsoft roles not showing as remote, where the arrangement is stated as "0 days / week in-office" rather than the word "remote".
-• Removed Greenhouse jobs going unnoticed, so a closed posting could sit in your list indefinitely.
-• Availability checks now report how many jobs they verified and why the rest couldn't be, instead of an all-clear they hadn't earned.
+- Salary missing from postings that clearly state one. Several separate causes, including pay written without a currency symbol, "$153K" rather than "$153,000", and ranges published apart from the structured job data and then discarded. Already-captured jobs can be repaired without re-capturing.
+- Jobs from search-style boards overwriting each other. On sites that show a posting in a side pane while you browse — Microsoft careers, levels.fyi — every job claimed the same underlying address, so capturing a second one silently replaced the first.
+- Microsoft roles not showing as remote, where the arrangement is stated as "0 days / week in-office" rather than the word "remote".
+- Removed Greenhouse jobs going unnoticed, so a closed posting could sit in your list indefinitely.
+- Availability checks now report how many jobs they verified and why the rest couldn't be, instead of an all-clear they hadn't earned.
 
 ALSO
 Duplicate postings are flagged before any AI scoring is spent on them. Adding a URL you already track tells you so instead of quietly overwriting. Control-Command-I marks a job Interested, alongside Control-Command-A to archive. The dock badge counts only jobs actually awaiting review. Manually added jobs start in New so you can review the fit first. Requirement text can be selected and copied, and salary shows its currency.

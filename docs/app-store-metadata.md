@@ -112,19 +112,38 @@ Two things make it differ from the GitHub release notes rather than being a copy
    **MCP integration** (no helper in the sandbox) and the **Sparkle auto-update** line (updates come
    from the App Store; Sparkle is excluded via `TUIST_MAS_ONLY=1`).
 
-Plain text only — the field renders no Markdown. Match the existing listing's convention:
-ALL-CAPS section headers, `-` for bullets. Keep it ASCII apart from the em dash (proven
-accepted in the live description) — the validator rejects `→` outright, and `•` is unverified.
+Plain text only - the field renders no Markdown. Match the existing listing's
+convention: ALL-CAPS section headers, `-` for bullets.
 
-### 1.3.0 (covers 1.2.0 + 1.3.0 — last delivered was `mas-v1.1.3`)
+**Never use `<` or `>` here.** They read as HTML tags, and App Store Connect refuses the whole field
+with only *"This field contains one or more invalid characters"* to go on - it names neither the
+character nor the offset, so the cause is easy to misattribute. Write "Settings / Jobs / Requirements"
+rather than "Settings > Jobs > Requirements", and "below your minimum of 50" rather than "< 50".
+(That error cost three rejections in the 1.3.0 submission: `<` was the culprit from the first
+attempt, but the visible suspects were non-ASCII, so `→`, `•` and the em dash were stripped
+first - and replacing `→` with `>` added two more offenders. The em dash and bullet are very
+likely fine; they went untested once ASCII worked.)
+
+Check before pasting:
+
+```bash
+python3 - <<'EOF'
+s = open('/tmp/whatsnew.txt').read()
+print('non-ascii:', sorted({c for c in s if ord(c) > 127}))
+print('angle brackets:', s.count('<') + s.count('>'))
+print('chars:', len(s), '(limit 4000)')
+EOF
+```
+
+### 1.3.0 — accepted by App Store Connect (covers 1.2.0 + 1.3.0; last delivered was `mas-v1.1.3`)
 ```
 WHAT YOU'LL ACCEPT, IN YOUR OWN NUMBERS
-Settings > Jobs > Requirements now takes a minimum salary and a minimum fit score. Jobs sort into Meets, Not stated and Doesn't meet against everything at once - location, pay and fit - so a long Interested list narrows to what's worth applying to. Both start switched off; nothing is filtered until you set your own numbers. A job's badge says which requirement it missed ("Outside criteria: fit 44 < 50") instead of leaving you to guess.
+Settings / Jobs / Requirements now takes a minimum salary and a minimum fit score. Jobs sort into Meets, Not stated and Doesn't meet against everything at once - location, pay and fit - so a long Interested list narrows to what's worth applying to. Both start switched off; nothing is filtered until you set your own numbers. A job's badge says which requirement it missed ("Outside criteria: fit 44, below your minimum of 50") instead of leaving you to guess.
 
 A posting that doesn't publish a salary is never rejected for it. Missing information isn't a failure, so those land in Not stated for you to look at separately.
 
 TELL JOBHUNT WHEN IT SCORES YOU WRONG
-Every requirement in a job's Fit tab now has a small flag. Click it and say "I do have this", "I don't have this", or "This isn't a real requirement". The correction applies to every job from then on, instantly, with no AI call and no cost. Everything you've corrected is listed under Settings > Jobs > Scoring Corrections, where removing it puts the scores straight back.
+Every requirement in a job's Fit tab now has a small flag. Click it and say "I do have this", "I don't have this", or "This isn't a real requirement". The correction applies to every job from then on, instantly, with no AI call and no cost. Everything you've corrected is listed under Settings / Jobs / Scoring Corrections, where removing it puts the scores straight back.
 
 FIT SCORES ARE MARKEDLY LESS CREDULOUS
 They were rewarding experience merely adjacent to what a job asked for, which put almost everything in the high eighties and nineties.

@@ -1596,9 +1596,11 @@ private struct ResumeScoreCard: View {
                     .fixedSize()
             }
         }
-        // Tooltip on the whole row, not the icon: the glyph is 10pt, far too small to hover.
+        // No hover tooltip: it restated the icon, the "Preferred" badge and the evidence line, all
+        // three of which are already on the row — and the column header carries the icon legend. A
+        // tooltip that repeats the screen just teaches people to ignore tooltips. The explanation is
+        // kept for VoiceOver, where the icon and badge aren't perceivable.
         .contentShape(Rectangle())
-        .help(item.explanation)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(item.requirement). \(item.explanation)")
         .frame(maxWidth: .infinity, alignment: .leading)

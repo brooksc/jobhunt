@@ -17,7 +17,11 @@ public struct AdaptiveConcurrency: Equatable {
     /// after sustained success, rather than starting at the ceiling (TASK-609). This makes the raised
     /// per-provider ceilings safe on low-quota keys: a free tier hits a 429 partway up and self-limits,
     /// while a paid tier keeps climbing to the ceiling — no need to detect the account's tier.
-    public init(ceiling: Int, floor: Int = 3, promoteAfter: Int = 10) {
+    /// `promoteAfter` is 4, not 10: each step costs that many consecutive successes, so climbing
+    /// 3→8 took 50 requests and a typical batch finished still at the floor. Four keeps the probe
+    /// cautious — a 429 still collapses to 1 immediately — while letting a healthy key actually
+    /// reach its ceiling within a normal run.
+    public init(ceiling: Int, floor: Int = 3, promoteAfter: Int = 4) {
         let clampedCeiling = max(1, ceiling)
         self.ceiling = clampedCeiling
         self.promoteAfter = max(1, promoteAfter)

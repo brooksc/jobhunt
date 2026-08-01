@@ -6,6 +6,16 @@ import Foundation
 public final class OpenRouterProvider: LLMProvider, @unchecked Sendable {
     public let id = "openrouter"
     public let concurrencyLimit = 8
+
+    private let paidTier = PaidTierCache()
+
+    /// OpenRouter reports the account tier directly, so a paid key needn't discover its headroom by
+    /// trial. `GET /api/v1/key` returns `is_free_tier`; anything unknown stays conservative, because
+    /// guessing "paid" on a free key means hammering it into 429s.
+    public func concurrencyFloor() async -> Int {
+        await paidTier.isPaid(apiKey: apiKey, session: session) ? 6 : 3
+    }
+
     /// Max distinct free models tried per request when rotating (TASK-462, Electron parity).
     static let maxRotationModels = 4
 
@@ -66,5 +76,35 @@ public final class OpenRouterProvider: LLMProvider, @unchecked Sendable {
             session: session,
             timeoutSeconds: timeoutSeconds
         )
+    }
+}
+
+/// One-shot, cached probe of the OpenRouter key tier — this must not add a round trip per batch.
+private actor PaidTierCache {
+    private var cached: Bool?
+
+    func isPaid(apiKey: String, session: URLSession) async -> Bool {
+        if let cached {
+            return cached
+        }
+        guard !apiKey.isEmpty, let url = URL(string: "https://openrouter.ai/api/v1/key") else {
+            cached = false
+            return false
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 8
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        guard let (data, response) = try? await session.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let payload = json["data"] as? [String: Any],
+              let isFree = payload["is_free_tier"] as? Bool
+        else {
+            // Unreachable or unparseable: stay at the conservative floor rather than assume headroom.
+            cached = false
+            return false
+        }
+        cached = !isFree
+        return !isFree
     }
 }

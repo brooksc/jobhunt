@@ -102,3 +102,54 @@ final class AdaptiveConcurrencyTests: XCTestCase {
         XCTAssertEqual(AdaptiveConcurrency(ceiling: 0).effective, 1)
     }
 }
+
+/// Starting floor and promotion pace.
+///
+/// Measured on a paid OpenRouter key: 27 fit requests ran 3–5 concurrent at ~27s each — 6.1/min.
+/// Nothing was serialised and nothing was rate-limited; the ramp was simply too slow ever to reach
+/// the ceiling. At 10 successes per step, climbing 3→8 costs 50 requests, so a batch of twenty
+/// finishes still at the floor.
+final class AdaptiveConcurrencyRampTests: XCTestCase {
+    /// Reaching the ceiling has to be possible within a realistic batch, or the ceiling is fiction.
+    func testClimbingToTheCeilingFitsInAnOrdinaryBatch() {
+        var adaptive = AdaptiveConcurrency(ceiling: 8, floor: 3)
+        var successes = 0
+        while adaptive.effective < 8, successes < 500 {
+            adaptive.onSuccess()
+            successes += 1
+        }
+        XCTAssertEqual(adaptive.effective, 8)
+        XCTAssertLessThanOrEqual(successes, 20, "a 20-job batch must be able to reach the ceiling")
+    }
+
+    /// A key known to be paid starts higher — the point of probing the tier at all.
+    func testAHigherFloorStartsHigher() {
+        XCTAssertEqual(AdaptiveConcurrency(ceiling: 8, floor: 6).effective, 6)
+    }
+
+    /// Faster promotion must not weaken the safety property.
+    func testRateLimitStillCollapsesToOne() {
+        var adaptive = AdaptiveConcurrency(ceiling: 8, floor: 6)
+        adaptive.onRateLimit()
+        XCTAssertEqual(adaptive.effective, 1)
+    }
+
+    /// …and recovery stays stepwise rather than jumping back to the ceiling.
+    func testRecoveryAfterRateLimitIsStepwise() {
+        var adaptive = AdaptiveConcurrency(ceiling: 8, floor: 6)
+        adaptive.onRateLimit()
+        adaptive.onSuccess()
+        XCTAssertEqual(adaptive.effective, 1, "one success must not restore full concurrency")
+    }
+
+    func testFloorNeverExceedsCeiling() {
+        XCTAssertEqual(AdaptiveConcurrency(ceiling: 2, floor: 6).effective, 2)
+    }
+
+    /// An unrelated failure breaks the streak without collapsing — it shouldn't cost what a 429 does.
+    func testOrdinaryFailureDoesNotCollapse() {
+        var adaptive = AdaptiveConcurrency(ceiling: 8, floor: 6)
+        adaptive.onFailure()
+        XCTAssertEqual(adaptive.effective, 6)
+    }
+}

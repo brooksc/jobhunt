@@ -165,7 +165,9 @@ public actor QueueActor {
         // TASK-526: the fetch + relationship link happens inside the store actor; we pass ids only.
         let inserted = try await store.insertRequests(jobIDs: jobIDs, mode: mode)
         // Kick the drain loop in case it's not yet running (only when something new was queued).
-        if inserted { onWorkEnqueued() }
+        if inserted {
+            onWorkEnqueued()
+        }
     }
 
     /// New user-initiated work was queued: re-arm the one-shot `.providerNotConfigured` notice
@@ -196,9 +198,13 @@ public actor QueueActor {
         var anyQueued = false
         for jobID in jobIDs {
             let n = try await store.enqueueFitForActiveResumes(jobID: jobID)
-            if n > 0 { anyQueued = true }
+            if n > 0 {
+                anyQueued = true
+            }
         }
-        if anyQueued { onWorkEnqueued() }
+        if anyQueued {
+            onWorkEnqueued()
+        }
     }
 
     /// On app launch, reset any requests stuck in "running" back to "queued",
@@ -356,7 +362,9 @@ public actor QueueActor {
             // External cancellation (app shutdown) — exit cleanly instead of busy-looping over rows
             // that processRequest keeps requeuing while the task stays cancelled. (Auto-pause cancels
             // only the in-batch child tasks, not this loop, so it still exits via the isPaused check.)
-            if Task.isCancelled { break }
+            if Task.isCancelled {
+                break
+            }
             guard await !isPaused() else { break }
 
             let provider = await providerFactory()
@@ -364,7 +372,11 @@ public actor QueueActor {
             // toward the provider's static ceiling after sustained success). Re-seed if the ceiling
             // changed (e.g. the user switched providers).
             let ceiling = provider.concurrencyLimit
-            if adaptive?.ceiling != ceiling { adaptive = AdaptiveConcurrency(ceiling: ceiling) }
+            if adaptive?.ceiling != ceiling {
+                // The floor is asked of the provider: one that can establish the account is paid
+                // starts higher instead of spending the whole batch probing up from 3.
+                adaptive = await AdaptiveConcurrency(ceiling: ceiling, floor: provider.concurrencyFloor())
+            }
             let limit = adaptive?.effective ?? ceiling
 
             let requests: [QueuedItem]
@@ -440,7 +452,9 @@ public actor QueueActor {
                 }
             }
 
-            if await isPaused() { break }
+            if await isPaused() {
+                break
+            }
         }
 
         // TASK-624: duplicates are never auto-marked — every match is surfaced in the Duplicates
@@ -548,7 +562,9 @@ public actor QueueActor {
             case .fit:
                 succeeded = try await processFitRequest(item: item, provider: provider, startedAt: startedAt)
             }
-            if succeeded { return .succeeded }
+            if succeeded {
+                return .succeeded
+            }
             // The processor returned false without throwing. Classify by the row's final status:
             // a user cancellation (or missing job → markRequestCancelled) leaves it .cancelled;
             // anything else (consent revoked, missing resume → .failed) is a real failure.
@@ -574,7 +590,9 @@ public actor QueueActor {
             // TASK-463: a 429 is a transient rate limit, not a provider failure — the inner processor
             // already requeued the row with a Retry-After-honoring backoff. Signal it so the drain
             // loop drops adaptive concurrency without counting toward the auto-pause streak.
-            if case LLMProviderError.rateLimited = error { return .rateLimited }
+            if case LLMProviderError.rateLimited = error {
+                return .rateLimited
+            }
             // TASK-542: 401/403 means the key was rejected — retrying or draining the rest of the
             // batch is pointless (every request will fail identically). Surface it distinctly so the
             // drain pauses and tells the user to fix the key.
@@ -697,7 +715,9 @@ public actor QueueActor {
         } catch {
             // A cancellation in flight (auto-pause cancelAll / shutdown) isn't a real attempt — don't
             // record a failed attempt, fail the job, or back off; rethrow so processRequest requeues.
-            if error is CancellationError || Task.isCancelled { throw error }
+            if error is CancellationError || Task.isCancelled {
+                throw error
+            }
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
             let errorStr = error.localizedDescription
             let diag = Self.responseDiagnostics(error)
@@ -884,7 +904,9 @@ public actor QueueActor {
         } catch {
             // A cancellation in flight (auto-pause cancelAll / shutdown) isn't a real attempt — don't
             // record a failed attempt, fail the fit score, or back off; rethrow so processRequest requeues.
-            if error is CancellationError || Task.isCancelled { throw error }
+            if error is CancellationError || Task.isCancelled {
+                throw error
+            }
             let durationMs = Int(Date().timeIntervalSince(startedAt) * 1000)
             let errorStr = error.localizedDescription
             let diag = Self.responseDiagnostics(error)

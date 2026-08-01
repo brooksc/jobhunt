@@ -116,8 +116,22 @@ public protocol LLMProvider: Sendable {
     var id: String { get }
     /// Maximum number of concurrent in-flight requests this provider can handle.
     var concurrencyLimit: Int { get }
+    /// Where adaptive concurrency STARTS, before probing upward.
+    ///
+    /// Conservative by default because a low-quota key must not be hammered. A provider that can
+    /// establish the account is paid should raise this: promotion costs `promoteAfter` consecutive
+    /// successes per step, so a floor of 3 against a ceiling of 8 needed 50 successes — a batch of
+    /// twenty jobs finished long before it ever reached the ceiling.
+    func concurrencyFloor() async -> Int
     /// Send a chat completion request and return the response.
     func complete(_ request: ChatRequest) async throws -> ChatResponse
+}
+
+public extension LLMProvider {
+    /// Conservative default: a provider that can't establish the account tier stays low and probes up.
+    func concurrencyFloor() async -> Int {
+        3
+    }
 }
 
 // MARK: - LLMProviderError
@@ -149,7 +163,9 @@ public enum LLMProviderError: Error, LocalizedError {
                 var detail = "LLM response was cut off at the output limit"
                 if let thinking, thinking > 0 {
                     detail += " — the model spent \(thinking) tokens on reasoning"
-                    if let produced { detail += " and \(produced) on the answer" }
+                    if let produced {
+                        detail += " and \(produced) on the answer"
+                    }
                 }
                 return detail + ". Raise the output limit or choose a model that reasons less."
             }()
@@ -173,10 +189,16 @@ public enum RetryAfterParser {
     public static func parse(header: String?, body: String?, now: Date) -> TimeInterval? {
         if let value = header?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty {
             // Either delta-seconds (most common) or an HTTP-date.
-            if let seconds = Double(value) { return max(0, seconds) }
-            if let date = httpDate(value) { return max(0, date.timeIntervalSince(now)) }
+            if let seconds = Double(value) {
+                return max(0, seconds)
+            }
+            if let date = httpDate(value) {
+                return max(0, date.timeIntervalSince(now))
+            }
         }
-        if let body, let seconds = secondsFromBody(body) { return seconds }
+        if let body, let seconds = secondsFromBody(body) {
+            return seconds
+        }
         return nil
     }
 

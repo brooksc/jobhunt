@@ -1487,6 +1487,8 @@ private struct ResumeScoreCard: View {
     /// The requirement whose correction sheet is open, identified by text — the assessments have no
     /// stable id of their own.
     @State private var feedbackTarget: String?
+    /// Which row's flag is under the cursor, so the control can brighten and name itself.
+    @State private var hoveredFlag: String?
 
     @Environment(AppServices.self) private var appServices
 
@@ -1554,6 +1556,10 @@ private struct ResumeScoreCard: View {
         }
     }
 
+    private func isFlagHovered(_ item: RequirementAssessment) -> Bool {
+        hoveredFlag == item.requirement
+    }
+
     private func requirementRowBody(_ item: RequirementAssessment) -> some View {
         HStack(alignment: .top, spacing: 5) {
             Image(systemName: Self.assessmentIcon(item.status))
@@ -1578,12 +1584,25 @@ private struct ResumeScoreCard: View {
             // A visible control, not a context menu: `.textSelection(.enabled)` on the text above
             // consumes the right-click and shows the system Look Up/Copy menu instead, so a context
             // menu here never opens — and an invisible one nobody discovers is barely better.
-            // Faint, so a column of correct rows stays quiet.
+            // Muted red at rest keeps a column of correct rows quiet while still reading as an
+            // action; solid on hover confirms it's live. Tertiary grey was invisible — the control
+            // was missed twice in testing, with the native right-click menu reached for instead.
+            // The hint occupies permanently reserved width, so revealing it on hover doesn't reflow
+            // the row — and being inline rather than a `.help()` tooltip it appears immediately,
+            // without the system's hover delay.
+            Text("Wrong?")
+                .font(.system(size: 9))
+                .foregroundStyle(.red)
+                .opacity(isFlagHovered(item) ? 1 : 0)
+                .frame(width: 42, alignment: .trailing)
+                .accessibilityHidden(true)
             Button { feedbackTarget = item.requirement } label: {
-                Image(systemName: "flag").font(.system(size: 9))
+                Image(systemName: isFlagHovered(item) ? "flag.fill" : "flag")
+                    .font(.system(size: 10))
+                    .foregroundStyle(isFlagHovered(item) ? Color.red : Color.red.opacity(0.45))
             }
             .buttonStyle(.borderless)
-            .foregroundStyle(.tertiary)
+            .onHover { hoveredFlag = $0 ? item.requirement : nil }
             .help("This assessment is wrong…")
             .accessibilityLabel("Correct this assessment")
             if item.isPreferred {

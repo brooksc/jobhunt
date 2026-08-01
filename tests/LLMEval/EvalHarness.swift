@@ -41,6 +41,12 @@ final class LLMEvalHarness: XCTestCase {
         let expectedSalaryCurrency: String?
         let expectedSkillsAny: [String]
         let expectedRequirementsAny: [String]
+        /// Groups of synonyms that must each be satisfied by a **separate** requirement entry.
+        ///
+        /// `expectedRequirementsAny` can't express this: it joins every requirement into one string
+        /// and substring-matches, so it passes identically whether a compound was split or left
+        /// whole — which is exactly the thing being tested. Empty for fixtures that don't care.
+        var expectedSeparateRequirements: [[String]] = []
     }
 
     private static let fixtures: [ExtractionFixture] = [
@@ -147,6 +153,40 @@ final class LLMEvalHarness: XCTestCase {
             expectedSalaryCurrency: "USD",
             expectedSkillsAny: ["product strategy", "cross-functional", "product delivery"],
             expectedRequirementsAny: ["4+", "product", "technical program management", "cross-functional"]
+        ),
+
+        ExtractionFixture(
+            name: "compound requirements: split conjunctions, keep alternatives and example lists",
+            description: """
+            Affirm
+            Staff Technical Program Manager
+            Remote - United States
+            Full-Time
+
+            Minimum qualifications:
+            - Bachelor's degree in Computer Science, Electrical Engineering, or equivalent practical experience.
+            - 8 years of proven experience managing technical programs.
+            - Working and driving strategic programs and building a remote friendly culture.
+            - Track record of strong stakeholder management with Engineering, Product, Design,
+              Analytics, and other cross-functional teams.
+            """,
+            url: "https://job-boards.greenhouse.io/affirm/jobs/fixture-compound",
+            pageTitle: "Staff Technical Program Manager | Affirm",
+            expectedCompany: "Affirm",
+            expectedTitleContains: "Technical Program Manager",
+            expectedRemoteType: .remote,
+            expectedSalaryMin: nil,
+            expectedSalaryMax: nil,
+            expectedSalaryCurrency: nil,
+            expectedSkillsAny: [],
+            // The conjunction must become two separately assessable requirements: the candidate can
+            // drive strategic programs without having built a remote-friendly culture, and one
+            // status can't express that (job #93).
+            expectedRequirementsAny: ["strategic programs", "remote friendly culture"],
+            expectedSeparateRequirements: [
+                ["strategic programs"],
+                ["remote friendly culture", "remote-friendly culture"]
+            ]
         ),
 
         // --- End-to-end fixtures: raw page text → cleanDescription → extract ---
@@ -463,6 +503,31 @@ final class LLMEvalHarness: XCTestCase {
                     hit,
                     got: reqs.prefix(2).joined(separator: "; "),
                     expected: "any of: \(fixture.expectedRequirementsAny.prefix(3).joined(separator: ", "))"
+                )
+            }
+
+            if !fixture.expectedSeparateRequirements.isEmpty {
+                // Each group must be matched by a DISTINCT entry — and no entry may satisfy two
+                // groups, which is precisely the undecomposed case.
+                var matchedIndex: [Int: Int] = [:] // group → requirement index
+                var collision = false
+                for (group, terms) in fixture.expectedSeparateRequirements.enumerated() {
+                    for (index, requirement) in reqs.enumerated() {
+                        let lower = requirement.lowercased()
+                        guard terms.contains(where: { lower.contains($0.lowercased()) }) else { continue }
+                        if matchedIndex.values.contains(index) { collision = true }
+                        matchedIndex[group] = index
+                        break
+                    }
+                }
+                let allMatched = matchedIndex.count == fixture.expectedSeparateRequirements.count
+                let distinct = Set(matchedIndex.values).count == matchedIndex.count
+                check(
+                    "requirements (separate entries)",
+                    allMatched && distinct && !collision,
+                    got: reqs.joined(separator: " | "),
+                    expected: fixture.expectedSeparateRequirements
+                        .map { $0.joined(separator: "/") }.joined(separator: " AND separately ")
                 )
             }
         }

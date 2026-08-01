@@ -42,8 +42,8 @@ let projectConfigurations: [Configuration] = [
 
 let sharedBase = SettingsDictionary()
     .automaticCodeSigning(devTeam: "")
-    .marketingVersion("1.2.0")
-    .currentProjectVersion("202607301940")
+    .marketingVersion("1.3.0")
+    .currentProjectVersion("202608011249")
     .merging(["SWIFT_STRICT_CONCURRENCY": .string("complete")])
 
 // MARK: - Target factory helpers

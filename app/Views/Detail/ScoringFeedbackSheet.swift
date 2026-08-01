@@ -11,25 +11,32 @@ import SwiftUI
 /// at extraction, most rows arrive atomic and need no trimming at all.
 struct ScoringFeedbackSheet: View {
     let requirement: String
+    /// The assessment as it stands, used only to preselect the likely correction.
+    let currentStatus: String
     let jobNumber: Int?
     let onSave: (ScoringFeedback) -> Void
     let onCancel: () -> Void
 
     @State private var phrase: String
-    @State private var kind: ScoringFeedback.Kind = .neverCredit
+    @State private var kind: ScoringFeedback.Kind
     @State private var note: String = ""
 
     init(
         requirement: String,
+        currentStatus: String,
         jobNumber: Int?,
         onSave: @escaping (ScoringFeedback) -> Void,
         onCancel: @escaping () -> Void
     ) {
         self.requirement = requirement
+        self.currentStatus = currentStatus
         self.jobNumber = jobNumber
         self.onSave = onSave
         self.onCancel = onCancel
         _phrase = State(initialValue: requirement)
+        // Preselect the correction the row invites: a gap is usually flagged because the user does
+        // have the thing, a tick because they can't defend it.
+        _kind = State(initialValue: currentStatus == "met" ? .neverCredit : .alwaysCredit)
     }
 
     /// A phrase matching far more than intended is the main way this goes wrong: "electrical" also

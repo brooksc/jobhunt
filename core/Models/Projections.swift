@@ -105,17 +105,25 @@ public struct FitScoreProjection {
     public let requirementAssessments: [RequirementAssessment]
     public let dimensions: [FitDimension]
 
-    public init(fitScore: JobFitScore) {
+    /// `feedback` is applied here as well as when gaps are built, or the two disagree: flagging
+    /// "I don't have this" moved the score while the row still displayed a green tick.
+    public init(fitScore: JobFitScore, feedback: [ScoringFeedback] = [], jobNumber: Int? = nil) {
         let dict = Self.parseJSON(fitScore.fitScoreJSON)
 
         let assessments = (dict?["requirement_assessments"] as? [[String: Any]])?
             .compactMap { a -> RequirementAssessment? in
                 guard let requirement = a["requirement"] as? String,
-                      let status = a["status"] as? String else { return nil }
+                      var status = a["status"] as? String else { return nil }
                 // Dropped from the READ MODEL, not just from the penalty: "Experience with, or
                 // capacity to learn, JIRA" showing under Gaps is noise even at zero cost — it reads
                 // as something to fix when there is nothing to fix (job #718).
                 guard !FitScorer.isNonDiscriminating(requirement: requirement) else { return nil }
+                switch feedback.verdict(forRequirement: requirement, jobNumber: jobNumber) {
+                case .forceMissing: status = "missing"
+                case .forceMet: status = "met"
+                case .ignore: return nil
+                case .none: break
+                }
                 return RequirementAssessment(
                     requirement: requirement,
                     kind: a["kind"] as? String ?? "unknown",

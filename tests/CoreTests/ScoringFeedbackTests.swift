@@ -42,6 +42,35 @@ final class ScoringFeedbackTests: XCTestCase {
         XCTAssertEqual(rules.verdict(forRequirement: "8 years of program management", jobNumber: 1), .none)
     }
 
+    /// The commonest correction, and the mirror of `neverCredit`: the model found no evidence but
+    /// the user has the experience. Job #93's "mentoring or coaching junior product owners" was a
+    /// gap on the strength of the résumé not saying it explicitly.
+    func testAlwaysCreditForcesMet() {
+        let rules = [feedback("mentoring", .alwaysCredit)]
+        XCTAssertEqual(
+            rules.verdict(forRequirement: "Experience mentoring junior product owners", jobNumber: 1),
+            .forceMet
+        )
+    }
+
+    func testAlwaysCreditRemovesThePenalty() {
+        let assessments: [[String: Any]] = [
+            ["requirement": "Experience mentoring junior product owners", "status": "missing", "kind": "required"]
+        ]
+        XCTAssertEqual(FitScorer.requirementGaps(fromAssessments: assessments).count, 1, "penalised before")
+        let gaps = FitScorer.requirementGaps(
+            fromAssessments: assessments, feedback: [feedback("mentoring", .alwaysCredit)], jobNumber: 1
+        )
+        XCTAssertTrue(gaps.isEmpty)
+    }
+
+    /// Contradictory rules must not silently inflate: a confirmed absence outranks a confirmed
+    /// presence, because suppressing a real gap is the more harmful error.
+    func testNeverCreditBeatsAlwaysCredit() {
+        let rules = [feedback("Kubernetes", .alwaysCredit), feedback("Kubernetes", .neverCredit)]
+        XCTAssertEqual(rules.verdict(forRequirement: "Kubernetes in production", jobNumber: 1), .forceMissing)
+    }
+
     // MARK: - Scope
 
     /// A one-off misread must not silently change every other job.
@@ -135,6 +164,12 @@ final class ScoringFeedbackTests: XCTestCase {
         let data = try JSONEncoder().encode([original])
         let decoded = try JSONDecoder().decode([ScoringFeedback].self, from: data)
         XCTAssertEqual(decoded, [original])
+    }
+
+    /// The likeliest correction is offered first — a user looking at a gap usually means "I do have
+    /// this", not the reverse.
+    func testTheCommonestCorrectionIsListedFirst() {
+        XCTAssertEqual(ScoringFeedback.Kind.allCases.first, .alwaysCredit)
     }
 
     func testEveryReasonHasUserFacingCopy() {

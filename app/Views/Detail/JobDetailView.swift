@@ -1528,6 +1528,7 @@ private struct ResumeScoreCard: View {
             )) {
                 ScoringFeedbackSheet(
                     requirement: item.requirement,
+                    currentStatus: item.status,
                     jobNumber: fitScore.job?.jobNumber,
                     onSave: { saveScoringFeedback($0) },
                     onCancel: { feedbackTarget = nil }
@@ -1541,6 +1542,7 @@ private struct ResumeScoreCard: View {
     private func saveScoringFeedback(_ entry: ScoringFeedback) {
         feedbackTarget = nil
         appServices.settings.addScoringFeedback(entry)
+        rebuildProjection()
         Task {
             do {
                 let updated = try await appServices.jobService.recomputeAllFitScores()
@@ -1554,6 +1556,15 @@ private struct ResumeScoreCard: View {
                 )
             }
         }
+    }
+
+    /// Rebuilt with the user's corrections applied, so the icons agree with the score they produced.
+    private func rebuildProjection() {
+        fitProjection = FitScoreProjection(
+            fitScore: fitScore,
+            feedback: appServices.settings.scoringFeedback,
+            jobNumber: fitScore.job?.jobNumber
+        )
     }
 
     private func isFlagHovered(_ item: RequirementAssessment) -> Bool {
@@ -1813,8 +1824,8 @@ private struct ResumeScoreCard: View {
         .background(Color(NSColor.controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.secondary.opacity(0.12), lineWidth: 0.5))
-        .onAppear { fitProjection = FitScoreProjection(fitScore: fitScore) }
-        .onChange(of: fitScore.fitScoreJSON) { _, _ in fitProjection = FitScoreProjection(fitScore: fitScore) }
+        .onAppear { rebuildProjection() }
+        .onChange(of: fitScore.fitScoreJSON) { _, _ in rebuildProjection() }
     }
 
     private func fitColor(_ score: Int) -> Color {

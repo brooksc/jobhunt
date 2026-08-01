@@ -184,7 +184,7 @@ public enum FitScorer {
             }
             switch feedback.verdict(forRequirement: requirement, jobNumber: jobNumber) {
             case .forceMissing: status = .missing
-            case .ignore: return nil
+            case .ignore, .forceMet: return nil // met and ignored both mean: not a gap
             case .none: break
             }
             // Never penalise something no candidate could fail.

@@ -1520,9 +1520,6 @@ private struct ResumeScoreCard: View {
 
     private func assessmentRow(_ item: RequirementAssessment) -> some View {
         requirementRowBody(item)
-            .contextMenu {
-                Button("This assessment is wrong…") { feedbackTarget = item.requirement }
-            }
             .sheet(isPresented: Binding(
                 get: { feedbackTarget == item.requirement },
                 set: { if !$0 { feedbackTarget = nil } }
@@ -1577,10 +1574,18 @@ private struct ResumeScoreCard: View {
                         .textSelection(.enabled)
                 }
             }
-            // Correcting a wrong assessment lives on the row that's wrong — a context menu
-            // rather than a visible control, so the list stays readable when nothing needs
-            // correcting (which is most of the time).
             Spacer(minLength: 4)
+            // A visible control, not a context menu: `.textSelection(.enabled)` on the text above
+            // consumes the right-click and shows the system Look Up/Copy menu instead, so a context
+            // menu here never opens — and an invisible one nobody discovers is barely better.
+            // Faint, so a column of correct rows stays quiet.
+            Button { feedbackTarget = item.requirement } label: {
+                Image(systemName: "flag").font(.system(size: 9))
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.tertiary)
+            .help("This assessment is wrong…")
+            .accessibilityLabel("Correct this assessment")
             if item.isPreferred {
                 Text("Preferred")
                     .font(.system(size: 8, weight: .semibold))

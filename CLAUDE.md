@@ -173,10 +173,17 @@ Credentials, all **outside the repo**:
 | Private key | `~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8` (mode `600`) | **Yes** — never print, copy or commit it |
 | `issuer_id`, `key_id`, `app_id`, `vendor_number` | `~/.appstoreconnect/config.json` | No, but keep them out of git too |
 
-The key is currently `AuthKey_68BGNV3CCC.p8`; JobHunt's `app_id` is `6782679255`. `issuer_id` and
+The key in use is `AuthKey_Y4673VW6CJ.p8`; JobHunt's `app_id` is `6782679255`. `issuer_id` and
 `key_id` come from **Users and Access → Integrations → App Store Connect API**; `vendor_number`
-(only needed for `sales`) is in **Payments and Financial Reports**. Auth is a 20-minute ES256 JWT —
-Apple rejects longer expiries.
+is in **Payments and Financial Reports**. Auth is a 20-minute ES256 JWT — Apple rejects longer
+expiries.
+
+**The key's role decides what works.** A key with only app access reads `builds`, `versions` and
+`reviews` but gets a bare 403 on `sales` — Apple checks the role *before* the vendor number, so the
+error reads as a bad vendor number when it isn't. Sales and Trends needs **Admin** or **Finance**,
+and a key's role is fixed at creation: generate a new key and update `key_id`. (`68BGNV3CCC` is the
+earlier app-access-only key, kept only so an old config keeps working — revoke it once nothing
+references it.)
 
 Sales reports lag ~24h and a zero-sales day simply 404s, which `sales` treats as zero rather than an
 error. There is no "installs" endpoint: units from Sales and Trends is the closest thing.

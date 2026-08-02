@@ -91,11 +91,11 @@ def cmd_builds(cfg: dict, args) -> None:
             "fields[builds]": "version,uploadedDate,processingState,expired",
         },
     ).json()["data"]
-    print(f"{'build':<14}{'uploaded':<22}{'state':<14}expired")
+    print(f"{'build':<14}{'uploaded':<27}{'state':<14}expired")
     for b in data:
         a = b["attributes"]
         print(
-            f"{a['version']:<14}{a['uploadedDate']:<22}{a['processingState']:<14}{a['expired']}"
+            f"{a['version']:<14}{a['uploadedDate']:<27}{a['processingState']:<14}{a['expired']}"
         )
 
 

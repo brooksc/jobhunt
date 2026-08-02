@@ -160,6 +160,29 @@ Defined in `.github/workflows/ui-tests.yml`. Runs weekly (Monday 8am UTC) or on 
   notarization failure pulls `notarytool log <id>` into the workflow logs. (MAS builds use the App
   Sandbox; hardened runtime is a DMG-only concern.)
 
+### Never upload a store build from this Mac's default toolchain
+
+Every MAS delivery goes through `release-mas.yml` on `macos-latest`, which uses the runner's
+*released* Xcode (26.6 / 17F113 for the 1.3.0 delivery). Keep it that way. Locally this Mac runs a
+beta macOS with only `Xcode-beta.app`, and the scripts pin `DEVELOPER_DIR` at it — correct for
+Developer ID, fatal for the App Store:
+
+```
+This bundle is invalid. Apple is not currently accepting applications
+built with this version of Xcode. (90301)
+```
+
+Ingestion checks the `DTXcodeBuild`/`DTSDKBuild` keys stamped into `Info.plist`, so no upload flag
+or tool avoids it — Transporter fails exactly as `altool` does. **Notarization is not a pre-flight
+signal for this:** the same beta-built binaries notarize and staple cleanly, which is why the DMG
+channel never surfaces the problem.
+
+If a local store upload is ever unavoidable (CI down, expired secret, urgent fix), the escape hatch
+proven on the sibling `nevermore` project: download the released Xcode `.xip` from
+developer.apple.com — the App Store refuses to install it on a beta macOS, developer.apple.com
+doesn't — `xip --expand` it (needs ~20 GB free), and point `DEVELOPER_DIR` at the expanded bundle.
+The IDE won't launch on beta macOS; `xcodebuild` inside it works, which is all that's needed.
+
 ### App Store Connect API (stats, build state, reviews)
 
 `scripts/asc-stats.py` queries App Store Connect — `builds` (has Apple finished processing an
@@ -181,9 +204,13 @@ expiries.
 **The key's role decides what works.** A key with only app access reads `builds`, `versions` and
 `reviews` but gets a bare 403 on `sales` — Apple checks the role *before* the vendor number, so the
 error reads as a bad vendor number when it isn't. Sales and Trends needs **Admin** or **Finance**,
-and a key's role is fixed at creation: generate a new key and update `key_id`. (`68BGNV3CCC` is the
-earlier app-access-only key, kept only so an old config keeps working — revoke it once nothing
-references it.)
+and a key's role is fixed at creation: generate a new key and update `key_id`.
+
+**Do not revoke `68BGNV3CCC`.** It is *not* an obsolete JobHunt key — it's a Developer-role key
+belonging to the **nevermore** project's build-upload pipeline, which shares this Apple team, and
+Apple issues a `.p8` exactly once so revoking it can't be undone. Its Developer role is why it 403s
+on `sales`. JobHunt uses `Y4673VW6CJ` (an Individual Key, so it doesn't appear in the team's Team
+Keys tab).
 
 Sales reports lag ~24h and a zero-sales day simply 404s, which `sales` treats as zero rather than an
 error. There is no "installs" endpoint: units from Sales and Trends is the closest thing.

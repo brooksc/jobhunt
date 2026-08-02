@@ -154,6 +154,14 @@ def cmd_sales(cfg: dict, args) -> None:
         # 404 is the normal answer for a day with no sales, or one Apple hasn't published yet.
         if r.status_code == 404:
             continue
+        if r.status_code == 403:
+            # The key's role, not the vendor number — Apple checks access first, so a 403 says
+            # nothing about whether vendor_number is right.
+            sys.exit(
+                "403: this API key can't read Sales and Trends. The key needs Admin, Finance or "
+                "Sales access; a key's role is fixed at creation, so generate a new one under "
+                "Users and Access -> Integrations and update key_id in the config."
+            )
         if r.status_code >= 400:
             sys.exit(f"HTTP {r.status_code} for {day}\n{r.text[:2000]}")
         text = gzip.decompress(r.content).decode("utf-8")

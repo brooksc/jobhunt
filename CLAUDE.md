@@ -160,6 +160,27 @@ Defined in `.github/workflows/ui-tests.yml`. Runs weekly (Monday 8am UTC) or on 
   notarization failure pulls `notarytool log <id>` into the workflow logs. (MAS builds use the App
   Sandbox; hardened runtime is a DMG-only concern.)
 
+### App Store Connect API (stats, build state, reviews)
+
+`scripts/asc-stats.py` queries App Store Connect — `builds` (has Apple finished processing an
+upload?), `versions`, `reviews`, `sales --days N`. It's a `uv` script with inline dependencies, so
+`./scripts/asc-stats.py builds` runs it with no venv setup.
+
+Credentials, all **outside the repo**:
+
+| What | Where | Secret? |
+|---|---|---|
+| Private key | `~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8` (mode `600`) | **Yes** — never print, copy or commit it |
+| `issuer_id`, `key_id`, `app_id`, `vendor_number` | `~/.appstoreconnect/config.json` | No, but keep them out of git too |
+
+The key is currently `AuthKey_68BGNV3CCC.p8`; JobHunt's `app_id` is `6782679255`. `issuer_id` and
+`key_id` come from **Users and Access → Integrations → App Store Connect API**; `vendor_number`
+(only needed for `sales`) is in **Payments and Financial Reports**. Auth is a 20-minute ES256 JWT —
+Apple rejects longer expiries.
+
+Sales reports lag ~24h and a zero-sales day simply 404s, which `sales` treats as zero rather than an
+error. There is no "installs" endpoint: units from Sales and Trends is the closest thing.
+
 ## Data store location & backup
 
 The store path comes from `ModelContainerFactory.productionStoreURL()`: the system Application Support

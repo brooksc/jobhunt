@@ -245,4 +245,58 @@ final class ScoringFeedbackTests: XCTestCase {
             XCTAssertNil(ScoringFeedback.rejectionReason(forPhrase: phrase), phrase)
         }
     }
+
+    // MARK: - Match counts (orphan detection)
+
+    /// A correction that has stopped matching anything is invisible without this: three of the six
+    /// live rules were orphaned by a re-score rewording their requirement, and kept "applying" to
+    /// nothing while the user believed they were in force.
+    func testMatchCountsExposeOrphanedAndOverBroadRules() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        let job = Job(id: UUID().uuidString, jobNumber: 732, company: "Docker")
+        try await store.insert(job)
+        let resume = Resume(name: "R", text: "x", charCount: 1, active: true, sortOrder: 0)
+        try await store.insert(resume)
+        let json = """
+        {"requirement_assessments":[
+          {"requirement":"IDE","kind":"preferred","status":"missing","evidence":""},
+          {"requirement":"Ability to provide guidance","kind":"required","status":"met","evidence":""},
+          {"requirement":"Experience with CUDA kernels","kind":"required","status":"missing","evidence":""}
+        ]}
+        """
+        try await store.saveFitScore(
+            jobID: job.id, resumeID: resume.id, overall: 50, fitJSON: json, model: nil, scoredAt: Date()
+        )
+
+        let live = feedback("IDE", .alwaysCredit)
+        let orphan = feedback("Experience building AI agents.", .alwaysCredit)
+        let counts = try await store.scoringFeedbackMatchCounts([live, orphan])
+
+        // "IDE" matches only the standalone requirement, not "provide".
+        XCTAssertEqual(counts[live.id], 1)
+        // The orphaned rule matches nothing and is reported as such rather than silently absent.
+        XCTAssertEqual(counts[orphan.id], 0)
+    }
+
+    func testJobSpecificRulesOnlyCountAgainstTheirOwnJob() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        let job = Job(id: UUID().uuidString, jobNumber: 1, company: "A")
+        try await store.insert(job)
+        let resume = Resume(name: "R", text: "x", charCount: 1, active: true, sortOrder: 0)
+        try await store.insert(resume)
+        let json = """
+        {"requirement_assessments":[{"requirement":"Kubernetes","kind":"required","status":"missing","evidence":""}]}
+        """
+        try await store.saveFitScore(
+            jobID: job.id, resumeID: resume.id, overall: 50, fitJSON: json, model: nil, scoredAt: Date()
+        )
+
+        let elsewhere = ScoringFeedback(phrase: "Kubernetes", kind: .jobSpecific, jobNumber: 999)
+        let here = ScoringFeedback(phrase: "Kubernetes", kind: .jobSpecific, jobNumber: 1)
+        let counts = try await store.scoringFeedbackMatchCounts([elsewhere, here])
+        XCTAssertEqual(counts[elsewhere.id], 0)
+        XCTAssertEqual(counts[here.id], 1)
+    }
 }

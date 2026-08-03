@@ -565,6 +565,39 @@ public actor BackgroundStore {
         return updated
     }
 
+    /// How many stored requirement assessments each correction currently matches, keyed by its id.
+    ///
+    /// A correction is a phrase match against requirement text the *model* wrote, so re-scoring can
+    /// silently orphan one: three of six live rules stopped matching anything after a re-score
+    /// reworded a requirement (a trailing period; a period changed to an em dash). Nothing surfaced
+    /// that, so a correction the user believed was in force had quietly stopped applying. Surfacing
+    /// the count also exposes the opposite failure — a phrase matching far more than intended.
+    ///
+    /// O(rules × assessments) over a few hundred jobs, which is imperceptible at this scale.
+    public func scoringFeedbackMatchCounts(_ feedback: [ScoringFeedback]) throws -> [String: Int] {
+        var counts: [String: Int] = feedback.reduce(into: [:]) { $0[$1.id] = 0 }
+        guard !feedback.isEmpty else { return counts }
+        for record in try modelContext.fetch(FetchDescriptor<JobFitScore>()) {
+            guard record.fitStatus == .succeeded,
+                  let json = record.fitScoreJSON,
+                  let data = json.data(using: .utf8),
+                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let assessments = dict["requirement_assessments"] as? [[String: Any]] else { continue }
+            let jobNumber = record.job?.jobNumber
+            for item in assessments {
+                guard let requirement = item["requirement"] as? String else { continue }
+                for entry in feedback {
+                    // A job-specific rule only ever applies to its own posting.
+                    if entry.kind == .jobSpecific, entry.jobNumber != jobNumber { continue }
+                    if ScoringFeedback.matches(phrase: entry.phrase, in: requirement) {
+                        counts[entry.id, default: 0] += 1
+                    }
+                }
+            }
+        }
+        return counts
+    }
+
     /// Delete all JobFitScore records for a resume and reset denormalized fit fields on affected jobs.
     /// Jobs whose score against this résumé no longer reflects its current text — i.e. what a
     /// re-score would cover. Non-destructive: the old scores stay, marked stale for display.

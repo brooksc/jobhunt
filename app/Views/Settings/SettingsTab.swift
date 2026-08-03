@@ -106,6 +106,8 @@ struct JobsSettingsTab: View {
 
     /// Internal, not private: the extracted scoring-feedback section is an extension on this view.
     @Environment(AppServices.self) var appServices
+    /// How many stored requirements each correction currently matches, keyed by feedback id.
+    @State var feedbackMatchCounts: [String: Int] = [:]
     @Query private var allJobs: [Job]
 
     var body: some View {

@@ -488,6 +488,13 @@ public actor JobService {
         try await store.recomputeAllFitScores()
     }
 
+    /// How many stored requirement assessments each correction currently matches, keyed by its id —
+    /// so a rule that has been orphaned by a re-score, or one matching far more than intended, is
+    /// visible in Settings rather than only in the scores.
+    public func scoringFeedbackMatchCounts(_ feedback: [ScoringFeedback]) async throws -> [String: Int] {
+        try await store.scoringFeedbackMatchCounts(feedback)
+    }
+
     // MARK: - Field-level updates (used by detail inspector)
 
     /// Update individual string/enum fields on a job. Pass nil to leave a field unchanged.

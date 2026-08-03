@@ -31,6 +31,7 @@ extension JobsSettingsTab {
                                 + (entry.jobNumber.map { " · from #\($0)" } ?? ""))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            matchCountLabel(for: entry)
                             if let note = entry.note, !note.isEmpty {
                                 Text(note).font(.caption).foregroundStyle(.tertiary)
                             }
@@ -47,6 +48,33 @@ extension JobsSettingsTab {
                 }
             }
         }
+        .task(id: settings.scoringFeedback.count) { await refreshMatchCounts() }
+    }
+
+    /// What a correction is actually doing right now — the two ways it goes wrong are both invisible
+    /// otherwise. A rule matching nothing has been orphaned by a re-score rewording its requirement;
+    /// one matching far more than its own job is over-broad.
+    @ViewBuilder
+    func matchCountLabel(for entry: ScoringFeedback) -> some View {
+        if let count = feedbackMatchCounts[entry.id] {
+            if count == 0 {
+                Label(
+                    "Matches nothing — the wording it was captured from has since changed",
+                    systemImage: "exclamationmark.triangle"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+            } else {
+                Text("Matches \(count) requirement\(count == 1 ? "" : "s")")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    func refreshMatchCounts() async {
+        feedbackMatchCounts =
+            (try? await appServices.jobService.scoringFeedbackMatchCounts(settings.scoringFeedback)) ?? [:]
     }
 
     /// Removing a correction re-derives the affected scores, so undo is as immediate as the flag was.
@@ -55,6 +83,7 @@ extension JobsSettingsTab {
         Task {
             let updated = try? await appServices.jobService.recomputeAllFitScores()
             appServices.toastStore.show("Correction removed — \(updated ?? 0) score(s) updated")
+            await refreshMatchCounts()
         }
     }
 }

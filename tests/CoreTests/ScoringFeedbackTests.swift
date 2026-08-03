@@ -178,4 +178,71 @@ final class ScoringFeedbackTests: XCTestCase {
             XCTAssertFalse(kind.explanation.isEmpty, kind.rawValue)
         }
     }
+
+    // MARK: - Whole-word matching
+
+    /// The production failure this replaced: `IDE`, captured from a job whose entire requirement text
+    /// was "IDE", matched as a substring of ordinary words and force-credited 159 requirements across
+    /// 120 of 415 jobs, inflating 28 scores by up to 34 points.
+    func testShortPhraseDoesNotMatchInsideLongerWords() {
+        for word in ["provide", "provider", "identify", "identity", "ideally", "alongside",
+                     "considerations", "fidelity", "guide", "incident", "reside", "video"] {
+            XCTAssertFalse(
+                ScoringFeedback.matches(phrase: "IDE", in: "Experience with \(word) systems"),
+                "'IDE' must not match inside '\(word)'"
+            )
+        }
+    }
+
+    /// ...while the rule still does the job the user flagged it for.
+    func testShortPhraseStillMatchesTheWholeWord() {
+        for text in ["IDE", "IDE integration", "Familiarity with the IDE.", "CLI/IDE tooling",
+                     "experience with an ide"] {
+            XCTAssertTrue(
+                ScoringFeedback.matches(phrase: "IDE", in: text), "'IDE' should match in '\(text)'"
+            )
+        }
+    }
+
+    func testMatchingIsCaseInsensitiveAndTrimsThePhrase() {
+        XCTAssertTrue(ScoringFeedback.matches(phrase: "  Kubernetes ", in: "Deep kubernetes experience"))
+    }
+
+    /// A phrase whose edge is punctuation must not demand a word boundary there — otherwise every
+    /// correction captured from a full sentence stops matching.
+    func testPunctuationAtThePhraseEdgeDoesNotBlockAMatch() {
+        XCTAssertTrue(ScoringFeedback.matches(
+            phrase: "Experience building AI agents.",
+            in: "Experience building AI agents. Nice to have."
+        ))
+    }
+
+    func testMultiWordPhrasesMatchOnWordBoundaries() {
+        XCTAssertTrue(ScoringFeedback.matches(
+            phrase: "electrical engineering", in: "Background in electrical engineering or controls"
+        ))
+        XCTAssertFalse(ScoringFeedback.matches(phrase: "art", in: "Partner with the smart team"))
+    }
+
+    func testVerdictUsesWholeWordMatching() {
+        let rules = [feedback("IDE", .alwaysCredit)]
+        XCTAssertEqual(
+            rules.verdict(forRequirement: "Ability to provide guidance to engineers", jobNumber: 1), .none
+        )
+        XCTAssertEqual(rules.verdict(forRequirement: "IDE", jobNumber: 1), .forceMet)
+    }
+
+    // MARK: - Authoring-time validation
+
+    func testTooShortPhrasesAreRejectedWhenAuthored() {
+        XCTAssertNotNil(ScoringFeedback.rejectionReason(forPhrase: "AI"))
+        XCTAssertNotNil(ScoringFeedback.rejectionReason(forPhrase: "   "))
+        XCTAssertNotNil(ScoringFeedback.rejectionReason(forPhrase: "--"))
+    }
+
+    func testUsablePhrasesAreAccepted() {
+        for phrase in ["IDE", "CUDA", "electrical engineering", "Kubernetes"] {
+            XCTAssertNil(ScoringFeedback.rejectionReason(forPhrase: phrase), phrase)
+        }
+    }
 }

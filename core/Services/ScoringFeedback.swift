@@ -61,6 +61,9 @@ public struct ScoringFeedback: Codable, Sendable, Identifiable, Equatable {
     public let id: String
     /// The phrase the rule matches on, lowercased at comparison time. Narrower is better: "electrical
     /// engineering" is a good entry, bare "electrical" also fires on "partner with electrical teams".
+    ///
+    /// Matching is on **whole words** — see `matches(phrase:in:)`. Substring matching let the
+    /// three-character phrase `IDE` fire on *provide*, *identify* and *ideally*.
     public let phrase: String
     public let kind: Kind
     /// The job it was flagged from — context for the user, and the scope for `.jobSpecific`.
@@ -87,6 +90,61 @@ public struct ScoringFeedback: Codable, Sendable, Identifiable, Equatable {
     }
 }
 
+// MARK: - Phrase matching
+
+public extension ScoringFeedback {
+    /// Shortest phrase that may be saved. Below this a phrase carries too little meaning to identify
+    /// a capability, even matched as a whole word.
+    static let minimumPhraseLength = 3
+
+    /// Does `text` contain `phrase` as whole words?
+    ///
+    /// Plain `contains` was the original test, and it failed badly in production: `IDE` — captured
+    /// from a job whose entire requirement text was the string "IDE" — matched *provide*, *identify*,
+    /// *ideally*, *identity* and *alongside*, force-crediting 159 requirements across 120 of 415 jobs
+    /// and inflating 28 scores by up to 34 points.
+    ///
+    /// A match must begin and end on a word boundary, but only where the phrase itself has a word
+    /// character at that edge: a phrase ending in "." or "—" still matches text that does.
+    static func matches(phrase: String, in text: String) -> Bool {
+        let needle = phrase.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !needle.isEmpty else { return false }
+        let haystack = text.lowercased()
+        func isWord(_ c: Character) -> Bool { c.isLetter || c.isNumber }
+        // Only require a boundary on an edge where the phrase could otherwise run into a word.
+        let guardLeading = needle.first.map(isWord) ?? false
+        let guardTrailing = needle.last.map(isWord) ?? false
+
+        var searchFrom = haystack.startIndex
+        while let found = haystack.range(of: needle, range: searchFrom ..< haystack.endIndex) {
+            let leadingOK = !guardLeading || found.lowerBound == haystack.startIndex
+                || !isWord(haystack[haystack.index(before: found.lowerBound)])
+            let trailingOK = !guardTrailing || found.upperBound == haystack.endIndex
+                || !isWord(haystack[found.upperBound])
+            if leadingOK, trailingOK { return true }
+            guard found.lowerBound < haystack.endIndex else { break }
+            searchFrom = haystack.index(after: found.lowerBound)
+        }
+        return false
+    }
+
+    /// Why a phrase can't be saved as a correction, or `nil` when it's usable.
+    ///
+    /// Checked when the correction is authored rather than when it fires: a rule that quietly matches
+    /// a third of the corpus is invisible until someone audits scores months later.
+    static func rejectionReason(forPhrase phrase: String) -> String? {
+        let trimmed = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "Enter a phrase to match on." }
+        if trimmed.count < minimumPhraseLength {
+            return "Too short to identify a requirement — use at least \(minimumPhraseLength) characters."
+        }
+        guard trimmed.contains(where: { $0.isLetter || $0.isNumber }) else {
+            return "Needs at least one word to match on."
+        }
+        return nil
+    }
+}
+
 // MARK: - Applying feedback
 
 public extension [ScoringFeedback] {
@@ -107,12 +165,10 @@ public extension [ScoringFeedback] {
     /// `forceMissing` wins over everything else when several match: the user has said they don't
     /// have the thing, and suppressing a real gap is the most harmful error available here.
     func verdict(forRequirement requirement: String, jobNumber: Int?) -> Verdict {
-        let text = requirement.lowercased()
         var sawIgnore = false
         var sawMet = false
         for entry in self {
-            let phrase = entry.phrase.trimmingCharacters(in: .whitespaces).lowercased()
-            guard !phrase.isEmpty, text.contains(phrase) else { continue }
+            guard ScoringFeedback.matches(phrase: entry.phrase, in: requirement) else { continue }
             switch entry.kind {
             case .jobSpecific:
                 // Scoped: a one-off misread must not silently change every other job.

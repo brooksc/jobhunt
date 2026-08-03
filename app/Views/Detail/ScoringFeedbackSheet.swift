@@ -46,6 +46,11 @@ struct ScoringFeedbackSheet: View {
         return !trimmed.isEmpty && trimmed.count < 5
     }
 
+    /// Phrases too short to identify anything are refused outright, not merely warned about.
+    private var rejection: String? {
+        ScoringFeedback.rejectionReason(forPhrase: phrase)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Correct this requirement")
@@ -83,9 +88,14 @@ struct ScoringFeedbackSheet: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                    if isBroad {
+                    if let rejection {
+                        Label(rejection, systemImage: "exclamationmark.octagon")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    } else if isBroad {
                         Label(
-                            "That's very short — it may match requirements you didn't intend.",
+                            "That's very short — it only matches as a whole word, but check it means "
+                                + "what you intend.",
                             systemImage: "exclamationmark.triangle"
                         )
                         .font(.caption)
@@ -117,7 +127,7 @@ struct ScoringFeedbackSheet: View {
                     ))
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(phrase.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(kind != .jobSpecific && rejection != nil)
             }
         }
         .padding(20)

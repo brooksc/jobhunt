@@ -12,6 +12,7 @@ directory, plus a corpus-wide summary.
     scripts/export-fit-analysis.py                 # newest 20 scored jobs
     scripts/export-fit-analysis.py --jobs 231 734  # specific job numbers
     scripts/export-fit-analysis.py --limit 50
+    scripts/export-fit-analysis.py --blind         # withhold the model's answers (see `blind`)
 
 Each file carries the job description, the model's requirement assessments and dimension scores,
 and the current score — everything the résumé agent needs to label ground truth, and nothing it
@@ -100,10 +101,44 @@ def fetch(conn: sqlite3.Connection, job_numbers: list[int] | None, limit: int) -
     return out
 
 
+def blind(job: dict) -> dict:
+    """Strip everything that reveals the model's answer, leaving the posting and requirement texts.
+
+    Ground truth labelled beside the model's output is anchored to it. Measured on the first 20
+    labelled jobs: the labeller's hand-set bands sat closer to the model's base (MAE 7.6) than their
+    own per-requirement verdicts implied they should (11.4), and their working notes recorded the
+    model's score before setting a matching one. That contaminated the calibration findings.
+
+    Keeping the requirement *text* is deliberate — the labeller needs to know what is being assessed.
+    Only `status`, `evidence`, the dimension scores and the total are withheld.
+    """
+    out = dict(job)
+    out.pop("current_score", None)
+    out.pop("scoring_model", None)
+    out.pop("dimensions", None)
+    out["requirement_assessments"] = [
+        {"requirement": r.get("requirement"), "kind": r.get("kind")}
+        for r in job.get("requirement_assessments", [])
+    ]
+    out["ground_truth"] = dict(job["ground_truth"])
+    out["ground_truth"]["_instructions"] = (
+        "BLIND EXPORT — the model's verdicts, dimension scores and total are withheld on purpose. "
+        "Judge each requirement against the résumé and the posting alone, then set overall_band. "
+        "Routing (SCORER / RESUME / SYNC) happens after these labels are joined back to the "
+        "withheld model output, not now."
+    )
+    return out
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--jobs", type=int, nargs="*", help="specific job numbers")
     p.add_argument("--limit", type=int, default=20)
+    p.add_argument(
+        "--blind",
+        action="store_true",
+        help="withhold the model's scores/verdicts so ground truth can't anchor to them",
+    )
     args = p.parse_args()
 
     OUT.mkdir(parents=True, exist_ok=True)
@@ -111,10 +146,12 @@ def main() -> None:
         jobs = fetch(conn, args.jobs, args.limit if not args.jobs else 1000)
 
     for job in jobs:
-        (OUT / f"job-{job['job_number']}.json").write_text(json.dumps(job, indent=2) + "\n")
+        payload = blind(job) if args.blind else job
+        (OUT / f"job-{job['job_number']}.json").write_text(json.dumps(payload, indent=2) + "\n")
 
     summary = {
         "exported": len(jobs),
+        "blind": args.blind,
         "job_numbers": sorted(j["job_number"] for j in jobs),
         "scoring_weights": WEIGHTS,
         "penalty_grid_current": {

@@ -1,16 +1,17 @@
 ---
 id: TASK-657
 title: >-
-  Nothing reaps LLM requests orphaned in 'running' while the app is up, and the
-  failure leaves no trace
+  LLM queue wedges: batch barrier + isRunning guard mean one slow request stalls
+  everything, unrecoverable without a relaunch
 status: To Do
 assignee: []
 created_date: '2026-08-02 18:05'
+updated_date: '2026-08-03 00:47'
 labels:
   - llm-queue
   - reliability
 dependencies: []
-priority: medium
+priority: high
 ---
 
 ## Description
@@ -46,4 +47,33 @@ Note `llm_timeout` is unset in the store, so the default 300s applied — and th
 - [ ] #5 A reap is visible outside the Debug tab
 - [ ] #6 Unit test: a 'running' row with a stale startedAt is requeued by the reaper and its slot freed
 - [ ] #7 A cancellation that already set a terminal status is not overwritten by the reaper
+- [ ] #8 A slow request no longer blocks queued work: new requests start as soon as a slot frees, without waiting for the whole batch
+- [ ] #9 A wedged drain can be recovered from the UI without quitting the app
+- [ ] #10 Every request has a total wall-clock bound, independent of URLRequest.timeoutInterval, after which it is cancelled and requeued
+- [ ] #11 cancelProcessing() cannot hang indefinitely on a child task that ignores cancellation
+- [ ] #12 Test: a task group containing one never-returning task does not prevent remaining queued requests from being dispatched
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+**2026-08-02, second incident — root cause is structural, not just orphaned rows.** The user reported the queue stuck again and, critically, that **restarting it from the UI did nothing; only quitting and relaunching the app recovered it.** Store snapshot mid-incident: 3 `running`, 7 `queued`, 3 `succeeded` — all six started rows stamped the same `startedAt` (the relaunch), with no progress on the seven behind them.
+
+Three code-level causes, all confirmed by reading `QueueActor.startProcessing()`:
+
+**1. Batch barrier (`QueueActor.swift:407`).** The loop fetches up to `limit` queued rows, dispatches them in a `withTaskGroup`, and awaits the *entire group* before fetching the next batch. Free slots go unused while the batch's slowest member finishes, and one task that never returns stalls every remaining queued request indefinitely. Measured this session: 13 fit requests, fastest 16s, mean 61s, slowest **139s** — so even in perfect health a batch runs at its worst case, and five requests finishing in 20s wait two minutes for the sixth. Much of the reported 'stuck' feeling is this, with no failure involved.
+
+**2. `guard !isRunning else { return }` (`QueueActor.swift:354`).** While the loop is blocked inside the task group, `isRunning` stays true, so every later `startProcessing()` is a silent no-op. This is exactly why the UI restart did nothing and only a relaunch worked. The guard makes a wedged drain indistinguishable from a healthy one, and unrecoverable in-process.
+
+**3. `cancelProcessing()` awaits `task.value` (`QueueActor.swift:344`).** It cancels the drain and waits for it to exit. A child blocked in a non-cancellable await hangs this too, so the clean-shutdown path can wedge on the same condition — relevant to `RestoreCoordinator`, which calls `AppServices.shutdown()` before a destructive swap.
+
+**There is no total-duration timeout anywhere.** No `withTimeout` / deadline exists in `core/LLM/` or `core/Services/`. The only bound is `URLRequest.timeoutInterval = settings.llmTimeout` (unset in the live store, so the **300s** default). That measures the gap *between packets*, not total duration, so a response that trickles never trips it — and with legitimate requests running 16–139s, a 5-minute inter-packet timeout would essentially never fire even when something is genuinely wrong. Nothing retries on timeout at the queue level.
+
+**Correction to the first incident's evidence.** I inferred 'not in flight' from `lsof -a -p <pid> -i` showing no outbound sockets. That inference is unsafe: during this incident requests completed successfully while `lsof` showed no ESTABLISHED sockets for the app. Whatever the reason (short-lived connections between polls, or connections not attributed to the process by `lsof`), **absence of sockets is not evidence a request is dead.** The orphaned-row conclusion from the first incident stands on the 11-minute duration and the fact that only a requeue cleared it, not on the socket check.
+
+**Recommended fix, in order:**
+1. **Replace the batch barrier with continuous dispatch** — keep `limit` tasks in flight, starting a new request as each finishes. This alone removes most of the stalling and raises throughput at no cost.
+2. **Per-request total-duration timeout** — cancel and requeue past a wall-clock bound independent of `timeoutInterval`. Given the 139s observed maximum, a bound around 5-10x the mean is defensible; make it derive from `llmTimeout` rather than adding a second setting.
+3. **Make a wedged drain recoverable in-process** — `isRunning` must not be able to block restart forever. Either track drain liveness with a heartbeat and let a stale drain be superseded, or have restart cancel the existing drain first.
+4. Then the reaper and the error-capture work already described above.
+<!-- SECTION:NOTES:END -->

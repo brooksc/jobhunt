@@ -436,7 +436,13 @@ extension BackgroundStore {
                 summary: seed.summary, requirements: seed.requirements,
                 skills: seed.skills, url: seed.url
             )
-            let fitScoreJSON: String? = makeFitScoreJSON(fitScore: seed.fitScore)
+            // The score shown on the job comes from the analysis, not from the seed literal, so the
+            // two can never drift apart on screen.
+            let fitAnalysis = makeFitAnalysis(
+                fitScore: seed.fitScore, requirements: seed.requirements, skills: seed.skills,
+                seniority: seed.seniority, title: seed.title, jobNum: seed.jobNum
+            )
+            let fitScoreJSON: String? = fitAnalysis?.json
 
             let job = Job(
                 id: seed.jobId,
@@ -454,7 +460,7 @@ extension BackgroundStore {
                 status: seed.status,
                 extractedJSON: extractedJSON,
                 extractionStatus: seed.extractionStatus,
-                fitScore: seed.fitScore,
+                fitScore: fitAnalysis?.score ?? seed.fitScore,
                 fitStatus: seed.fitStatus,
                 fitScoreJSON: fitScoreJSON,
                 duplicateOfJobID: seed.duplicateOfJobID,
@@ -464,6 +470,26 @@ extension BackgroundStore {
                 updatedAt: seed.capturedAt
             )
             job.capture = capture
+
+            // The Fit tab renders from `job.fitScores` (per-résumé rows), NOT from `job.fitScoreJSON`.
+            // The seeder used to populate only the latter, so demo mode showed the empty "no scores"
+            // state on every job — the mirror on `Job` is just a denormalised copy for list sorting.
+            if let analysis = fitAnalysis {
+                let scoreRow = JobFitScore(
+                    fitScore: analysis.score,
+                    fitStatus: seed.fitStatus,
+                    fitScoreJSON: analysis.json,
+                    model: "demo",
+                    scoredAt: seed.extractedAt ?? seed.capturedAt,
+                    createdAt: seed.capturedAt,
+                    updatedAt: seed.capturedAt
+                )
+                scoreRow.resume = resume1
+                scoreRow.resumeTextHash = ResumeFingerprint.hash(resume1.text)
+                scoreRow.job = job
+                job.fitScores.append(scoreRow)
+                modelContext.insert(scoreRow)
+            }
 
             // Note event
             if let note = seed.note {
@@ -722,7 +748,6 @@ extension BackgroundStore {
     }
 
     // MARK: - JSON builders (private)
-
     // swiftlint:disable:next function_parameter_count
     private func makeExtractedJSON(
         extractionStatus: ExtractionStatus,
@@ -753,20 +778,6 @@ extension BackgroundStore {
         if let min = salaryMin, let max = salaryMax {
             dict["salary_note"] = "$\(min / 1000)K–$\(max / 1000)K"
         }
-        guard let data = try? JSONSerialization.data(withJSONObject: dict),
-              let str = String(data: data, encoding: .utf8) else { return nil }
-        return str
-    }
-
-    private func makeFitScoreJSON(fitScore: Int?) -> String? {
-        guard let score = fitScore else { return nil }
-        let quality = score >= 85 ? "excellent" : score >= 75 ? "good" : "moderate"
-        let dict: [String: Any] = [
-            "score": score,
-            "summary": "Strong match — \(quality) alignment with your background.",
-            "strengths": ["Technical program management experience", "Cross-functional leadership"],
-            "gaps": score < 80 ? ["Could strengthen domain-specific experience"] : [] as [String]
-        ]
         guard let data = try? JSONSerialization.data(withJSONObject: dict),
               let str = String(data: data, encoding: .utf8) else { return nil }
         return str

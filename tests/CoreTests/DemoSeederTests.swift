@@ -94,6 +94,69 @@ final class DemoSeederTests: XCTestCase {
         XCTAssertGreaterThan(scored.count, 5, "Must have multiple jobs with fit scores")
     }
 
+    /// Demo mode is what a prospective user clicks first, and the Fit tab is the feature they came to
+    /// evaluate. The seeder previously emitted a legacy `{score, strengths, gaps}` shape that
+    /// `FitScoreProjection` doesn't parse, so that tab rendered completely empty — no requirement
+    /// rows, no dimension bars, no correction flags — and nothing caught it.
+    func testSeedDemoFitScoresRenderAsANonEmptyProjection() async throws {
+        let (container, store) = try makeStore()
+        try await DemoSeeder.seedDemo(into: store)
+
+        let ctx = ModelContext(container)
+        // The Fit tab renders from job.fitScores, so that relationship — not the Job mirror — is
+        // what has to be populated.
+        let rows = try ctx.fetch(FetchDescriptor<JobFitScore>())
+        XCTAssertGreaterThan(rows.count, 5, "no per-resume score rows: the Fit tab shows its empty state")
+
+        for row in rows {
+            let projection = FitScoreProjection(fitScore: row)
+            XCTAssertFalse(
+                projection.requirementAssessments.isEmpty,
+                "score row has no requirement rows — the Fit tab would be blank"
+            )
+            XCTAssertFalse(projection.dimensions.isEmpty, "score row has no dimensions")
+            XCTAssertNotNil(row.resume, "score row must be attached to a resume")
+        }
+    }
+
+    /// A headline score that disagrees with the breakdown under it reads as a bug to anyone
+    /// evaluating the app, so the stored score must be the one the scorer derives from the analysis.
+    func testSeedDemoStoredScoreMatchesItsOwnAnalysis() async throws {
+        let (container, store) = try makeStore()
+        try await DemoSeeder.seedDemo(into: store)
+
+        let ctx = ModelContext(container)
+        for row in try ctx.fetch(FetchDescriptor<JobFitScore>()) {
+            guard let json = row.fitScoreJSON else { continue }
+            XCTAssertEqual(
+                FitScorer.rescoreFromJSON(json)?.overall, row.fitScore,
+                "stored score contradicts its own requirement assessments"
+            )
+            XCTAssertEqual(row.job?.fitScore, row.fitScore, "Job mirror disagrees with the score row")
+        }
+    }
+
+    /// Both a gap and a met row must appear somewhere, or the demo can't show what the flag is for.
+    func testSeedDemoIncludesBothMetAndUnmetRequirements() async throws {
+        let (container, store) = try makeStore()
+        try await DemoSeeder.seedDemo(into: store)
+
+        let ctx = ModelContext(container)
+        var statuses = Set<String>()
+        for row in try ctx.fetch(FetchDescriptor<JobFitScore>()) {
+            guard let json = row.fitScoreJSON,
+                  let data = json.data(using: .utf8),
+                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let items = dict["requirement_assessments"] as? [[String: Any]] else { continue }
+            statuses.formUnion(items.compactMap { $0["status"] as? String })
+        }
+        XCTAssertTrue(statuses.contains("met"), "no met requirements across the demo corpus")
+        XCTAssertTrue(
+            statuses.contains("partial") || statuses.contains("missing"),
+            "no gaps across the demo corpus — the correction flow can't be demonstrated"
+        )
+    }
+
     func testSeedDemoJobsPendingExtraction() async throws {
         let (container, store) = try makeStore()
         try await DemoSeeder.seedDemo(into: store)

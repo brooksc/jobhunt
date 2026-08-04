@@ -12,6 +12,26 @@ JobHunt is a native macOS app for job hunters. Capture postings from any job boa
 
 See **[docs/workflow.md](docs/workflow.md)** for the end-to-end workflow (capture → dedup → automatic AI processing → review → resolve).
 
+### Every job, scored against your résumé — requirement by requirement
+
+Not a number with no reasoning behind it. Each requirement in the posting is judged separately, with
+the evidence it was judged on, split into what you meet and what you don't.
+
+![Requirement-by-requirement fit breakdown](marketing/demo/fit-breakdown.gif)
+
+### When it gets one wrong, say so
+
+Click the flag on any requirement and tell it *I do have this* / *I don't have this* / *that isn't a
+real requirement*. The correction is applied **deterministically, with no AI call and no cost** — and
+it applies to every job you've captured, not just this one.
+
+![Correcting a requirement the scorer got wrong](marketing/demo/correct-a-gap.gif)
+
+![The score updates from 84 to 94](marketing/demo/score-updates.gif)
+
+**[Watch the 30-second walkthrough](marketing/demo/walkthrough-1080p.mp4)** ([captions](marketing/demo/walkthrough.vtt))
+— captured from the app running on demo data, not a mockup.
+
 There are two ways to install the Mac app:
 
 - **DMG** — direct download from GitHub Releases; includes the MCP server integration.

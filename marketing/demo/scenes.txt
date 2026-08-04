@@ -1,0 +1,8 @@
+0.02	01-list
+2.59	02-select-job
+7.74	03-fit-tab
+13.28	04-flag-gap
+19.98	05-save-correction
+25.13	06-rescored
+36.83	07-local-model
+42.99	end

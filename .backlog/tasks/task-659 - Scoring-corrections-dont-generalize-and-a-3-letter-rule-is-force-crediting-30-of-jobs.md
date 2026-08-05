@@ -1,17 +1,18 @@
 ---
 id: TASK-659
 title: >-
-  Scoring corrections don't generalize, and a 3-letter rule is force-crediting
-  30% of jobs
+  Scoring corrections: add a blast-radius preview and route "I do have this" to
+  the résumé
 status: To Do
 assignee: []
 created_date: '2026-08-02 18:14'
+updated_date: '2026-08-05 22:06'
 labels:
   - fit-scoring
   - feedback
   - ui
 dependencies: []
-priority: high
+priority: medium
 ---
 
 ## Description
@@ -48,9 +49,23 @@ priority: high
 <!-- AC:BEGIN -->
 - [ ] #1 Saving a correction shows how many existing requirements and jobs it would match, before it is saved
 - [ ] #2 A rule matching an implausibly large share of the corpus is blocked or requires explicit confirmation
-- [ ] #3 Matching respects word boundaries: a phrase 'IDE' no longer matches 'provide' or 'identify'
-- [ ] #4 The existing six entries in the live store are triaged; the 'IDE' rule is gone
-- [ ] #5 Flagging 'I do have this' offers adding the experience to the resume/skills as the primary path, with the deterministic rule as fallback
-- [ ] #6 No user feedback is injected into the scoring prompt
-- [ ] #7 A test asserts a short phrase cannot silently force-credit unrelated requirements
+- [ ] #3 Flagging 'I do have this' offers adding the experience to the resume/skills as the primary path, with the deterministic rule as fallback
+- [ ] #4 The six pre-existing entries in the live store are reviewed against word-boundary semantics
+- [ ] #5 No user feedback is injected into the scoring prompt
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+**Partly fixed already — retitled to what's left.**
+
+Done since filing:
+- **Word-boundary matching** shipped in `8723142c` (`ScoringFeedback.matches(phrase:in:)`). This kills the live corruption: `IDE` no longer matches *provide*, *identify* or *guidance*, so the 359 force-credited requirements across 124 jobs are gone. The over-broad-rule class of failure is closed.
+- **Match counting exists** — `JobService.scoringFeedbackMatchCounts(_:)` reports how many stored assessments each correction currently hits, so an orphaned or runaway rule is already visible rather than silent.
+
+Still open, and the reason this stays on the backlog:
+
+1. **Blast-radius preview at capture time.** The count exists as a service call but isn't surfaced *before* saving. Showing "this would match 359 of 12,597 requirements across 124 jobs" in the correction sheet, with a confirm above some threshold, is what stops the next over-broad rule being created at all.
+2. **Route `.alwaysCredit` toward the résumé.** Five of the six live entries were the same fact — "I have AI / gen-AI / agent experience" — phrased five ways, because a full-sentence phrase only ever matches the posting it came from. Word boundaries don't fix that: these rules are still too *narrow* to generalise. The durable fix is adding the evidence to the résumé (or a skills block) so the model's own judgement carries it to future postings, with the deterministic rule as the fallback.
+3. **Triage the existing entries.** The six in the live store predate the word-boundary fix and were authored against the old semantics.
+<!-- SECTION:NOTES:END -->

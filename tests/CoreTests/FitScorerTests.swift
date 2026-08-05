@@ -192,11 +192,104 @@ final class FitScorerTests: XCTestCase {
         XCTAssertEqual(result.scoreWeights.count, FitScorer.dimensionWeights.count)
     }
 
+    // MARK: - Normalised penalty (TASK-656)
+
+    private func assessments(required: [String], preferred: [String]) -> [[String: Any]] {
+        required.enumerated().map { ["requirement": "req\($0.offset)", "kind": "required", "status": $0.element] }
+            + preferred.enumerated().map {
+                ["requirement": "pref\($0.offset)", "kind": "preferred", "status": $0.element]
+            }
+    }
+
+    private func score(required: [String], preferred: [String], base: Double = 85) -> FitScoreResult {
+        let a = assessments(required: required, preferred: preferred)
+        return FitScorer.computeScore(
+            dimensions: allDimensions(base),
+            gaps: FitScorer.requirementGaps(fromAssessments: a),
+            counts: FitScorer.requirementCounts(fromAssessments: a)
+        )
+    }
+
+    /// The defect that motivated the change: job #734 met every required qualification and scored 0,
+    /// because missing nice-to-haves alone exhausted the old 60-point cap.
+    func testPreferredGapsAloneCannotZeroAJobThatMeetsEveryRequirement() {
+        let result = score(
+            required: Array(repeating: "met", count: 6),
+            preferred: Array(repeating: "missing", count: 8)
+        )
+        XCTAssertGreaterThan(result.overall, 60, "preferred-only gaps must not sink a fully-qualified match")
+        XCTAssertLessThan(result.penalty, 15, "nice-to-haves are a tiebreaker, not a disqualifier")
+    }
+
+    /// A missing hard requirement has to outweigh a missing nice-to-have by a wide margin. Compare
+    /// *marginal* cost: both scenarios also carry the small shrinkage floor, so comparing raw totals
+    /// understates the difference.
+    func testAMissingRequiredCostsFarMoreThanAMissingPreferred() {
+        let allMet = score(required: ["met", "met", "met"], preferred: ["met"])
+        let missingRequired = score(required: ["met", "met", "missing"], preferred: ["met"])
+        let missingPreferred = score(required: ["met", "met", "met"], preferred: ["missing"])
+
+        let requiredCost = missingRequired.penalty - allMet.penalty
+        let preferredCost = missingPreferred.penalty - allMet.penalty
+        XCTAssertGreaterThan(requiredCost, preferredCost * 2,
+                             "required \(requiredCost) vs preferred \(preferredCost)")
+    }
+
+    /// A verbose posting was arithmetically guaranteed to saturate under the old raw sum: 10 missing
+    /// requirements cost 120 points and pinned the cap regardless of fit. Penalty now converges on the
+    /// *share* missed, so listing more requirements at the same 50% miss rate costs a bounded amount
+    /// more — reflecting greater confidence — rather than growing without limit.
+    func testAVerbosePostingIsNotPunishedForVerbosity() {
+        let short = score(required: ["met", "missing"], preferred: [])
+        let long = score(required: Array(repeating: "met", count: 10) + Array(repeating: "missing", count: 10),
+                         preferred: [])
+
+        // Both sit near 65 * 0.5, and nowhere near the old capped 60.
+        XCTAssertLessThan(long.penalty, 40)
+        XCTAssertLessThan(long.penalty - short.penalty, 15,
+                          "10x the requirements at the same miss rate must not multiply the penalty")
+        XCTAssertGreaterThan(long.penalty, short.penalty,
+                             "more evidence of missing should still count for something")
+    }
+
+    /// No cap means no flat region where the score stops responding to additional gaps.
+    func testScoreKeepsRespondingAsGapsAccumulate() {
+        let scores = (0 ... 8).map { missing in
+            score(required: Array(repeating: "missing", count: missing)
+                + Array(repeating: "met", count: 8 - missing), preferred: []).overall
+        }
+        for (a, b) in zip(scores, scores.dropFirst()) {
+            XCTAssertGreaterThan(a, b, "each additional missing requirement must still move the score")
+        }
+    }
+
+    /// Bounded by construction rather than by a cap: required 65 + preferred 12.
+    func testPenaltyIsBoundedWithoutACap() {
+        let worst = score(required: Array(repeating: "missing", count: 20),
+                          preferred: Array(repeating: "missing", count: 20))
+        XCTAssertLessThanOrEqual(worst.penalty, 77)
+        XCTAssertGreaterThan(worst.penalty, 60, "a total failure should exceed the old cap")
+    }
+
+    /// Legacy rows stored only `requirements_not_met` strings, so there's no denominator to normalise
+    /// by; those must keep the old additive-and-capped behaviour rather than silently rescoring.
+    func testLegacyScoresWithoutCountsKeepTheCappedAdditiveModel() {
+        let gaps = (0 ..< 20).map {
+            FitScorer.RequirementGap(requirement: "r\($0)", kind: .required, status: .missing)
+        }
+        let result = FitScorer.computeScore(dimensions: allDimensions(100), gaps: gaps)
+        XCTAssertEqual(result.penalty, FitScorer.penaltyCap)
+    }
+
     // MARK: - rescoreFromJSON
 
     func testRescoreFromJSON_usesStructuredAssessments() throws {
         // breakdown base: 80*.40 + 60*.20 + 80*.15 + 60*.15 + 100*.10 = 32+12+12+9+10 = 75
-        // gaps: preferred/partial (5) + required/missing (12) = 17 → overall 58
+        // Penalty is the SHARE of each tier that's unmet (TASK-656), not a per-gap sum:
+        //   required:  1 of 2 missed → (1.0 + 2*0.184)/(2+2) = 0.342 → 65 * 0.342 = 22.2
+        //   preferred: 1 of 1 partial → (0.5 + 0.368)/(1+2)  = 0.289 → 12 * 0.289 =  3.5
+        // → 26, overall 49. Missing half the required qualifications costs far more than the old
+        // flat 12 did, which is the point.
         let json = """
         {
           "breakdown": {"required_qualifications": 80, "preferred_qualifications": 60,
@@ -209,8 +302,8 @@ final class FitScorerTests: XCTestCase {
         }
         """
         let result = try XCTUnwrap(FitScorer.rescoreFromJSON(json))
-        XCTAssertEqual(result.penalty, 17)
-        XCTAssertEqual(result.overall, 58)
+        XCTAssertEqual(result.penalty, 26)
+        XCTAssertEqual(result.overall, 49)
     }
 
     func testRescoreFromJSON_legacyArrayFormat_treatedAsRequiredMissing() throws {

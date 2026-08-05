@@ -303,16 +303,21 @@ public enum ExtractionEngine {
         // responses that don't send assessments.
         let assessments = (raw["requirement_assessments"] as? [[String: Any]]) ?? []
         let gaps: [FitScorer.RequirementGap]
+        let counts: FitScorer.RequirementCounts?
         if assessments.isEmpty {
             let legacy = (raw["requirements_not_met"] as? [Any])?.compactMap { $0 as? String } ?? []
             gaps = legacy.map { .init(requirement: $0, kind: .required, status: .missing) }
+            counts = nil
         } else {
             gaps = FitScorer.requirementGaps(
                 fromAssessments: assessments, feedback: feedback, jobNumber: jobNumber
             )
+            counts = FitScorer.requirementCounts(
+                fromAssessments: assessments, feedback: feedback, jobNumber: jobNumber
+            )
         }
 
-        let score = FitScorer.computeScore(dimensions: dimensions, gaps: gaps)
+        let score = FitScorer.computeScore(dimensions: dimensions, gaps: gaps, counts: counts)
         // A live scoring call IS a fresh assessment, so stamp the current prompt version. Recompute
         // takes the other branch and preserves whatever the score was originally assessed under.
         var stamped = raw

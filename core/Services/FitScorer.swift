@@ -28,7 +28,8 @@ public struct FitScoreResult: Codable, Sendable {
     public let overall: Int
     /// Per-dimension raw scores (0–100 each), keyed by dimension name.
     public let breakdown: [String: Double]
-    /// Points subtracted by the penalty model (0–60, the cap).
+    /// Points subtracted by the penalty model. Normalised (max 77) when requirement counts were
+    /// available; the legacy additive model caps at 60.
     public let penalty: Int
     /// Human-readable strings describing what triggered each penalty point.
     public let penaltyReasons: [String]
@@ -104,7 +105,92 @@ public enum FitScorer {
 
     // MARK: Penalty cap
 
+    /// Only used for **legacy** scores that stored `requirements_not_met` strings and no structured
+    /// assessments. Without per-kind totals a share can't be computed, so those keep the old additive
+    /// model. Everything with assessments uses `normalisedPenalty` below.
     public static let penaltyCap: Int = 60
+
+    // MARK: Normalised penalty (TASK-656)
+
+    /// The additive grid above summed raw gap counts and capped at 60, which produced two failures on
+    /// real data:
+    ///
+    /// 1. **Preferred gaps were near-peers of required ones** (10 vs 12), so nice-to-haves alone could
+    ///    exhaust the cap. Job #734 met *every* required qualification and still scored 0.
+    /// 2. **No normalisation for how many requirements a posting lists.** A verbose JD is punished for
+    ///    verbosity; a terse one can't be. Measured over 412 real jobs: 11% sat exactly on the cap,
+    ///    where the score stops responding to anything, and 13% missed no required qualification yet
+    ///    scored under 40.
+    ///
+    /// Confirmed live afterwards: a well-matched Principal TPM posting captured from a real board
+    /// scored **0** against a realistic résumé, because six partials and two missing preferreds is
+    /// enough to saturate.
+    ///
+    /// So penalty is now the *share* of each tier that's unmet, scaled by how much that tier matters,
+    /// and bounded by construction (max 77) rather than by a cap.
+    public static let requiredPenaltyWeight = 65.0
+    public static let preferredPenaltyWeight = 12.0
+
+    /// Shrinkage toward a typical miss rate. Without it a terse posting listing three requirements,
+    /// all met, would score as confidently as a detailed one listing fifteen — the short posting simply
+    /// gave the model less to find fault with.
+    ///
+    /// `α = 2` was **fitted against the 412-job corpus**, not inherited. An earlier proposal used 5;
+    /// sweeping α over the real data showed 2 dominates it on every axis that matters — the same 1%
+    /// zero rate, but a fully-met 10-requirement posting loses 2.6 points instead of 5.1 (shrinkage
+    /// should be a nudge, not a tax on good matches), a posting where every required qualification is
+    /// missed is penalised 56 instead of 47, and the gap between jobs-with-a-missing-required (median
+    /// 35) and jobs-without (median 83) widens. Larger α protects candidates who fail everything on a
+    /// short posting, which is the opposite of what the score is for.
+    public static let penaltyShrinkage = 2.0
+    public static let penaltyPrior = 0.184
+
+    /// How much of one requirement counts as unmet. A partial is half a miss.
+    public static func missWeight(_ status: RequirementGap.Status) -> Double {
+        switch status {
+        case .missing: 1.0
+        case .partial: 0.5
+        }
+    }
+
+    /// How many requirements of each kind the posting listed, *after* the same filtering applied to
+    /// gaps. The denominator has to exclude anything dropped from the numerator (non-discriminating
+    /// requirements, user-ignored ones), or removing a requirement would perversely raise the penalty.
+    public struct RequirementCounts: Sendable, Equatable {
+        public let required: Int
+        public let preferred: Int
+        public init(required: Int, preferred: Int) {
+            self.required = required
+            self.preferred = preferred
+        }
+    }
+
+    /// Share of a tier that is unmet, shrunk toward the prior.
+    public static func penaltyFraction(misses: Double, total: Int) -> Double {
+        guard total > 0 else { return 0 }
+        return (misses + penaltyShrinkage * penaltyPrior) / (Double(total) + penaltyShrinkage)
+    }
+
+    /// Count the requirements that participate in scoring, mirroring `requirementGaps`' filtering.
+    public static func requirementCounts(
+        fromAssessments assessments: [[String: Any]],
+        feedback: [ScoringFeedback] = [],
+        jobNumber: Int? = nil
+    ) -> RequirementCounts {
+        var required = 0
+        var preferred = 0
+        for item in assessments {
+            guard let requirement = item["requirement"] as? String else { continue }
+            if feedback.verdict(forRequirement: requirement, jobNumber: jobNumber) == .ignore { continue }
+            guard !isNonDiscriminating(requirement: requirement) else { continue }
+            let kind = RequirementGap.Kind(rawValue: (item["kind"] as? String) ?? "") ?? .required
+            switch kind {
+            case .required: required += 1
+            case .preferred: preferred += 1
+            }
+        }
+        return RequirementCounts(required: required, preferred: preferred)
+    }
 
     // MARK: Assessment prompt version
 
@@ -260,9 +346,14 @@ public enum FitScorer {
         return Int((weightedSum / totalWeight).rounded())
     }
 
+    /// `counts` carries how many requirements of each kind the posting listed. Pass it whenever the
+    /// structured assessments are available — without it the share of a tier that's unmet can't be
+    /// computed, and scoring falls back to the legacy additive model for old rows that only stored
+    /// `requirements_not_met` strings.
     public static func computeScore(
         dimensions: [String: Double],
-        gaps: [RequirementGap] = []
+        gaps: [RequirementGap] = [],
+        counts: RequirementCounts? = nil
     ) -> FitScoreResult {
         // Weighted sum: sum(score * weight) / sum(ALL expected weights)
         // Missing dimensions score 0 so a partial response doesn't inflate the score.
@@ -276,15 +367,33 @@ public enum FitScorer {
         }
         let baseScore = baseScore(breakdown: breakdown)
 
-        // Penalty: sum the kind×status cost per gap, capped.
-        var penaltyTotal = 0
+        let penalty: Int
         var penaltyReasons: [String] = []
-        for gap in gaps {
-            let cost = penaltyPoints(kind: gap.kind, status: gap.status)
-            penaltyTotal += cost
-            penaltyReasons.append("\(gap.requirement) (\(gap.kind.rawValue)/\(gap.status.rawValue), -\(cost))")
+        if let counts {
+            // Share of each tier that's unmet, scaled by how much the tier matters. Bounded by
+            // construction, so no job lands in a flat region where further gaps change nothing.
+            var requiredMisses = 0.0
+            var preferredMisses = 0.0
+            for gap in gaps {
+                switch gap.kind {
+                case .required: requiredMisses += missWeight(gap.status)
+                case .preferred: preferredMisses += missWeight(gap.status)
+                }
+                penaltyReasons.append("\(gap.requirement) (\(gap.kind.rawValue)/\(gap.status.rawValue))")
+            }
+            let scaled = requiredPenaltyWeight * penaltyFraction(misses: requiredMisses, total: counts.required)
+                + preferredPenaltyWeight * penaltyFraction(misses: preferredMisses, total: counts.preferred)
+            penalty = Int(scaled.rounded())
+        } else {
+            // Legacy rows: only the misses were stored, so there's no denominator to normalise by.
+            var penaltyTotal = 0
+            for gap in gaps {
+                let cost = penaltyPoints(kind: gap.kind, status: gap.status)
+                penaltyTotal += cost
+                penaltyReasons.append("\(gap.requirement) (\(gap.kind.rawValue)/\(gap.status.rawValue), -\(cost))")
+            }
+            penalty = min(penaltyTotal, penaltyCap)
         }
-        let penalty = min(penaltyTotal, penaltyCap)
 
         let overall = max(0, baseScore - penalty)
 
@@ -348,13 +457,16 @@ public enum FitScorer {
         // to the legacy free-form requirements_not_met (treated as missing *required* gaps) for old
         // scores that predate the assessments array.
         let gaps: [RequirementGap]
+        let counts: RequirementCounts?
         if let assessments = raw["requirement_assessments"] as? [[String: Any]], !assessments.isEmpty {
             gaps = requirementGaps(fromAssessments: assessments, feedback: feedback, jobNumber: jobNumber)
+            counts = requirementCounts(fromAssessments: assessments, feedback: feedback, jobNumber: jobNumber)
         } else {
             let legacy = (raw["requirements_not_met"] as? [String]) ?? []
             gaps = legacy.map { RequirementGap(requirement: $0, kind: .required, status: .missing) }
+            counts = nil // no denominator available — legacy additive model
         }
-        return computeScore(dimensions: dimensionScores, gaps: gaps)
+        return computeScore(dimensions: dimensionScores, gaps: gaps, counts: counts)
     }
 
     /// Encode a `FitScoreResult` to a JSON string for storage in `Job.fitScoreJSON`

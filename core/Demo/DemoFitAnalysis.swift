@@ -81,7 +81,8 @@ extension BackgroundStore {
         let dimensions = offsets.mapValues { min(100, max(0, base + $0)) }
         let result = FitScorer.computeScore(
             dimensions: dimensions,
-            gaps: FitScorer.requirementGaps(fromAssessments: assessments)
+            gaps: FitScorer.requirementGaps(fromAssessments: assessments),
+            counts: FitScorer.requirementCounts(fromAssessments: assessments)
         )
 
         let dict: [String: Any] = [

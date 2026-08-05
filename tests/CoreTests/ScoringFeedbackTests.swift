@@ -147,12 +147,18 @@ final class ScoringFeedbackTests: XCTestCase {
         "requirement_assessments":[
         {"requirement":"Expertise in CUDA ecosystem","status":"met","kind":"required"}]}
         """
-        XCTAssertEqual(FitScorer.rescoreFromJSON(json)?.overall, 90)
+        // 82, not the base 90: with one lone requirement the shrinkage prior still assumes a little
+        // unevidenced risk (TASK-656). A realistic posting listing ten requirements, all met, loses
+        // under 3 points.
+        XCTAssertEqual(FitScorer.rescoreFromJSON(json)?.overall, 82)
+
+        // Now the user says they don't have it: 1 of 1 required missed is a total failure against the
+        // only stated requirement, so the penalty is severe rather than a flat 12.
         let corrected = FitScorer.rescoreFromJSON(
             json, feedback: [feedback("CUDA", .neverCredit)], jobNumber: 1
         )
-        XCTAssertEqual(corrected?.penalty, 12)
-        XCTAssertEqual(corrected?.overall, 78)
+        XCTAssertEqual(corrected?.penalty, 30)
+        XCTAssertEqual(corrected?.overall, 60)
     }
 
     // MARK: - Round trip

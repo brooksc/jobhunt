@@ -775,6 +775,46 @@ public actor BackgroundStore {
         return queued
     }
 
+    /// Error recorded on a job whose extraction mirror outlived the request that backed it.
+    public static let orphanedExtractionError =
+        "Extraction never ran — its queued request was cancelled or removed. Re-run extraction to try again."
+
+    /// Reconcile jobs stuck at `.pending`/`.running` extraction with no in-flight (queued/running)
+    /// extract request backing them — the extraction-side twin of `reconcileOrphanedFitScores`.
+    /// `resetExtraction` and the recapture path both clear the extracted fields and set `.pending`
+    /// *before* queuing the request, and cancelling or deleting that request (or losing it to a
+    /// failed enqueue) left the job showing "Queued"/"Extracting" forever with every extracted field
+    /// blank and nothing left to run. Moves those orphans to `.failed` with a descriptive error so
+    /// they surface as re-runnable instead of silently stalling.
+    ///
+    /// Deliberately does NOT auto-requeue: a stranded job may have a settled fit score, and
+    /// re-extraction discards it (`enqueueFitForActiveResumes` resets the record before re-scoring).
+    /// Re-running is the user's call.
+    @discardableResult
+    public func reconcileOrphanedExtractions() throws -> Int {
+        let inflight = try modelContext.fetch(
+            FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.finishedAt == nil })
+        )
+        let backed = Set(
+            inflight
+                .filter { $0.requestType == .extract && ($0.status == .queued || $0.status == .running) }
+                .compactMap { $0.job?.id }
+        )
+
+        var fixed = 0
+        for job in try modelContext.fetch(FetchDescriptor<Job>())
+        where job.extractionStatus == .pending || job.extractionStatus == .running {
+            if backed.contains(job.id) { continue } // a live request still backs it
+            job.extractionStatus = .failed
+            job.extractionError = Self.orphanedExtractionError
+            job.updatedAt = Date()
+            fixed += 1
+        }
+        guard fixed > 0 else { return 0 }
+        try modelContext.save()
+        return fixed
+    }
+
     /// Reconcile fit records stuck `.running`/`.pending` with no in-flight (queued/running) fit
     /// request backing them — the state left behind when a fit request is cancelled or deleted
     /// (TASK-527). Without this the job's fit mirror is pinned at "Scoring…" forever. Resets the
@@ -1770,6 +1810,18 @@ public actor BackgroundStore {
             var canonDescriptor = FetchDescriptor<Capture>(predicate: #Predicate { $0.canonicalURL == canon })
             canonDescriptor.fetchLimit = 1
             existingByURL = try modelContext.fetch(canonDescriptor).first
+        }
+        // Both lookups above are exact string matches, so a recapture of the SAME posting whose URL
+        // differs only cosmetically — a trailing slash, a `#fragment`, a `utm_*` tag, reordered query
+        // params — missed and forked a duplicate job (Ashby sends an empty canonicalURL, so the
+        // fallback couldn't save it either). Compare on the shared normalized form before giving up.
+        // O(N) over a few hundred captures, and only on the miss path.
+        if existingByURL == nil, let target = URLNormalizer.normalized(inURL) {
+            existingByURL = try modelContext.fetch(FetchDescriptor<Capture>()).first { capture in
+                if URLNormalizer.normalized(capture.url) == target { return true }
+                guard let canon = capture.canonicalURL, !canon.isEmpty else { return false }
+                return URLNormalizer.normalized(canon) == target
+            }
         }
         if let existing = existingByURL, let job = existing.job {
             existing.url = input.url

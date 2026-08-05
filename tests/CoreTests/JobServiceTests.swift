@@ -445,6 +445,56 @@ final class JobServiceTests: XCTestCase {
         XCTAssertTrue(events.contains { $0.eventType == "recapture" }, "re-capture must log a recapture timeline event")
     }
 
+    /// A recapture whose URL differs only cosmetically is the SAME posting and must update in place.
+    /// The real failure: an Ashby posting captured as `…/id/` and recaptured as `…/id` (with an empty
+    /// canonicalURL, so the canonical fallback couldn't match either) forked a second job.
+    func testReCapture_cosmeticURLVariants_updateInPlaceInsteadOfForkingAJob() async throws {
+        let variants = [
+            "https://re.example.com/ashby/abc-123",       // trailing slash dropped
+            "https://re.example.com/ashby/abc-123#apply", // fragment added
+            "https://re.example.com/ashby/abc-123?utm_source=newsletter" // tracking param added
+        ]
+        for (index, variant) in variants.enumerated() {
+            let container = try ModelContainerFactory.inMemory()
+            let store = makeStore(container)
+            let svc = JobService(store: store, queue: makeQueue(container))
+
+            let first = try await svc.ingestCapture(CapturePayload(
+                url: "https://re.example.com/ashby/abc-123/", pageTitle: "Staff PM",
+                visibleText: "Original description text for this platform role."
+            ))
+            let second = try await svc.ingestCapture(CapturePayload(
+                url: variant, pageTitle: "Staff PM",
+                visibleText: "Updated and substantially changed description text \(index)."
+            ))
+
+            XCTAssertEqual(second.jobNumber, first.jobNumber, "\(variant) must update the original job")
+            let jobs = try await store.fetch(FetchDescriptor<Job>())
+            XCTAssertEqual(jobs.count, 1, "\(variant) must not fork a second job")
+        }
+    }
+
+    /// The normalized fallback must not over-match: a different posting on the same board keeps its
+    /// own job. `gh_jid`/`ashby_jid` identify the posting on embedded boards and are never stripped.
+    func testReCapture_differentPostingOnSameBoard_staysASeparateJob() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+
+        _ = try await svc.ingestCapture(CapturePayload(
+            url: "https://boards.example.com/careers?gh_jid=111", pageTitle: "Role One",
+            visibleText: "Description for the first role on this board."
+        ))
+        let second = try await svc.ingestCapture(CapturePayload(
+            url: "https://boards.example.com/careers?gh_jid=222", pageTitle: "Role Two",
+            visibleText: "Description for the second, different role on this board."
+        ))
+
+        XCTAssertEqual(second.jobNumber, 2, "a different posting id must create its own job")
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertEqual(jobs.count, 2)
+    }
+
     // MARK: - Manual field overrides (Electron parity: extraction must not clobber user edits)
 
     func testUpdateJobFields_recordsManualOverride_andClearResets() async throws {
@@ -1868,6 +1918,108 @@ final class FitScoringStateTests: XCTestCase {
         XCTAssertEqual(n, 0, "a fit backed by a queued request must not be reconciled")
         let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-backed" }))
         XCTAssertEqual(try XCTUnwrap(jobs.first).fitStatus, .pending)
+    }
+
+    // MARK: - Orphaned extraction mirrors
+
+    /// `resetExtraction` clears the extracted fields and sets `.pending` before queuing the request.
+    /// Deleting that request (queue UI) left the job blank and pinned at "Queued" with nothing left to
+    /// run it — the state 38 real jobs were found in. Reconcile must move it to `.failed`.
+    func testReconcileOrphanedExtractions_failsPendingWithNoBackingRequest() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let queue = makeQueue(container)
+        let svc = JobService(store: store, queue: queue)
+        let result = try await svc.ingestCapture(CapturePayload(
+            url: "https://orphan.example.com/job", pageTitle: "T",
+            visibleText: "A description long enough to be ingested as a real capture."
+        ))
+        let allJobs = try await store.fetch(FetchDescriptor<Job>())
+        let jobID = try XCTUnwrap(allJobs.first(where: { $0.jobNumber == result.jobNumber })).id
+
+        try await svc.resetExtraction(jobID: jobID)
+        // The queue UI's Delete drops queued rows too, so it must settle the mirror it just orphaned.
+        try await queue.deleteAll()
+
+        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))
+        let after = try XCTUnwrap(jobs.first)
+        XCTAssertEqual(after.extractionStatus, .failed, "an unbacked pending extraction must not stay pending")
+        XCTAssertEqual(after.extractionError, BackgroundStore.orphanedExtractionError)
+        let again = try await store.reconcileOrphanedExtractions()
+        XCTAssertEqual(again, 0, "settling is idempotent — a re-run finds nothing left to fix")
+    }
+
+    /// A job left `.running` by a request cancelled mid-flight must settle too.
+    func testReconcileOrphanedExtractions_failsRunningWithNoBackingRequest() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let job = Job(id: "job-extract-running", jobNumber: 1)
+        job.extractionStatus = .running
+        try await store.insert(job)
+
+        let reconciled = try await store.reconcileOrphanedExtractions()
+        XCTAssertEqual(reconciled, 1)
+        let jobs = try await store
+            .fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-extract-running" }))
+        XCTAssertEqual(try XCTUnwrap(jobs.first).extractionStatus, .failed)
+    }
+
+    /// A pending job that still has a queued request behind it is about to run — leave it alone.
+    /// Settled jobs (succeeded/failed/skipped) are never touched either.
+    func testReconcileOrphanedExtractions_leavesBackedAndSettledJobsAlone() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let svc = JobService(store: store, queue: makeQueue(container))
+        _ = try await svc.ingestCapture(CapturePayload( // ingest queues an extract request
+            url: "https://backed.example.com/job", pageTitle: "T",
+            visibleText: "A description long enough to be ingested as a real capture."
+        ))
+        let settled = Job(id: "job-extract-done", jobNumber: 99)
+        settled.extractionStatus = .succeeded
+        try await store.insert(settled)
+
+        let reconciled = try await store.reconcileOrphanedExtractions()
+        XCTAssertEqual(reconciled, 0)
+        let jobs = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertTrue(jobs.allSatisfy { $0.extractionStatus != .failed })
+    }
+
+    /// The launch path is where a job stranded by an older build (or a crash between the
+    /// reset-to-pending write and the enqueue) actually gets settled.
+    func testRequeueRunningOnLaunch_settlesStrandedExtractionMirrors() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let queue = makeQueue(container)
+        let job = Job(id: "job-stranded", jobNumber: 1)
+        job.extractionStatus = .pending
+        try await store.insert(job)
+
+        try await queue.requeueRunningOnLaunch()
+
+        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-stranded" }))
+        XCTAssertEqual(try XCTUnwrap(jobs.first).extractionStatus, .failed)
+    }
+
+    /// A request interrupted by a crash is requeued by launch recovery, so its job must still be
+    /// treated as backed — the requeue has to happen before the reconcile, not after.
+    func testRequeueRunningOnLaunch_doesNotFailJobsWhoseRequestWasRequeued() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = makeStore(container)
+        let queue = makeQueue(container)
+        let job = Job(id: "job-crashed", jobNumber: 1)
+        job.extractionStatus = .running
+        let req = LLMRequest(requestType: .extract, status: .running) // as a crash would leave it
+        req.job = job
+        try await store.insert(job)
+        try await store.insert(req)
+
+        try await queue.requeueRunningOnLaunch()
+
+        let jobs = try await store.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == "job-crashed" }))
+        XCTAssertEqual(
+            try XCTUnwrap(jobs.first).extractionStatus, .running,
+            "a crash-requeued request still backs its job; the mirror must not be failed"
+        )
     }
 
     func testRecomputeAllFitScores_recomputesFromStoredJSONWithoutLLM() async throws {

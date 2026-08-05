@@ -73,12 +73,20 @@ public actor QueueActor {
         return (preview, raw.count)
     }
 
-    /// Best-effort fit-mirror settle write. If it fails the fit row can be stranded "pending"/"running"
-    /// forever (TASK-520), so LOG the failure rather than silently discarding it with `try?`.
-    private func settleFitMirror(_ what: String, _ work: () async throws -> Void) async {
+    /// Best-effort mirror settle write. If it fails the mirrored row can be stranded
+    /// "pending"/"running" forever (TASK-520), so LOG the failure rather than discarding it with `try?`.
+    private func settleMirror(_ what: String, _ work: () async throws -> Void) async {
         do { try await work() } catch {
-            NSLog("QueueActor: \(what) failed — a fit score row may be stuck: \(error)")
+            NSLog("QueueActor: \(what) failed — a job mirror row may be stuck: \(error)")
         }
+    }
+
+    /// Settle both job-level mirrors after requests were cancelled or deleted. A `JobFitScore`
+    /// (TASK-527) and a job's `extractionStatus` both outlive the request that backed them, so
+    /// removing a request without this pins the job at "Scoring…"/"Queued" forever.
+    private func settleMirrors() async {
+        await settleMirror("reconcileOrphanedFitScores") { _ = try await store.reconcileOrphanedFitScores() }
+        await settleMirror("reconcileOrphanedExtractions") { _ = try await store.reconcileOrphanedExtractions() }
     }
 
     /// Log a store failure that we deliberately swallow so it isn't silently misclassified.
@@ -207,8 +215,8 @@ public actor QueueActor {
         }
     }
 
-    /// On app launch, reset any requests stuck in "running" back to "queued",
-    /// then prune old history so fetchQueuedRequests stays fast.
+    /// On app launch, reset any requests stuck in "running" back to "queued", prune old history so
+    /// fetchQueuedRequests stays fast, then settle any job mirror left without a request behind it.
     public func requeueRunningOnLaunch() async throws {
         // Fetch all then filter in-memory — SwiftData predicates cannot compare enum cases.
         try await store.update(LLMRequest.self, predicate: nil) { req in
@@ -219,6 +227,10 @@ public actor QueueActor {
             req.error = nil
         }
         try await pruneFinishedRequests()
+        // AFTER the requeue: a crash-interrupted request is back to .queued and still backs its job,
+        // so only genuinely unbacked mirrors are settled here. Catches jobs stranded by an older build
+        // (or by a crash between the reset-to-pending write and the enqueue, which are not atomic).
+        await settleMirrors()
     }
 
     /// Delete terminal (succeeded/failed/cancelled/retryExhausted) LLMRequest history
@@ -270,7 +282,7 @@ public actor QueueActor {
             req.finishedAt = Date()
         }
         // TASK-527: a cancelled fit request must not leave its JobFitScore stuck .running/.pending.
-        await settleFitMirror("reconcileOrphanedFitScores") { _ = try await store.reconcileOrphanedFitScores() }
+        await settleMirrors()
     }
 
     /// Cancel all queued and running requests.
@@ -281,20 +293,20 @@ public actor QueueActor {
             req.status = .cancelled
             req.finishedAt = Date()
         }
-        await settleFitMirror("reconcileOrphanedFitScores") { _ = try await store.reconcileOrphanedFitScores() }
+        await settleMirrors()
     }
 
     /// Permanently delete specific requests by ID.
     public func deleteRequests(ids: [String]) async throws {
         let set = Set(ids)
         try await store.delete(LLMRequest.self, predicate: #Predicate { set.contains($0.id) })
-        await settleFitMirror("reconcileOrphanedFitScores") { _ = try await store.reconcileOrphanedFitScores() }
+        await settleMirrors()
     }
 
     /// Permanently delete all requests (all statuses).
     public func deleteAll() async throws {
         try await store.deleteAll(LLMRequest.self)
-        await settleFitMirror("reconcileOrphanedFitScores") { _ = try await store.reconcileOrphanedFitScores() }
+        await settleMirrors()
     }
 
     /// Permanently delete all finished (terminal) requests — succeeded/failed/exhausted/cancelled —
@@ -818,7 +830,7 @@ public actor QueueActor {
             }
             // TASK-520: a pre-provider failure must move the fit record off .pending too, or the
             // job's fit mirror is stuck "pending" forever.
-            await settleFitMirror("markFitScoreFailed (pre-provider)") {
+            await settleMirror("markFitScoreFailed (pre-provider)") {
                 try await store.markFitScoreFailed(jobID: jobID, resumeID: resumeID, errorMessage: errMsg)
             }
             return false
@@ -843,7 +855,7 @@ public actor QueueActor {
             )
             await markRequestFailed(item: item, error: ConsentError.notConsented, startedAt: startedAt)
             // TASK-520: keep the fit record's state consistent with the failed request.
-            await settleFitMirror("markFitScoreFailed (consent)") {
+            await settleMirror("markFitScoreFailed (consent)") {
                 try await store.markFitScoreFailed(
                     jobID: jobID,
                     resumeID: resumeID,
@@ -862,7 +874,7 @@ public actor QueueActor {
         let jobSnap = fitInputs.job
         let resumeSnap = ResumeSnapshot(text: fitInputs.resumeText)
 
-        await settleFitMirror("markFitScoreRunning") {
+        await settleMirror("markFitScoreRunning") {
             try await store.markFitScoreRunning(jobID: jobID, resumeID: resumeID)
         }
 
@@ -929,7 +941,7 @@ public actor QueueActor {
                     req.finishedAt = Date()
                     req.error = errorStr
                 }
-                await settleFitMirror("markFitScoreFailed (post-provider)") {
+                await settleMirror("markFitScoreFailed (post-provider)") {
                     try await store.markFitScoreFailed(jobID: jobID, resumeID: resumeID, errorMessage: errorStr)
                 }
             } else {

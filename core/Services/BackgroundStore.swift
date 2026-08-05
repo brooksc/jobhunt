@@ -1754,6 +1754,89 @@ public actor BackgroundStore {
         return true
     }
 
+    /// Outcome of folding one job into another.
+    public struct MergeJobResult: Sendable {
+        public let keptJobNumber: Int
+        public let removedJobNumber: Int
+        /// Field names filled in on the kept job from the removed one.
+        public let fieldsCopied: [String]
+    }
+
+    /// Fold a duplicate job into the one being kept, then delete the duplicate.
+    ///
+    /// For the case this exists to fix: a cosmetic URL difference forked a recapture into a second
+    /// job, so the newer job holds a good extraction while the original holds the status, notes and
+    /// fit score built up against it. Only fills fields the kept job is MISSING — a manually
+    /// overridden or already-populated field is never overwritten — and never touches the kept job's
+    /// status, notes or fit scores. The kept job's capture is also left alone: the duplicate's
+    /// capture is deleted with it, so merge only when the two describe the same posting.
+    ///
+    /// Extraction provenance (`extractedJSON`/model/confidence/`extractedAt`/status) moves as one
+    /// unit, and only when the kept job has no extraction of its own — a half-copied provenance
+    /// would misattribute which model produced which field.
+    public func mergeJob(from sourceNumber: Int, into targetNumber: Int) throws -> MergeJobResult {
+        guard sourceNumber != targetNumber else {
+            throw BackgroundStoreError.notFound("cannot merge job #\(sourceNumber) into itself")
+        }
+        let src = sourceNumber, dst = targetNumber
+        let jobs = try modelContext.fetch(
+            FetchDescriptor<Job>(predicate: #Predicate { $0.jobNumber == src || $0.jobNumber == dst })
+        )
+        guard let source = jobs.first(where: { $0.jobNumber == src }) else {
+            throw BackgroundStoreError.notFound("job #\(src)")
+        }
+        guard let target = jobs.first(where: { $0.jobNumber == dst }) else {
+            throw BackgroundStoreError.notFound("job #\(dst)")
+        }
+
+        let overrides = manualFieldOverrideSet(target.manualFieldOverridesJSON)
+        var copied: [String] = []
+        /// Copy one field when the target lacks it and the user hasn't manually set it.
+        func fill<V>(_ name: String, _ keyPath: ReferenceWritableKeyPath<Job, V?>) {
+            guard target[keyPath: keyPath] == nil, !overrides.contains(name),
+                  let value = source[keyPath: keyPath] else { return }
+            target[keyPath: keyPath] = value
+            copied.append(name)
+        }
+        fill("company", \.company)
+        fill("title", \.title)
+        fill("location", \.location)
+        fill("remoteType", \.remoteType)
+        fill("salaryMin", \.salaryMin)
+        fill("salaryMax", \.salaryMax)
+        fill("salaryHourlyMin", \.salaryHourlyMin)
+        fill("salaryHourlyMax", \.salaryHourlyMax)
+        fill("salaryCurrency", \.salaryCurrency)
+        fill("salaryNote", \.salaryNote)
+        fill("employmentType", \.employmentType)
+        fill("seniority", \.seniority)
+        fill("applicationURL", \.applicationURL)
+        fill("meetsCriteria", \.meetsCriteria)
+
+        if target.extractedJSON == nil, source.extractedJSON != nil {
+            target.extractedJSON = source.extractedJSON
+            target.extractionModel = source.extractionModel
+            target.extractionConfidence = source.extractionConfidence
+            target.extractedAt = source.extractedAt
+            target.extractionStatus = source.extractionStatus
+            target.extractionError = nil
+            copied.append("extractedJSON")
+        }
+        target.updatedAt = Date()
+
+        let event = JobEvent(
+            eventType: "merge",
+            note: "Merged job #\(src) into this job"
+                + (copied.isEmpty ? " (no missing fields to fill)" : " — filled \(copied.joined(separator: ", "))")
+        )
+        event.job = target
+        modelContext.insert(event)
+        modelContext.delete(source) // cascades to its capture, events, fit scores and requests
+        try modelContext.save()
+
+        return MergeJobResult(keptJobNumber: dst, removedJobNumber: src, fieldsCopied: copied)
+    }
+
     /// Record (or update) a duplicate decision so a resolved pair does not resurface in detection.
     public func upsertDuplicateDecision(cleanedHash: String, decision: String, keepJobID: String?) throws {
         let ch = cleanedHash

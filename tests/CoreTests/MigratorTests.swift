@@ -165,6 +165,34 @@ final class MigratorTests: XCTestCase {
         }
     }
 
+    // MARK: - Arg parsing: --merge-job
+
+    func testParseArgs_mergeJob_parsesBothJobNumbers() {
+        guard case let .mergeJob(_, from, into) = parseArgs(
+            ["JobhuntMigrator", "--merge-job", "--from", "761", "--into", "725"]
+        ) else {
+            return XCTFail("--merge-job with --from/--into should parse")
+        }
+        XCTAssertEqual(from, 761)
+        XCTAssertEqual(into, 725)
+    }
+
+    /// A merge that silently defaulted one side would delete the wrong job — reject every partial form.
+    func testParseArgs_mergeJob_rejectsIncompleteOrNonsensicalForms() {
+        let invalid = [
+            ["JobhuntMigrator", "--merge-job"],                                  // neither side
+            ["JobhuntMigrator", "--merge-job", "--from", "761"],                 // no --into
+            ["JobhuntMigrator", "--merge-job", "--into", "725"],                 // no --from
+            ["JobhuntMigrator", "--merge-job", "--from", "725", "--into", "725"], // itself
+            ["JobhuntMigrator", "--merge-job", "--from", "abc", "--into", "725"], // not a number
+            ["JobhuntMigrator", "--merge-job", "--from", "0", "--into", "725"],   // not a job number
+            ["JobhuntMigrator", "--from", "761", "--into", "725"]                 // no operation flag
+        ]
+        for args in invalid {
+            XCTAssertNil(parseArgs(args), "must reject: \(args.dropFirst().joined(separator: " "))")
+        }
+    }
+
     // MARK: - Tests
 
     func testOpenReadOnlyNonExistentPath() {

@@ -68,12 +68,14 @@ priority order (TASK-523).
 | `--prune-orphan-attempts [--store <path>]` | Delete `LLMRequestAttempt` rows whose parent request is gone (historical orphans from prunes that predate the cascade delete rule). | same |
 | `--recompute-fit-mirrors [--store <path>]` | Recompute every job's denormalized fit mirror (`fitScore`/`fitStatus`/`fitScoreJSON`) from its best resume-linked score; touches only drifted rows. | same |
 | `--detect-duplicates [--store <path>]` | Run the app's duplicate detector and persist results (flag candidates with `duplicateOfJobID` + `.duplicate` status). Useful after a bulk `--reclean` changes cleaned hashes. Skips pairs resolved via DuplicateDecision. | same |
+| `--merge-job --from <job#> --into <job#> [--store <path>]` | Fold a duplicate job into the one being kept, then delete the duplicate. Fills only fields the kept job is **missing** — never overwrites a populated or manually-overridden field — and leaves its status, notes and fit scores alone. Extraction provenance (`extractedJSON`/model/confidence/`extractedAt`/status) moves as one unit, and only when the kept job has no extraction of its own. The duplicate's capture is deleted with it, so merge only when both describe the same posting. Logs a `merge` timeline event on the kept job. **Not idempotent** — it deletes a row. | same |
 | `--repair-duplicate-job-numbers [--store <path>]` | Renumber duplicate `jobNumber` rows (keep the oldest, reassign collisions to fresh `max+1` numbers) so the store can open under the `jobNumber` unique constraint. **Raw SQLite** — runs without opening the store via SwiftData, because a store with duplicates can't be opened. Non-destructive; idempotent. | same |
 
 ```bash
 # Quit Jobhunt, then:
 JobhuntMigrator --reclean
 JobhuntMigrator --backfill-models
+JobhuntMigrator --merge-job --from 761 --into 725   # keeps #725, deletes #761
 ```
 
 ### Example

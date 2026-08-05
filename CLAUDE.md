@@ -293,6 +293,7 @@ JobhuntMigrator --prune-orphan-attempts        # delete LLMRequestAttempts whose
 JobhuntMigrator --recompute-fit-mirrors        # recompute every job's denormalized fit mirror
 JobhuntMigrator --detect-duplicates            # flag same-cleaned-hash duplicates across URLs
 JobhuntMigrator --repair-duplicate-job-numbers # renumber duplicate jobNumbers (raw SQLite, pre-open)
+JobhuntMigrator --merge-job --from 761 --into 725 # fold a duplicate job into the keeper, delete it
 # --migrate / --patch / --patch-fit-scores / --verify / --repair-fit-scores: original SQLite→SwiftData import
 ```
 

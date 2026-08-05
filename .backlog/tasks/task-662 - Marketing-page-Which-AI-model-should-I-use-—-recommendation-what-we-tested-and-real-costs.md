@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-08-05 18:12'
+updated_date: '2026-08-05 18:13'
 labels:
   - marketing
   - docs
@@ -28,12 +29,12 @@ Choosing a model is the hardest decision JobHunt asks of a new user, and right n
 2. **What else was tested and why it wasn't chosen.** Measured results only (see [TASK-661]); nothing may be listed as tested if it hasn't been. Include the *kind* of failure, not just a score — `gemini-3.1-flash-lite` regressed when the prompt grew, which is more useful to a reader than "5/7".
 3. **Cost table grounded in real token counts**, expressed the way a user thinks: *"100 job postings scored ≈ $X"*, not dollars per million tokens. `CostEstimator` already produces per-corpus token estimates (the AI settings pane shows them for the current corpus), so the numbers should come from measurement.
 4. **The free option, honestly.** A local model via LM Studio or Ollama costs nothing and never sends a posting off the machine, at some cost in accuracy and speed. Say what that cost is rather than implying local is free of tradeoffs.
-5. **Two ways to reach the same model.** DeepSeek is available via OpenRouter *or* the DeepSeek API directly — different keys, pricing and signup. Explain when each makes sense. (Direct DeepSeek isn't a first-class provider yet — [TASK-663].)
+5. **Two ways to reach the same model.** DeepSeek is available via OpenRouter *or* the DeepSeek API directly — different keys, pricing and signup. Explain when each makes sense. (Direct DeepSeek isn't a first-class provider yet — [TASK-664].)
 6. **Say it can be changed later**, and that changing it doesn't rescore existing jobs unless asked. Lowers the stakes of the decision.
 
 **Keep it current.** Model pricing and lineups move fast; a stale recommendation is worse than none. Date the page, say which app version the testing was done against, and prefer generating the table from the committed eval results ([TASK-661]) over hand-maintained numbers.
 
-Linked from onboarding and Settings by [TASK-662].
+Linked from onboarding and Settings by [TASK-663].
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

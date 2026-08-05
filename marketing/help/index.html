@@ -52,6 +52,7 @@
         <li><a href="#how-it-works">How It Works</a></li>
         <li><a href="#dashboard">Dashboard</a></li>
         <li><a href="#extraction-scoring">Extraction &amp; Scoring</a></li>
+        <li><a href="which-model.html">Which AI model? →</a></li>
         <li><a href="#referrals">Referrals</a></li>
         <li><a href="#sites">Sites &amp; Availability</a></li>
         <li><a href="#duplicates">Duplicates</a></li>
@@ -78,7 +79,7 @@
     <h2 id="how-it-works">How It Works</h2>
     <p><strong>Capture</strong> → The Chrome extension sends the page text and any selected text to the JobHunt app over a local connection (localhost) on your machine.</p>
     <p><strong>Extraction</strong> → An AI model (local via LM Studio/Ollama, or a cloud API) reads the captured text and fills structured fields: title, company, location, salary, work arrangement, and more.</p>
-    <p><strong>Fit Scoring</strong> → The model rates each job 0–100 against your resume and breaks the score down by dimension (skills, seniority, location, work arrangement).</p>
+    <p><strong>Fit Scoring</strong> → The model rates each job 0–100 against your resume and breaks the score down by dimension (skills, seniority, location, work arrangement). Which model you pick changes how good these scores are — see <a href="which-model.html">which AI model should I use?</a></p>
     <p><strong>Local-first</strong> → All data is stored locally on your Mac by the app. When you use a local model (LM Studio, Ollama, or a custom endpoint on localhost), all AI processing stays on-device and nothing leaves your machine. When you use a cloud provider — or a custom endpoint that isn't local — job description text is sent for extraction and, for fit scoring, your resume text is sent along with the job text. These remote providers require your consent before any data is sent.</p>
 
     <h2 id="dashboard">Dashboard</h2>
@@ -126,7 +127,7 @@
     <h2 id="settings">Settings Reference</h2>
     <dl class="dl">
       <dt>AI Provider</dt><dd>AI backend: LM Studio, Ollama, OpenAI, Anthropic, Google, or any OpenAI-compatible endpoint.</dd>
-      <dt>Model</dt><dd>The model used for extraction and fit scoring. Gemini Flash is a good cost/quality default.</dd>
+      <dt>Model</dt><dd>The model used for extraction and fit scoring. See <a href="which-model.html">which model to use</a> for our recommendation, what we tested, and what it costs.</dd>
       <dt>Resume</dt><dd>Plain text of your resume, used to compute fit scores.</dd>
       <dt>Preferred Locations</dt><dd>Your preferred work locations, used in fit scoring.</dd>
       <dt>Work Arrangement</dt><dd>Remote, hybrid, or onsite preference for fit scoring.</dd>

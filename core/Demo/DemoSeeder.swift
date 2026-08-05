@@ -74,16 +74,14 @@ extension BackgroundStore {
 
         // MARK: Resumes
 
+        // charCount is derived, never a literal: the two drifted apart before, and a wrong count
+        // is invisible until something displays it.
         let resume1 = Resume(
             id: "resume_001",
             name: "TPM Resume — Full",
             filename: "tpm_resume.pdf",
-            text: """
-            Senior Technical Program Manager with 10+ years driving cross-functional programs for \
-            distributed systems, cloud platforms, and AI/ML products. Expertise in OKRs, risk \
-            management, and executive stakeholder communication. AWS certified. PMP certified.
-            """,
-            charCount: 280,
+            text: DemoResumes.full,
+            charCount: DemoResumes.full.count,
             active: true,
             sortOrder: 0,
             createdAt: daysAgo(60),
@@ -94,11 +92,8 @@ extension BackgroundStore {
             id: "resume_002",
             name: "TPM Resume — Condensed",
             filename: "tpm_resume_short.pdf",
-            text: """
-            Technical Program Manager with strong background in infrastructure and platform programs. \
-            10 years TPM experience. Led programs at FAANG scale. Remote-friendly.
-            """,
-            charCount: 175,
+            text: DemoResumes.condensed,
+            charCount: DemoResumes.condensed.count,
             active: false,
             sortOrder: 1,
             createdAt: daysAgo(30),

@@ -157,6 +157,34 @@ final class DemoSeederTests: XCTestCase {
         )
     }
 
+    /// A prospective user's first instinct in demo mode is to capture a real job. Against the old
+    /// 280-character stub résumés, real postings scored **0** — nothing was evidenced, the penalty
+    /// saturated, and the product looked broken. Length isn't the goal, but it's the cheap proxy for
+    /// "has employment history and evidence" rather than "is a summary sentence".
+    func testDemoResumesAreFullDocumentsNotStubs() async throws {
+        let (container, store) = try makeStore()
+        try await DemoSeeder.seedDemo(into: store)
+
+        let ctx = ModelContext(container)
+        let resumes = try ctx.fetch(FetchDescriptor<Resume>())
+        for resume in resumes {
+            XCTAssertGreaterThan(
+                resume.text.count, 1000,
+                "\(resume.name) is \(resume.text.count) chars — too thin to evidence real requirements"
+            )
+            XCTAssertEqual(
+                resume.charCount, resume.text.count,
+                "\(resume.name): charCount drifted from the text it describes"
+            )
+        }
+
+        // The evidence a scorer actually keys on: employers, dates, metrics and named tools.
+        let full = try XCTUnwrap(resumes.first { $0.active })
+        for marker in ["Northwind Cloud", "2021", "Kubernetes", "OKR", "SQL"] {
+            XCTAssertTrue(full.text.contains(marker), "active résumé is missing \(marker)")
+        }
+    }
+
     func testSeedDemoJobsPendingExtraction() async throws {
         let (container, store) = try makeStore()
         try await DemoSeeder.seedDemo(into: store)

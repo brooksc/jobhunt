@@ -1,44 +1,47 @@
 ---
 id: TASK-667
 title: >-
-  Queue menu always reads "Pause Queue" — it doesn't reflect whether the queue
-  is actually paused
+  LLM Queue toolbar button always reads "Resume Queue", even while the queue is
+  running
 status: To Do
 assignee: []
 created_date: '2026-08-06 02:54'
+updated_date: '2026-08-06 22:14'
 labels:
   - llm-queue
   - ui
 dependencies:
   - TASK-524
-priority: medium
+priority: low
 ---
 
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-The **Queue** menu bar item contains a single command that always reads **"Pause Queue"**, regardless of state. Meanwhile the LLM Queue view shows a green **Resume** control and `Running 0`.
+**Correction — my original report blamed the wrong control.** I filed this as "the Queue *menu* is a static label". It isn't: `AppCommands.swift:29` binds it correctly —
 
-Reproduced three times in one session on a freshly seeded store:
-
-```
-Queue menu:  [Pause Queue]                    <- implies it is running
-Queue view:  Queued 1  Running 0  Failed 0   > Resume    <- it is paused
+```swift
+Button(handlers?.isPaused == true ? "Resume Queue" : "Pause Queue") { handlers?.togglePause() }
 ```
 
-Clicking Resume in the view starts processing; the menu item still reads "Pause Queue" afterwards, so it is not a toggle that got stuck — it appears to be a static label with no binding to the paused state.
+The menu was reading "Pause Queue" because the queue genuinely **was not paused**. The menu was right and I misread it.
 
-**Why it matters more than it looks.** The queue starts paused on a fresh store. A user captures their first job, nothing happens, and the one obvious place to check — the Queue menu — actively tells them the queue is running. The only correct signal is a small green link inside a view most users won't have opened. During this session it cost three separate diagnostic detours, with full knowledge of the codebase.
+The actually-misleading control is the **toolbar button in the LLM Queue view** (`LLMQueueView.swift:297`). It is a plain action button, permanently labelled **"Resume Queue"** with a play icon, that calls `processAll()`:
 
-This is the same wound as [TASK-524] (no prominent banner when the queue is auto-paused) seen from the other side: 524 adds a signal where there is none; this fixes a signal that is actively wrong. A wrong indicator is worse than a missing one.
+```swift
+Button { Task { await processAll() } } label: { Label("Resume Queue", systemImage: "play.fill") }
+```
 
-**Fix:** bind the menu item's title (and ideally its state) to the queue's `isPaused`, so it reads "Resume Queue" when paused. Worth auditing whether any other menu command is a static label where it should reflect state.
+It renders identically whether the queue is running, paused, or idle. So a user (or an agent debugging it) sees "▶ Resume Queue", concludes the queue is paused, and starts chasing a pause that never existed. That happened three times in one session here, and it sent me looking for a phantom bug instead of the real one — [TASK-657]'s wedge, where the queue is unpaused but a stale drain makes every start a no-op.
+
+**Fix:** label it for what it does, not for a state it doesn't reflect — "Run Queued Requests" or similar — or bind it to `isPaused` the way the menu already is. If it stays an unconditional action, it must not use pause/resume vocabulary.
+
+Note the semantics differ from the menu's: the menu *toggles pause*, this button *starts a drain*. Two different operations sharing one name is most of the confusion.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The Queue menu reads 'Resume Queue' when the queue is paused and 'Pause Queue' when it is running
-- [ ] #2 The label updates without reopening the menu or restarting the app
-- [ ] #3 Toggling from the menu and from the queue view leave the two in agreement
-- [ ] #4 Other menu commands are spot-checked for static labels that should reflect state
+- [ ] #1 The queue toolbar control does not imply a paused state when the queue is running
+- [ ] #2 Its label describes the action it performs, distinct from the menu's pause/resume toggle
+- [ ] #3 A user can tell at a glance whether the queue is paused, running, or idle
 <!-- AC:END -->

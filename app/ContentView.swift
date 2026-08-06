@@ -39,6 +39,26 @@ struct ContentView: View {
         .environment(theme)
         .environment(\.jobService, appServices.jobService)
         .environment(\.queueActor, appServices.queueActor)
+        // Published from the ROOT, not from the queue view. It was documented as coming from
+        // LLMQueueView and in fact came from nowhere, so `@FocusedValue(\.queueCommands)` was always
+        // nil and the Queue menu was permanently disabled — while still rendering "Pause Queue",
+        // which reads as "the queue is running". Publishing here also means the command works from
+        // any section: a paused queue is most likely to be noticed on the Jobs list, not on the queue
+        // screen.
+        .focusedSceneValue(\.queueCommands, QueueCommandHandlers(
+            isPaused: appServices.settings.llmQueuePaused,
+            togglePause: {
+                let resume = appServices.settings.llmQueuePaused
+                appServices.settings.llmQueuePaused = !resume
+                Task {
+                    if resume {
+                        await appServices.queueActor.resumeQueue()
+                    } else {
+                        await appServices.queueActor.pauseQueue()
+                    }
+                }
+            }
+        ))
         .toolbar {
             notificationBell
             serviceStatusMenu

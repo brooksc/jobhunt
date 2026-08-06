@@ -467,6 +467,15 @@ struct LLMQueueView: View {
             return
         }
         errorMessage = nil
+        // A button labelled "Resume Queue" has to actually resume. It used to only kick a drain,
+        // which then bailed immediately on the `isPaused` guard — so on a paused queue it did nothing
+        // at all, with no error, and there was no other working way back (the menu command is only
+        // enabled when its focused value is published). `processSelected` already resumed for exactly
+        // this reason; this now matches it.
+        if isPaused {
+            isPaused = false
+            await queueActor.resumeQueue()
+        }
         toastStore.show("Resuming \(queuedCount) queued request\(queuedCount == 1 ? "" : "s")…")
         await queueActor.startProcessing()
     }

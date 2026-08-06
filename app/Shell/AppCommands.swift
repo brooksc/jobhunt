@@ -3,7 +3,9 @@ import SwiftUI
 
 // MARK: - Queue Commands
 
-// Published by LLMQueueView via .focusedSceneValue(\.queueCommands, ...) when Queue section is active.
+// Published by ContentView via .focusedSceneValue(\.queueCommands, ...) so this works from any
+// section. It used to say LLMQueueView, which never published it — the value was always nil, so the
+// menu item sat permanently disabled while still reading "Pause Queue".
 
 struct QueueCommandHandlers {
     let isPaused: Bool

@@ -19,10 +19,17 @@ public struct LaunchPlan: Equatable {
     public let mode: LaunchMode
     /// Whether `--seed-demo-data` was passed (only honored in a safe mode — see `allowsDemoSeed`).
     public let seedDemoDataRequested: Bool
+    /// `--run-queue`: start the isolated-store instance with the LLM queue RUNNING.
+    ///
+    /// UI tests need the opposite — seeded `.pending` rows must keep their state to be asserted on —
+    /// so the isolated store defaults to paused. A demo or a screen recording wants the pipeline to
+    /// actually run. Opt-in, so no existing test changes behaviour.
+    public let runQueueRequested: Bool
 
-    public init(mode: LaunchMode, seedDemoDataRequested: Bool) {
+    public init(mode: LaunchMode, seedDemoDataRequested: Bool, runQueueRequested: Bool = false) {
         self.mode = mode
         self.seedDemoDataRequested = seedDemoDataRequested
+        self.runQueueRequested = runQueueRequested
     }
 
     /// Runtime services (HTTP server, queue recovery, availability checks, launch observers) run
@@ -41,8 +48,14 @@ public struct LaunchPlan: Equatable {
     }
 
     /// The LLM queue starts paused in UI-test mode so seeded `.pending` jobs keep their state.
+    ///
+    /// **Not** when demo data was requested. Demo mode shares the isolated store with UI tests, but
+    /// the two want opposite things: a test asserts on rows that must stay `.pending`, while a demo
+    /// exists to show extraction and scoring actually happening. Conflating them meant every demo
+    /// launch came up paused, every captured job sat queued, and — until the resume path was fixed —
+    /// there was no working way to start it.
     public var startsQueuePaused: Bool {
-        mode == .uiTest
+        mode == .uiTest && !runQueueRequested
     }
 
     /// Demo seeding is confined to the UI-test store (TASK-427).
@@ -72,6 +85,7 @@ public extension LaunchPlan {
     /// silently falling back to production (TASK-426 AC#3).
     static func parse(_ args: [String]) throws -> LaunchPlan {
         let seed = args.contains("--seed-demo-data")
+        let runQueue = args.contains("--run-queue")
 
         let isUITest = args.contains("--ui-test-store")
         let fixtureReadPath = try valueAfter("--fixture-db", in: args)
@@ -94,7 +108,7 @@ public extension LaunchPlan {
         } else {
             mode = .production
         }
-        return LaunchPlan(mode: mode, seedDemoDataRequested: seed)
+        return LaunchPlan(mode: mode, seedDemoDataRequested: seed, runQueueRequested: runQueue)
     }
 
     /// Returns the value following `flag`, or nil if the flag is absent. Throws if the flag is

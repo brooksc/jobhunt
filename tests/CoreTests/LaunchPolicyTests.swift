@@ -46,3 +46,33 @@ final class LaunchPolicyTests: XCTestCase {
         ))
     }
 }
+
+// MARK: - Queue pause policy (--run-queue)
+
+extension LaunchPolicyTests {
+    /// The isolated store defaults to paused because UI tests assert on seeded `.pending` rows.
+    func testUITestStoreStartsPausedByDefault() throws {
+        let plan = try LaunchPlan.parse(["--ui-test-store", "--seed-demo-data"])
+        XCTAssertTrue(plan.startsQueuePaused)
+    }
+
+    /// A demo needs the opposite: extraction and scoring have to actually run. Conflating the two
+    /// meant every demo launch came up paused and every captured job sat queued forever.
+    func testRunQueueOptsOutOfThePause() throws {
+        let plan = try LaunchPlan.parse(["--ui-test-store", "--seed-demo-data", "--run-queue"])
+        XCTAssertFalse(plan.startsQueuePaused)
+        XCTAssertTrue(plan.runQueueRequested)
+    }
+
+    /// Opt-in only — no existing UI test changes behaviour by accident.
+    func testRunQueueIsAbsentUnlessAsked() throws {
+        XCTAssertFalse(try LaunchPlan.parse(["--ui-test-store"]).runQueueRequested)
+    }
+
+    /// The flag is meaningless outside the isolated store and must never unpause production.
+    func testRunQueueDoesNotApplyToProduction() throws {
+        let plan = try LaunchPlan.parse(["--run-queue"])
+        XCTAssertEqual(plan.mode, .production)
+        XCTAssertFalse(plan.startsQueuePaused, "production is never force-paused anyway")
+    }
+}

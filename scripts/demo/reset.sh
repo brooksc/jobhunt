@@ -16,7 +16,9 @@ H=${CAPTURE_H:-900}
 
 pkill -f "Jobhunt.app/Contents/MacOS/Jobhunt" 2>/dev/null || true
 sleep 1.5
-open -n "$APP" --args --ui-test-store --seed-demo-data
+# --run-queue: the isolated store otherwise starts the queue paused (that default exists for
+# UI tests, which assert on seeded .pending rows). A demo needs the pipeline to actually run.
+open -n "$APP" --args --ui-test-store --seed-demo-data --run-queue
 sleep 7
 
 # Size in POINTS. screencapture records the region at 2x on Retina, so 1600x900 -> 3200x1800, which

@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-08-02 18:05'
-updated_date: '2026-08-03 00:47'
+updated_date: '2026-08-06 22:26'
 labels:
   - llm-queue
   - reliability
@@ -42,15 +42,15 @@ Note `llm_timeout` is unset in the store, so the default 300s applied — and th
 <!-- AC:BEGIN -->
 - [ ] #1 A request left in 'running' past a duration bound is returned to 'queued' while the app stays running, with no user action
 - [ ] #2 A reaped request releases its adaptive-concurrency slot, so repeated orphans cannot throttle the queue
-- [ ] #3 A request cannot exceed a total wall-clock bound even if the connection trickles bytes (timeoutInterval alone is insufficient)
+- [x] #3 A request cannot exceed a total wall-clock bound even if the connection trickles bytes (timeoutInterval alone is insufficient)
 - [ ] #4 Every exit from 'running' writes an attempt row or an error, so an orphan leaves diagnosable evidence
 - [ ] #5 A reap is visible outside the Debug tab
 - [ ] #6 Unit test: a 'running' row with a stale startedAt is requeued by the reaper and its slot freed
 - [ ] #7 A cancellation that already set a terminal status is not overwritten by the reaper
 - [ ] #8 A slow request no longer blocks queued work: new requests start as soon as a slot frees, without waiting for the whole batch
-- [ ] #9 A wedged drain can be recovered from the UI without quitting the app
-- [ ] #10 Every request has a total wall-clock bound, independent of URLRequest.timeoutInterval, after which it is cancelled and requeued
-- [ ] #11 cancelProcessing() cannot hang indefinitely on a child task that ignores cancellation
+- [x] #9 A wedged drain can be recovered from the UI without quitting the app
+- [x] #10 Every request has a total wall-clock bound, independent of URLRequest.timeoutInterval, after which it is cancelled and requeued
+- [x] #11 cancelProcessing() cannot hang indefinitely on a child task that ignores cancellation
 - [ ] #12 Test: a task group containing one never-returning task does not prevent remaining queued requests from being dispatched
 <!-- AC:END -->
 
@@ -76,4 +76,19 @@ Three code-level causes, all confirmed by reading `QueueActor.startProcessing()`
 2. **Per-request total-duration timeout** — cancel and requeue past a wall-clock bound independent of `timeoutInterval`. Given the 139s observed maximum, a bound around 5-10x the mean is defensible; make it derive from `llmTimeout` rather than adding a second setting.
 3. **Make a wedged drain recoverable in-process** — `isRunning` must not be able to block restart forever. Either track drain liveness with a heartbeat and let a stale drain be superseded, or have restart cancel the existing drain first.
 4. Then the reaper and the error-capture work already described above.
+
+**Fixed the unrecoverable part (commit `f96ae375`); the throughput part is deliberately still open.**
+
+Root cause confirmed in use, not just by reading: work queued, provider configured with a valid key, queue **not** paused, nothing running, and the UI control doing nothing. That is the `isRunning` no-op path.
+
+What misled the diagnosis for a long time: the LLM Queue toolbar button permanently reads "Resume Queue" whether or not the queue is paused, so it looked like a stuck pause. It is an unconditional `processAll()` action — [TASK-667], now corrected to describe the right control.
+
+Shipped:
+
+1. **Per-request wall-clock deadline.** Every request races a timeout derived from the user's `llmTimeout` (x1.5), cancelled and requeued if it outlives it. `URLRequest.timeoutInterval` could never cover this: it bounds the gap *between packets*, so a trickling response or a continuation that never resumes runs forever. `llmTimeout` is now carried on `ExtractionSettings` (defaulted, so no call site changed).
+2. **Stall recovery.** The drain stamps a heartbeat each pass; a start that finds a drain quiet beyond `drainStallSeconds` (15 min, comfortably above the request deadline) cancels it and takes over, emitting a `queueError` so the user is told rather than left guessing. `isRunning` can no longer wedge the queue permanently.
+
+Seven tests in `QueueDeadlineTests`: a never-returning operation is cancelled promptly; work inside budget is untouched; the operation's own error is not masked by the deadline (misclassifying a provider failure as a timeout would corrupt retry logic); the deadline is derived from the setting and survives an unset one; the stall threshold sits above the request deadline; concurrent starts still don't duplicate a healthy drain.
+
+**Still open — the batch barrier.** `withTaskGroup` awaits the whole batch before fetching more, so free slots idle while the slowest member finishes, and throughput runs at the worst case (measured 16s fastest, 139s slowest in one batch). That is now a latency cost rather than a correctness one: with requests bounded, a slow member can no longer wedge anything. Worth doing, but it is a real rewrite of the drain loop and did not belong in the same change as the safety fix.
 <!-- SECTION:NOTES:END -->

@@ -1531,7 +1531,12 @@ private struct ResumeScoreCard: View {
                     currentStatus: item.status,
                     jobNumber: fitScore.job?.jobNumber,
                     onSave: { saveScoringFeedback($0) },
-                    onCancel: { feedbackTarget = nil }
+                    onCancel: { feedbackTarget = nil },
+                    measureReach: { phrase, kind, jobNumber in
+                        try? await appServices.jobService.scoringFeedbackMatchPreview(
+                            phrase: phrase, kind: kind, jobNumber: jobNumber
+                        )
+                    }
                 )
             }
     }

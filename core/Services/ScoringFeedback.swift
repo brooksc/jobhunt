@@ -185,3 +185,41 @@ public extension [ScoringFeedback] {
         return sawMet ? .forceMet : .none
     }
 }
+
+// MARK: - Blast radius
+
+/// How far a candidate correction would reach across the scored corpus.
+///
+/// Shown before saving, because the failure mode this guards against is invisible afterwards: a rule
+/// that force-credits a third of every job's requirements looks identical, in the settings list, to
+/// one that hits the single requirement it was written for.
+public struct FeedbackMatchPreview: Sendable, Equatable {
+    public let matchingRequirements: Int
+    public let matchingJobs: Int
+    public let totalRequirements: Int
+    public let totalJobs: Int
+
+    public init(matchingRequirements: Int, matchingJobs: Int, totalRequirements: Int, totalJobs: Int) {
+        self.matchingRequirements = matchingRequirements
+        self.matchingJobs = matchingJobs
+        self.totalRequirements = totalRequirements
+        self.totalJobs = totalJobs
+    }
+
+    /// Share of all scored requirements this would touch.
+    public var requirementShare: Double {
+        totalRequirements > 0 ? Double(matchingRequirements) / Double(totalRequirements) : 0
+    }
+
+    /// Share of scored jobs whose score would move.
+    public var jobShare: Double {
+        totalJobs > 0 ? Double(matchingJobs) / Double(totalJobs) : 0
+    }
+
+    /// Reaching a third of all jobs is not a correction to one wrong assessment — it's a policy
+    /// change, and almost always an accident. `IDE` reached 30% of jobs; every deliberate rule
+    /// measured so far reached well under 1%.
+    public var isImplausiblyBroad: Bool {
+        matchingJobs > 1 && jobShare > 0.10
+    }
+}

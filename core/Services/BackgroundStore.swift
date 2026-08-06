@@ -574,6 +574,49 @@ public actor BackgroundStore {
     /// the count also exposes the opposite failure — a phrase matching far more than intended.
     ///
     /// O(rules × assessments) over a few hundred jobs, which is imperceptible at this scale.
+    /// What a *candidate* correction would hit, measured before it's saved.
+    ///
+    /// The sheet previously guessed with a length heuristic ("under 5 characters is probably broad"),
+    /// which is both wrong and unhelpful: `IDE` is three characters and was force-crediting 359
+    /// requirements across 124 jobs, while `PCI DSS` is seven and hits exactly what it should. Reach
+    /// is an empirical property of the corpus, not of the string's length, so measure it.
+    public func scoringFeedbackMatchPreview(
+        phrase: String,
+        kind: ScoringFeedback.Kind,
+        jobNumber: Int?
+    ) throws -> FeedbackMatchPreview {
+        var matchingRequirements = 0
+        var totalRequirements = 0
+        var matchingJobs = Set<Int>()
+        var totalJobs = Set<Int>()
+
+        for record in try modelContext.fetch(FetchDescriptor<JobFitScore>()) {
+            guard record.fitStatus == .succeeded,
+                  let json = record.fitScoreJSON,
+                  let data = json.data(using: .utf8),
+                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let assessments = dict["requirement_assessments"] as? [[String: Any]] else { continue }
+            let recordJob = record.job?.jobNumber
+            if let recordJob { totalJobs.insert(recordJob) }
+            // A job-specific rule can only ever reach its own posting, so scoring the whole corpus
+            // against it would overstate the blast radius.
+            let inScope = kind != .jobSpecific || recordJob == jobNumber
+            for item in assessments {
+                guard let requirement = item["requirement"] as? String else { continue }
+                totalRequirements += 1
+                guard inScope, ScoringFeedback.matches(phrase: phrase, in: requirement) else { continue }
+                matchingRequirements += 1
+                if let recordJob { matchingJobs.insert(recordJob) }
+            }
+        }
+        return FeedbackMatchPreview(
+            matchingRequirements: matchingRequirements,
+            matchingJobs: matchingJobs.count,
+            totalRequirements: totalRequirements,
+            totalJobs: totalJobs.count
+        )
+    }
+
     public func scoringFeedbackMatchCounts(_ feedback: [ScoringFeedback]) throws -> [String: Int] {
         var counts: [String: Int] = feedback.reduce(into: [:]) { $0[$1.id] = 0 }
         guard !feedback.isEmpty else { return counts }

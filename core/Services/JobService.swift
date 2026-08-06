@@ -491,6 +491,15 @@ public actor JobService {
     /// How many stored requirement assessments each correction currently matches, keyed by its id —
     /// so a rule that has been orphaned by a re-score, or one matching far more than intended, is
     /// visible in Settings rather than only in the scores.
+    /// Measured reach of a correction the user hasn't saved yet — see `FeedbackMatchPreview`.
+    public func scoringFeedbackMatchPreview(
+        phrase: String,
+        kind: ScoringFeedback.Kind,
+        jobNumber: Int?
+    ) async throws -> FeedbackMatchPreview {
+        try await store.scoringFeedbackMatchPreview(phrase: phrase, kind: kind, jobNumber: jobNumber)
+    }
+
     public func scoringFeedbackMatchCounts(_ feedback: [ScoringFeedback]) async throws -> [String: Int] {
         try await store.scoringFeedbackMatchCounts(feedback)
     }

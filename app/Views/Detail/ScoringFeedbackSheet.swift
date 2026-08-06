@@ -16,35 +16,41 @@ struct ScoringFeedbackSheet: View {
     let jobNumber: Int?
     let onSave: (ScoringFeedback) -> Void
     let onCancel: () -> Void
+    /// Measures what the candidate phrase would hit. Injected rather than reached through the
+    /// environment so the sheet stays previewable and testable.
+    let measureReach: (String, ScoringFeedback.Kind, Int?) async -> FeedbackMatchPreview?
 
     @State private var phrase: String
     @State private var kind: ScoringFeedback.Kind
     @State private var note: String = ""
+    @State private var reach: FeedbackMatchPreview?
+    @State private var acknowledgedBroad = false
 
     init(
         requirement: String,
         currentStatus: String,
         jobNumber: Int?,
         onSave: @escaping (ScoringFeedback) -> Void,
-        onCancel: @escaping () -> Void
+        onCancel: @escaping () -> Void,
+        measureReach: @escaping (String, ScoringFeedback.Kind, Int?) async -> FeedbackMatchPreview?
     ) {
         self.requirement = requirement
         self.currentStatus = currentStatus
         self.jobNumber = jobNumber
         self.onSave = onSave
         self.onCancel = onCancel
+        self.measureReach = measureReach
         _phrase = State(initialValue: requirement)
         // Preselect the correction the row invites: a gap is usually flagged because the user does
         // have the thing, a tick because they can't defend it.
         _kind = State(initialValue: currentStatus == "met" ? .neverCredit : .alwaysCredit)
     }
 
-    /// A phrase matching far more than intended is the main way this goes wrong: "electrical" also
-    /// fires on "partner with electrical teams". Warn rather than block — the user may mean it.
-    private var isBroad: Bool {
-        let trimmed = phrase.trimmingCharacters(in: .whitespaces)
-        return !trimmed.isEmpty && trimmed.count < 5
-    }
+    /// A phrase matching far more than intended is the main way this goes wrong. Reach is now
+    /// **measured against the scored corpus** rather than guessed from the phrase's length: `IDE` is
+    /// three characters and reached 30% of jobs, while `PCI DSS` is seven and hits only what it
+    /// should. Length was never the signal.
+    private var isBroad: Bool { reach?.isImplausiblyBroad ?? false }
 
     /// Phrases too short to identify anything are refused outright, not merely warned about.
     private var rejection: String? {
@@ -92,14 +98,8 @@ struct ScoringFeedbackSheet: View {
                         Label(rejection, systemImage: "exclamationmark.octagon")
                             .font(.caption)
                             .foregroundStyle(.red)
-                    } else if isBroad {
-                        Label(
-                            "That's very short — it only matches as a whole word, but check it means "
-                                + "what you intend.",
-                            systemImage: "exclamationmark.triangle"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+                    } else if let reach {
+                        reachLabel(reach)
                     }
                 }
             }
@@ -127,10 +127,57 @@ struct ScoringFeedbackSheet: View {
                     ))
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(kind != .jobSpecific && rejection != nil)
+                // A rule reaching a tenth of every scored job is a policy change, not a correction.
+                // Require it to be acknowledged rather than blocking outright — occasionally the user
+                // really does mean it.
+                .disabled(kind != .jobSpecific && (rejection != nil || (isBroad && !acknowledgedBroad)))
             }
         }
         .padding(20)
         .frame(width: 460)
+        .task(id: TaskKey(phrase: phrase, kind: kind)) {
+            reach = nil
+            acknowledgedBroad = false
+            guard kind != .jobSpecific, ScoringFeedback.rejectionReason(forPhrase: phrase) == nil else { return }
+            // Debounce: the corpus scan runs on every keystroke otherwise.
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            reach = await measureReach(phrase, kind, jobNumber)
+        }
+    }
+
+    /// Identifies a measurement request, so editing the phrase cancels the in-flight scan.
+    private struct TaskKey: Equatable {
+        let phrase: String
+        let kind: ScoringFeedback.Kind
+    }
+
+    @ViewBuilder
+    private func reachLabel(_ reach: FeedbackMatchPreview) -> some View {
+        if reach.isImplausiblyBroad {
+            VStack(alignment: .leading, spacing: 4) {
+                Label(
+                    "This would change \(reach.matchingRequirements) requirements across "
+                        + "\(reach.matchingJobs) of your \(reach.totalJobs) scored jobs.",
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+                Toggle("Apply it that widely anyway", isOn: $acknowledgedBroad)
+                    .font(.caption)
+                    .toggleStyle(.checkbox)
+            }
+        } else {
+            Text(
+                reach.matchingRequirements == 0
+                    ? "Matches nothing else you've scored yet."
+                    : "Matches \(reach.matchingRequirements) requirement"
+                    + (reach.matchingRequirements == 1 ? "" : "s")
+                    + " across \(reach.matchingJobs) job"
+                    + (reach.matchingJobs == 1 ? "." : "s.")
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
     }
 }

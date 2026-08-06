@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import XCTest
 @testable import JobhuntCore
 
@@ -304,5 +305,69 @@ final class ScoringFeedbackTests: XCTestCase {
         let counts = try await store.scoringFeedbackMatchCounts([elsewhere, here])
         XCTAssertEqual(counts[elsewhere.id], 0)
         XCTAssertEqual(counts[here.id], 1)
+    }
+}
+
+// MARK: - Blast radius (TASK-659)
+
+final class ScoringFeedbackBlastRadiusTests: XCTestCase {
+    private func seededStore() async throws -> (ModelContainer, BackgroundStore) {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        try await DemoSeeder.seedDemo(into: store)
+        return (container, store)
+    }
+
+    /// The case that motivated this: a three-letter phrase that looked harmless and reached a third
+    /// of the corpus. The user has to be able to see that before saving, not discover it in the
+    /// scores afterwards.
+    func testAnOverBroadPhraseReportsWideReach() async throws {
+        let (_, store) = try await seededStore()
+        let preview = try await store.scoringFeedbackMatchPreview(
+            phrase: "experience", kind: .alwaysCredit, jobNumber: nil
+        )
+        XCTAssertGreaterThan(preview.matchingRequirements, 1)
+        XCTAssertGreaterThan(preview.totalRequirements, preview.matchingRequirements)
+        XCTAssertTrue(preview.isImplausiblyBroad, "a word this common must be flagged as broad")
+    }
+
+    /// A phrase written to fix one specific assessment should read as narrow, or the warning becomes
+    /// noise that users learn to click past.
+    func testANarrowPhraseIsNotFlagged() async throws {
+        let (_, store) = try await seededStore()
+        let preview = try await store.scoringFeedbackMatchPreview(
+            phrase: "quantum cryptography", kind: .neverCredit, jobNumber: nil
+        )
+        XCTAssertEqual(preview.matchingRequirements, 0)
+        XCTAssertFalse(preview.isImplausiblyBroad)
+    }
+
+    /// A job-specific rule can't reach beyond its own posting, so scoring it against the whole corpus
+    /// would overstate the blast radius and train the user to ignore the warning.
+    func testJobSpecificRulesOnlyCountTheirOwnJob() async throws {
+        let (container, store) = try await seededStore()
+        let ctx = ModelContext(container)
+        let scored = try ctx.fetch(FetchDescriptor<JobFitScore>()).compactMap { $0.job?.jobNumber }
+        let target = try XCTUnwrap(scored.first)
+
+        let scopedToOwnJob = try await store.scoringFeedbackMatchPreview(
+            phrase: "experience", kind: .jobSpecific, jobNumber: target
+        )
+        let global = try await store.scoringFeedbackMatchPreview(
+            phrase: "experience", kind: .alwaysCredit, jobNumber: target
+        )
+        XCTAssertLessThanOrEqual(scopedToOwnJob.matchingJobs, 1)
+        XCTAssertLessThan(scopedToOwnJob.matchingRequirements, global.matchingRequirements)
+    }
+
+    /// Totals have to be reported even when nothing matches, or the UI can't say "0 of 1,240".
+    func testTotalsAreReportedEvenWithNoMatches() async throws {
+        let (_, store) = try await seededStore()
+        let preview = try await store.scoringFeedbackMatchPreview(
+            phrase: "zzzz-no-such-requirement", kind: .neverCredit, jobNumber: nil
+        )
+        XCTAssertEqual(preview.matchingRequirements, 0)
+        XCTAssertGreaterThan(preview.totalRequirements, 0)
+        XCTAssertGreaterThan(preview.totalJobs, 0)
     }
 }

@@ -117,6 +117,13 @@ public actor QueueActor {
     // MARK: - State
 
     private var isRunning = false
+    /// When the drain loop last completed a pass. `nil` when no drain is running. Used to tell a
+    /// working drain from a wedged one (TASK-657).
+    private var lastDrainHeartbeat: Date?
+
+    /// A drain quiet for longer than this is considered dead. Generously above the per-request
+    /// deadline, so an ordinary slow request is never mistaken for a stall.
+    static let drainStallSeconds: TimeInterval = 15 * 60
     /// The tracked drain-loop task spawned by `startProcessingIfNeeded` (TASK-528). Stored so app
     /// shutdown / queue teardown can cancel it deterministically instead of leaking anonymous
     /// fire-and-forget tasks. `nil` when no kick-initiated drain is outstanding. (Direct callers of
@@ -363,14 +370,32 @@ public actor QueueActor {
 
     /// Start the drain loop. Call once after launch.
     public func startProcessing() async {
-        guard !isRunning else { return }
+        // TASK-657: `isRunning` alone made a wedged drain permanent — if a loop stopped making
+        // progress, every later start returned immediately and only relaunching the app recovered.
+        // A drain that hasn't touched its heartbeat for a long time is treated as dead and superseded
+        // rather than trusted forever.
+        if isRunning {
+            guard let last = lastDrainHeartbeat,
+                  Date().timeIntervalSince(last) > Self.drainStallSeconds
+            else { return }
+            NSLog("QueueActor: superseding a drain with no progress for \(Int(Date().timeIntervalSince(last)))s")
+            emit(.queueError("Restarted the AI queue after it stopped making progress."))
+            drainTask?.cancel()
+            drainTask = nil
+        }
         isRunning = true
-        defer { isRunning = false }
+        lastDrainHeartbeat = Date()
+        defer {
+            isRunning = false
+            lastDrainHeartbeat = nil
+        }
 
         var totalProcessed = 0
         var totalFailed = 0
 
         while true {
+            // Progress marker for the stall check in `startProcessing()`.
+            lastDrainHeartbeat = Date()
             // External cancellation (app shutdown) — exit cleanly instead of busy-looping over rows
             // that processRequest keeps requeuing while the task stays cancelled. (Auto-pause cancels
             // only the in-batch child tasks, not this loop, so it still exits via the isPaused check.)
@@ -568,11 +593,22 @@ public actor QueueActor {
 
         do {
             let succeeded: Bool
+            // TASK-657: bound the whole request in wall-clock time. `URLRequest.timeoutInterval`
+            // bounds the gap BETWEEN packets, not the total, so a response that trickles — or a
+            // provider call that never resumes its continuation — hangs forever. One hung task used
+            // to stall the entire batch, and because `isRunning` stays true while the batch is
+            // outstanding, every later start became a silent no-op: the queue stopped dead until the
+            // app was relaunched. A deadline removes the root cause.
+            let deadline = await requestDeadlineSeconds()
             switch item.requestType {
             case .extract:
-                succeeded = try await processExtractRequest(item: item, provider: provider, startedAt: startedAt)
+                succeeded = try await withRequestDeadline(seconds: deadline) {
+                    try await self.processExtractRequest(item: item, provider: provider, startedAt: startedAt)
+                }
             case .fit:
-                succeeded = try await processFitRequest(item: item, provider: provider, startedAt: startedAt)
+                succeeded = try await withRequestDeadline(seconds: deadline) {
+                    try await self.processFitRequest(item: item, provider: provider, startedAt: startedAt)
+                }
             }
             if succeeded {
                 return .succeeded

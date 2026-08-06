@@ -367,6 +367,7 @@ public final class SettingsStore {
         let combined = combinedPreferredLocations(locations: preferredLocations, metros: preferredMetros)
         return ExtractionSettings(
             llmModel: llmModel,
+            llmTimeout: llmTimeout,
             llmProvider: provider,
             llmBaseURL: baseURL,
             consentGranted: consentGranted,
@@ -410,6 +411,9 @@ public final class SettingsStore {
 /// Capture this once on the main actor before crossing into background actors.
 public struct ExtractionSettings: Sendable {
     public let llmModel: String
+    /// Per-request timeout in seconds, as configured by the user. The queue derives its hard
+    /// wall-clock deadline from this (TASK-657) rather than introducing a second setting.
+    public let llmTimeout: Int
     public let llmProvider: String
     public let llmBaseURL: String
     /// True when the current provider has explicit consent to receive job/resume data.
@@ -422,6 +426,7 @@ public struct ExtractionSettings: Sendable {
 
     public init(
         llmModel: String,
+        llmTimeout: Int = 300,
         llmProvider: String = "lmstudio",
         llmBaseURL: String = "http://127.0.0.1:1234",
         consentGranted: Bool = true,
@@ -432,6 +437,7 @@ public struct ExtractionSettings: Sendable {
         locationAllowOnsite: Bool
     ) {
         self.llmModel = llmModel
+        self.llmTimeout = llmTimeout
         self.llmProvider = llmProvider
         self.llmBaseURL = llmBaseURL
         self.consentGranted = consentGranted

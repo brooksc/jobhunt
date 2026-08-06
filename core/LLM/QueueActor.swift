@@ -108,7 +108,8 @@ public actor QueueActor {
     /// Write the queue-paused flag. Implementations should dispatch to @MainActor.
     private let onSetPaused: @Sendable (Bool) async -> Void
     /// Snapshot extraction-relevant settings. Implementations should dispatch to @MainActor.
-    private let readExtractionSettings: @Sendable () async -> ExtractionSettings
+    /// Not private: `QueueDeadline.swift` derives the per-request deadline from the same settings.
+    let readExtractionSettings: @Sendable () async -> ExtractionSettings
     /// Whether a usable AI provider is configured (TASK-483). Returns false when the selected provider
     /// requires an API key but none is set; true otherwise (incl. local providers that need no key).
     /// Defaults to always-configured so existing call sites (tests) are unaffected.

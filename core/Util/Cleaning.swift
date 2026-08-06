@@ -39,6 +39,21 @@ public func cleanDescription(
         if includeSelected { parts.append("---") }
         parts.append(primary)
     }
+    // The structured data's OWN location fields, which nothing else reads. `extractJsonLdDescription`
+    // takes only `description`, and schema.org keeps the location beside it in `jobLocation` /
+    // `jobLocationType` — so a board whose description never names a city (most of them) reached the
+    // model with no location at all and extracted as `unknown`, which the criteria check then treats
+    // as on-site. Reddit #7944159 published `addressLocality: "Remote - United States"` in JSON-LD
+    // while the promoted description said nothing; the job read as not-remote.
+    //
+    // Emitted whether or not JSON-LD was promoted: it is authoritative, structured, and cheap.
+    for entry in structuredLocationLines(structuredData) {
+        // Judge duplication on the VALUE, not the label we add: the body states "Remote - United
+        // States" as prose, never "Location: Remote - United States", so matching the labelled form
+        // never fires and the line is appended a second time.
+        guard !parts.joined(separator: "\n").localizedCaseInsensitiveContains(entry.value) else { continue }
+        parts.append("\(entry.label): \(entry.value)")
+    }
     // When JSON-LD wasn't promoted to primary, still append it — it often carries salary bands or a
     // remote flag missing from the page text — unless that content is already present.
     if jsonLdDesc.count < jsonLdMinChars, !jsonLdDesc.isEmpty, !isContained(jsonLdDesc, in: primary) {
@@ -536,4 +551,56 @@ func normalizeWhitespace(_ rawValue: String) -> String {
     // Collapse 3+ consecutive newlines to 2
     let normalized = joined.replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
     return normalized.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+
+// MARK: - Location recovery from structured data
+
+/// Location statements taken from schema.org `JobPosting` fields.
+///
+/// `extractJsonLdDescription` already surfaces `jobLocationType` (TELECOMMUTE) and the pay band, but
+/// never `jobLocation` — so a posting whose prose description doesn't name a city reached the model
+/// with no location at all and extracted as `unknown`, which the criteria check reads as on-site.
+/// Reddit #7944159 published `addressLocality: "Remote - United States"` in JSON-LD, said nothing
+/// about location in the description, and duly scored as a non-remote job.
+func structuredLocationLines(
+    _ structuredData: [[String: Any]]
+) -> [(label: String, value: String)] {
+    var lines: [(label: String, value: String)] = []
+    var seen = Set<String>()
+
+    func add(_ label: String, _ value: String) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, seen.insert(trimmed.lowercased()).inserted else { return }
+        lines.append((label, trimmed))
+    }
+
+    /// `jobLocation` is one object or an array of them (multi-site postings).
+    func places(_ value: Any?) -> [[String: Any]] {
+        if let one = value as? [String: Any] { return [one] }
+        if let many = value as? [[String: Any]] { return many }
+        return []
+    }
+
+    for item in structuredData {
+        guard let posting = findJobPosting(item) else { continue }
+
+        for place in places(posting["jobLocation"]) {
+            guard let address = place["address"] as? [String: Any] else { continue }
+            // Locality, region, country — enough to judge geography without pasting a street address
+            // into the prompt.
+            let fields = ["addressLocality", "addressRegion", "addressCountry"]
+                .compactMap { address[$0] as? String }
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            if !fields.isEmpty { add("Location", fields.joined(separator: ", ")) }
+        }
+
+        // Where a remote role may actually be performed — the difference between "Remote" and
+        // "Remote, but only from Portugal", which decides whether it meets the user's criteria.
+        for req in places(posting["applicantLocationRequirements"]) {
+            if let name = req["name"] as? String { add("Remote eligible in", name) }
+        }
+    }
+    return lines
 }

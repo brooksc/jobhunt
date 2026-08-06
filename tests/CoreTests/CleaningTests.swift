@@ -308,3 +308,85 @@ final class CleaningTests: XCTestCase {
 }
 
 // swiftlint:enable line_length
+
+// MARK: - Location recovery from structured data (Reddit #7944159)
+
+extension CleaningTests {
+    private var redditStyleStructuredData: [[String: Any]] {
+        [[
+            "@type": "JobPosting",
+            "title": "Principal Technical Program Manager",
+            "description": String(repeating: "Real posting body that never names a city. ", count: 60),
+            "jobLocation": [
+                "@type": "Place",
+                "address": ["@type": "PostalAddress", "addressLocality": "Remote - United States"]
+            ]
+        ]]
+    }
+
+    /// The bug: schema.org keeps the location in `jobLocation`, the cleaner only read `description`,
+    /// and boards routinely never name the city in prose. The job then extracted with no location,
+    /// which the criteria check treats as on-site.
+    func testJsonLdLocationSurvivesWhenTheDescriptionNeverNamesIt() {
+        let cleaned = cleanDescription(visibleText: "", structuredData: redditStyleStructuredData)
+        XCTAssertTrue(
+            cleaned.contains("Remote - United States"),
+            "the location must reach the model; it is the only remote signal this posting has"
+        )
+    }
+
+    /// Region and country matter when the locality alone is ambiguous.
+    func testFullAddressComponentsAreIncluded() {
+        let data: [[String: Any]] = [[
+            "@type": "JobPosting",
+            "description": String(repeating: "Body. ", count: 200),
+            "jobLocation": ["address": [
+                "addressLocality": "Berlin", "addressRegion": "BE", "addressCountry": "DE"
+            ]]
+        ]]
+        let cleaned = cleanDescription(visibleText: "", structuredData: data)
+        XCTAssertTrue(cleaned.contains("Berlin"))
+        XCTAssertTrue(cleaned.contains("DE"))
+    }
+
+    /// A remote role restricted to one country is not the same as a remote role — that distinction
+    /// decides whether it meets the user's location criteria.
+    func testApplicantLocationRequirementsAreSurfaced() {
+        let data: [[String: Any]] = [[
+            "@type": "JobPosting",
+            "description": String(repeating: "Body. ", count: 200),
+            "jobLocationType": "TELECOMMUTE",
+            "applicantLocationRequirements": ["@type": "Country", "name": "Portugal"]
+        ]]
+        let cleaned = cleanDescription(visibleText: "", structuredData: data)
+        XCTAssertTrue(cleaned.contains("Portugal"), "remote-but-only-from-X must not read as plain remote")
+    }
+
+    /// Multi-site postings list several places; all of them are relevant to a geography check.
+    func testMultipleJobLocationsAreAllKept() {
+        let data: [[String: Any]] = [[
+            "@type": "JobPosting",
+            "description": String(repeating: "Body. ", count: 200),
+            "jobLocation": [
+                ["address": ["addressLocality": "San Francisco", "addressRegion": "CA"]],
+                ["address": ["addressLocality": "New York", "addressRegion": "NY"]]
+            ]
+        ]]
+        let cleaned = cleanDescription(visibleText: "", structuredData: data)
+        XCTAssertTrue(cleaned.contains("San Francisco"))
+        XCTAssertTrue(cleaned.contains("New York"))
+    }
+
+    /// Don't paste the location in twice when the body already states it — noise in the prompt costs
+    /// tokens and dilutes the signal.
+    func testLocationIsNotDuplicatedWhenAlreadyPresent() {
+        let data: [[String: Any]] = [[
+            "@type": "JobPosting",
+            "description": String(repeating: "This role is based in Remote - United States. ", count: 40),
+            "jobLocation": ["address": ["addressLocality": "Remote - United States"]]
+        ]]
+        let cleaned = cleanDescription(visibleText: "", structuredData: data)
+        let occurrences = cleaned.components(separatedBy: "Remote - United States").count - 1
+        XCTAssertEqual(occurrences, 40, "no extra copy appended when the body already says it")
+    }
+}

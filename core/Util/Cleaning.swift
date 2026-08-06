@@ -553,7 +553,6 @@ func normalizeWhitespace(_ rawValue: String) -> String {
     return normalized.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
-
 // MARK: - Location recovery from structured data
 
 /// Location statements taken from schema.org `JobPosting` fields.

@@ -47,17 +47,21 @@
     <p class="lede">JobHunt asks you to bring your own model, which is a real question with a real cost attached. We tested some so you don't have to. If you want to be told what to pick, read the next paragraph and stop.</p>
 
     <div class="rec">
-      <div class="label">Recommended — under review</div>
-      <div class="model">DeepSeek V4 Flash, via OpenRouter</div>
-      <p>Cheapest of anything we tested, and it passed our judgement benchmark. Scoring <strong>100 job postings costs about 9¢</strong> — a whole job search runs to less than a cup of coffee.</p>
-      <p><strong>Being re-evaluated (August 2026).</strong> We have since measured that this model returns <em>different verdicts for identical input</em> — re-scoring the same job can move it by 10–15 points. See <a href="#stability">consistency</a> below. DeepSeek has also announced price rises. We would rather tell you this than leave a recommendation standing that we no longer fully trust.</p>
+      <div class="label">Recommended</div>
+      <div class="model">Ministral 14B, via OpenRouter</div>
+      <p>It gives the <strong>same answer twice</strong>, passes both of our accuracy suites over repeated
+      runs, and costs <strong>about 12¢ per 100 job postings</strong>. Flat $0.20 per million tokens in
+      either direction, so the bill doesn't move around either.</p>
+      <p class="note">Changed in August 2026. We previously recommended DeepSeek V4 Flash on a cheaper
+      headline price. Then we measured consistency and found it returns different verdicts for identical
+      input — enough to move a score 10–16 points on a re-run. It has also announced price rises.</p>
     </div>
 
     <h3>Setting it up</h3>
     <ol>
       <li>Create an account at <a href="https://openrouter.ai" target="_blank" rel="noopener">openrouter.ai</a> and add a few dollars of credit.</li>
       <li>Create an API key and copy it.</li>
-      <li>In JobHunt: <strong>Settings → AI</strong>, set <strong>Provider</strong> to <strong>OpenRouter</strong>, paste the key, click <strong>Fetch Models</strong>, and choose <code>deepseek/deepseek-v4-flash</code>.</li>
+      <li>In JobHunt: <strong>Settings → AI</strong>, set <strong>Provider</strong> to <strong>OpenRouter</strong>, paste the key, click <strong>Fetch Models</strong>, and choose <code>mistralai/ministral-14b-2512</code>.</li>
       <li>JobHunt will ask you to confirm before it sends anything to a cloud provider. That prompt is deliberate — see <a href="#privacy">below</a>.</li>
     </ol>
     <p>You can change this later at any time, and changing it doesn't rescore the jobs you already have unless you ask it to. It's a low-stakes decision.</p>
@@ -67,26 +71,30 @@
     <p>The honest trade-off: local models are slower, and on consumer hardware they are generally less reliable at the structured extraction JobHunt asks for — a malformed response means a job fails to extract and gets retried. <strong>We have not benchmarked local models</strong>, so we can't tell you how much accuracy you give up. If privacy is the priority, this is the option; if accuracy is, it isn't.</p>
 
     <h2 id="tested">What we tested</h2>
-    <p>Our benchmark is a set of fit-scoring judgements built from real failures we hit while using JobHunt — cases where a model credited experience the résumé didn't support, or penalised a requirement no candidate could fail. A model passes a case when its verdict matches ours.</p>
+    <p>Two things, and both matter. <strong>Accuracy</strong>: fixtures built from real failures we hit —
+    a model crediting experience the résumé didn't support, or penalising a requirement no candidate could
+    fail. <strong>Consistency</strong>: whether the same request twice gives the same answer. Every result
+    below is from repeated runs, not a single pass.</p>
     <table>
-      <thead><tr><th>Model</th><th class="num">Score</th><th>What we saw</th></tr></thead>
+      <thead><tr><th>Model</th><th class="num">Accuracy</th><th class="num">Consistency</th><th class="num">100 jobs</th></tr></thead>
       <tbody>
-        <tr>
-          <td>DeepSeek V4 Flash</td>
-          <td class="num">7 / 7</td>
-          <td>Passed our fit-judgement fixtures. <strong>But see consistency below</strong> — it does not return the same verdict twice, so a single pass is weaker evidence than we first treated it as.</td>
-        </tr>
-        <tr>
-          <td>Gemini 3.1 Flash Lite</td>
-          <td class="num">5 / 7</td>
-          <td>Over-credited adjacent experience. More importantly it was <strong>sensitive to prompt changes</strong> — adding one instruction to the scoring prompt made a previously-correct job go from a fair 60 back to an inflated 96. A model that moves when you aren't looking is expensive in a different way.</td>
-        </tr>
+        <tr><td>Ministral 14B</td><td class="num">passed both</td><td class="num">2 of 15 changed</td><td class="num">$0.12</td></tr>
+        <tr><td>Claude Haiku 4.5</td><td class="num">passed both</td><td class="num"><strong>0 of 15</strong></td><td class="num">$0.78</td></tr>
+        <tr><td>DeepSeek V4 Flash</td><td class="num">passed both</td><td class="num">7 of 15 changed</td><td class="num">$0.09*</td></tr>
+        <tr><td>Gemini 3.5 Flash Lite</td><td class="num">not re-run</td><td class="num">5 of 15 changed</td><td class="num">$0.28</td></tr>
+        <tr><td>Phi-4</td><td class="num">not re-run</td><td class="num">3 of 15 changed</td><td class="num">$0.09</td></tr>
+        <tr><td>Claude Sonnet 5</td><td class="num">not re-run</td><td class="num">6 of 15 changed</td><td class="num">$1.55</td></tr>
       </tbody>
     </table>
-    <p class="note">Only these two have been through the benchmark. Other models are listed below for cost comparison, but we have not tested them and are not making claims about their accuracy.</p>
+    <p class="note">* DeepSeek has announced price rises, so this figure is already out of date.
+    Accuracy is both suites passing over three repeats. Consistency is how many of 15 requirement
+    verdicts changed across byte-identical requests at temperature 0.</p>
+    <p><strong>If you want maximum consistency, use Claude Haiku 4.5.</strong> It never changed a single
+    verdict across eight identical runs — the only model that managed it — at roughly six times the cost.
+    On a 500-posting search that's about $3.90 rather than $0.60, which may well be worth it.</p>
 
     <h2 id="stability">Consistency: does it give the same answer twice?</h2>
-    <p>We didn't originally measure this, and it turned out to matter more than the accuracy score. We sent
+    <p>This turned out to matter more than the accuracy score, and we didn't measure it at first. We sent
     the <em>byte-identical</em> scoring request to each model several times, at temperature 0, and counted how
     often the verdict on a requirement changed between runs.</p>
     <table>

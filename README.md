@@ -19,10 +19,10 @@ Open any posting, click the JobHunt button, and it's captured. The extension sho
 
 ![Capturing a job posting in one click](marketing/demo/capture-a-job.gif)
 
-### It reads the posting and scores it against your résumé
+### It reads the posting and scores it against your resume
 
 Company, salary band and remote status are pulled out automatically. Then every requirement in the
-posting is judged against your résumé separately, with the evidence it used — so you can see *why* a
+posting is judged against your resume separately, with the evidence it used — so you can see *why* a
 job scored what it did, not just the number.
 
 ![The extracted job, scored requirement by requirement](marketing/demo/extracted-and-scored.gif)

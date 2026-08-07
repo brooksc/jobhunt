@@ -167,6 +167,26 @@
     .badge-link img { height: 44px; width: auto; display: block; }
 
     /* CAROUSEL */
+    .demo-wrap {
+      max-width: 1100px;
+      margin: 0 auto 80px;
+      padding: 0 24px;
+      text-align: center;
+    }
+    .demo-frame {
+      border-radius: var(--r);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-hero);
+      overflow: hidden;
+      background: var(--bg-card);
+      line-height: 0;
+    }
+    .demo-frame video { width: 100%; display: block; }
+    .demo-caption {
+      margin-top: 14px;
+      font-size: 14px;
+      color: var(--muted);
+    }
     .carousel-wrap {
       max-width: 1100px;
       margin: 0 auto 80px;
@@ -429,6 +449,26 @@
     </div>
   </div>
 
+  <div class="demo-wrap">
+    <div class="demo-frame">
+      <!-- Silent, 28s, no narration — autoplay+loop reads as a moving screenshot rather than a video
+           the visitor has to commit to. `controls` still lets them scrub, and the poster means no
+           black flash before the first frame decodes. -->
+      <video
+        src="demo/walkthrough-1080p.mp4"
+        poster="demo/walkthrough-poster.jpg"
+        width="1920" height="1080"
+        autoplay muted loop playsinline controls preload="metadata"
+        aria-label="Capturing a job posting in Chrome, JobHunt extracting it, scoring it against a
+                    résumé requirement by requirement, and ranking the whole list by fit">
+      </video>
+    </div>
+    <p class="demo-caption">
+      Recorded from the app against a real posting. Extraction takes about a minute — the video cuts
+      that wait and says so.
+    </p>
+  </div>
+
   <hr class="divider" />
 
   <section class="section" id="how-it-works">
@@ -593,5 +633,16 @@
 
     startAuto();
   </script>
+<script>
+  // Honour prefers-reduced-motion: the walkthrough is decorative, so pause it and leave the controls.
+  (function () {
+    var v = document.querySelector('.demo-frame video');
+    if (!v) return;
+    var q = window.matchMedia('(prefers-reduced-motion: reduce)');
+    function apply() { if (q.matches) { v.removeAttribute('loop'); v.pause(); } }
+    apply();
+    q.addEventListener('change', apply);
+  })();
+</script>
 </body>
 </html>

@@ -27,9 +27,14 @@ job scored what it did, not just the number.
 
 ![The extracted job, scored requirement by requirement](marketing/demo/extracted-and-scored.gif)
 
+### Then the whole list ranks itself
+
+Sort by fit and the postings you should spend an evening on come to the top.
+
 **[Watch the 30-second walkthrough](marketing/demo/walkthrough-1080p.mp4)** ([captions](marketing/demo/walkthrough.vtt))
-— recorded from the running app against a real job posting. Extraction really does take about a
-minute; the video cuts that wait and says so.
+— capture, extraction, the per-requirement score, and the ranked list. Recorded from the running app
+against a real job posting. Extraction really does take about a minute; the video cuts that wait and
+says so.
 
 There are two ways to install the Mac app:
 

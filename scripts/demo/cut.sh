@@ -65,6 +65,31 @@ for entry in "${CAPTIONS[@]}"; do
   fi
 done
 
+# Sidecar captions, generated from the SAME array that gets burned in.
+#
+# These were hand-written once and then drifted: the published .vtt kept the old timings, said
+# "résumé" after the accents were dropped, and never gained the sort beat — while the README linked to
+# it as if it described the video. Deriving both from CAPTIONS is the only way they stay true.
+#
+# CAPTIONS times are on the JOINED timeline; the published file is sped up, so divide by SPEED.
+python3 - "$OUT" "$SPEED" "${CAPTIONS[@]}" <<'PYCAP'
+import sys, pathlib
+out, speed, entries = pathlib.Path(sys.argv[1]), float(sys.argv[2]), sys.argv[3:]
+def clock(t, sep):
+    h, rem = divmod(t, 3600)
+    m, sec = divmod(rem, 60)
+    return f"{int(h):02d}:{int(m):02d}:{int(sec):02d}{sep}{round((sec - int(sec)) * 1000):03d}"
+srt, vtt = [], ["WEBVTT", ""]
+for i, entry in enumerate(entries, 1):
+    start, end, text = entry.split("|", 2)
+    a, b = float(start) / speed, float(end) / speed
+    srt += [str(i), f"{clock(a, ',')} --> {clock(b, ',')}", text, ""]
+    vtt += [f"{clock(a, '.')} --> {clock(b, '.')}", text, ""]
+(out / "walkthrough.srt").write_text("\n".join(srt))
+(out / "walkthrough.vtt").write_text("\n".join(vtt))
+print(f"walkthrough.srt / .vtt   {len(entries)} cues")
+PYCAP
+
 # shellcheck disable=SC2086
 ffmpeg -hide_banner -loglevel error -y -i "$OUT/.joined.mov" $INPUTS \
   -filter_complex "$FILTER" -map "[v$i]" -c:v libx264 -crf 17 -pix_fmt yuv420p "$OUT/.captioned.mov"

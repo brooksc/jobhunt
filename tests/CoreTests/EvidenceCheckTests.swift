@@ -6,12 +6,14 @@ import XCTest
 /// 74% of those are lifted verbatim from the job's own posting. The cases below are taken from that
 /// corpus rather than invented.
 final class EvidenceCheckTests: XCTestCase {
-    private let resume = "Led the LLM inference migration at Meta. Reduced API review cycle time from 92 to 5 days."
+    // Fabricated. This repo is public and the real résumé never enters it — the corpus figures
+    // these cases come from were measured out-of-band.
+    private let resume = "Led the search ranking migration at Northwind. Cut release lead time from 40 to 3 days."
     private let posting = "You will apply sound business judgment to A/B Testing across LLMs, LRMs and agents."
 
     func testAQuoteFromTheResumeIsSupported() {
         let spans = EvidenceCheck.classify(
-            evidence: "The résumé says 'Led the LLM inference migration at Meta'.",
+            evidence: "The résumé says 'Led the search ranking migration at Northwind'.",
             resumes: [resume], posting: posting
         )
         XCTAssertEqual(spans.map(\.support), [.supported])
@@ -38,8 +40,8 @@ final class EvidenceCheckTests: XCTestCase {
     /// A quote from a superseded résumé is stale, not invented — the user really did write it.
     func testOlderResumesCount() {
         let spans = EvidenceCheck.classify(
-            evidence: "Résumé says 'shipped Zune Marketplace'.",
-            resumes: [resume, "Shipped Zune Marketplace at Microsoft."], posting: posting
+            evidence: "Résumé says 'shipped the Contoso catalogue'.",
+            resumes: [resume, "Shipped the Contoso catalogue at Fabrikam."], posting: posting
         )
         XCTAssertEqual(spans.map(\.support), [.supported])
     }
@@ -53,13 +55,13 @@ final class EvidenceCheckTests: XCTestCase {
     /// An elided quote is the model telling us it abbreviated; a literal lookup would call a truthful
     /// quote fabricated.
     func testElidedQuotesAreSkipped() {
-        XCTAssertTrue(EvidenceCheck.quotedSpans(in: "Résumé says 'Led the LLM ... at Meta'.").isEmpty)
+        XCTAssertTrue(EvidenceCheck.quotedSpans(in: "Résumé says 'Led the search ranking ... at Northwind'.").isEmpty)
     }
 
     /// Typography must not decide the verdict.
     func testCurlyQuotesAndDashesFoldBeforeComparison() {
         let spans = EvidenceCheck.classify(
-            evidence: "It says \u{201C}reduced API review cycle time from 92 to 5 days\u{201D}.",
+            evidence: "It says \u{201C}cut release lead time from 40 to 3 days\u{201D}.",
             resumes: [resume], posting: posting
         )
         XCTAssertEqual(spans.map(\.support), [.supported])
@@ -67,7 +69,7 @@ final class EvidenceCheckTests: XCTestCase {
 
     func testUnsupportedReturnsOnlyTheProblems() {
         let spans = EvidenceCheck.unsupported(
-            evidence: "Has 'Led the LLM inference migration at Meta' and 'sound business judgment'.",
+            evidence: "Has 'Led the search ranking migration at Northwind' and 'sound business judgment'.",
             resumes: [resume], posting: posting
         )
         XCTAssertEqual(spans.count, 1)

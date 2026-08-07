@@ -459,6 +459,21 @@ struct JobsView: View {
                     referralSummary: Self.referralSummary(for: job, attempts: attemptsByJob[job.id] ?? [])
                 )
                 .tag(job.id)
+                // Re-identify the row when extraction fills it in, so List re-measures it.
+                //
+                // List caches a row's height when the row is created. A job is inserted at capture
+                // time with one line — just its title — and measured at 24pt. Extraction then adds
+                // company, location and salary and swaps the placeholder for a 36pt fit ring, but the
+                // cached 24pt stands: the ring and the entire second line render clipped, and stay
+                // clipped until something rebuilds the list (changing the sort does it). That is why
+                // it looked like stale data — the text was in the accessibility tree the whole time,
+                // in a row too short to draw it.
+                //
+                // Nothing INSIDE the row fixes this: a `.frame(height:)` or `minHeight` below the
+                // cached height is simply clipped, and one above it silently re-measures every row and
+                // made the list 8pt taller. Changing the identity is what actually invalidates the one
+                // row that needs it.
+                .id("\(job.id)#\(job.extractionStatus.rawValue)")
                 .contextMenu { jobContextMenu(job) }
                 .accessibilityIdentifier("job.row.\(job.id)")
             }
@@ -1418,6 +1433,15 @@ private struct JobListRow: View {
             Spacer(minLength: 0)
             rightMeta
         }
+        // A height floor, because List does NOT re-measure a row whose content grows in place.
+        //
+        // A freshly captured job has one line — just its title — so the row is measured at ~24pt. When
+        // extraction fills in company, location and salary a second line appears, and the fit ring
+        // (36pt on its own) replaces the placeholder, but the row keeps the height it was first given:
+        // the ring and the whole second line render clipped, and stay clipped until something rebuilds
+        // the list. Changing the sort fixes it, which is what made this look like stale data rather
+        // than a layout bug — the text was in the accessibility tree the entire time, at 24pt.
+        //
         .padding(.vertical, 3)
         .contentShape(Rectangle())
     }

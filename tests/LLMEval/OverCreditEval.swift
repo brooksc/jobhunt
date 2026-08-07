@@ -108,13 +108,17 @@ final class OverCreditEval: XCTestCase {
                         + "the rule needs to be stronger. Evidence: \(evidence)"
                 )
             }
-            // The evidence string must not claim the named thing the résumé never mentions.
-            if evidence.localizedCaseInsensitiveContains(testCase.namedThing),
-               !testCase.resume.localizedCaseInsensitiveContains(testCase.namedThing) {
-                failures.append(
-                    "\(testCase.name): evidence asserts \(testCase.namedThing), which the résumé never states"
-                )
-            }
+            // There used to be a second check here: fail if the evidence string mentions the named
+            // thing while the résumé doesn't. It produced FALSE FAILURES on correct answers, because
+            // the right answer names the thing in order to deny it —
+            //
+            //   status=partial  "…but resume does not explicitly state CUDA-specific expertise."
+            //
+            // That is precisely the judgement the rule is meant to produce, and the check flagged it.
+            // It failed deepseek, Haiku and Ministral identically, which read as "no model handles
+            // over-crediting" when in fact all three handled it correctly. A substring match cannot
+            // tell an assertion from a denial, and negation detection is not worth the fragility, so
+            // `status` — the field that actually drives the score — is the assertion.
         }
 
         if !failures.isEmpty {

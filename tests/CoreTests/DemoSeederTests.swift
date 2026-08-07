@@ -185,14 +185,32 @@ final class DemoSeederTests: XCTestCase {
         }
     }
 
-    func testSeedDemoJobsPendingExtraction() async throws {
+    /// Every seeded job that is a real posting carries a fit score.
+    ///
+    /// Replaces an assertion that some jobs sit at `.pending` extraction. That state existed to show
+    /// variety, but on screen it reads as broken rather than as pending: a list peppered with
+    /// score-less rows makes the scoring look failed and makes sort-and-filter-by-fit look like they
+    /// don't work. The walkthrough demonstrates the pending state properly by capturing a job live
+    /// and letting it extract on camera, which is the honest way to show it.
+    ///
+    /// The single exception is the accidentally-captured TechCrunch article, which has no score
+    /// because it isn't a job — the point it exists to make.
+    func testEveryRealPostingIsScored() async throws {
         let (container, store) = try makeStore()
         try await DemoSeeder.seedDemo(into: store)
 
         let ctx = ModelContext(container)
         let jobs = try ctx.fetch(FetchDescriptor<Job>())
-        let pending = jobs.filter { $0.extractionStatus == .pending }
-        XCTAssertGreaterThan(pending.count, 0, "Must have some pending-extraction jobs")
+        let unscored = jobs.filter { $0.fitScore == nil }
+        XCTAssertEqual(
+            unscored.count, 1,
+            "Only the non-job page may be unscored; found: \(unscored.map { $0.title ?? "untitled" })"
+        )
+        XCTAssertNil(unscored.first?.title, "The unscored row must be the non-job capture")
+        XCTAssertTrue(
+            jobs.allSatisfy { $0.extractionStatus != .pending },
+            "A permanently-pending row reads as a stuck queue in screenshots"
+        )
     }
 
     func testSeedDemoHasDuplicateJob() async throws {

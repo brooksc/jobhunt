@@ -249,7 +249,7 @@ extension BackgroundStore {
                 requirements: "7+ years program management in a high-scale engineering environment.",
                 skills: ["streaming infrastructure", "program management", "leadership communication"],
                 capturedAt: daysAgo(4), extractedAt: daysAgo(4),
-                extractionStatus: .succeeded, fitScore: nil, fitStatus: .none,
+                extractionStatus: .succeeded, fitScore: 74, fitStatus: .succeeded,
                 note: nil,
                 duplicateOfJobID: nil
             ),
@@ -266,7 +266,7 @@ extension BackgroundStore {
                 requirements: "5+ years TPM. Fintech or high-regulation environment experience preferred.",
                 skills: ["fintech", "crypto", "platform", "program management"],
                 capturedAt: daysAgo(3), extractedAt: daysAgo(3),
-                extractionStatus: .succeeded, fitScore: nil, fitStatus: .none,
+                extractionStatus: .succeeded, fitScore: 68, fitStatus: .succeeded,
                 note: nil,
                 duplicateOfJobID: nil
             ),
@@ -282,8 +282,8 @@ extension BackgroundStore {
                 summary: "Drive technical programs for AWS reliability engineering, managing Tier-1 service health initiatives across multiple S-team goals.",
                 requirements: "8+ years engineering or TPM. AWS experience strongly preferred.",
                 skills: ["AWS", "reliability engineering", "S-team programs", "technical leadership"],
-                capturedAt: daysAgo(2), extractedAt: nil,
-                extractionStatus: .pending, fitScore: nil, fitStatus: .none,
+                capturedAt: daysAgo(2), extractedAt: daysAgo(2),
+                extractionStatus: .succeeded, fitScore: 81, fitStatus: .succeeded,
                 note: nil,
                 duplicateOfJobID: nil,
                 dupGroupHash: "demo_dhash_amazon"
@@ -300,8 +300,8 @@ extension BackgroundStore {
                 summary: "Manage CRM platform programs across Salesforce Customer 360. Partner with product and engineering to deliver quarterly milestones.",
                 requirements: "6+ years TPM. Enterprise SaaS background. Experience with Agile at scale.",
                 skills: ["CRM", "enterprise SaaS", "agile at scale", "program management"],
-                capturedAt: daysAgo(1), extractedAt: nil,
-                extractionStatus: .pending, fitScore: nil, fitStatus: .none,
+                capturedAt: daysAgo(1), extractedAt: daysAgo(1),
+                extractionStatus: .succeeded, fitScore: 65, fitStatus: .succeeded,
                 note: nil,
                 duplicateOfJobID: nil
             ),
@@ -370,12 +370,17 @@ extension BackgroundStore {
                 requirements: "8+ years engineering or TPM.",
                 skills: ["AWS", "reliability engineering"],
                 capturedAt: daysAgo(1), extractedAt: daysAgo(1),
-                extractionStatus: .succeeded, fitScore: nil, fitStatus: .none,
+                extractionStatus: .succeeded, fitScore: 77, fitStatus: .succeeded,
                 note: nil,
                 duplicateOfJobID: "job_009",
                 dupGroupHash: "demo_dhash_amazon"
             ),
-            // Accidentally captured non-job page
+            // Accidentally captured non-job page — the ONLY seeded row without a fit score, and
+            // deliberately so. Every real posting is scored: a demo list peppered with unscored rows
+            // reads as "the scoring is broken" rather than "these haven't been scored yet", and it
+            // makes sorting and filtering by fit look like they don't work. This one stays unscored
+            // because it genuinely isn't a job, which is the point it exists to make.
+            // Sorting by fit puts it last, so it's out of frame in the walkthrough.
             SeedJob(
                 capId: "cap_015", jobId: "job_015", jobNum: 15,
                 url: "https://techcrunch.com/2024/11/the-state-of-ai-hiring",

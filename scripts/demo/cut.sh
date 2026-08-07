@@ -15,8 +15,8 @@ mkdir -p "$OUT/cap"
 
 # Offsets on the MASTER timeline, from the driver's SCENE_LOG plus the 1.5s capture head start.
 A_START=${A_START:-2.0}; A_END=${A_END:-15.5}    # posting -> capture -> preflight -> job arrives
-B_START=${B_START:-95.0}; B_END=${B_END:-113.0}  # extracted + scored -> fit breakdown
-SPEED=${SPEED:-1.15}
+B_START=${B_START:-95.0}; B_END=${B_END:-116.0}  # extracted + scored -> fit breakdown -> sort by fit
+SPEED=${SPEED:-1.20}
 FONT="${CAPTION_FONT:-/System/Library/Fonts/HelveticaNeue.ttc}"
 
 ffmpeg -hide_banner -loglevel error -y -ss "$A_START" -to "$A_END" -i "$SRC" -c:v libx264 -crf 16 -an "$OUT/.a.mov"
@@ -36,7 +36,8 @@ CAPTIONS=(
   "9.2|13.2|The job lands in JobHunt straight away"
   "13.7|17.5|about a minute later…"
   "18.0|24.0|Everything filled in: company, remote status, salary band"
-  "24.5|31.0|And scored against your résumé, requirement by requirement"
+  "24.5|29.5|And scored against your resume, requirement by requirement"
+  "30.0|34.3|Sort by fit — your whole list ranks itself"
 )
 
 i=0; FILTER=""; INPUTS=""
@@ -85,7 +86,7 @@ gif() { # gif <name> <start> <dur> [width]  — offsets on the CAPTIONED timelin
 }
 
 gif capture-a-job   0.4 13.0
-gif extracted-and-scored "$A_LEN" 17.0
+gif extracted-and-scored "$A_LEN" 20.0
 
 rm -f "$OUT"/.a.mov "$OUT"/.b.mov "$OUT"/.joined.mov "$OUT"/.captioned.mov "$OUT"/.concat.txt
 rm -rf "$OUT/cap"

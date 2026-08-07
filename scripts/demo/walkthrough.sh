@@ -42,8 +42,32 @@ tell application "System Events" to tell process "Jobhunt"
   end repeat
 end tell
 EOF
-sleep 7                        # detail pane: title, company, remote, salary
+sleep 6                        # detail pane: title, company, remote, salary
 s 06-fit
 osascript -e 'tell application "System Events" to tell process "Jobhunt" to click radio button 2 of radio group 1 of group 3 of splitter group 1 of group 1 of window 1' >/dev/null 2>&1
-sleep 9                        # per-requirement breakdown
+sleep 7                        # per-requirement breakdown
+s 07-sort
+# Rank the whole list by fit. Toolbar group 5 is the sort control; the toolbar's order is defined in
+# code rather than by data, so the index is stable in the way a list row's position is not. Escape on
+# no match, or a stranded open menu ends up in the footage.
+osascript <<'EOF' >/dev/null 2>&1
+tell application "System Events" to tell process "Jobhunt"
+  set mb to menu button 1 of group 5 of toolbar 1 of window 1
+  click mb
+  delay 1.2
+  set picked to false
+  try
+    repeat with i from 1 to (count of menu items of menu 1 of mb)
+      set mi to menu item i of menu 1 of mb
+      if (name of mi) contains "Fit" then
+        click mi
+        set picked to true
+        exit repeat
+      end if
+    end repeat
+  end try
+  if not picked then key code 53
+end tell
+EOF
+sleep 7                        # the list reorders, best matches to the top
 s end

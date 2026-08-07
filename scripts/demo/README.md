@@ -19,7 +19,7 @@ SCENE_LOG=/tmp/scenes.txt ./scripts/demo/walkthrough.sh
 # 3. record (single shell invocation — see "dead air" below)
 ./scripts/demo/reset.sh && ./scripts/demo/configure.sh OpenRouter mistralai/ministral-14b-2512
 { ( sleep 1.5; SCENE_LOG=/tmp/scenes.txt ./scripts/demo/walkthrough.sh ) & } \
-  && screencapture -v -V 120 -R 55,100,1600,900 /tmp/master.mov
+  && screencapture -v -V 130 -R 55,100,1600,900 /tmp/master.mov
 
 # 4. cut out the real extraction wait, caption, and encode
 ./scripts/demo/cut.sh /tmp/master.mov marketing/demo
@@ -100,7 +100,11 @@ See `marketing/help/which-model.html`.
 ## App Store preview constraints
 
 1920x1080, **15–30 seconds**, real app footage. `cut.sh` asserts the duration and fails rather than
-letting App Store Connect reject it. The master runs ~120s (most of it the genuine extraction wait);
-two segments are kept and sped to 1.15x → 27.4s.
+letting App Store Connect reject it. The master runs ~130s (most of it the genuine extraction wait);
+two segments are kept and sped to 1.20x.
+
+Adding a beat costs budget twice — once in the master and again against the 30s ceiling. The sort
+scene took it from 27.2s to the high 20s; anything further needs a dwell trimmed, not a faster
+`SPEED`, which is already at the point where the UI reads as hurried.
 
 `drive.sh` / `captions.sh` / `encode.sh` remain for the older fit-correction storyboard.

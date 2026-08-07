@@ -1580,10 +1580,10 @@ private struct ResumeScoreCard: View {
         let tail = quotes.count > 2 ? "\(quoted) and \(quotes.count - 2) more" : quoted
         switch support {
         case .liftedFromPosting:
-            return "Quoted from the job posting, not your résumé: \(tail). "
+            return "Quoted from the job posting, not your resume: \(tail). "
                 + "Worth checking — and worth adding to your résumé if you do have it."
         case .invented:
-            return "Couldn't find this in your résumé: \(tail). "
+            return "Couldn't find this in your resume: \(tail). "
                 + "Often just a paraphrase — but worth a look."
         case .supported:
             return ""

@@ -75,7 +75,7 @@ enum LabelledEval {
         let scores: [Int]
     }
 
-    static func run(directory: String) throws {
+    static func run(directory: String, resumePath: String?) throws {
         let jobs = try LabelledJob.load(directory: directory)
         guard !jobs.isEmpty else {
             print("No labelled jobs in \(directory)")
@@ -152,6 +152,10 @@ enum LabelledEval {
         print(String(format: "\nfragments: %d of %d assessments (%.1f%%)",
                      fragments, total, 100 * Double(fragments) / Double(max(total, 1))))
 
+        if let resumePath {
+            try reportEvidence(jobs: jobs, directory: directory, resumePath: resumePath)
+        }
+
         print("\njob   title                                     truth  before  after")
         for (i, job) in jobs.enumerated() {
             let title = String(job.title.prefix(40))
@@ -159,5 +163,43 @@ enum LabelledEval {
                          job.jobNumber, (title as NSString).utf8String!,
                          target[i], results[1].scores[i], results[2].scores[i]))
         }
+    }
+
+    /// Does the Swift port of the fabricated-evidence check reproduce the Python measurement?
+    ///
+    /// The corpus pass measured 32% of quoted spans unsupported, 74% of those lifted from the
+    /// posting; the résumé agent independently measured 35% on these same 20 jobs. If this column
+    /// disagrees, the shipped check is not the thing that was measured.
+    static func reportEvidence(jobs: [LabelledJob], directory: String, resumePath: String) throws {
+        let resume = try String(contentsOfFile: resumePath, encoding: .utf8)
+        var quoted = 0, lifted = 0, invented = 0, onMet = 0
+        for job in jobs {
+            let posting = postingText(directory: directory, jobNumber: job.jobNumber)
+            for a in job.modelAssessments {
+                let evidence = (a["evidence"] as? String) ?? ""
+                quoted += EvidenceCheck.quotedSpans(in: evidence).count
+                for span in EvidenceCheck.unsupported(
+                    evidence: evidence, resumes: [resume], posting: posting
+                ) {
+                    if span.support == .liftedFromPosting { lifted += 1 } else { invented += 1 }
+                    if (a["status"] as? String) == "met" { onMet += 1 }
+                }
+            }
+        }
+        let bad = lifted + invented
+        print(String(
+            format: "\nevidence: %d quoted spans, %d unsupported (%.0f%%) — %d lifted from the posting "
+                + "(%.0f%% of those), %d invented; %d sit on a `met`",
+            quoted, bad, 100 * Double(bad) / Double(max(quoted, 1)),
+            lifted, 100 * Double(lifted) / Double(max(bad, 1)), invented, onMet
+        ))
+    }
+
+    private static func postingText(directory: String, jobNumber: Int) -> String {
+        let url = URL(fileURLWithPath: directory).appendingPathComponent("job-\(jobNumber).json")
+        guard let data = try? Data(contentsOf: url),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return "" }
+        return (root["job_description"] as? String) ?? ""
     }
 }

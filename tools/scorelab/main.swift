@@ -31,7 +31,7 @@ func flag(_ name: String) -> String? {
 // Ground truth lives outside the repo on purpose: the labels quote résumé facts, and this repo is
 // public.
 if let labelled = flag("--labelled") {
-    try LabelledEval.run(directory: labelled)
+    try LabelledEval.run(directory: labelled, resumePath: flag("--resume"))
     exit(0)
 }
 

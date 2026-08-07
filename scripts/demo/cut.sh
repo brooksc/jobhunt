@@ -94,7 +94,10 @@ gif() { # gif <name> <start> <dur> [width]  — offsets on the CAPTIONED timelin
 }
 
 gif capture-a-job   0.4 13.0
-gif extracted-and-scored "$A_LEN" 20.0
+# Skip the first ~2.6s of segment B. The row isn't selected until scene 05 fires, so B opens on an
+# empty "No Job Selected" pane — fine mid-video where the wait is being narrated, but this GIF is
+# shown standalone in the README and loops, so it was starting AND ending on nothing.
+gif extracted-and-scored "$(python3 -c "print(f'{$A_LEN + 2.6:.2f}')")" 17.4
 
 rm -f "$OUT"/.cfr.mov "$OUT"/.a.mov "$OUT"/.b.mov "$OUT"/.joined.mov "$OUT"/.captioned.mov "$OUT"/.concat.txt
 rm -rf "$OUT/cap"

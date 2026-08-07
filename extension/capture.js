@@ -245,12 +245,31 @@
     const structuredData = Array.isArray(payload.structured_data) ? payload.structured_data : [];
     const structuredText = extractStructuredDescriptions(structuredData);
     const text = `${payload.page_title || ""}\n${visibleText}\n${selectedText}\n${structuredText}`;
+    // Everything except the page title, for matchers that a title would mislead.
+    const body = `${visibleText}\n${selectedText}\n${structuredText}`;
 
     const titleVal = (payload.page_title || "").trim() || null;
 
-    const locMatch = text.match(
-      /\b(Remote(?:\s*[-–]\s*(?:United States|USA|US|Canada))?|Hybrid|Onsite|On-site|Hiring Remotely|[A-Z][a-zA-Z\s]{1,20},\s*(?:[A-Z]{2}|[A-Z][a-z]{3,}))\b/
+    // Location is matched in two passes, and the "City, Region" shape NEVER sees the page title.
+    //
+    // A single pass over `text` used to do both, and `text` starts with the page title (above). The
+    // city alternative is loose enough to match a job TITLE — in "…Principal Technical Program
+    // Manager, Developer Productivity…" it reads "Program Manager" as the city and "Developer" as the
+    // region — and a regex returns the EARLIEST match, so a title fragment beat the real
+    // "Remote - United States" further down the page. That shipped: the demo capture shows
+    // Location: "Program Manager, Developer".
+    //
+    // The region half now has to be a 2-letter state/province code or a spelled-out country, which is
+    // what stops an ordinary capitalised word from passing as a place.
+    const cityMatch = body.match(
+      /\b([A-Z][a-zA-Z.'-]+(?:[ ][A-Z][a-zA-Z.'-]+){0,2},\s*(?:[A-Z]{2}\b|United States|USA|Canada|United Kingdom|Ireland|Germany|France|Netherlands|Spain|Poland|Australia|India|Singapore|Japan|Brazil|Mexico))/
     );
+    const workModeMatch = text.match(
+      /\b(Remote(?:\s*[-–]\s*(?:United States|USA|US|Canada))?|Hybrid|Onsite|On-site|Hiring Remotely)\b/
+    );
+    // A city is more informative than a work mode, and the popup already shows work mode on its own
+    // row — so only fall back to it when the posting names no place.
+    const locMatch = cityMatch || workModeMatch;
     const locationVal = locMatch ? locMatch[1].trim() : null;
 
     const salaryMatch = text.match(

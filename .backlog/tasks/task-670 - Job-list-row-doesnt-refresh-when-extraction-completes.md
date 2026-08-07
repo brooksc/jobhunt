@@ -1,9 +1,10 @@
 ---
 id: TASK-670
-title: Job list row doesn't refresh when extraction completes
-status: To Do
+title: Job list row rendered clipped until the list was rebuilt
+status: Done
 assignee: []
 created_date: '2026-08-07 21:10'
+updated_date: '2026-08-07 21:53'
 labels:
   - bug
   - ui
@@ -43,7 +44,37 @@ The denormalised fields on `Job` (`company`, `location`, `salaryMin`/`salaryMax`
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A newly captured job's list row shows company, location and salary as soon as extraction succeeds, with no list rebuild
-- [ ] #2 The list row and the detail pane never disagree about the same job's extracted fields
+- [x] #1 A newly captured job's list row shows company, location and salary as soon as extraction succeeds, with no list rebuild
+- [x] #2 The list row and the detail pane never disagree about the same job's extracted fields
 - [ ] #3 Covered by a test that asserts the row's projection updates when the underlying Job's extracted fields change
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed in `dbdebd7d`. **The premise of this task was wrong** — it was filed as a data-refresh bug and it is a layout bug.
+
+## What it actually was
+
+`List` caches a row's height when the row is created. A job is inserted at capture time with one line — just its title — and measured at 24pt. Extraction then adds company, location and salary and swaps the placeholder for a 36pt fit ring, but the cached 24pt stands, so the ring and the whole second line render clipped. Rebuilding the list re-measures the row, which is why changing the sort "fixed" it and why it looked like stale data.
+
+## How the misdiagnosis was caught
+
+Two measurements, both cheap:
+
+1. An MCP `update_job` against a visible row updated it **instantly** — so `@Query` propagation from the background `@ModelActor` works fine, and the data theory was dead.
+2. Accessibility geometry: `row1` height **24pt**, `row2` height **50pt**, while row 1's company/location/salary were present in the accessibility tree the entire time. Text present, row too short to draw it.
+
+## The fix, and two that don't work
+
+Re-identify the row on `extractionStatus` (`.id("\(job.id)#\(job.extractionStatus.rawValue)")`) so `List` invalidates exactly the one row that needs re-measuring. Verified on a real capture: row1 24pt → 50pt, other rows unchanged at 50pt.
+
+Nothing **inside** the row works, and both were tried:
+
+- `.frame(minHeight: 36)` and `.frame(height: 36)` — clipped by the cached height; row stayed at 24pt.
+- `.frame(minHeight: 44)` — did clear the clipping, but only by re-measuring *every* row, making the whole list 8pt taller (50 → 58). That was luck, not a fix.
+
+## Not done
+
+Acceptance criterion 3 (a regression test) is **not** met. `JobsView` lives in the app target, which has no unit-test target, and row height is a SwiftUI layout property that a unit test wouldn't observe anyway. The verification was manual, via accessibility geometry during a live capture. Same coverage gap as `JobsSortLogic` — worth fixing once by compiling those files into CoreTests the way the migrator sources are.
+<!-- SECTION:FINAL_SUMMARY:END -->

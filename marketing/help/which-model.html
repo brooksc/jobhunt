@@ -47,9 +47,10 @@
     <p class="lede">JobHunt asks you to bring your own model, which is a real question with a real cost attached. We tested some so you don't have to. If you want to be told what to pick, read the next paragraph and stop.</p>
 
     <div class="rec">
-      <div class="label">Recommended</div>
+      <div class="label">Recommended — under review</div>
       <div class="model">DeepSeek V4 Flash, via OpenRouter</div>
-      <p>Best accuracy of anything we tested, and the cheapest. Scoring <strong>100 job postings costs about 9¢</strong> — a whole job search runs to less than a cup of coffee.</p>
+      <p>Cheapest of anything we tested, and it passed our judgement benchmark. Scoring <strong>100 job postings costs about 9¢</strong> — a whole job search runs to less than a cup of coffee.</p>
+      <p><strong>Being re-evaluated (August 2026).</strong> We have since measured that this model returns <em>different verdicts for identical input</em> — re-scoring the same job can move it by 10–15 points. See <a href="#stability">consistency</a> below. DeepSeek has also announced price rises. We would rather tell you this than leave a recommendation standing that we no longer fully trust.</p>
     </div>
 
     <h3>Setting it up</h3>
@@ -73,7 +74,7 @@
         <tr>
           <td>DeepSeek V4 Flash</td>
           <td class="num">7 / 7</td>
-          <td>Passed everything. Held up when the prompt changed, which is the property that mattered most.</td>
+          <td>Passed our fit-judgement fixtures. <strong>But see consistency below</strong> — it does not return the same verdict twice, so a single pass is weaker evidence than we first treated it as.</td>
         </tr>
         <tr>
           <td>Gemini 3.1 Flash Lite</td>
@@ -83,6 +84,27 @@
       </tbody>
     </table>
     <p class="note">Only these two have been through the benchmark. Other models are listed below for cost comparison, but we have not tested them and are not making claims about their accuracy.</p>
+
+    <h2 id="stability">Consistency: does it give the same answer twice?</h2>
+    <p>We didn't originally measure this, and it turned out to matter more than the accuracy score. We sent
+    the <em>byte-identical</em> scoring request to each model several times, at temperature 0, and counted how
+    often the verdict on a requirement changed between runs.</p>
+    <table>
+      <thead><tr><th>Model</th><th class="num">Verdicts that changed</th><th class="num">Score swing</th></tr></thead>
+      <tbody>
+        <tr><td>Claude Haiku 4.5</td><td class="num">0 of 15</td><td class="num">0 points</td></tr>
+        <tr><td>Ministral 14B</td><td class="num">2 of 15</td><td class="num">~2 points</td></tr>
+        <tr><td>Phi-4</td><td class="num">3 of 15</td><td class="num">~5 points</td></tr>
+        <tr><td>Gemini 3.5 Flash Lite</td><td class="num">5 of 15</td><td class="num">~10 points</td></tr>
+        <tr><td>DeepSeek V4 Flash</td><td class="num">7 of 15</td><td class="num">~10–16 points</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Temperature 0 does not make hosted inference deterministic. Batched serving means the
+    result can depend on what else was in the batch, and aggregators may route the same request to a different
+    host each time — we saw one model served by five different providers across eight calls. Pinning the
+    provider reduced this but did not remove it.</p>
+    <p>An unstable model still ranks roughly correctly, but a job near your minimum-score threshold can move
+    across it on a re-score. If that matters to you, prefer a model higher up this table.</p>
 
     <h2 id="cost">What it costs</h2>
     <p>JobHunt sends a job description for extraction, then the description plus your résumé for scoring. Measured across a real corpus that works out to roughly <strong>5,500 input and 450 output tokens per job</strong>. At current OpenRouter prices:</p>
@@ -108,7 +130,7 @@
     <p>With a cloud provider, JobHunt sends the job description text for extraction, and the description plus your <strong>résumé text</strong> for fit scoring. That's your employment history going to a third party, which is why JobHunt asks for explicit consent the first time and won't send anything before you agree. With a local model, none of this leaves your Mac. See the <a href="/privacy">Privacy Policy</a>.</p>
 
     <div class="stamp">
-      <p>Benchmarked against JobHunt 1.3.0 in August 2026, with prices taken from OpenRouter at that time. Model lineups and prices move quickly — if this page looks out of date, it probably is. <a href="https://github.com/brooksc/jobhunt/issues">Tell us</a> and we'll re-run it.</p>
+      <p>Benchmarked against JobHunt 1.3.0 in August 2026, with prices taken from OpenRouter at that time. Consistency measured separately in August 2026; the accuracy numbers above are single-sample and, given what we found about consistency, are being re-run across repeats. Model lineups and prices move quickly — if this page looks out of date, it probably is. <a href="https://github.com/brooksc/jobhunt/issues">Tell us</a> and we'll re-run it.</p>
     </div>
   </div>
   <footer>

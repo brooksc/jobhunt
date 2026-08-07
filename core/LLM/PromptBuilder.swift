@@ -326,6 +326,16 @@ public struct ExtractedJobContext: Sendable {
         self.skills = skills
         self.applicationInstructions = applicationInstructions
     }
+
+    /// Every piece of posting text the model is shown when scoring fit, as one string.
+    ///
+    /// Used to tell "the model quoted the job description back at me" from "the model made this up".
+    /// It has to be what the model *saw* — checking against the raw captured page would accuse it of
+    /// copying text that was never in its context.
+    public var quotableText: String {
+        ([title, company, seniority, summary, applicationInstructions].compactMap { $0 }
+            + requirements + niceToHaves + skills).joined(separator: "\n")
+    }
 }
 
 // swiftlint:enable line_length function_body_length

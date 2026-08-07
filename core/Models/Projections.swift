@@ -59,6 +59,30 @@ public struct RequirementAssessment: Sendable, Hashable {
     public let kind: String
     public let status: String
     public let evidence: String
+    /// Set when the quoted evidence for this row appears in no résumé the user has had. `nil` is the
+    /// normal case, and also covers every score written before the check existed — absence means
+    /// "not checked", never "checked and clean".
+    public let evidenceSupport: EvidenceCheck.Support?
+    /// The quotes that couldn't be found, so the warning can point at the words rather than asking
+    /// the user to take it on faith.
+    public let unsupportedEvidence: [String]
+
+    public init(
+        requirement: String,
+        kind: String,
+        status: String,
+        evidence: String,
+        evidenceSupport: EvidenceCheck.Support? = nil,
+        unsupportedEvidence: [String] = []
+    ) {
+        self.requirement = requirement
+        self.kind = kind
+        self.status = status
+        self.evidence = evidence
+        self.evidenceSupport = evidenceSupport
+        self.unsupportedEvidence = unsupportedEvidence
+    }
+
     public var isMet: Bool {
         status == "met"
     }
@@ -128,7 +152,10 @@ public struct FitScoreProjection {
                     requirement: requirement,
                     kind: a["kind"] as? String ?? "unknown",
                     status: status,
-                    evidence: a["evidence"] as? String ?? ""
+                    evidence: a["evidence"] as? String ?? "",
+                    evidenceSupport: (a[EvidenceCheck.supportKey] as? String)
+                        .flatMap(EvidenceCheck.Support.init(rawValue:)),
+                    unsupportedEvidence: (a[EvidenceCheck.unsupportedSpansKey] as? [String]) ?? []
                 )
             } ?? []
         requirementAssessments = assessments

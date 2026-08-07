@@ -301,7 +301,19 @@ public enum ExtractionEngine {
         // assessments — this drives the severity-weighted penalty (no more hardware-keyword heuristic).
         // Fall back to the legacy free-form `requirements_not_met` (as missing *required* gaps) for
         // responses that don't send assessments.
-        let assessments = (raw["requirement_assessments"] as? [[String: Any]]) ?? []
+        // The model is asked to quote its evidence, and often quotes something the résumé doesn't
+        // say — 32% of quoted spans corpus-wide, three-quarters of them lifted verbatim from the
+        // posting it was just shown. Checked here, at the one point where both documents are in
+        // hand, and the outcome is stamped into the stored JSON so the UI and any later recompute
+        // see the same judgement without redoing it.
+        let checked = EvidenceCheck.apply(
+            to: (raw["requirement_assessments"] as? [[String: Any]]) ?? [],
+            resumes: [resume.text],
+            // What the model was actually shown of the posting. Using the raw capture instead would
+            // credit it with copying text it never saw.
+            posting: extractedContext.quotableText
+        )
+        let assessments = checked.assessments
         let gaps: [FitScorer.RequirementGap]
         let counts: FitScorer.RequirementCounts?
         if assessments.isEmpty {
@@ -322,6 +334,10 @@ public enum ExtractionEngine {
         // takes the other branch and preserves whatever the score was originally assessed under.
         var stamped = raw
         stamped["assessment_prompt_version"] = FitScorer.assessmentPromptVersion
+        // Persist the checked assessments, not the model's originals — otherwise the score reflects a
+        // demotion the stored explanation doesn't show, which is the score/rows disagreement this app
+        // has already shipped once.
+        if !assessments.isEmpty { stamped["requirement_assessments"] = assessments }
         let mergedJSON = FitScorer.buildMergedJSON(result: score, rawLLMDict: stamped)
         return FitScoreOutput(
             score: score, fitScoreJSON: mergedJSON, promptChars: promptChars,

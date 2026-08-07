@@ -99,4 +99,59 @@ public enum EvidenceCheck {
         classify(evidence: evidence, resumes: resumes, posting: posting)
             .filter { $0.support != .supported }
     }
+
+    /// Key under which the outcome is stamped into each stored assessment.
+    public static let supportKey = "evidence_support"
+    /// The offending quotes, kept so the UI can show *which* words aren't in the résumé rather than
+    /// asking the user to take the warning on faith.
+    public static let unsupportedSpansKey = "unsupported_evidence"
+
+    public struct Applied: Sendable, Equatable {
+        public let assessments: [[String: Any]]
+        /// Verdicts marked as citing something the résumé doesn't say.
+        public let flagged: Int
+
+        public static func == (lhs: Applied, rhs: Applied) -> Bool { lhs.flagged == rhs.flagged }
+    }
+
+    /// Mark every assessment whose quoted evidence the résumé doesn't support.
+    ///
+    /// **Marks; never overrules.** An earlier version of this demoted a credited verdict to `missing`
+    /// when its quotes appeared in neither document, on the reasoning that an invented credential
+    /// (#200's PMP) makes the conclusion worthless. Checked against the hand labels, that rule fired
+    /// 7 times across 20 jobs and **6 of the 7 contradicted the labeller, who had marked all six
+    /// `met`.** The requirements it hit were "Builder mentality", "Excellent communication", "Strong
+    /// product sense" — and the evidence for them was real résumé content lightly reworded or
+    /// reassembled across lines, so an exact-substring test missed it.
+    ///
+    /// A substring check cannot tell **invention from paraphrase**, and paraphrase is by far the
+    /// commoner of the two. So the check's job is to surface, not to decide. When a flagged row is
+    /// genuinely wrong the user flags it "I don't have this", and `ScoringFeedback` demotes it
+    /// deterministically and everywhere — machinery that already exists and that the user controls.
+    ///
+    /// **A single supported quote clears the whole assessment**, and an assessment that quotes
+    /// nothing is left alone: a summary without quotes is not evidence of fabrication, and treating
+    /// silence as guilt would penalise the models that abstain rather than invent.
+    public static func apply(
+        to assessments: [[String: Any]],
+        resumes: [String],
+        posting: String
+    ) -> Applied {
+        var flagged = 0
+        let updated = assessments.map { item -> [String: Any] in
+            var item = item
+            let spans = classify(
+                evidence: (item["evidence"] as? String) ?? "", resumes: resumes, posting: posting
+            )
+            guard !spans.isEmpty, !spans.contains(where: { $0.support == .supported }) else {
+                return item
+            }
+            let invented = spans.contains { $0.support == .invented }
+            item[supportKey] = invented ? Support.invented.rawValue : Support.liftedFromPosting.rawValue
+            item[unsupportedSpansKey] = spans.map(\.text)
+            flagged += 1
+            return item
+        }
+        return Applied(assessments: updated, flagged: flagged)
+    }
 }

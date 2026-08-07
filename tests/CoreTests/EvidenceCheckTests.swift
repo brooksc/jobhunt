@@ -85,3 +85,74 @@ final class EvidenceCheckTests: XCTestCase {
         ).isEmpty)
     }
 }
+
+/// The check marks; it never overrules. An earlier version demoted a credited verdict whose quotes
+/// were in neither document — checked against the hand labels that rule fired 7 times across 20 jobs
+/// and **6 of the 7 contradicted the labeller**, because an exact-substring test can't tell invention
+/// from paraphrase. These tests pin the marking, and pin that verdicts survive it.
+final class EvidenceCheckApplyTests: XCTestCase {
+    private let resume = "Led the search ranking migration at Northwind."
+    private let posting = "You will apply sound business judgment across LLMs and agents."
+
+    private func assess(_ status: String, _ evidence: String) -> [[String: Any]] {
+        [["requirement": "Experience with distributed systems", "kind": "required",
+          "status": status, "evidence": evidence]]
+    }
+
+    private func apply(_ a: [[String: Any]]) -> EvidenceCheck.Applied {
+        EvidenceCheck.apply(to: a, resumes: [resume], posting: posting)
+    }
+
+    /// The regression that matters: "Builder mentality" was demoted to `missing` on evidence the
+    /// labeller had read and accepted. A verdict must survive being marked.
+    func testAnInventedQuoteMarksButNeverChangesTheVerdict() {
+        let result = apply(assess("met", "Résumé lists 'Certification: Project Management Professional'."))
+        XCTAssertEqual(result.flagged, 1)
+        XCTAssertEqual(result.assessments[0]["status"] as? String, "met")
+        XCTAssertEqual(result.assessments[0][EvidenceCheck.supportKey] as? String, "invented")
+    }
+
+    func testAPartialIsAlsoLeftIntact() {
+        let result = apply(assess("partial", "Résumé lists 'Certification: PMP credential'."))
+        XCTAssertEqual(result.assessments[0]["status"] as? String, "partial")
+        XCTAssertEqual(result.flagged, 1)
+    }
+
+    /// The two severities are still distinguished — they're worded differently to the user.
+    func testAQuoteLiftedFromThePostingIsMarkedAsSuch() {
+        let result = apply(assess("met", "Candidate shows 'sound business judgment'."))
+        XCTAssertEqual(result.flagged, 1)
+        XCTAssertEqual(result.assessments[0]["status"] as? String, "met")
+        XCTAssertEqual(result.assessments[0][EvidenceCheck.supportKey] as? String, "liftedFromPosting")
+    }
+
+    /// One real quote clears the whole assessment: mixed evidence means the model did find something.
+    func testOneSupportedQuoteClearsTheAssessment() {
+        let result = apply(assess(
+            "met", "Résumé says 'Led the search ranking migration at Northwind' and 'sound business judgment'."
+        ))
+        XCTAssertEqual(result.flagged, 0)
+        XCTAssertNil(result.assessments[0][EvidenceCheck.supportKey])
+    }
+
+    /// Silence is not guilt. Penalising a model that summarises instead of quoting would punish
+    /// exactly the behaviour that avoids this defect.
+    func testAnAssessmentWithNoQuotesIsUntouched() {
+        XCTAssertEqual(apply(assess("met", "The résumé demonstrates this clearly.")).flagged, 0)
+    }
+
+    /// Re-running must not compound: the migrator pass is expected to be run more than once.
+    func testApplyingTwiceIsStable() {
+        let once = apply(assess("met", "Résumé lists 'Certification: Project Management Professional'."))
+        let twice = apply(once.assessments)
+        XCTAssertEqual(twice.flagged, 1)
+        XCTAssertEqual(twice.assessments[0]["status"] as? String, "met")
+        XCTAssertEqual(twice.assessments[0][EvidenceCheck.supportKey] as? String, "invented")
+    }
+
+    func testTheOffendingQuotesArePreservedForTheUI() {
+        let result = apply(assess("met", "Candidate shows 'sound business judgment'."))
+        XCTAssertEqual(result.assessments[0][EvidenceCheck.unsupportedSpansKey] as? [String],
+                       ["sound business judgment"])
+    }
+}

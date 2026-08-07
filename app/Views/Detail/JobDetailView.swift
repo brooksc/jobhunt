@@ -1572,6 +1572,24 @@ private struct ResumeScoreCard: View {
         )
     }
 
+    /// Says what actually happened, in the user's terms. The two cases differ in what was done about
+    /// them, so one shared wording would be misleading: a lifted quote leaves the verdict alone,
+    /// an invented one has already knocked it down.
+    static func evidenceWarning(_ support: EvidenceCheck.Support, quotes: [String]) -> String {
+        let quoted = quotes.prefix(2).map { "“\($0)”" }.joined(separator: ", ")
+        let tail = quotes.count > 2 ? "\(quoted) and \(quotes.count - 2) more" : quoted
+        switch support {
+        case .liftedFromPosting:
+            return "Quoted from the job posting, not your résumé: \(tail). "
+                + "Worth checking — and worth adding to your résumé if you do have it."
+        case .invented:
+            return "Couldn't find this in your résumé: \(tail). "
+                + "Often just a paraphrase — but worth a look."
+        case .supported:
+            return ""
+        }
+    }
+
     private func isFlagHovered(_ item: RequirementAssessment) -> Bool {
         hoveredFlag == item.requirement
     }
@@ -1594,6 +1612,20 @@ private struct ResumeScoreCard: View {
                         .foregroundStyle(.secondary)
                         .lineSpacing(1)
                         .textSelection(.enabled)
+                }
+                // The model quoted something the résumé doesn't say. Shown rather than silently
+                // corrected: a verdict the user can't see the basis for is worse than a wrong one
+                // they can argue with, and the quotes are what makes the warning checkable.
+                if let support = item.evidenceSupport {
+                    Label {
+                        Text(Self.evidenceWarning(support, quotes: item.unsupportedEvidence))
+                            .textSelection(.enabled)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                    }
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color(red: 0.72, green: 0.45, blue: 0.0))
+                    .lineSpacing(1)
                 }
             }
             Spacer(minLength: 4)

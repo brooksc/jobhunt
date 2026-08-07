@@ -431,6 +431,50 @@ public actor BackgroundStore {
         return changed
     }
 
+    /// Re-run the evidence check over every stored fit analysis, marking verdicts whose quoted
+    /// evidence no résumé supports.
+    ///
+    /// **Marks only — no score changes.** See `EvidenceCheck.apply`: an exact-substring test can't
+    /// tell an invented claim from a paraphrase, and against hand labels the demote-on-invention rule
+    /// was wrong 6 times in 7. Because nothing is overruled, no score moves and no mirror needs
+    /// recomputing; the user acts on what they see via the existing "I don't have this" correction.
+    ///
+    /// One-time, so it lives in the migrator rather than the launch path. It's a stored rewrite
+    /// rather than a read-time filter because the check needs the résumé and the posting, which the
+    /// scoring arithmetic doesn't carry — substring-scanning two documents per requirement on every
+    /// read would cost far more than it saves.
+    ///
+    /// Idempotent: a second pass finds the same spans and writes the same marks. Rows whose résumé or
+    /// posting text is gone are skipped rather than guessed at — without both documents the check
+    /// can't tell "unsupported" from "the text isn't here to search".
+    public func recheckStoredEvidence() throws -> (checked: Int, flagged: Int, skipped: Int) {
+        var checked = 0, flagged = 0, skipped = 0
+        for record in try modelContext.fetch(FetchDescriptor<JobFitScore>()) {
+            guard record.fitStatus == .succeeded,
+                  let json = record.fitScoreJSON,
+                  let data = json.data(using: .utf8),
+                  var dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let assessments = dict["requirement_assessments"] as? [[String: Any]],
+                  !assessments.isEmpty
+            else { continue }
+            let resumeText = record.resume?.text ?? ""
+            let posting = record.job?.capture?.cleanedDescription ?? ""
+            guard !resumeText.isEmpty, !posting.isEmpty else { skipped += 1; continue }
+
+            let result = EvidenceCheck.apply(to: assessments, resumes: [resumeText], posting: posting)
+            checked += 1
+            guard result.flagged > 0 else { continue }
+            dict["requirement_assessments"] = result.assessments
+            guard let updated = try? JSONSerialization.data(withJSONObject: dict),
+                  let text = String(data: updated, encoding: .utf8) else { continue }
+            record.fitScoreJSON = text
+            record.updatedAt = Date()
+            flagged += result.flagged
+        }
+        if flagged > 0 { try modelContext.save() }
+        return (checked, flagged, skipped)
+    }
+
     /// Re-evaluate every job's `meetsCriteria` from its already-extracted remote mode + location
     /// against the current location settings. Pure — no LLM calls — so it's the way to apply a
     /// settings change (or the remote-geography rule) to the existing library. Returns the count

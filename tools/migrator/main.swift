@@ -313,6 +313,36 @@ case let .recomputeFitMirrors(storePath):
         fputs("Error: recompute failed: \(error)\n", stderr); exit(1)
     }
 
+case let .recheckEvidence(storePath):
+    guard FileManager.default.fileExists(atPath: storePath) else {
+        fputs("Error: store not found at '\(storePath)'\n", stderr); exit(1)
+    }
+    print("=== Recheck Fabricated Evidence ===")
+    print("Store: \(storePath)")
+    print("(Run with the Jobhunt app quit — the store is single-writer.)")
+    let storeURL = URL(fileURLWithPath: storePath)
+    let schema = Schema(SchemaV1.models)
+    let config = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
+    let container: ModelContainer
+    do {
+        container = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
+    } catch {
+        fputs("Error: could not open store: \(error)\n", stderr); exit(1)
+    }
+    let store = BackgroundStore(modelContainer: container)
+    do {
+        let result = try await store.recheckStoredEvidence()
+        print("Recheck complete: \(result.checked) analysis/analyses checked, "
+            + "\(result.flagged) verdict(s) marked as citing evidence the résumé doesn't support.")
+        print("No scores changed — the check marks, it doesn't overrule. Review the flagged rows in "
+            + "the Fit tab and use \"I don't have this\" on any that are genuinely wrong.")
+        if result.skipped > 0 {
+            print("Skipped \(result.skipped) with no résumé or posting text to check against.")
+        }
+    } catch {
+        fputs("Error: recheck failed: \(error)\n", stderr); exit(1)
+    }
+
 case let .recomputeCriteria(storePath):
     guard FileManager.default.fileExists(atPath: storePath) else {
         fputs("Error: store not found at '\(storePath)'\n", stderr); exit(1)

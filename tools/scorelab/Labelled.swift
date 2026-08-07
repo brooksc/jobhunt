@@ -153,7 +153,7 @@ enum LabelledEval {
                      fragments, total, 100 * Double(fragments) / Double(max(total, 1))))
 
         if let resumePath {
-            try reportEvidence(jobs: jobs, directory: directory, resumePath: resumePath)
+            try reportEvidence(jobs: jobs, directory: directory, resumePath: resumePath, target: target)
         }
 
         print("\njob   title                                     truth  before  after")
@@ -170,7 +170,9 @@ enum LabelledEval {
     /// The corpus pass measured 32% of quoted spans unsupported, 74% of those lifted from the
     /// posting; the résumé agent independently measured 35% on these same 20 jobs. If this column
     /// disagrees, the shipped check is not the thing that was measured.
-    static func reportEvidence(jobs: [LabelledJob], directory: String, resumePath: String) throws {
+    static func reportEvidence(
+        jobs: [LabelledJob], directory: String, resumePath: String, target: [Int]
+    ) throws {
         let resume = try String(contentsOfFile: resumePath, encoding: .utf8)
         var quoted = 0, lifted = 0, invented = 0, onMet = 0
         for job in jobs {
@@ -186,6 +188,25 @@ enum LabelledEval {
                 }
             }
         }
+        // Does acting on it move scores TOWARD the labeller? Counting bad quotes says the defect is
+        // real; only this says the fix helps.
+        var applied: [Int] = [], flaggedRows = 0
+        for job in jobs {
+            let result = EvidenceCheck.apply(
+                to: job.modelAssessments, resumes: [resume],
+                posting: postingText(directory: directory, jobNumber: job.jobNumber)
+            )
+            flaggedRows += result.flagged
+            applied.append(FitScorer.score(
+                .current, dimensions: job.dimensions, assessments: result.assessments
+            ))
+        }
+        print(String(
+            format: "evidence check applied: %d verdict(s) marked, none overruled — MAE %.1f, rho %.3f, %d/5",
+            flaggedRows, Stats.mae(applied, target),
+            Stats.spearman(applied, target), Stats.topOverlap(applied, target, n: 5)
+        ))
+
         let bad = lifted + invented
         print(String(
             format: "\nevidence: %d quoted spans, %d unsupported (%.0f%%) — %d lifted from the posting "

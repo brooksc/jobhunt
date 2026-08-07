@@ -65,9 +65,14 @@ final class OverCreditEval: XCTestCase {
         guard let provider = maybeProvider else { throw XCTSkip(reason ?? "provider unavailable") }
         let model = config.model
 
-        print("\n=== Over-credit eval (named-technology rule) ===")
+        let repeats = EvalProvider.repeats()
+        print("\n=== Over-credit eval (named-technology rule)\(repeats > 1 ? " x\(repeats)" : "") ===")
         var failures: [String] = []
 
+        // Repeated for the same reason as the judgement eval: at temperature 0 these models still
+        // change their minds between identical calls, so a single pass is a sample, not a verdict.
+        for pass in 0 ..< repeats {
+        if repeats > 1 { print("  pass \(pass + 1)/\(repeats)") }
         for testCase in Self.cases {
             // The requirement list reaches the prompt through the job's extracted JSON.
             let extracted = try JSONSerialization.data(withJSONObject: [
@@ -120,9 +125,11 @@ final class OverCreditEval: XCTestCase {
             // tell an assertion from a denial, and negation detection is not worth the fragility, so
             // `status` — the field that actually drives the score — is the assertion.
         }
+        }
 
         if !failures.isEmpty {
-            XCTFail("Over-credit regressions:\n" + failures.joined(separator: "\n"))
+            XCTFail("Over-credit regressions (\(failures.count) across \(repeats) pass(es)):\n"
+                + failures.joined(separator: "\n"))
         }
     }
 }

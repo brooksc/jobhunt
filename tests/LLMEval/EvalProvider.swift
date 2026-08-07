@@ -61,6 +61,19 @@ enum EvalProvider {
     /// `eval-models` holds one `model` or `provider:model` per line, so several models can be
     /// compared in a single run against identical fixtures — the only way to tell a real difference
     /// between two models from this scorer's run-to-run variance. A single `eval-model` still works.
+    /// How many times to run each fixture per model.
+    ///
+    /// Defaults to 1 for a quick look, but **a single sample decides nothing**: hosted inference is
+    /// not deterministic even at temperature 0, and models measured here flipped 5–9 of 15 requirement
+    /// verdicts between byte-identical calls. A one-shot pass/fail cannot tell a good model from a
+    /// lucky draw — which is exactly how a recommendation got published on a model that does not
+    /// answer the same way twice. Set `~/.config/jobhunt/eval-repeats` (or `JOBHUNT_EVAL_REPEATS`)
+    /// to 5+ before drawing any conclusion.
+    static func repeats() -> Int {
+        let raw = value(env: "JOBHUNT_EVAL_REPEATS", file: "eval-repeats", legacy: nil)
+        return max(1, Int(raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") ?? 1)
+    }
+
     static func resolveConfigs() -> [Config] {
         let legacyURL = value(env: "JOBHUNT_LLM_URL", file: "eval-base-url", legacy: ".jobhunt-lmstudio-url")
         let defaultProvider = (value(

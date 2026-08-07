@@ -15,6 +15,23 @@ Three suites, measuring different halves of the pipeline:
 about whether "expertise in CUDA" was scored *met* from a GPU migration — and that judgment is what
 every score, filter and triage decision rests on.
 
+## Repeats — set this before believing any result
+
+Hosted inference is **not deterministic**, even at `temperature: 0`. Measured August 2026 on
+byte-identical requests: `deepseek-v4-flash` changed 7 of 15 requirement verdicts between calls and
+moved the score 10–16 points; `claude-haiku-4.5` changed none across eight runs; `ministral-14b`
+changed two. Provider pinning did not fix it.
+
+So a single pass measures a sample, not a model — which is how a public recommendation came to rest
+on one lucky run. Set repeats before drawing a conclusion:
+
+```bash
+echo 5 > ~/.config/jobhunt/eval-repeats     # or JOBHUNT_EVAL_REPEATS=5
+```
+
+Both `FitScoringEval` and `OverCreditEval` then run the whole fixture set N times and accumulate,
+turning the report into a pass rate.
+
 ## Configuration
 
 `xcodebuild` does **not** forward the shell environment to the test process, so an exported variable

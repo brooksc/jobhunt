@@ -165,15 +165,21 @@ final class FitScoringEval: XCTestCase {
                 print("  \(result.model): SKIPPED — \(reason ?? "unavailable")")
                 continue
             }
-            print("  --- \(result.model) ---")
-            for testCase in Self.cases {
-                await run(
-                    testCase,
-                    provider: provider,
-                    model: config.model,
-                    resume: resumeText,
-                    into: &result
-                )
+            let repeats = EvalProvider.repeats()
+            print("  --- \(result.model)\(repeats > 1 ? " (x\(repeats))" : "") ---")
+            // Repeat the whole fixture set: hosted inference is not deterministic at temperature 0,
+            // so one pass measures a sample, not a model. `checks`/`passed` accumulate across repeats,
+            // which turns the report into a pass RATE.
+            for _ in 0 ..< repeats {
+                for testCase in Self.cases {
+                    await run(
+                        testCase,
+                        provider: provider,
+                        model: config.model,
+                        resume: resumeText,
+                        into: &result
+                    )
+                }
             }
             results.append(result)
         }

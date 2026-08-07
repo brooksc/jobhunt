@@ -32,20 +32,34 @@ worth the hours it takes to tailor a résumé and apply.
 
 ## 1. What the score is for
 
-> Of the jobs I've captured, which deserve the effort of applying?
+The score does **two different jobs at two ends of the list**, and a design that serves one can fail
+the other. Described by the user, and it governs every tradeoff below.
 
-Confirmed by the user, and this governs every tradeoff below:
+**At the bottom — a filter the user actively audits.** They scan the low scorers and ask two
+questions: *do I meet all the required qualifications, and if not, could I still get this missing one
+or two?* Then: *do I meet the preferred ones — and do those reveal a **domain** I don't have?*
+("hardware support", "consumer products"). What they need here is the **reason**, not the number: the
+count of missing required qualifications, and whether the gap is domain-shaped.
 
-- **The number drives a rough stack-rank, not a decision by itself.** The user reviews new jobs and
-  moves them to Interested or Archive; for jobs already Interested, they work down the list from the
-  top. **±2.5 accuracy would be nice; considerably worse is tolerable.** Do not sacrifice ranking
-  quality to chase absolute calibration.
-- **The two errors are not symmetric.** A false positive costs one wasted read and an archive click.
-  A false negative hides a job the user would have wanted — permanently and invisibly. This
-  asymmetry is settled policy elsewhere in the app (remote-location inference was deliberately made
-  permissive on exactly this reasoning) and governs here too.
-- **An unusable score is worse than no score.** A list where everything is 95 conveys nothing. So
-  does a list where an eighth of the entries are 0.
+**At the top — a ranking that allocates real effort.** From the well-scored jobs they choose which to
+spend an evening on: tailoring a résumé, working through an application form. Here the number is
+doing actual work, and **ties are the enemy** — a scheme that puts half the corpus at 90+ has no top
+to rank.
+
+Consequences:
+
+- **Ranking quality at the top matters more than absolute calibration.** ±2.5 would be nice;
+  considerably worse is tolerable. Never trade spread at the top for tidier absolute numbers.
+- **The expensive error is a falsely HIGH score**, because it spends an evening on the wrong
+  application. A falsely low score is comparatively cheap: the user reads the low scorers anyway and
+  catches it. (An earlier version of this document claimed the opposite — that a false negative hides
+  a job "permanently and invisibly". That was wrong: the low list is reviewed, not discarded.)
+- **Show the missing-required count, not only the score.** "Meets 8 of 9 required" is the user's
+  actual triage question; a single number makes them open the job to recover it.
+- **Re-scoring priority is Interested and New**, the jobs under active evaluation — not the whole
+  corpus. That makes re-scoring cheap and bounds how much stability costs.
+- **An unusable score is worse than no score.** Everything at 95 conveys nothing; so does an eighth
+  of the list at 0.
 
 ## 2. How scoring works today
 

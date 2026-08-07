@@ -21,7 +21,10 @@ FONT="${CAPTION_FONT:-/System/Library/Fonts/HelveticaNeue.ttc}"
 
 ffmpeg -hide_banner -loglevel error -y -ss "$A_START" -to "$A_END" -i "$SRC" -c:v libx264 -crf 16 -an "$OUT/.a.mov"
 ffmpeg -hide_banner -loglevel error -y -ss "$B_START" -to "$B_END" -i "$SRC" -c:v libx264 -crf 16 -an "$OUT/.b.mov"
-printf "file '%s'\nfile '%s'\n" "$OUT/.a.mov" "$OUT/.b.mov" > "$OUT/.concat.txt"
+# Bare filenames, not "$OUT/...": ffmpeg's concat demuxer resolves entries relative to the concat
+# file's OWN directory, so a relative outdir doubled the prefix
+# ("marketing/demo/marketing/demo/.a.mov") and the cut failed after the capture was already spent.
+printf "file '.a.mov'\nfile '.b.mov'\n" > "$OUT/.concat.txt"
 ffmpeg -hide_banner -loglevel error -y -f concat -safe 0 -i "$OUT/.concat.txt" -c copy "$OUT/.joined.mov"
 
 A_LEN=$(python3 -c "print(f'{$A_END-$A_START:.2f}')")

@@ -249,6 +249,21 @@ let appTarget = Target.target(
 
 // Migration.swift, Patch.swift, and SQLiteHelpers.swift are compiled directly into CoreTests
 // because JobhuntMigrator is a commandLineTool and cannot be linked as a dependency.
+let scoreLabTarget = Target.target(
+    name: "ScoreLab",
+    destinations: [.mac],
+    product: .commandLineTool,
+    bundleId: "\(bundleId).scorelab",
+    deploymentTargets: deploymentTarget,
+    sources: ["tools/scorelab/**/*.swift"],
+    dependencies: [.target(name: "JobhuntCore")],
+    settings: .settings(
+        base: sharedBase.merging(
+            ["LD_RUNPATH_SEARCH_PATHS": ["$(inherited)", "@executable_path"]]
+        ) { _, new in new }
+    )
+)
+
 let coreTestsTarget = testTarget(
     name: "CoreTests",
     bundleSuffix: "CoreTests",
@@ -394,7 +409,7 @@ let project = Project(
         coreTarget, coreTestsTarget,
         serverTarget, serverTestsTarget,
         mcpTarget, mcpTestsTarget,
-        migratorTarget,
+        migratorTarget, scoreLabTarget,
         appTarget, appUITestsTarget,
         llmEvalTarget,
     ],

@@ -14,12 +14,12 @@ DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
 # 2. dry-run FIRST — it asserts every scene actually fired
 ./scripts/demo/reset.sh
 ./scripts/demo/configure.sh OpenRouter mistralai/ministral-14b-2512
-SCENE_LOG=/tmp/scenes.txt ./scripts/demo/drive.sh
+SCENE_LOG=/tmp/scenes.txt ./scripts/demo/walkthrough.sh
 
 # 3. record (single shell invocation — see "dead air" below)
-./scripts/demo/reset.sh
-{ ( sleep 1.5; SCENE_LOG=/tmp/scenes.txt ./scripts/demo/drive.sh ) & } \
-  && screencapture -v -V 46 -R 55,100,1600,900 /tmp/master.mov
+./scripts/demo/reset.sh && ./scripts/demo/configure.sh OpenRouter mistralai/ministral-14b-2512
+{ ( sleep 1.5; SCENE_LOG=/tmp/scenes.txt ./scripts/demo/walkthrough.sh ) & } \
+  && screencapture -v -V 120 -R 55,100,1600,900 /tmp/master.mov
 
 # 4. cut out the real extraction wait, caption, and encode
 ./scripts/demo/cut.sh /tmp/master.mov marketing/demo
@@ -97,14 +97,10 @@ Record with a model measured as consistent. At `temperature: 0`, hosted inferenc
 score 10–16 points, which made takes unreproducible. `ministral-14b` changed 2 and moves ~1.5 points.
 See `marketing/help/which-model.html`.
 
-## Known limitation filmed as-is
-
-After saving a correction the requirement row moves from **Gaps** to **Requirements met**, but the
-headline score ring keeps its old value until the job is reselected. The walkthrough shows the
-reselect rather than faking an in-place update. Tracked as a UI-refresh bug.
-
 ## App Store preview constraints
 
-1920x1080, **15–30 seconds**, real app footage. `encode.sh` asserts the duration and fails the build
-rather than letting App Store Connect reject it. The master runs ~46s and is trimmed to 44.2s then
-sped to 1.5x → 29.6s.
+1920x1080, **15–30 seconds**, real app footage. `cut.sh` asserts the duration and fails rather than
+letting App Store Connect reject it. The master runs ~120s (most of it the genuine extraction wait);
+two segments are kept and sped to 1.15x → 27.4s.
+
+`drive.sh` / `captions.sh` / `encode.sh` remain for the older fit-correction storyboard.

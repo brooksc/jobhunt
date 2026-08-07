@@ -450,7 +450,7 @@ final class JobServiceTests: XCTestCase {
     /// canonicalURL, so the canonical fallback couldn't match either) forked a second job.
     func testReCapture_cosmeticURLVariants_updateInPlaceInsteadOfForkingAJob() async throws {
         let variants = [
-            "https://re.example.com/ashby/abc-123",       // trailing slash dropped
+            "https://re.example.com/ashby/abc-123", // trailing slash dropped
             "https://re.example.com/ashby/abc-123#apply", // fragment added
             "https://re.example.com/ashby/abc-123?utm_source=newsletter" // tracking param added
         ]

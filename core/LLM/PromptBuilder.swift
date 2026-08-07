@@ -333,7 +333,7 @@ public struct ExtractedJobContext: Sendable {
     /// It has to be what the model *saw* — checking against the raw captured page would accuse it of
     /// copying text that was never in its context.
     public var quotableText: String {
-        ([title, company, seniority, summary, applicationInstructions].compactMap { $0 }
+        ([title, company, seniority, summary, applicationInstructions].compactMap(\.self)
             + requirements + niceToHaves + skills).joined(separator: "\n")
     }
 }

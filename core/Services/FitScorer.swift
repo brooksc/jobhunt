@@ -300,7 +300,10 @@ public enum FitScorer {
     /// it touched. Production never passes anything but `.all`.
     public struct Exclusions: OptionSet, Sendable {
         public let rawValue: Int
-        public init(rawValue: Int) { self.rawValue = rawValue }
+        public init(rawValue: Int) {
+            self.rawValue = rawValue
+        }
+
         public static let nonDiscriminating = Exclusions(rawValue: 1 << 0)
         public static let fragments = Exclusions(rawValue: 1 << 1)
         public static let all: Exclusions = [.nonDiscriminating, .fragments]

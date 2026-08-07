@@ -110,7 +110,9 @@ public extension ScoringFeedback {
         let needle = phrase.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !needle.isEmpty else { return false }
         let haystack = text.lowercased()
-        func isWord(_ c: Character) -> Bool { c.isLetter || c.isNumber }
+        func isWord(_ c: Character) -> Bool {
+            c.isLetter || c.isNumber
+        }
         // Only require a boundary on an edge where the phrase could otherwise run into a word.
         let guardLeading = needle.first.map(isWord) ?? false
         let guardTrailing = needle.last.map(isWord) ?? false

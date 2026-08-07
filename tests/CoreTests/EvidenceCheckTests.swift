@@ -95,8 +95,12 @@ final class EvidenceCheckApplyTests: XCTestCase {
     private let posting = "You will apply sound business judgment across LLMs and agents."
 
     private func assess(_ status: String, _ evidence: String) -> [[String: Any]] {
-        [["requirement": "Experience with distributed systems", "kind": "required",
-          "status": status, "evidence": evidence]]
+        [[
+            "requirement": "Experience with distributed systems",
+            "kind": "required",
+            "status": status,
+            "evidence": evidence
+        ]]
     }
 
     private func apply(_ a: [[String: Any]]) -> EvidenceCheck.Applied {
@@ -152,7 +156,9 @@ final class EvidenceCheckApplyTests: XCTestCase {
 
     func testTheOffendingQuotesArePreservedForTheUI() {
         let result = apply(assess("met", "Candidate shows 'sound business judgment'."))
-        XCTAssertEqual(result.assessments[0][EvidenceCheck.unsupportedSpansKey] as? [String],
-                       ["sound business judgment"])
+        XCTAssertEqual(
+            result.assessments[0][EvidenceCheck.unsupportedSpansKey] as? [String],
+            ["sound business judgment"]
+        )
     }
 }

@@ -73,8 +73,8 @@ extension JobsSettingsTab {
     }
 
     func refreshMatchCounts() async {
-        feedbackMatchCounts =
-            (try? await appServices.jobService.scoringFeedbackMatchCounts(settings.scoringFeedback)) ?? [:]
+        await feedbackMatchCounts =
+            (try? appServices.jobService.scoringFeedbackMatchCounts(settings.scoringFeedback)) ?? [:]
     }
 
     /// Removing a correction re-derives the affected scores, so undo is as immediate as the flag was.

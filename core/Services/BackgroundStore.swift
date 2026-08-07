@@ -890,7 +890,7 @@ public actor BackgroundStore {
 
         var fixed = 0
         for job in try modelContext.fetch(FetchDescriptor<Job>())
-        where job.extractionStatus == .pending || job.extractionStatus == .running {
+            where job.extractionStatus == .pending || job.extractionStatus == .running {
             if backed.contains(job.id) { continue } // a live request still backs it
             job.extractionStatus = .failed
             job.extractionError = Self.orphanedExtractionError
@@ -1879,7 +1879,7 @@ public actor BackgroundStore {
         let overrides = manualFieldOverrideSet(target.manualFieldOverridesJSON)
         var copied: [String] = []
         /// Copy one field when the target lacks it and the user hasn't manually set it.
-        func fill<V>(_ name: String, _ keyPath: ReferenceWritableKeyPath<Job, V?>) {
+        func fill(_ name: String, _ keyPath: ReferenceWritableKeyPath<Job, (some Any)?>) {
             guard target[keyPath: keyPath] == nil, !overrides.contains(name),
                   let value = source[keyPath: keyPath] else { return }
             target[keyPath: keyPath] = value

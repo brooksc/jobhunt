@@ -180,13 +180,13 @@ final class MigratorTests: XCTestCase {
     /// A merge that silently defaulted one side would delete the wrong job — reject every partial form.
     func testParseArgs_mergeJob_rejectsIncompleteOrNonsensicalForms() {
         let invalid = [
-            ["JobhuntMigrator", "--merge-job"],                                  // neither side
-            ["JobhuntMigrator", "--merge-job", "--from", "761"],                 // no --into
-            ["JobhuntMigrator", "--merge-job", "--into", "725"],                 // no --from
+            ["JobhuntMigrator", "--merge-job"], // neither side
+            ["JobhuntMigrator", "--merge-job", "--from", "761"], // no --into
+            ["JobhuntMigrator", "--merge-job", "--into", "725"], // no --from
             ["JobhuntMigrator", "--merge-job", "--from", "725", "--into", "725"], // itself
             ["JobhuntMigrator", "--merge-job", "--from", "abc", "--into", "725"], // not a number
-            ["JobhuntMigrator", "--merge-job", "--from", "0", "--into", "725"],   // not a job number
-            ["JobhuntMigrator", "--from", "761", "--into", "725"]                 // no operation flag
+            ["JobhuntMigrator", "--merge-job", "--from", "0", "--into", "725"], // not a job number
+            ["JobhuntMigrator", "--from", "761", "--into", "725"] // no operation flag
         ]
         for args in invalid {
             XCTAssertNil(parseArgs(args), "must reject: \(args.dropFirst().joined(separator: " "))")

@@ -727,6 +727,7 @@ extension BackgroundStore {
     }
 
     // MARK: - JSON builders (private)
+
     // swiftlint:disable:next function_parameter_count
     private func makeExtractedJSON(
         extractionStatus: ExtractionStatus,

@@ -72,59 +72,59 @@ final class OverCreditEval: XCTestCase {
         // Repeated for the same reason as the judgement eval: at temperature 0 these models still
         // change their minds between identical calls, so a single pass is a sample, not a verdict.
         for pass in 0 ..< repeats {
-        if repeats > 1 { print("  pass \(pass + 1)/\(repeats)") }
-        for testCase in Self.cases {
-            // The requirement list reaches the prompt through the job's extracted JSON.
-            let extracted = try JSONSerialization.data(withJSONObject: [
-                "requirements": [testCase.requirement],
-                "nice_to_have": [] as [String],
-                "skills": [] as [String]
-            ])
-            let job = JobFitSnapshot(
-                title: "Senior Product Manager",
-                company: "Example",
-                seniority: nil,
-                extractedJSON: String(data: extracted, encoding: .utf8),
-                extractionModel: model
-            )
-            let output = try await ExtractionEngine.scoreFit(
-                job: job,
-                resume: ResumeSnapshot(text: testCase.resume),
-                model: model,
-                provider: provider
-            )
-            guard let json = output.fitScoreJSON,
-                  let data = json.data(using: .utf8),
-                  let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let assessments = raw["requirement_assessments"] as? [[String: Any]],
-                  let assessment = assessments.first
-            else {
-                failures.append("\(testCase.name): no requirement assessment returned")
-                continue
-            }
-
-            let status = (assessment["status"] as? String) ?? "?"
-            let evidence = (assessment["evidence"] as? String) ?? ""
-            print("  \(testCase.name)\n    status=\(status)  evidence=\(evidence)")
-
-            if status == "met" {
-                failures.append(
-                    "\(testCase.name): scored 'met' for \(testCase.namedThing) on adjacent evidence — "
-                        + "the rule needs to be stronger. Evidence: \(evidence)"
+            if repeats > 1 { print("  pass \(pass + 1)/\(repeats)") }
+            for testCase in Self.cases {
+                // The requirement list reaches the prompt through the job's extracted JSON.
+                let extracted = try JSONSerialization.data(withJSONObject: [
+                    "requirements": [testCase.requirement],
+                    "nice_to_have": [] as [String],
+                    "skills": [] as [String]
+                ])
+                let job = JobFitSnapshot(
+                    title: "Senior Product Manager",
+                    company: "Example",
+                    seniority: nil,
+                    extractedJSON: String(data: extracted, encoding: .utf8),
+                    extractionModel: model
                 )
+                let output = try await ExtractionEngine.scoreFit(
+                    job: job,
+                    resume: ResumeSnapshot(text: testCase.resume),
+                    model: model,
+                    provider: provider
+                )
+                guard let json = output.fitScoreJSON,
+                      let data = json.data(using: .utf8),
+                      let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let assessments = raw["requirement_assessments"] as? [[String: Any]],
+                      let assessment = assessments.first
+                else {
+                    failures.append("\(testCase.name): no requirement assessment returned")
+                    continue
+                }
+
+                let status = (assessment["status"] as? String) ?? "?"
+                let evidence = (assessment["evidence"] as? String) ?? ""
+                print("  \(testCase.name)\n    status=\(status)  evidence=\(evidence)")
+
+                if status == "met" {
+                    failures.append(
+                        "\(testCase.name): scored 'met' for \(testCase.namedThing) on adjacent evidence — "
+                            + "the rule needs to be stronger. Evidence: \(evidence)"
+                    )
+                }
+                // There used to be a second check here: fail if the evidence string mentions the named
+                // thing while the résumé doesn't. It produced FALSE FAILURES on correct answers, because
+                // the right answer names the thing in order to deny it —
+                //
+                //   status=partial  "…but resume does not explicitly state CUDA-specific expertise."
+                //
+                // That is precisely the judgement the rule is meant to produce, and the check flagged it.
+                // It failed deepseek, Haiku and Ministral identically, which read as "no model handles
+                // over-crediting" when in fact all three handled it correctly. A substring match cannot
+                // tell an assertion from a denial, and negation detection is not worth the fragility, so
+                // `status` — the field that actually drives the score — is the assertion.
             }
-            // There used to be a second check here: fail if the evidence string mentions the named
-            // thing while the résumé doesn't. It produced FALSE FAILURES on correct answers, because
-            // the right answer names the thing in order to deny it —
-            //
-            //   status=partial  "…but resume does not explicitly state CUDA-specific expertise."
-            //
-            // That is precisely the judgement the rule is meant to produce, and the check flagged it.
-            // It failed deepseek, Haiku and Ministral identically, which read as "no model handles
-            // over-crediting" when in fact all three handled it correctly. A substring match cannot
-            // tell an assertion from a denial, and negation detection is not worth the fragility, so
-            // `status` — the field that actually drives the score — is the assertion.
-        }
         }
 
         if !failures.isEmpty {

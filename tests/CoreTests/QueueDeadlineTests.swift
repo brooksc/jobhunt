@@ -28,14 +28,14 @@ final class QueueDeadlineTests: XCTestCase {
     }
 
     private func makeStore() throws -> BackgroundStore {
-        BackgroundStore(modelContainer: try ModelContainerFactory.inMemory())
+        try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
     }
 
     // MARK: - The deadline
 
     /// The core guarantee: an operation that never finishes is cancelled rather than waited on.
     func testAnOperationThatNeverReturnsIsCancelled() async throws {
-        let queue = makeQueue(store: try makeStore(), timeout: 1)
+        let queue = try makeQueue(store: makeStore(), timeout: 1)
         let started = Date()
 
         do {
@@ -55,7 +55,7 @@ final class QueueDeadlineTests: XCTestCase {
     /// A request that finishes inside its budget must be untouched — the deadline is a backstop, not
     /// a throttle.
     func testWorkInsideTheBudgetIsUnaffected() async throws {
-        let queue = makeQueue(store: try makeStore(), timeout: 300)
+        let queue = try makeQueue(store: makeStore(), timeout: 300)
         let value = try await queue.withRequestDeadline(seconds: 5) {
             try await Task.sleep(for: .milliseconds(20))
             return 42
@@ -67,7 +67,7 @@ final class QueueDeadlineTests: XCTestCase {
     /// a timeout and misclassified by the retry logic.
     func testTheOperationsOwnErrorIsNotMaskedByTheDeadline() async throws {
         struct ProviderBoom: Error {}
-        let queue = makeQueue(store: try makeStore(), timeout: 300)
+        let queue = try makeQueue(store: makeStore(), timeout: 300)
         do {
             _ = try await queue.withRequestDeadline(seconds: 5) { throw ProviderBoom() }
             XCTFail("expected the provider error")
@@ -82,7 +82,7 @@ final class QueueDeadlineTests: XCTestCase {
     /// that an ordinary slow request never trips it — measured requests ran 16–139s against the 300s
     /// default.
     func testDeadlineIsDerivedFromTheConfiguredTimeout() async throws {
-        let queue = makeQueue(store: try makeStore(), timeout: 300)
+        let queue = try makeQueue(store: makeStore(), timeout: 300)
         let deadline = await queue.requestDeadlineSeconds()
         XCTAssertGreaterThan(deadline, 300, "must exceed the transport timeout, not undercut it")
         XCTAssertLessThan(deadline, 1800)
@@ -91,7 +91,7 @@ final class QueueDeadlineTests: XCTestCase {
     /// A zero or unset timeout must not collapse the deadline to nothing, which would cancel every
     /// request immediately.
     func testAnUnsetTimeoutFallsBackToASaneDeadline() async throws {
-        let queue = makeQueue(store: try makeStore(), timeout: 0)
+        let queue = try makeQueue(store: makeStore(), timeout: 0)
         let deadline = await queue.requestDeadlineSeconds()
         XCTAssertGreaterThan(deadline, 60)
     }
@@ -101,7 +101,7 @@ final class QueueDeadlineTests: XCTestCase {
     /// The stall threshold has to sit above the per-request deadline, or a legitimately slow request
     /// would be mistaken for a wedged drain and superseded mid-flight.
     func testStallThresholdIsAboveTheRequestDeadline() async throws {
-        let queue = makeQueue(store: try makeStore(), timeout: 300)
+        let queue = try makeQueue(store: makeStore(), timeout: 300)
         let deadline = await queue.requestDeadlineSeconds()
         XCTAssertGreaterThan(
             QueueActor.drainStallSeconds, deadline,

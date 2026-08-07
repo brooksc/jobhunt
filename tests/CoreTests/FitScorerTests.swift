@@ -195,7 +195,11 @@ final class FitScorerTests: XCTestCase {
     // MARK: - Normalised penalty (TASK-656)
 
     private func assessments(required: [String], preferred: [String]) -> [[String: Any]] {
-        required.enumerated().map { ["requirement": "Experience with req\($0.offset)", "kind": "required", "status": $0.element] }
+        required.enumerated().map { [
+            "requirement": "Experience with req\($0.offset)",
+            "kind": "required",
+            "status": $0.element
+        ] }
             + preferred.enumerated().map {
                 ["requirement": "Experience with pref\($0.offset)", "kind": "preferred", "status": $0.element]
             }
@@ -231,8 +235,11 @@ final class FitScorerTests: XCTestCase {
 
         let requiredCost = missingRequired.penalty - allMet.penalty
         let preferredCost = missingPreferred.penalty - allMet.penalty
-        XCTAssertGreaterThan(requiredCost, preferredCost * 2,
-                             "required \(requiredCost) vs preferred \(preferredCost)")
+        XCTAssertGreaterThan(
+            requiredCost,
+            preferredCost * 2,
+            "required \(requiredCost) vs preferred \(preferredCost)"
+        )
     }
 
     /// A verbose posting was arithmetically guaranteed to saturate under the old raw sum: 10 missing
@@ -241,22 +248,33 @@ final class FitScorerTests: XCTestCase {
     /// more — reflecting greater confidence — rather than growing without limit.
     func testAVerbosePostingIsNotPunishedForVerbosity() {
         let short = score(required: ["met", "missing"], preferred: [])
-        let long = score(required: Array(repeating: "met", count: 10) + Array(repeating: "missing", count: 10),
-                         preferred: [])
+        let long = score(
+            required: Array(repeating: "met", count: 10) + Array(repeating: "missing", count: 10),
+            preferred: []
+        )
 
         // Both sit near 65 * 0.5, and nowhere near the old capped 60.
         XCTAssertLessThan(long.penalty, 40)
-        XCTAssertLessThan(long.penalty - short.penalty, 15,
-                          "10x the requirements at the same miss rate must not multiply the penalty")
-        XCTAssertGreaterThan(long.penalty, short.penalty,
-                             "more evidence of missing should still count for something")
+        XCTAssertLessThan(
+            long.penalty - short.penalty,
+            15,
+            "10x the requirements at the same miss rate must not multiply the penalty"
+        )
+        XCTAssertGreaterThan(
+            long.penalty,
+            short.penalty,
+            "more evidence of missing should still count for something"
+        )
     }
 
     /// No cap means no flat region where the score stops responding to additional gaps.
     func testScoreKeepsRespondingAsGapsAccumulate() {
         let scores = (0 ... 8).map { missing in
-            score(required: Array(repeating: "missing", count: missing)
-                + Array(repeating: "met", count: 8 - missing), preferred: []).overall
+            score(
+                required: Array(repeating: "missing", count: missing)
+                    + Array(repeating: "met", count: 8 - missing),
+                preferred: []
+            ).overall
         }
         for (a, b) in zip(scores, scores.dropFirst()) {
             XCTAssertGreaterThan(a, b, "each additional missing requirement must still move the score")
@@ -265,8 +283,10 @@ final class FitScorerTests: XCTestCase {
 
     /// Bounded by construction rather than by a cap: required 65 + preferred 12.
     func testPenaltyIsBoundedWithoutACap() {
-        let worst = score(required: Array(repeating: "missing", count: 20),
-                          preferred: Array(repeating: "missing", count: 20))
+        let worst = score(
+            required: Array(repeating: "missing", count: 20),
+            preferred: Array(repeating: "missing", count: 20)
+        )
         XCTAssertLessThanOrEqual(worst.penalty, 77)
         XCTAssertGreaterThan(worst.penalty, 60, "a total failure should exceed the old cap")
     }
@@ -677,7 +697,12 @@ final class FragmentRequirementTests: XCTestCase {
 
     /// So is anything framed as experience or proficiency, even in three words.
     func testExperienceFramingIsKept() {
-        for text in ["Strong Python knowledge", "Proven leadership", "Kubernetes experience", "Familiar with Terraform"] {
+        for text in [
+            "Strong Python knowledge",
+            "Proven leadership",
+            "Kubernetes experience",
+            "Familiar with Terraform"
+        ] {
             XCTAssertFalse(FitScorer.isFragment(requirement: text), text)
         }
     }

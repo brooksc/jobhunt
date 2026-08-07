@@ -46,7 +46,7 @@ final class ScoringVariantTests: XCTestCase {
 
     /// A hard requirement must outweigh a nice-to-have, or a posting with a long wish list drowns out
     /// the qualifications that actually gate the role.
-    func testRequiredOutweighsPreferred() {
+    func testRequiredOutweighsPreferred() throws {
         let missRequired = FitScorer.verdictShare(
             assessments: assessments(required: ["missing"], preferred: ["met"]), partialCredit: 0.5
         )
@@ -55,7 +55,7 @@ final class ScoringVariantTests: XCTestCase {
         )
         XCTAssertNotNil(missRequired)
         XCTAssertNotNil(missPreferred)
-        XCTAssertLessThan(missRequired!, missPreferred!)
+        XCTAssertLessThan(try XCTUnwrap(missRequired), try XCTUnwrap(missPreferred))
     }
 
     /// The denominator must drop anything the numerator drops, or removing a requirement would

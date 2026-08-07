@@ -48,8 +48,14 @@ public enum EvidenceCheck {
     /// Fold typography and whitespace, so a quote isn't called fabricated over a curly apostrophe.
     public static func normalized(_ text: String) -> String {
         var s = text.folding(options: [.widthInsensitive], locale: nil)
-        for (a, b) in [("\u{2019}", "'"), ("\u{2018}", "'"), ("\u{201C}", "\""), ("\u{201D}", "\""),
-                       ("\u{2014}", "-"), ("\u{2013}", "-")] {
+        for (a, b) in [
+            ("\u{2019}", "'"),
+            ("\u{2018}", "'"),
+            ("\u{201C}", "\""),
+            ("\u{201D}", "\""),
+            ("\u{2014}", "-"),
+            ("\u{2013}", "-")
+        ] {
             s = s.replacingOccurrences(of: a, with: b)
         }
         return s.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
@@ -111,7 +117,9 @@ public enum EvidenceCheck {
         /// Verdicts marked as citing something the résumé doesn't say.
         public let flagged: Int
 
-        public static func == (lhs: Applied, rhs: Applied) -> Bool { lhs.flagged == rhs.flagged }
+        public static func == (lhs: Applied, rhs: Applied) -> Bool {
+            lhs.flagged == rhs.flagged
+        }
     }
 
     /// Mark every assessment whose quoted evidence the résumé doesn't support.

@@ -50,7 +50,9 @@ struct ScoringFeedbackSheet: View {
     /// **measured against the scored corpus** rather than guessed from the phrase's length: `IDE` is
     /// three characters and reached 30% of jobs, while `PCI DSS` is seven and hits only what it
     /// should. Length was never the signal.
-    private var isBroad: Bool { reach?.isImplausiblyBroad ?? false }
+    private var isBroad: Bool {
+        reach?.isImplausiblyBroad ?? false
+    }
 
     /// Phrases too short to identify anything are refused outright, not merely warned about.
     private var rejection: String? {

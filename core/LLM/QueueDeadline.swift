@@ -1,4 +1,5 @@
 import Foundation
+
 // MARK: - Request deadline (TASK-657)
 
 /// Raised when a request outlives its wall-clock budget.
@@ -14,7 +15,7 @@ extension QueueActor {
     /// second knob. The multiplier covers a provider that is legitimately slow — measured requests ran
     /// 16–139s against a 300s setting — while still bounding the pathological case.
     func requestDeadlineSeconds() async -> Double {
-        let configured = Double(await readExtractionSettings().llmTimeout)
+        let configured = await Double(readExtractionSettings().llmTimeout)
         let base = configured > 0 ? configured : 300
         return base * 1.5
     }

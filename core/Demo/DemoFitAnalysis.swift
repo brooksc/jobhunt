@@ -1,6 +1,6 @@
 import Foundation
 
-// Split out of DemoSeeder.swift purely to keep that file under the 800-line limit.
+/// Split out of DemoSeeder.swift purely to keep that file under the 800-line limit.
 extension BackgroundStore {
     /// Build a fit analysis in the shape the app actually reads, and score it with the real scorer.
     ///
@@ -33,10 +33,18 @@ extension BackgroundStore {
         // Alternate which gap tier is filled first so the demo shows both ✗ and partial rows, rather
         // than every job degrading in the same way.
         let tiers: [(kind: String, status: String, cost: Int)] = jobNum.isMultiple(of: 2)
-            ? [("preferred", "missing", 10), ("required", "partial", 6),
-               ("preferred", "partial", 5), ("required", "missing", 12)]
-            : [("preferred", "partial", 5), ("required", "partial", 6),
-               ("preferred", "missing", 10), ("required", "missing", 12)]
+            ? [
+                ("preferred", "missing", 10),
+                ("required", "partial", 6),
+                ("preferred", "partial", 5),
+                ("required", "missing", 12)
+            ]
+            : [
+                ("preferred", "partial", 5),
+                ("required", "partial", 6),
+                ("preferred", "missing", 10),
+                ("required", "missing", 12)
+            ]
         var remaining = budget
         var plan: [(kind: String, status: String)] = []
         for tier in tiers where remaining >= tier.cost {
@@ -91,8 +99,11 @@ extension BackgroundStore {
             "penalty": result.penalty,
             "summary": "Scored against \(title ?? "this role") using your resume.",
             "dimensions": FitScorer.dimensionWeights.keys.sorted().map { name in
-                ["name": name, "score": Int(dimensions[name] ?? 0),
-                 "rationale": "Derived from the requirement assessments below."]
+                [
+                    "name": name,
+                    "score": Int(dimensions[name] ?? 0),
+                    "rationale": "Derived from the requirement assessments below."
+                ]
             },
             "requirement_assessments": assessments
         ]
@@ -102,26 +113,26 @@ extension BackgroundStore {
     }
 }
 
-    // Rotate the phrasing and quote the requirement back. Identical evidence on every row reads
-    // as placeholder text the moment more than two rows are on screen at once.
+/// Rotate the phrasing and quote the requirement back. Identical evidence on every row reads
+/// as placeholder text the moment more than two rows are on screen at once.
 private func demoEvidence(_ status: String, _ text: String, _ index: Int, _ seniority: String?) -> String {
-        let subject = text.split(separator: " ").prefix(4).joined(separator: " ").lowercased()
-        switch status {
-        case "met":
-            return [
-                "Resume lists \(subject) directly, at \(seniority ?? "senior") level.",
-                "Matched against the resume's program-management history.",
-                "Covered — the resume shows this across more than one role."
-            ][index % 3]
-        case "partial":
-            return [
-                "Adjacent only: related work, but not \(subject) as described here.",
-                "Partial — the resume implies this without evidencing the depth asked for."
-            ][index % 2]
-        default:
-            return [
-                "No mention of \(subject) anywhere in the resume.",
-                "Not evidenced — a reader of this resume would not credit it."
-            ][index % 2]
-        }
+    let subject = text.split(separator: " ").prefix(4).joined(separator: " ").lowercased()
+    switch status {
+    case "met":
+        return [
+            "Resume lists \(subject) directly, at \(seniority ?? "senior") level.",
+            "Matched against the resume's program-management history.",
+            "Covered — the resume shows this across more than one role."
+        ][index % 3]
+    case "partial":
+        return [
+            "Adjacent only: related work, but not \(subject) as described here.",
+            "Partial — the resume implies this without evidencing the depth asked for."
+        ][index % 2]
+    default:
+        return [
+            "No mention of \(subject) anywhere in the resume.",
+            "Not evidenced — a reader of this resume would not credit it."
+        ][index % 2]
     }
+}

@@ -192,8 +192,20 @@ final class ScoringFeedbackTests: XCTestCase {
     /// was "IDE", matched as a substring of ordinary words and force-credited 159 requirements across
     /// 120 of 415 jobs, inflating 28 scores by up to 34 points.
     func testShortPhraseDoesNotMatchInsideLongerWords() {
-        for word in ["provide", "provider", "identify", "identity", "ideally", "alongside",
-                     "considerations", "fidelity", "guide", "incident", "reside", "video"] {
+        for word in [
+            "provide",
+            "provider",
+            "identify",
+            "identity",
+            "ideally",
+            "alongside",
+            "considerations",
+            "fidelity",
+            "guide",
+            "incident",
+            "reside",
+            "video"
+        ] {
             XCTAssertFalse(
                 ScoringFeedback.matches(phrase: "IDE", in: "Experience with \(word) systems"),
                 "'IDE' must not match inside '\(word)'"
@@ -203,8 +215,13 @@ final class ScoringFeedbackTests: XCTestCase {
 
     /// ...while the rule still does the job the user flagged it for.
     func testShortPhraseStillMatchesTheWholeWord() {
-        for text in ["IDE", "IDE integration", "Familiarity with the IDE.", "CLI/IDE tooling",
-                     "experience with an ide"] {
+        for text in [
+            "IDE",
+            "IDE integration",
+            "Familiarity with the IDE.",
+            "CLI/IDE tooling",
+            "experience with an ide"
+        ] {
             XCTAssertTrue(
                 ScoringFeedback.matches(phrase: "IDE", in: text), "'IDE' should match in '\(text)'"
             )

@@ -47,8 +47,13 @@ tell application "Google Chrome"
     make new window
   end if
   set URL of active tab of front window to "$POSTING"
+  -- Force a real navigation even when the tab is ALREADY on this URL. Setting the same URL is a
+  -- no-op, which left the previous take's content script in place; the second capture then ran
+  -- without showing the preflight overlay at all, and the recording narrated a popup that never
+  -- appeared. Each take starts from a freshly loaded page.
+  reload active tab of front window
   -- Same rect as the app window: whichever is frontmost has to fill the capture region exactly.
   set bounds of front window to {$X, $Y, $X + $W, $Y + $H}
 end tell
 EOF
-sleep 4
+sleep 6

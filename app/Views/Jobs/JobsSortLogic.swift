@@ -6,12 +6,43 @@ import JobhuntCore
 enum JobsSortLogic {
     static func sorted(_ jobs: [Job], key: JobsSortKey, ascending: Bool) -> [Job] {
         jobs.sorted { a, b in
-            let comparison = compare(a, b, key: key)
-            switch comparison {
+            // Missing-ness is decided BEFORE direction, or the guarantee above is a lie in one of the
+            // two directions. The comparators encode "nil sorts after", and flipping the whole result
+            // for descending flipped that too: sorting by fit score, high to low, put every UNSCORED
+            // job above the best match. Caught in the demo, where an accidentally-captured news
+            // article outranked an 86.
+            let aEmpty = isMissing(a, key: key)
+            let bEmpty = isMissing(b, key: key)
+            if aEmpty != bEmpty { return bEmpty }
+
+            switch compare(a, b, key: key) {
             case .orderedSame: return false
             case .orderedAscending: return ascending
             case .orderedDescending: return !ascending
             }
+        }
+    }
+
+    /// Has this job no value at all for the sort key? Mirrors what the comparators treat as empty —
+    /// including the display fallbacks, so an un-extracted job that still shows a page title is not
+    /// counted as missing a title.
+    private static func isMissing(_ job: Job, key: JobsSortKey) -> Bool {
+        func blank(_ s: String?) -> Bool {
+            (s ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+        }
+        switch key {
+        case .jobNumber: return job.jobNumber == nil
+        case .company: return blank(job.displayCompany)
+        case .title: return blank(job.displayTitle)
+        case .fitScore: return job.fitScore == nil
+        case .rating: return job.rating == nil
+        case .salaryMin: return job.salaryMin == nil
+        case .salaryMax: return job.salaryMax == nil
+        case .location: return blank(job.location)
+        case .extractedAt: return job.extractedAt == nil
+        case .lastOpenedAt: return job.lastOpenedAt == nil
+        // Always present: status is non-optional and capturedAt falls back to createdAt.
+        case .status, .capturedAt: return false
         }
     }
 

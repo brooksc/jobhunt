@@ -14,9 +14,9 @@ OUT="${2:?usage: cut.sh <master.mov> <outdir>}"
 mkdir -p "$OUT/cap"
 
 # Offsets on the MASTER timeline, from the driver's SCENE_LOG plus the 1.5s capture head start.
-A_START=${A_START:-2.0}; A_END=${A_END:-15.5}    # posting -> capture -> preflight -> job arrives
-B_START=${B_START:-95.0}; B_END=${B_END:-116.0}  # extracted + scored -> fit breakdown -> sort by fit
-SPEED=${SPEED:-1.20}
+A_START=${A_START:-2.5}; A_END=${A_END:-15.5}    # posting -> capture -> preflight -> job arrives
+B_START=${B_START:-96.0}; B_END=${B_END:-120.5}  # extracted + scored -> fit breakdown -> sort by fit
+SPEED=${SPEED:-1.30}
 FONT="${CAPTION_FONT:-/System/Library/Fonts/HelveticaNeue.ttc}"
 
 ffmpeg -hide_banner -loglevel error -y -ss "$A_START" -to "$A_END" -i "$SRC" -c:v libx264 -crf 16 -an "$OUT/.a.mov"
@@ -31,13 +31,13 @@ A_LEN=$(python3 -c "print(f'{$A_END-$A_START:.2f}')")
 
 # start|end|text  — on the JOINED timeline (pre-speed).
 CAPTIONS=(
-  "0.4|4.0|Any job posting. One click."
-  "4.6|8.6|It reads the page first — title, salary, location, remote"
-  "9.2|13.2|The job lands in JobHunt straight away"
-  "13.7|17.5|about a minute later…"
-  "18.0|24.0|Everything filled in: company, remote status, salary band"
-  "24.5|29.5|And scored against your resume, requirement by requirement"
-  "30.0|34.3|Sort by fit — your whole list ranks itself"
+  "0.2|3.0|Any job posting. One click."
+  "3.3|8.2|It reads the page first — title, salary, location, remote"
+  "8.6|12.8|The job lands in JobHunt straight away"
+  "13.2|17.0|about a minute later…"
+  "17.4|21.8|Everything filled in: company, remote status, salary band"
+  "22.3|28.9|And scored against your resume, requirement by requirement"
+  "29.6|37.2|Sort by fit — your whole list ranks itself"
 )
 
 i=0; FILTER=""; INPUTS=""

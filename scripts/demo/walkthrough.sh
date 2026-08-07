@@ -47,12 +47,14 @@ s 06-fit
 osascript -e 'tell application "System Events" to tell process "Jobhunt" to click radio button 2 of radio group 1 of group 3 of splitter group 1 of group 1 of window 1' >/dev/null 2>&1
 sleep 7                        # per-requirement breakdown
 s 07-sort
-# Rank the whole list by fit. Toolbar group 5 is the sort control; the toolbar's order is defined in
-# code rather than by data, so the index is stable in the way a list row's position is not. Escape on
-# no match, or a stranded open menu ends up in the footage.
+# Rank the whole list by fit. The sort control is toolbar UI ELEMENT 5 — not `group 5`, which in
+# AppleScript means "the 5th element of class group" and silently resolves to a different control (or
+# to nothing: there are only four groups). The toolbar's order is defined in code rather than by data,
+# so the index is stable in the way a list row's position is not.
+# Escape on no match, or a stranded open menu ends up in the footage.
 osascript <<'EOF' >/dev/null 2>&1
 tell application "System Events" to tell process "Jobhunt"
-  set mb to menu button 1 of group 5 of toolbar 1 of window 1
+  set mb to menu button 1 of (UI element 5 of toolbar 1 of window 1)
   click mb
   delay 1.2
   set picked to false

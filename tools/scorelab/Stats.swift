@@ -44,4 +44,22 @@ enum Stats {
         let d2 = zip(ra, rb).reduce(0.0) { $0 + pow($1.0 - $1.1, 2) }
         return 1 - 6 * d2 / (n * (n * n - 1))
     }
+
+    /// Mean absolute error against a target ranking's scores.
+    static func mae(_ a: [Int], _ b: [Int]) -> Double {
+        guard !a.isEmpty, a.count == b.count else { return 0 }
+        return zip(a, b).reduce(0.0) { $0 + Double(abs($1.0 - $1.1)) } / Double(a.count)
+    }
+
+    /// How many of the target's best `n` also appear in the candidate's best `n`.
+    ///
+    /// The user triages from the top of the list, so this is the criterion that decides whether a
+    /// change is worth shipping — a variant can improve MAE across the corpus while still failing to
+    /// put the right jobs first.
+    static func topOverlap(_ candidate: [Int], _ target: [Int], n: Int) -> Int {
+        func best(_ v: [Int]) -> Set<Int> {
+            Set(v.indices.sorted { v[$0] > v[$1] }.prefix(n))
+        }
+        return best(candidate).intersection(best(target)).count
+    }
 }

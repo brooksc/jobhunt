@@ -157,21 +157,21 @@ final class FitScorerTests: XCTestCase {
 
     func testRequirementGapsSkipsMetKeepsPartialAndMissing() {
         let assessments: [[String: Any]] = [
-            ["requirement": "A", "kind": "required", "status": "met"],
-            ["requirement": "B", "kind": "required", "status": "missing"],
-            ["requirement": "C", "kind": "preferred", "status": "partial"]
+            ["requirement": "8 years of program management", "kind": "required", "status": "met"],
+            ["requirement": "Experience with distributed systems", "kind": "required", "status": "missing"],
+            ["requirement": "Experience in healthcare", "kind": "preferred", "status": "partial"]
         ]
         let gaps = FitScorer.requirementGaps(fromAssessments: assessments)
         XCTAssertEqual(gaps, [
-            gap("B", .required, .missing),
-            gap("C", .preferred, .partial)
+            gap("Experience with distributed systems", .required, .missing),
+            gap("Experience in healthcare", .preferred, .partial)
         ])
     }
 
     func testRequirementGapsDefaultsKindToRequiredWhenAbsent() {
-        let assessments: [[String: Any]] = [["requirement": "X", "status": "missing"]]
+        let assessments: [[String: Any]] = [["requirement": "Experience with Kubernetes", "status": "missing"]]
         let gaps = FitScorer.requirementGaps(fromAssessments: assessments)
-        XCTAssertEqual(gaps, [gap("X", .required, .missing)])
+        XCTAssertEqual(gaps, [gap("Experience with Kubernetes", .required, .missing)])
     }
 
     // MARK: - Breakdown / weights in result
@@ -195,9 +195,9 @@ final class FitScorerTests: XCTestCase {
     // MARK: - Normalised penalty (TASK-656)
 
     private func assessments(required: [String], preferred: [String]) -> [[String: Any]] {
-        required.enumerated().map { ["requirement": "req\($0.offset)", "kind": "required", "status": $0.element] }
+        required.enumerated().map { ["requirement": "Experience with req\($0.offset)", "kind": "required", "status": $0.element] }
             + preferred.enumerated().map {
-                ["requirement": "pref\($0.offset)", "kind": "preferred", "status": $0.element]
+                ["requirement": "Experience with pref\($0.offset)", "kind": "preferred", "status": $0.element]
             }
     }
 
@@ -295,9 +295,9 @@ final class FitScorerTests: XCTestCase {
           "breakdown": {"required_qualifications": 80, "preferred_qualifications": 60,
                         "skills": 80, "domain_fit": 60, "experience_level": 100},
           "requirement_assessments": [
-            {"requirement": "React", "kind": "preferred", "status": "partial"},
-            {"requirement": "10y management", "kind": "required", "status": "missing"},
-            {"requirement": "Swift", "kind": "required", "status": "met"}
+            {"requirement": "Strong React knowledge", "kind": "preferred", "status": "partial"},
+            {"requirement": "10+ years of management experience", "kind": "required", "status": "missing"},
+            {"requirement": "Deep Swift knowledge", "kind": "required", "status": "met"}
           ]
         }
         """
@@ -650,5 +650,75 @@ final class NonDiscriminatingProjectionTests: XCTestCase {
     func testRealGapsStillSurface() {
         let p = projection([("Experience with JIRA, Confluence, and Aha", "missing")])
         XCTAssertEqual(p.requirementsNotMet.count, 1)
+    }
+}
+
+/// Fragment requirements — bare noun phrases the extractor sliced out of a list.
+///
+/// The largest single source of spurious penalty measured on the real corpus: 34.9% of preferred
+/// requirements, 20.3% of all penalty points, and 42% of the jobs pinned at the old cap. The
+/// predicate here is a port of the one used for that measurement
+/// (`scripts/analyze-fit-quality.py:is_fragment`) — if the two drift, the shipped filter stops
+/// matching the numbers it was justified by.
+final class FragmentRequirementTests: XCTestCase {
+    /// #732's root cause: `preferred[20]` whose entire text was "IDE".
+    func testBareNounPhrasesAreFragments() {
+        for text in ["IDE", "Governance", "Partners", "CLI", "Data pipelines", "Product strategy"] {
+            XCTAssertTrue(FitScorer.isFragment(requirement: text), text)
+        }
+    }
+
+    /// Terse but assessable — a credential or a duration is a real requirement however short.
+    func testCredentialsAndDurationsAreKept() {
+        for text in ["5+ years", "BS degree", "MBA preferred", "PhD required", "Bachelor's in CS"] {
+            XCTAssertFalse(FitScorer.isFragment(requirement: text), text)
+        }
+    }
+
+    /// So is anything framed as experience or proficiency, even in three words.
+    func testExperienceFramingIsKept() {
+        for text in ["Strong Python knowledge", "Proven leadership", "Kubernetes experience", "Familiar with Terraform"] {
+            XCTAssertFalse(FitScorer.isFragment(requirement: text), text)
+        }
+    }
+
+    /// Inflections count. Matching these as whole words discarded "Familiarity with Salesforce" while
+    /// keeping "Familiar with Salesforce" — found by checking the filter against hand labels, where
+    /// the labeller had judged it a real requirement and met.
+    func testInflectedProficiencyWordsAreKept() {
+        for text in [
+            "Familiarity with Salesforce", "Experienced in Rust", "Proficiency in SQL",
+            "Excellent communication", "Ability to influence", "Expertise in Kafka"
+        ] {
+            XCTAssertFalse(FitScorer.isFragment(requirement: text), text)
+        }
+    }
+
+    /// Anything longer than three words has enough to assess.
+    func testLongerRequirementsAreNeverFragments() {
+        for text in [
+            "Deploy and operate services on Kubernetes",
+            "Work with partners across the organisation to land roadmaps"
+        ] {
+            XCTAssertFalse(FitScorer.isFragment(requirement: text), text)
+        }
+    }
+
+    /// The behaviour that matters: a fragment leaves BOTH the numerator and the denominator, so it
+    /// can't depress the score by sitting in the count of things to satisfy.
+    func testFragmentsLeaveTheDenominatorToo() {
+        let assessments: [[String: Any]] = [
+            ["requirement": "IDE", "status": "missing", "kind": "preferred"],
+            ["requirement": "Governance", "status": "missing", "kind": "preferred"],
+            ["requirement": "5+ years of Kubernetes in production", "status": "met", "kind": "required"]
+        ]
+        let counts = FitScorer.requirementCounts(fromAssessments: assessments)
+        XCTAssertEqual(counts.preferred, 0)
+        XCTAssertEqual(counts.required, 1)
+        XCTAssertTrue(FitScorer.requirementGaps(fromAssessments: assessments).isEmpty)
+        XCTAssertEqual(
+            FitScorer.verdictShare(assessments: assessments, partialCredit: 0.5), 100,
+            "the one real requirement is met, so the share is 100 — fragments must not dilute it"
+        )
     }
 }

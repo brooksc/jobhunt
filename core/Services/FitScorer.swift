@@ -175,14 +175,15 @@ public enum FitScorer {
     public static func requirementCounts(
         fromAssessments assessments: [[String: Any]],
         feedback: [ScoringFeedback] = [],
-        jobNumber: Int? = nil
+        jobNumber: Int? = nil,
+        exclusions: Exclusions = .all
     ) -> RequirementCounts {
         var required = 0
         var preferred = 0
         for item in assessments {
             guard let requirement = item["requirement"] as? String else { continue }
             if feedback.verdict(forRequirement: requirement, jobNumber: jobNumber) == .ignore { continue }
-            guard !isNonDiscriminating(requirement: requirement) else { continue }
+            guard !isExcludedFromScoring(requirement: requirement, exclusions: exclusions) else { continue }
             let kind = RequirementGap.Kind(rawValue: (item["kind"] as? String) ?? "") ?? .required
             switch kind {
             case .required: required += 1
@@ -247,6 +248,75 @@ public enum FitScorer {
         return dispositionMarkers.contains(where: { text.contains($0) })
     }
 
+    /// A bare noun phrase the extractor sliced out of a list — "IDE", "Governance", "Partners" —
+    /// with nothing in it to assess against a résumé.
+    ///
+    /// These are an *extraction* defect surfacing as a *scoring* one, and they are not rare: 34.9% of
+    /// preferred requirements corpus-wide (742 of 2,129) against 1.8% of required, measured over 415
+    /// jobs and independently replicated at 36% on a hand-labelled sample. They carried **20.3% of all
+    /// penalty points**, and of the 57 jobs pinned at the old 60-point cap, 24 (42%) fell below it once
+    /// fragments were removed — so "verbose postings saturate" is really "postings whose *preferred*
+    /// section gets shredded into fragments saturate".
+    ///
+    /// Dropped rather than merely un-penalised, because a fragment is not evidence of a gap in either
+    /// direction: leaving it in the denominator would still depress the share of requirements met.
+    /// Filtering here means the fix applies to the 415 already-scored jobs on recompute, with no LLM
+    /// calls — the extractor fix stops new ones being made, but can't repair stored analyses.
+    ///
+    /// Short *and* contentless is the test. A three-word phrase naming a credential ("BS in CS",
+    /// "5+ years") or one of the assessable-experience words ("strong Python knowledge") is a real
+    /// requirement and is kept.
+    public static func isFragment(requirement: String) -> Bool {
+        let text = requirement.trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = text.split(whereSeparator: \.isWhitespace)
+        if words.isEmpty { return true }
+        guard words.count <= 3 else { return false }
+        let lower = text.lowercased()
+        // A credential or a duration is assessable however tersely it's phrased. Matched as whole
+        // words: these are short enough that a substring test would fire on unrelated text.
+        let credentials = ["year", "years", "yr", "yrs", "degree", "bachelor", "master", "mba", "phd"]
+        if credentials.contains(where: { ScoringFeedback.matches(phrase: $0, in: lower) }) { return false }
+        // So is anything framed as experience or proficiency. Matched as *stems* rather than whole
+        // words, because the inflections carry the same meaning and dropping them is a real error:
+        // "Familiarity with Salesforce" was discarded as a fragment while "Familiar with Salesforce"
+        // survived. These stems are long enough that substring matching is safe — the `IDE` incident
+        // came from a three-character phrase, not from "knowledge".
+        let proficiency = [
+            "experien", "abilit", "proven", "strong", "excellen", "deep", "knowledge", "familiar",
+            "expert", "proficien", "skilled", "fluen", "background in"
+        ]
+        return !proficiency.contains(where: { lower.contains($0) })
+    }
+
+    /// Everything that must not participate in scoring, in one place.
+    ///
+    /// Four call sites filter assessments — the gap list, the counts that form the penalty denominator,
+    /// the verdict share, and the UI projection — and they have to agree exactly. When they disagreed
+    /// before, a requirement dropped from the numerator stayed in the denominator and quietly
+    /// depressed the score.
+    /// Which deterministic filters are active. A parameter rather than a constant so an experiment can
+    /// measure what each filter contributes *against the shipped arithmetic* — the alternative is a
+    /// scratch reimplementation, which is how a lab number once disagreed with the app on the first job
+    /// it touched. Production never passes anything but `.all`.
+    public struct Exclusions: OptionSet, Sendable {
+        public let rawValue: Int
+        public init(rawValue: Int) { self.rawValue = rawValue }
+        public static let nonDiscriminating = Exclusions(rawValue: 1 << 0)
+        public static let fragments = Exclusions(rawValue: 1 << 1)
+        public static let all: Exclusions = [.nonDiscriminating, .fragments]
+        public static let none: Exclusions = []
+    }
+
+    public static func isExcludedFromScoring(
+        requirement: String,
+        exclusions: Exclusions = .all
+    ) -> Bool {
+        if exclusions.contains(.nonDiscriminating), isNonDiscriminating(requirement: requirement) {
+            return true
+        }
+        return exclusions.contains(.fragments) && isFragment(requirement: requirement)
+    }
+
     /// Build the gap list from the LLM's `requirement_assessments` (raw dicts). Only `partial`/`missing`
     /// items become gaps (`met` is not a gap). `kind` comes from the assessment; when it's absent
     /// (legacy scores that predate the tag) it defaults to `.required` so an unknown gap is treated as
@@ -254,7 +324,8 @@ public enum FitScorer {
     public static func requirementGaps(
         fromAssessments assessments: [[String: Any]],
         feedback: [ScoringFeedback] = [],
-        jobNumber: Int? = nil
+        jobNumber: Int? = nil,
+        exclusions: Exclusions = .all
     ) -> [RequirementGap] {
         assessments.compactMap { item in
             guard let requirement = item["requirement"] as? String,
@@ -274,7 +345,7 @@ public enum FitScorer {
             case .none: break
             }
             // Never penalise something no candidate could fail.
-            guard !isNonDiscriminating(requirement: requirement) else { return nil }
+            guard !isExcludedFromScoring(requirement: requirement, exclusions: exclusions) else { return nil }
             let kind = RequirementGap.Kind(rawValue: (item["kind"] as? String) ?? "") ?? .required
             return RequirementGap(requirement: requirement, kind: kind, status: status)
         }

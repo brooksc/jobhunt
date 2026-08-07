@@ -141,8 +141,8 @@ final class ProjectionsTests: XCTestCase {
         {
             "requirement_assessments": [
                 {"requirement": "5+ years iOS", "status": "met", "evidence": "6 years."},
-                {"requirement": "SwiftUI", "status": "partial", "evidence": "Some exposure."},
-                {"requirement": "Kotlin", "status": "missing", "evidence": "Absent."}
+                {"requirement": "Strong SwiftUI knowledge", "status": "partial", "evidence": "Some exposure."},
+                {"requirement": "Experience with Kotlin", "status": "missing", "evidence": "Absent."}
             ],
             "dimensions": [{"name": "skills", "score": 80}]
         }
@@ -154,7 +154,7 @@ final class ProjectionsTests: XCTestCase {
         XCTAssertEqual(p.requirementAssessments[1].evidence, "Some exposure.")
         // Derived splits: met vs (partial + missing)
         XCTAssertEqual(p.requirementsMet, ["5+ years iOS"])
-        XCTAssertEqual(Set(p.requirementsNotMet), ["SwiftUI", "Kotlin"])
+        XCTAssertEqual(Set(p.requirementsNotMet), ["Strong SwiftUI knowledge", "Experience with Kotlin"])
     }
 
     func testFitProjection_requirementAssessments_parsesKind() {
@@ -162,8 +162,8 @@ final class ProjectionsTests: XCTestCase {
         {
             "requirement_assessments": [
                 {"requirement": "5+ years iOS", "kind": "required", "status": "met", "evidence": "6 years."},
-                {"requirement": "Kotlin", "kind": "preferred", "status": "missing", "evidence": "Absent."},
-                {"requirement": "Legacy row", "status": "partial", "evidence": "No kind field."}
+                {"requirement": "Experience with Kotlin", "kind": "preferred", "status": "missing", "evidence": "Absent."},
+                {"requirement": "Experience with legacy systems", "status": "partial", "evidence": "No kind field."}
             ]
         }
         """

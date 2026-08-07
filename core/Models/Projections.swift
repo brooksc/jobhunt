@@ -117,7 +117,7 @@ public struct FitScoreProjection {
                 // Dropped from the READ MODEL, not just from the penalty: "Experience with, or
                 // capacity to learn, JIRA" showing under Gaps is noise even at zero cost — it reads
                 // as something to fix when there is nothing to fix (job #718).
-                guard !FitScorer.isNonDiscriminating(requirement: requirement) else { return nil }
+                guard !FitScorer.isExcludedFromScoring(requirement: requirement) else { return nil }
                 switch feedback.verdict(forRequirement: requirement, jobNumber: jobNumber) {
                 case .forceMissing: status = "missing"
                 case .forceMet: status = "met"

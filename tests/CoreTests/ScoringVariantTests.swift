@@ -6,11 +6,20 @@ import XCTest
 /// earlier experiment re-derived the maths in a scratch script, which is how a reimplementation once
 /// disagreed with `FitScorer` by a point on the first job it touched.
 final class ScoringVariantTests: XCTestCase {
+    /// Requirement text has to read like something a posting would actually list: the fragment filter
+    /// drops bare noun phrases, so a fixture saying "required requirement 0" is silently discarded and
+    /// every assertion here collapses to nil.
     private func assessments(required: [String], preferred: [String] = []) -> [[String: Any]] {
         required.enumerated().map {
-            ["requirement": "required requirement \($0.offset)", "kind": "required", "status": $0.element]
+            [
+                "requirement": "Experience with required requirement \($0.offset)",
+                "kind": "required", "status": $0.element
+            ]
         } + preferred.enumerated().map {
-            ["requirement": "preferred requirement \($0.offset)", "kind": "preferred", "status": $0.element]
+            [
+                "requirement": "Experience with preferred requirement \($0.offset)",
+                "kind": "preferred", "status": $0.element
+            ]
         }
     }
 

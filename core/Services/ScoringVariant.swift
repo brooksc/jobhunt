@@ -67,7 +67,8 @@ public extension FitScorer {
         assessments: [[String: Any]],
         partialCredit: Double,
         feedback: [ScoringFeedback] = [],
-        jobNumber: Int? = nil
+        jobNumber: Int? = nil,
+        exclusions: Exclusions = .all
     ) -> Double? {
         var earned = 0.0
         var total = 0.0
@@ -77,7 +78,7 @@ public extension FitScorer {
             // still sit in the denominator and quietly depress the score.
             let verdict = feedback.verdict(forRequirement: requirement, jobNumber: jobNumber)
             if verdict == .ignore { continue }
-            guard !isNonDiscriminating(requirement: requirement) else { continue }
+            guard !isExcludedFromScoring(requirement: requirement, exclusions: exclusions) else { continue }
 
             let kind = RequirementGap.Kind(rawValue: (item["kind"] as? String) ?? "") ?? .required
             let weight = kind == .required ? requiredShareWeight : preferredShareWeight
@@ -122,25 +123,33 @@ public extension FitScorer {
         dimensions: [String: Double],
         assessments: [[String: Any]],
         feedback: [ScoringFeedback] = [],
-        jobNumber: Int? = nil
+        jobNumber: Int? = nil,
+        exclusions: Exclusions = .all
     ) -> Int {
         switch variant {
         case .current:
-            let gaps = requirementGaps(fromAssessments: assessments, feedback: feedback, jobNumber: jobNumber)
+            let gaps = requirementGaps(
+                fromAssessments: assessments, feedback: feedback, jobNumber: jobNumber, exclusions: exclusions
+            )
             let counts = assessments.isEmpty
                 ? nil
-                : requirementCounts(fromAssessments: assessments, feedback: feedback, jobNumber: jobNumber)
+                : requirementCounts(
+                    fromAssessments: assessments, feedback: feedback, jobNumber: jobNumber,
+                    exclusions: exclusions
+                )
             return computeScore(dimensions: dimensions, gaps: gaps, counts: counts).overall
 
         case let .verdictShare(partial):
             let share = verdictShare(
-                assessments: assessments, partialCredit: partial, feedback: feedback, jobNumber: jobNumber
+                assessments: assessments, partialCredit: partial, feedback: feedback,
+                jobNumber: jobNumber, exclusions: exclusions
             )
             return Int((share ?? 0).rounded())
 
         case let .hybrid(verdictWeight, partial):
             guard let share = verdictShare(
-                assessments: assessments, partialCredit: partial, feedback: feedback, jobNumber: jobNumber
+                assessments: assessments, partialCredit: partial, feedback: feedback,
+                jobNumber: jobNumber, exclusions: exclusions
             ) else {
                 // No usable requirements — fall back to the context term rather than scoring 0.
                 return Int(contextScore(dimensions: dimensions).rounded())

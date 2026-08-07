@@ -28,6 +28,13 @@ func flag(_ name: String) -> String? {
     return v.hasPrefix("--") ? nil : v
 }
 
+// Ground truth lives outside the repo on purpose: the labels quote résumé facts, and this repo is
+// public.
+if let labelled = flag("--labelled") {
+    try LabelledEval.run(directory: labelled)
+    exit(0)
+}
+
 let statusFilter = flag("--status")
 let jsonOut = flag("--json")
 let storePath = flag("--store")

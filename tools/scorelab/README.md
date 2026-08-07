@@ -59,3 +59,22 @@ Defined in `core/Services/ScoringVariant.swift`:
 - **`.hybrid`** — the share blended with only `domain_fit` and `experience_level`, the two judgements
   a requirement list structurally cannot express (no posting has a bullet reading "must have worked
   in our industry").
+
+## Evaluating against ground truth
+
+```bash
+ScoreLab --labelled ~/Desktop/resume/fitscore-collab/labelled
+```
+
+The corpus tells you how scores are *distributed*; only labels tell you which scores are *right*.
+This mode scores 20 hand-labelled jobs two ways — the model's own requirement verdicts, and the
+labeller's — through the **same** `FitScorer` the app uses, and reports MAE, Spearman and top-5
+overlap between them.
+
+**Only the per-requirement verdicts are used as truth.** The labeller's hand-set overall bands are
+anchored to the model's output (every corpus dump put `current_score` in header position), so a
+calibration measured against them is circular. The target holds the model's dimension numbers fixed
+and substitutes ground-truth verdicts, which isolates the one thing a requirement filter can move:
+the penalty term.
+
+Labels live outside the repo because they quote résumé facts and this repo is public.

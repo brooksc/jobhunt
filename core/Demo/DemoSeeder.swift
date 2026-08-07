@@ -374,27 +374,6 @@ extension BackgroundStore {
                 note: nil,
                 duplicateOfJobID: "job_009",
                 dupGroupHash: "demo_dhash_amazon"
-            ),
-            // Accidentally captured non-job page — the ONLY seeded row without a fit score, and
-            // deliberately so. Every real posting is scored: a demo list peppered with unscored rows
-            // reads as "the scoring is broken" rather than "these haven't been scored yet", and it
-            // makes sorting and filtering by fit look like they don't work. This one stays unscored
-            // because it genuinely isn't a job, which is the point it exists to make.
-            // Sorting by fit puts it last, so it's out of frame in the walkthrough.
-            SeedJob(
-                capId: "cap_015", jobId: "job_015", jobNum: 15,
-                url: "https://techcrunch.com/2024/11/the-state-of-ai-hiring",
-                pageTitle: "The State of AI Hiring in 2024 · TechCrunch",
-                company: nil, title: nil,
-                location: nil, remoteType: nil,
-                salaryMin: nil, salaryMax: nil, salaryCurrency: "USD",
-                employmentType: nil, seniority: nil,
-                status: .passed,
-                summary: nil, requirements: nil, skills: [],
-                capturedAt: daysAgo(6), extractedAt: daysAgo(6),
-                extractionStatus: .succeeded, fitScore: nil, fitStatus: .none,
-                note: "Accidentally captured — not a job posting.",
-                duplicateOfJobID: nil
             )
         ]
 

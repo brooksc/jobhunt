@@ -3,6 +3,11 @@ import XCTest
 @testable import JobhuntCore
 
 final class DemoSeederTests: XCTestCase {
+    /// How many jobs `DemoSeeder` inserts. Was written out as a literal `15` in seven assertions, so
+    /// adding or removing one seed meant editing seven numbers and reading seven failures to find out
+    /// why — which is exactly what happened when the non-job capture came out.
+    static let seededJobCount = 14
+
     // MARK: - Helpers
 
     func makeStore() throws -> (ModelContainer, BackgroundStore) {
@@ -19,7 +24,7 @@ final class DemoSeederTests: XCTestCase {
 
         let ctx = ModelContext(container)
         let jobs = try ctx.fetch(FetchDescriptor<Job>())
-        XCTAssertEqual(jobs.count, 15, "seedDemo must insert exactly 15 jobs")
+        XCTAssertEqual(jobs.count, Self.seededJobCount, "seedDemo must insert every seeded job")
     }
 
     func testSeedDemoPopulatesSites() async throws {
@@ -55,7 +60,7 @@ final class DemoSeederTests: XCTestCase {
 
         let ctx = ModelContext(container)
         let captures = try ctx.fetch(FetchDescriptor<Capture>())
-        XCTAssertEqual(captures.count, 15, "seedDemo must insert one capture per job (15)")
+        XCTAssertEqual(captures.count, Self.seededJobCount, "seedDemo must insert one capture per job")
     }
 
     func testSeedDemoPopulatesEvents() async throws {
@@ -193,8 +198,10 @@ final class DemoSeederTests: XCTestCase {
     /// don't work. The walkthrough demonstrates the pending state properly by capturing a job live
     /// and letting it extract on camera, which is the honest way to show it.
     ///
-    /// The single exception is the accidentally-captured TechCrunch article, which has no score
-    /// because it isn't a job — the point it exists to make.
+    /// There is no exception. An accidentally-captured non-job page used to sit in the seed to show
+    /// that JobHunt marks such a capture Passed rather than inventing a score for it — a real and
+    /// useful behaviour, but one that put a permanently score-less row in the middle of every demo
+    /// list and screenshot. The Lyft posting still covers the Passed state.
     func testEveryRealPostingIsScored() async throws {
         let (container, store) = try makeStore()
         try await DemoSeeder.seedDemo(into: store)
@@ -202,11 +209,10 @@ final class DemoSeederTests: XCTestCase {
         let ctx = ModelContext(container)
         let jobs = try ctx.fetch(FetchDescriptor<Job>())
         let unscored = jobs.filter { $0.fitScore == nil }
-        XCTAssertEqual(
-            unscored.count, 1,
-            "Only the non-job page may be unscored; found: \(unscored.map { $0.title ?? "untitled" })"
+        XCTAssertTrue(
+            unscored.isEmpty,
+            "Every demo row must carry a score; found: \(unscored.map { $0.title ?? "untitled" })"
         )
-        XCTAssertNil(unscored.first?.title, "The unscored row must be the non-job capture")
         XCTAssertTrue(
             jobs.allSatisfy { $0.extractionStatus != .pending },
             "A permanently-pending row reads as a stuck queue in screenshots"
@@ -231,7 +237,7 @@ final class DemoSeederTests: XCTestCase {
 
         let ctx = ModelContext(container)
         let jobs = try ctx.fetch(FetchDescriptor<Job>())
-        XCTAssertEqual(jobs.count, 15, "Second seedDemo call must not duplicate data")
+        XCTAssertEqual(jobs.count, Self.seededJobCount, "Second seedDemo call must not duplicate data")
     }
 
     // MARK: - reseedDemo
@@ -246,12 +252,12 @@ final class DemoSeederTests: XCTestCase {
         try ctx.save()
 
         let beforeJobs = try ctx.fetch(FetchDescriptor<Job>())
-        XCTAssertEqual(beforeJobs.count, 16)
+        XCTAssertEqual(beforeJobs.count, Self.seededJobCount + 1)
 
         try await DemoSeeder.reseedDemo(into: store)
 
         let afterJobs = try ctx.fetch(FetchDescriptor<Job>())
-        XCTAssertEqual(afterJobs.count, 15, "reseedDemo must reset to exactly 15 jobs")
+        XCTAssertEqual(afterJobs.count, Self.seededJobCount, "reseedDemo must reset to exactly the seeded set")
         let userJob = afterJobs.first { $0.jobNumber == 999 }
         XCTAssertNil(userJob, "reseedDemo must remove user-added jobs")
     }
@@ -314,8 +320,7 @@ final class DemoSeederTests: XCTestCase {
         let demoCtx = ModelContext(demoContainer)
         let demoJobs = try demoCtx.fetch(FetchDescriptor<Job>())
 
-        // Demo must have 15 seeded jobs
-        XCTAssertEqual(demoJobs.count, 15)
+        XCTAssertEqual(demoJobs.count, Self.seededJobCount)
 
         // User container must be untouched
         let userJobs = try userCtx.fetch(FetchDescriptor<Job>())
@@ -331,7 +336,7 @@ final class DemoSeederTests: XCTestCase {
         let container = try await ModelContainerFactory.demo()
         let ctx = ModelContext(container)
         let jobs = try ctx.fetch(FetchDescriptor<Job>())
-        XCTAssertEqual(jobs.count, 15)
+        XCTAssertEqual(jobs.count, Self.seededJobCount)
         let sites = try ctx.fetch(FetchDescriptor<Site>())
         XCTAssertEqual(sites.count, 3)
     }

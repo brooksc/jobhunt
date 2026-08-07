@@ -57,12 +57,6 @@ tell application "System Events" to tell process "Jobhunt"
       exit repeat
     end if
   end repeat
-  -- Selecting a row scrolls it only just into view, which left the captured job — the one the whole
-  -- demo is about — sitting half under the list header for the entire second half of the video.
-  -- It is always the newest row under the Date Captured sort, so pin the list to the top.
-  try
-    set value of scroll bar 1 of sa to 0.0
-  end try
 end tell
 EOF
 sleep 6                        # detail pane: title, company, remote, salary

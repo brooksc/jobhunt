@@ -14,10 +14,18 @@ OUT="${2:?usage: cut.sh <master.mov> <outdir>}"
 mkdir -p "$OUT/cap"
 
 # Offsets on the MASTER timeline, from the driver's SCENE_LOG plus the 1.5s capture head start.
-A_START=${A_START:-2.5}; A_END=${A_END:-15.5}    # posting -> capture -> preflight -> job arrives
-B_START=${B_START:-96.0}; B_END=${B_END:-120.5}  # extracted + scored -> fit breakdown -> sort by fit
+A_START=${A_START:-2.0}; A_END=${A_END:-16.3}    # posting -> capture -> preflight -> job arrives
+B_START=${B_START:-96.4}; B_END=${B_END:-119.2}  # extracted + scored -> fit breakdown -> sort by fit
 SPEED=${SPEED:-1.30}
 FONT="${CAPTION_FONT:-/System/Library/Fonts/HelveticaNeue.ttc}"
+
+# screencapture writes VARIABLE frame rate — it emits a frame when the screen changes, so a static
+# window produces almost none. `-ss` then seeks to the nearest keyframe and every offset below lands
+# seconds away from where the arithmetic says, which silently slid the captions off the footage they
+# describe (a caption about the browser played over the app). Normalise to CFR once, up front, and
+# the offsets mean what they say.
+ffmpeg -hide_banner -loglevel error -y -i "$SRC" -vf fps=30 -c:v libx264 -crf 16 -an "$OUT/.cfr.mov"
+SRC="$OUT/.cfr.mov"
 
 ffmpeg -hide_banner -loglevel error -y -ss "$A_START" -to "$A_END" -i "$SRC" -c:v libx264 -crf 16 -an "$OUT/.a.mov"
 ffmpeg -hide_banner -loglevel error -y -ss "$B_START" -to "$B_END" -i "$SRC" -c:v libx264 -crf 16 -an "$OUT/.b.mov"
@@ -31,13 +39,13 @@ A_LEN=$(python3 -c "print(f'{$A_END-$A_START:.2f}')")
 
 # start|end|text  — on the JOINED timeline (pre-speed).
 CAPTIONS=(
-  "0.2|3.0|Any job posting. One click."
-  "3.3|8.2|It reads the page first — title, salary, location, remote"
-  "8.6|12.8|The job lands in JobHunt straight away"
-  "13.2|17.0|about a minute later…"
-  "17.4|21.8|Everything filled in: company, remote status, salary band"
-  "22.3|28.9|And scored against your resume, requirement by requirement"
-  "29.6|37.2|Sort by fit — your whole list ranks itself"
+  "0.3|3.7|Any job posting. One click."
+  "4.1|8.9|It reads the page first — title, salary, location, remote"
+  "9.4|13.3|The job lands in JobHunt straight away"
+  "13.7|16.6|about a minute later…"
+  "17.0|19.9|Everything filled in: company, remote status, salary band"
+  "20.4|27.2|And scored against your resume, requirement by requirement"
+  "27.8|36.0|Sort by fit — your whole list ranks itself"
 )
 
 i=0; FILTER=""; INPUTS=""
@@ -88,5 +96,5 @@ gif() { # gif <name> <start> <dur> [width]  — offsets on the CAPTIONED timelin
 gif capture-a-job   0.4 13.0
 gif extracted-and-scored "$A_LEN" 20.0
 
-rm -f "$OUT"/.a.mov "$OUT"/.b.mov "$OUT"/.joined.mov "$OUT"/.captioned.mov "$OUT"/.concat.txt
+rm -f "$OUT"/.cfr.mov "$OUT"/.a.mov "$OUT"/.b.mov "$OUT"/.joined.mov "$OUT"/.captioned.mov "$OUT"/.concat.txt
 rm -rf "$OUT/cap"

@@ -33,3 +33,22 @@ tell application "System Events" to tell process "Jobhunt"
   return (position of window 1) & (size of window 1)
 end tell
 EOF
+
+# Stage the browser too. The walkthrough opens on a real posting, and NOTHING here used to guarantee
+# one was on screen: the driver just activated whatever Chrome happened to be, with stderr
+# suppressed. Two takes recorded with no browser in frame at all — the first three captions narrating
+# a capture the viewer never sees — and both passed the scene-log check, because the log records that
+# the script reached a line, not that anything appeared.
+POSTING="${DEMO_POSTING_URL:-https://job-boards.greenhouse.io/reddit/jobs/7944159}"
+osascript <<EOF
+tell application "Google Chrome"
+  activate
+  if (count of windows) is 0 then
+    make new window
+  end if
+  set URL of active tab of front window to "$POSTING"
+  -- Same rect as the app window: whichever is frontmost has to fill the capture region exactly.
+  set bounds of front window to {$X, $Y, $X + $W, $Y + $H}
+end tell
+EOF
+sleep 4

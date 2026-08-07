@@ -14,8 +14,24 @@ L="${SCENE_LOG:-/dev/null}"; T0=$(python3 -c 'import time;print(time.time())')
 s(){ python3 -c "import time;print(f'{time.time()-$T0:.2f}\t$1')" >> "$L"; }
 app(){ osascript -e 'tell application "Jobhunt" to activate' >/dev/null 2>&1; }
 
+# Assert, don't hope. Activating Chrome and trusting it is how two takes got recorded with no
+# browser on screen: `activate` can no-op (wrong Space, window moved, Chrome not running) and the
+# error was being swallowed by `2>/dev/null`. A take that can't show the capture is worthless, so
+# fail here rather than spend two minutes recording it.
+require_front() {
+  local want="$1" got
+  got=$(osascript -e 'tell application "System Events" to get name of first process whose frontmost is true' 2>&1)
+  if [ "$got" != "$want" ]; then
+    echo "walkthrough: expected '$want' frontmost, got '$got' — aborting" >&2
+    exit 1
+  fi
+}
+
 s 01-posting
-osascript -e 'tell application "Google Chrome" to activate' >/dev/null 2>&1; sleep 4
+osascript -e 'tell application "Google Chrome" to activate' 2>&1
+sleep 2
+require_front "Google Chrome"
+sleep 2
 s 02-capture
 osascript -e 'tell application "System Events" to keystroke "y" using {control down, shift down}' >/dev/null 2>&1
 sleep 5                        # green OK badge appears on the extension button

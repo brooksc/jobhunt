@@ -13,6 +13,7 @@ DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
 
 # 2. dry-run FIRST — it asserts every scene actually fired
 ./scripts/demo/reset.sh
+./scripts/demo/configure.sh OpenRouter mistralai/ministral-14b-2512
 SCENE_LOG=/tmp/scenes.txt ./scripts/demo/drive.sh
 
 # 3. record (single shell invocation — see "dead air" below)
@@ -20,9 +21,8 @@ SCENE_LOG=/tmp/scenes.txt ./scripts/demo/drive.sh
 { ( sleep 1.5; SCENE_LOG=/tmp/scenes.txt ./scripts/demo/drive.sh ) & } \
   && screencapture -v -V 46 -R 55,100,1600,900 /tmp/master.mov
 
-# 4. captions, then encode
-./scripts/demo/captions.sh /tmp/master.mov /tmp/demo
-./scripts/demo/encode.sh /tmp/demo/master-captioned.mov marketing/demo
+# 4. cut out the real extraction wait, caption, and encode
+./scripts/demo/cut.sh /tmp/master.mov marketing/demo
 ```
 
 ## Privacy
@@ -83,6 +83,19 @@ Every one of these produced footage where **nothing happened**, with no error.
   between two tool calls becomes dead footage at the front and a truncated ending.
 - **Caption timings come from `SCENE_LOG`**, not from reading the script — AppleScript step durations
   drift between runs. Video time = scene time + the 1.5s capture head start.
+
+## The wait is real, and cut
+
+Extraction and scoring against a real provider take about a minute. `cut.sh` removes that wait and
+labels the jump *"about a minute later…"* rather than hiding it — how long it takes depends on the
+model the viewer picks, so implying it's instant would misrepresent the product.
+
+## Pick a model that answers the same way twice
+
+Record with a model measured as consistent. At `temperature: 0`, hosted inference still varies:
+`deepseek-v4-flash` changed 7 of 15 requirement verdicts between byte-identical calls and moved the
+score 10–16 points, which made takes unreproducible. `ministral-14b` changed 2 and moves ~1.5 points.
+See `marketing/help/which-model.html`.
 
 ## Known limitation filmed as-is
 

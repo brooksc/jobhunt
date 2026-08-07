@@ -12,25 +12,24 @@ JobHunt is a native macOS app for job hunters. Capture postings from any job boa
 
 See **[docs/workflow.md](docs/workflow.md)** for the end-to-end workflow (capture → dedup → automatic AI processing → review → resolve).
 
-### Every job, scored against your résumé — requirement by requirement
+### One click, and the job tracks itself
 
-Not a number with no reasoning behind it. Each requirement in the posting is judged separately, with
-the evidence it was judged on, split into what you meet and what you don't.
+Open any posting, click the JobHunt button, and it's captured. The extension shows you what it found
+— title, salary, location, remote status — before it saves anything.
 
-![Requirement-by-requirement fit breakdown](marketing/demo/fit-breakdown.gif)
+![Capturing a job posting in one click](marketing/demo/capture-a-job.gif)
 
-### When it gets one wrong, say so
+### It reads the posting and scores it against your résumé
 
-Click the flag on any requirement and tell it *I do have this* / *I don't have this* / *that isn't a
-real requirement*. The correction is applied **deterministically, with no AI call and no cost** — and
-it applies to every job you've captured, not just this one.
+Company, salary band and remote status are pulled out automatically. Then every requirement in the
+posting is judged against your résumé separately, with the evidence it used — so you can see *why* a
+job scored what it did, not just the number.
 
-![Correcting a requirement the scorer got wrong](marketing/demo/correct-a-gap.gif)
-
-![The score updates from 84 to 94](marketing/demo/score-updates.gif)
+![The extracted job, scored requirement by requirement](marketing/demo/extracted-and-scored.gif)
 
 **[Watch the 30-second walkthrough](marketing/demo/walkthrough-1080p.mp4)** ([captions](marketing/demo/walkthrough.vtt))
-— captured from the app running on demo data, not a mockup.
+— recorded from the running app against a real job posting. Extraction really does take about a
+minute; the video cuts that wait and says so.
 
 There are two ways to install the Mac app:
 

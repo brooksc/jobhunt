@@ -637,8 +637,9 @@ public enum AvailabilityChecker {
         let company: String?
         let title: String
         let url: URL
-        /// Greenhouse posting id (from any of the job's URLs) for the confirm-alive override (TASK-631).
-        let greenhouseJobID: String?
+        /// The posting's ATS id (from any of the job's URLs) for the authoritative confirm-alive
+        /// override — Greenhouse, Lever, Ashby or Workday (TASK-631, generalized by TASK-636).
+        let atsID: String?
     }
 
     /// Delay between serial LinkedIn availability checks to stay under LinkedIn's rate limit (TASK-641).
@@ -689,21 +690,22 @@ public enum AvailabilityChecker {
         )
     }
 
-    /// Check one non-LinkedIn spec (the concurrent pass) and apply the Greenhouse confirm-alive override;
+    /// Check one non-LinkedIn spec (the concurrent pass) and apply the ATS confirm-alive override;
     /// reports gone only when the posting is genuinely gone, and reports *why* when it couldn't be
     /// checked. LinkedIn is handled separately, gently.
     private static func goneResult(for spec: JobSpec, session: URLSession) async -> SpecOutcome {
         // Ask the posting's own ATS first when we can. It answers definitively in BOTH directions,
         // whereas the page heuristics can only recognise removal wording a JS shell never renders.
-        if let ghjid = spec.greenhouseJobID,
-           let alive = await greenhouseAvailability(
-               ghjid: ghjid, company: spec.company, urlString: spec.url.absoluteString, session: session
+        if let atsID = spec.atsID, let provider = ATSRegistry.provider(forATSID: atsID),
+           let alive = await provider.isAlive(
+               atsID: atsID, company: spec.company,
+               urlString: spec.url.absoluteString, session: session
            ) {
             guard alive else {
                 return .gone(GoneJobResult(
                     jobID: spec.id, jobNumber: spec.jobNumber, company: spec.company,
                     title: spec.title, url: spec.url,
-                    reason: "greenhouse posting \(ghjid) no longer listed"
+                    reason: "\(provider.name.lowercased()) posting \(atsID) no longer listed"
                 ))
             }
             return .live
@@ -892,12 +894,14 @@ public enum AvailabilityChecker {
                 ))
                 return nil
             }
-            // The gh_jid usually lives in the capture URL's `?gh_jid=` even when the availability URL
-            // (applicationURL) is the path form without it, so scan all of the job's known URLs.
-            let ghjid = greenhouseJobID(fromURLs: [job.capture?.url, job.applicationURL, job.capture?.canonicalURL])
+            // The ATS id usually lives in the capture URL (a `?gh_jid=` the canonicalized
+            // applicationURL may have dropped), so scan all of the job's known URLs.
+            let atsID = ATSRegistry.resolve(
+                urls: [job.capture?.url, job.applicationURL, job.capture?.canonicalURL]
+            )?.atsID
             return JobSpec(
                 id: job.id, jobNumber: job.jobNumber, company: job.company,
-                title: job.title ?? "", url: url, greenhouseJobID: ghjid
+                title: job.title ?? "", url: url, atsID: atsID
             )
         }
         guard !specs.isEmpty else { return AvailabilitySweep(gone: [], unverified: uncheckable) }

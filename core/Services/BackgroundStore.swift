@@ -159,31 +159,32 @@ public actor BackgroundStore {
         try saveAtomically()
     }
 
-    /// The three things a Greenhouse refresh needs from a job, read in one hop.
+    /// What an ATS lookup needs from a job, read in one hop.
     ///
-    /// A tuple crossing the actor boundary rather than the `Job` itself — `Job` is not `Sendable`,
-    /// and the alternative (a second fetch inside the apply) would race with the network wait.
-    public struct GreenhouseIdentity: Sendable, Equatable {
-        public let ghjid: String
+    /// A value type crossing the actor boundary rather than the `Job` itself — `Job` is not
+    /// `Sendable`, and a second fetch inside the apply would race with the network wait.
+    public struct ATSIdentity: Sendable {
+        public let atsID: String
         public let company: String?
         public let urlString: String
+        public let provider: any ATSProvider
     }
 
-    /// The posting's Greenhouse id and the fields needed to guess its board, or nil when the job
-    /// isn't Greenhouse-backed. The capture URL is checked first because it keeps the `?gh_jid=`
-    /// that an extracted application URL may not carry.
-    public func greenhouseIdentity(jobID: String) throws -> GreenhouseIdentity? {
+    /// The posting's ATS id and the provider that can read it, or nil when it's on an ATS we can't
+    /// query authoritatively (TASK-636). The capture URL is checked first because it keeps the
+    /// `?gh_jid=` that an extracted application URL may not carry.
+    public func atsIdentity(jobID: String) throws -> ATSIdentity? {
         guard let job = try modelContext.fetch(
             FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID })
         ).first else { return nil }
         let capture = job.capture
-        guard let ghjid = AvailabilityChecker.greenhouseJobID(
-            fromURLs: [capture?.url, job.applicationURL, capture?.canonicalURL]
-        ) else { return nil }
-        return GreenhouseIdentity(
-            ghjid: ghjid,
+        let urls = [capture?.url, job.applicationURL, capture?.canonicalURL]
+        guard let resolved = ATSRegistry.resolve(urls: urls) else { return nil }
+        return ATSIdentity(
+            atsID: resolved.atsID,
             company: job.company,
-            urlString: capture?.url ?? job.applicationURL ?? ""
+            urlString: capture?.url ?? job.applicationURL ?? "",
+            provider: resolved.provider
         )
     }
 
@@ -199,6 +200,8 @@ public actor BackgroundStore {
         /// because it alone doesn't warrant a re-extraction.
         public var timestampsChanged = false
         public var board = ""
+        /// Which ATS answered, for the message the user reads.
+        public var providerName = ""
 
         public var changedAnything: Bool {
             descriptionChanged || titleChanged || locationChanged
@@ -215,9 +218,9 @@ public actor BackgroundStore {
     /// The description itself is not override-protected — it isn't user-authored, it's a scrape, and
     /// replacing a JavaScript-shell scrape with the employer's own text is the entire point.
     @discardableResult
-    public func applyGreenhouseRefresh(
+    public func applyATSRefresh(
         jobID: String,
-        posting: GreenhouseJobBoard.Posting
+        posting: ATSPosting
     ) throws -> GreenhouseRefreshOutcome {
         guard let job = try modelContext.fetch(
             FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID })
@@ -226,14 +229,15 @@ public actor BackgroundStore {
         }
 
         var outcome = GreenhouseRefreshOutcome()
-        outcome.board = posting.board
+        outcome.board = posting.boardKey
+        outcome.providerName = posting.providerName
         let overrides = manualFieldOverrideSet(job.manualFieldOverridesJSON)
 
-        let cleaned = GreenhouseJobBoard.plainTextDescription(posting)
+        let cleaned = posting.contentPlain
         if !cleaned.isEmpty, let capture = job.capture, capture.cleanedDescription != cleaned {
             // Keep `visibleText` in step: a later re-clean recomputes `cleanedDescription` from it,
             // and leaving the old shell text there would silently undo this refresh.
-            capture.visibleText = posting.contentHTML
+            capture.visibleText = posting.contentPlain
             capture.cleanedDescription = cleaned
             capture.cleanedHash = DuplicateDetector.cleanedHash(from: cleaned)
             job.cleanedTextBytes = cleaned.utf8.count

@@ -87,19 +87,21 @@ final class GreenhouseRefreshApplyTests: XCTestCase {
         BackgroundStore(modelContainer: container)
     }
 
+    /// Built as the provider would hand it over: already plain text, since the vendors differ in
+    /// whether they publish HTML and the store shouldn't care.
     private func posting(
         title: String? = "Staff Platform Engineer",
         location: String? = "San Francisco, CA"
-    ) -> GreenhouseJobBoard.Posting {
-        GreenhouseJobBoard.Posting(
-            contentHTML: "&lt;p&gt;The real description, in full.&lt;/p&gt;",
+    ) -> ATSPosting {
+        ATSPosting(
+            contentPlain: "The real description, in full.",
             title: title,
             locationName: location,
-            departments: ["Engineering"],
-            updatedAt: nil,
             firstPublished: nil,
+            updatedAt: nil,
             absoluteURL: nil,
-            board: "acme"
+            providerName: "Greenhouse",
+            boardKey: "acme"
         )
     }
 
@@ -108,7 +110,7 @@ final class GreenhouseRefreshApplyTests: XCTestCase {
         let store = makeStore()
         let jobID = try await seedJobWithCapture(store: store)
 
-        let outcome = try await store.applyGreenhouseRefresh(jobID: jobID, posting: posting())
+        let outcome = try await store.applyATSRefresh(jobID: jobID, posting: posting())
         XCTAssertTrue(outcome.descriptionChanged)
 
         let jobs = try await store.fetch(FetchDescriptor<Job>())
@@ -122,7 +124,7 @@ final class GreenhouseRefreshApplyTests: XCTestCase {
     func testVisibleTextIsKeptInStepSoARecleanCantUndoIt() async throws {
         let store = makeStore()
         let jobID = try await seedJobWithCapture(store: store)
-        try await store.applyGreenhouseRefresh(jobID: jobID, posting: posting())
+        try await store.applyATSRefresh(jobID: jobID, posting: posting())
 
         try await store.recleanAllCaptures()
 
@@ -136,7 +138,7 @@ final class GreenhouseRefreshApplyTests: XCTestCase {
         let store = makeStore()
         let jobID = try await seedJobWithCapture(store: store)
 
-        let outcome = try await store.applyGreenhouseRefresh(jobID: jobID, posting: posting())
+        let outcome = try await store.applyATSRefresh(jobID: jobID, posting: posting())
         XCTAssertTrue(outcome.titleChanged)
         XCTAssertTrue(outcome.locationChanged)
 
@@ -151,7 +153,7 @@ final class GreenhouseRefreshApplyTests: XCTestCase {
         let store = makeStore()
         let jobID = try await seedJobWithCapture(store: store, overrides: #"["title"]"#)
 
-        let outcome = try await store.applyGreenhouseRefresh(jobID: jobID, posting: posting())
+        let outcome = try await store.applyATSRefresh(jobID: jobID, posting: posting())
         XCTAssertFalse(outcome.titleChanged)
         XCTAssertEqual(outcome.skippedOverrides, ["title"])
 
@@ -166,9 +168,9 @@ final class GreenhouseRefreshApplyTests: XCTestCase {
     func testSecondRefreshIsANoOp() async throws {
         let store = makeStore()
         let jobID = try await seedJobWithCapture(store: store)
-        try await store.applyGreenhouseRefresh(jobID: jobID, posting: posting())
+        try await store.applyATSRefresh(jobID: jobID, posting: posting())
 
-        let second = try await store.applyGreenhouseRefresh(jobID: jobID, posting: posting())
+        let second = try await store.applyATSRefresh(jobID: jobID, posting: posting())
         XCTAssertFalse(second.changedAnything)
     }
 
@@ -177,7 +179,7 @@ final class GreenhouseRefreshApplyTests: XCTestCase {
         let store = makeStore()
         let jobID = try await seedJobWithCapture(store: store)
 
-        let outcome = try await store.applyGreenhouseRefresh(
+        let outcome = try await store.applyATSRefresh(
             jobID: jobID, posting: posting(title: nil, location: nil)
         )
         XCTAssertTrue(outcome.descriptionChanged)
@@ -189,7 +191,7 @@ final class GreenhouseRefreshApplyTests: XCTestCase {
     func testUnknownJobThrows() async throws {
         let store = makeStore()
         do {
-            _ = try await store.applyGreenhouseRefresh(jobID: "nope", posting: posting())
+            _ = try await store.applyATSRefresh(jobID: "nope", posting: posting())
             XCTFail("expected a notFound error")
         } catch {}
     }
@@ -200,8 +202,8 @@ final class GreenhouseRefreshApplyTests: XCTestCase {
         let store = makeStore()
         let jobID = try await seedJobWithCapture(store: store)
 
-        let identity = try await store.greenhouseIdentity(jobID: jobID)
-        XCTAssertEqual(identity?.ghjid, "4567")
+        let identity = try await store.atsIdentity(jobID: jobID)
+        XCTAssertEqual(identity?.atsID, "gh:4567")
         XCTAssertEqual(identity?.company, "Acme")
     }
 
@@ -210,7 +212,7 @@ final class GreenhouseRefreshApplyTests: XCTestCase {
         let jobID = try await seedJobWithCapture(
             store: store, captureURL: "https://example.com/careers/123"
         )
-        let identity = try await store.greenhouseIdentity(jobID: jobID)
+        let identity = try await store.atsIdentity(jobID: jobID)
         XCTAssertNil(identity)
     }
 

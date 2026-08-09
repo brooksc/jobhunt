@@ -386,7 +386,7 @@ private struct DetailHeader: View {
                 // TASK-632: for a Greenhouse-backed posting the employer's own text is available
                 // from the public board API, and it is routinely better than what the career site's
                 // JavaScript shell let us scrape. Explicit per job — the board slug is a guess.
-                if isGreenhouseBacked {
+                if let atsName = atsProviderName {
                     Button {
                         showApplicationForm = true
                     } label: {
@@ -408,15 +408,15 @@ private struct DetailHeader: View {
                     .help("List this company's other open roles from its job board")
 
                     Button {
-                        refreshFromGreenhouse()
+                        refreshFromATS()
                     } label: {
-                        Label("Refresh from Greenhouse", systemImage: "arrow.down.doc")
+                        Label("Refresh from \(atsName)", systemImage: "arrow.down.doc")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
                     .disabled(isRefreshingSource)
-                    .help("Replace the scraped description with the posting Greenhouse publishes, "
+                    .help("Replace the scraped description with the posting \(atsName) publishes, "
                         + "then re-run extraction")
                 }
 
@@ -486,27 +486,28 @@ private struct DetailHeader: View {
         SalaryDisplay.text(min: job.salaryMin, max: job.salaryMax, currency: job.salaryCurrency)
     }
 
-    /// Whether any of this job's URLs carries a `gh_jid` (TASK-632).
-    private var isGreenhouseBacked: Bool {
-        AvailabilityChecker.greenhouseJobID(
-            fromURLs: [job.capture?.url, job.applicationURL, job.capture?.canonicalURL]
-        ) != nil
+    /// The ATS that published this posting, when it's one we can query authoritatively (TASK-636).
+    /// Nil for LinkedIn, Workday and bespoke career sites, which keep the HTML-only behaviour.
+    private var atsProviderName: String? {
+        ATSRegistry.resolve(
+            urls: [job.capture?.url, job.applicationURL, job.capture?.canonicalURL]
+        )?.provider.name
     }
 
     /// Pull the canonical posting and re-extract on it. Reports what changed — including "nothing",
     /// which is a real and useful outcome when the capture was already complete.
-    private func refreshFromGreenhouse() {
+    private func refreshFromATS() {
         guard !isRefreshingSource else { return }
         isRefreshingSource = true
         let id = job.id
         let service = jobService
         Task {
-            let result = await service?.refreshFromGreenhouse(jobID: id)
+            let result = await service?.refreshFromATS(jobID: id)
             await MainActor.run {
                 switch result {
                 case let .success(outcome):
                     if outcome.changedAnything {
-                        var message = "Refreshed from Greenhouse board “\(outcome.board)”"
+                        var message = "Refreshed from \(outcome.providerName) “\(outcome.board)”"
                         if outcome.descriptionChanged { message += " — re-running extraction" }
                         if !outcome.skippedOverrides.isEmpty {
                             message += ". Kept your edits to "
@@ -528,11 +529,11 @@ private struct DetailHeader: View {
 
     private func greenhouseFailureMessage(_ error: GreenhouseJobBoard.RefreshError) -> String {
         switch error {
-        case .notGreenhouse: "This posting doesn't carry a Greenhouse job id"
+        case .notGreenhouse: "This posting isn't on an ATS we can read directly"
         case .boardNotResolved:
-            "Couldn't work out which Greenhouse board this posting is on — the description is unchanged"
+            "Couldn't find this posting on the employer's job board — the description is unchanged"
         case .malformedResponse:
-            "Greenhouse returned something unexpected — the description is unchanged"
+            "The job board returned something unexpected — the description is unchanged"
         }
     }
 

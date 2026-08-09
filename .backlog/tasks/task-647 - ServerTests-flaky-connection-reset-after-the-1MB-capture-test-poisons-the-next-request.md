@@ -3,10 +3,10 @@ id: TASK-647
 title: >-
   ServerTests: flaky connection reset after the >1MB capture test poisons the
   next request
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-25 21:34'
-updated_date: '2026-08-09 19:15'
+updated_date: '2026-08-09 19:20'
 labels:
   - tests
   - ci
@@ -37,9 +37,9 @@ Options: have the large-body test not leave a poisoned connection behind (e.g. i
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The >1MB capture test cannot leave a connection state that affects the following test
-- [ ] #2 Any retry is limited to transport-level URLErrors and never masks an assertion failure
-- [ ] #3 The suite passes repeatedly (e.g. 10 consecutive runs) with tests in the current order
+- [x] #1 No ServerTest can inherit a connection left by another — including, but not limited to, the >1MB capture test
+- [x] #2 Any retry is limited to transport-level URLErrors and never masks an assertion failure
+- [x] #3 The suite passes repeatedly (12 consecutive runs) with tests in the current order
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -51,11 +51,13 @@ Options: have the large-body test not leave a poisoned connection behind (e.g. i
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-`testMCPCaptureAdd_acceptsBodyOver1MB` now uses a dedicated ephemeral `URLSession`, invalidated in a `defer`, so its connection never returns to the shared pool the next test draws from.
+All 33 request sites in `JobhuntServerTests` now go through `HTTPTestClient`, which creates an ephemeral `URLSession` per request and invalidates it immediately. No connection is ever reused.
 
-Every test in the suite used `URLSession.shared`. Pushing ~2.1 MB through it left a connection that the following test inherited and the server then reset — the `-1005 / Connection reset by peer` failure on CI run 30171362290, which passed on re-run with no code change. ServerTests share one `JobhuntServer` on purpose (NWListener port lifecycle), so the client side is the only thing that can be isolated.
+**The first attempt was wrong, and CI caught it within minutes.** I isolated only the >1MB capture test, on the report's theory that the large body poisoned the pool. It passed 10 consecutive local runs — then CI run 31330335321 failed a *different* test, `testCaptureRoute_storeError_returnsInternalError` (line 853), with the same `-1005 "The network connection was lost"`. Body size was never the cause. `URLSession.shared` keeps connections alive and hands them on; ServerTests share one `JobhuntServer` deliberately (NWListener port lifecycle) and that server closes them, so *any* test could inherit a dead one. The original report's diagnosis — and mine — mistook the observed instance for the mechanism.
 
-**No retry was added.** A retry able to swallow a transport error can also swallow a real regression; isolating the connection is both cheaper and exact, which satisfies criterion 2 by construction rather than by policing.
+**Still no retry.** One able to swallow a transport error can swallow a real regression, and would have concealed both of these rather than surfacing them.
 
-**Verified: 10 consecutive full ServerTests runs, 10 passed / 0 failed**, tests in their current order (57 tests per run).
+**Verified: 12 consecutive full ServerTests runs, 12 passed / 0 failed** (57 tests each), plus swiftlint clean.
+
+Worth recording: an intermediate run of that same loop reported 12/12 *failures*, which turned out to be a compile break I had just introduced by renaming the helper with a regex that missed the multi-line call form. The loop is what caught it — a single run would have been the only signal, and I had already seen one pass.
 <!-- SECTION:FINAL_SUMMARY:END -->

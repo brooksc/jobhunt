@@ -3,10 +3,10 @@ id: TASK-586
 title: >-
   SettingsStore.set: propagate keychain write failure to caller instead of
   silently setting flag
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-02 21:51'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-08-09 19:08'
 labels: []
 dependencies:
   - TASK-569
@@ -40,7 +40,21 @@ All current call sites that don't care can use `try?`; the ones that do (import/
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 SettingsStore.set throws on keychain failure rather than silently returning
-- [ ] #2 Existing call sites compile (use try? where the error was already silently swallowed)
-- [ ] #3 keychainWriteError is still set for UI observation, but the throw also fires so programmatic callers know
+- [x] #1 SettingsStore.set throws on keychain failure rather than silently returning
+- [x] #2 Existing call sites compile (use try? where the error was already silently swallowed)
+- [x] #3 keychainWriteError is still set for UI observation, but the throw also fires so programmatic callers know
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+`SettingsStore.set(_:forKey:)` and `setAPIKey(_:forProvider:)` both throw now. Both previously caught the keychain error, set `keychainWriteError`, and returned normally — so a programmatic caller (restore, key rotation) was told a key had been stored when it hadn't. `keychainWriteError` is still set before the throw, so the UI path is unchanged; the throw is additional.
+
+`setAPIKey` was swallowing identically and isn't mentioned in the original report, but it is the path the API-key field actually uses — fixing only `set` would have left the real one silent.
+
+**Judgement call:** SwiftUI property setters can't throw, and the typed shortcuts (`llmProvider`, `llmModel`, sort key, sidebar selection…) would have needed `try?`, putting silent failure back exactly where it was removed. They now route through a private non-throwing `setLocal`, which asserts the key is not keychain-backed. All six `keychainKeys` are API keys, so no shortcut property can reach the throwing path; the assert holds that line if a key ever changes category.
+
+Call sites that write plain settings use `try?` with a comment saying the error cannot occur — explicit, not accidental. The one interactive keychain caller (`AIProviderFormModel.onAPIKeyChanged`) also uses `try?`, because it cannot propagate and `keychainWriteError` is already rendered by `SettingsView`.
+
+**Tests** (`SettingsStoreKeychainFailureTests`, 4) using a `RefusingKeychain` double: `set` throws, `setAPIKey` throws, `keychainWriteError` is still populated for the UI, and ordinary settings still write cleanly through the same entry point.
+<!-- SECTION:FINAL_SUMMARY:END -->

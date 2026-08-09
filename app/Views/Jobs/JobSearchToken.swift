@@ -1,4 +1,5 @@
 import JobhuntCore
+import SwiftData
 import SwiftUI
 
 /// Structured search tokens that appear as blue chips in the search bar.
@@ -49,6 +50,10 @@ enum JobSearchToken: Identifiable, Hashable {
 /// Build search suggestions based on what the user is typing.
 struct JobSearchSuggestions: View {
     let searchText: String
+    /// Companies and titles the user has actually captured (TASK-591). A @Query rather than a
+    /// cached set: it re-runs when a capture lands, so a company added mid-session is suggestable
+    /// without any invalidation of our own.
+    @Query private var allJobs: [Job]
 
     var body: some View {
         let q = searchText.lowercased()
@@ -93,11 +98,33 @@ struct JobSearchSuggestions: View {
             Label("Rating ≥ 5★", systemImage: "star").searchCompletion(JobSearchToken.minRating(5))
         }
 
+        // The user's own companies and titles. Placed after the structured tokens: those are exact
+        // and few, and burying them under a long list of company names would make the token system
+        // harder to discover than it already is.
+        ForEach(dataSuggestions) { suggestion in
+            Label(
+                suggestion.text,
+                systemImage: suggestion.kind == .company ? "building.2" : "briefcase"
+            )
+            .searchCompletion(suggestion.text)
+        }
+
         // Recent days suggestions
         if q.hasPrefix("rec") || q.hasPrefix("last") || q.hasPrefix("new") {
             Label("Last 7 days", systemImage: "calendar").searchCompletion(JobSearchToken.recentDays(7))
             Label("Last 30 days", systemImage: "calendar").searchCompletion(JobSearchToken.recentDays(30))
             Label("Last 90 days", systemImage: "calendar").searchCompletion(JobSearchToken.recentDays(90))
         }
+    }
+
+    /// Selecting one inserts the plain text, which the existing freetext matcher already applies to
+    /// `displayCompany` and `displayTitle` — no new filter path, so a suggestion can't disagree with
+    /// what typing the same string would have done.
+    private var dataSuggestions: [JobTextSuggestions.Suggestion] {
+        JobTextSuggestions.suggest(
+            prefix: searchText,
+            companies: allJobs.compactMap(\.displayCompany),
+            titles: allJobs.compactMap(\.displayTitle)
+        )
     }
 }

@@ -47,10 +47,13 @@ final class GreenhouseJobBoardDecodeTests: XCTestCase {
         XCTAssertNil(GreenhouseJobBoard.decode(Data("not json".utf8), board: "acme"))
     }
 
-    /// Greenhouse sends ISO-8601 with fractional seconds on some boards and without on others.
-    func testTimestampParsesWithAndWithoutFractionalSeconds() {
+    /// Greenhouse sends ISO-8601 with fractional seconds on some boards and without on others. The
+    /// offset form is what a live board actually returned (gitlab/8503792002, checked 2026-08-09) —
+    /// not `Z`, which is what you'd assume from the docs.
+    func testTimestampParsesEveryFormGreenhouseSends() {
         XCTAssertNotNil(GreenhouseJobBoard.parseTimestamp("2026-07-14T10:11:12.000Z"))
         XCTAssertNotNil(GreenhouseJobBoard.parseTimestamp("2026-07-14T10:11:12Z"))
+        XCTAssertNotNil(GreenhouseJobBoard.parseTimestamp("2026-08-03T16:43:10-04:00"))
         XCTAssertNil(GreenhouseJobBoard.parseTimestamp("last Tuesday"))
     }
 

@@ -1,9 +1,10 @@
 ---
 id: TASK-671
 title: 'LLM queue: replace the batch barrier with continuous dispatch'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-09 19:44'
+updated_date: '2026-08-09 19:54'
 labels:
   - llm-queue
   - performance
@@ -40,8 +41,26 @@ Criteria 8 and 12 from TASK-657:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A slow request no longer blocks queued work: new requests start as soon as a slot frees, without waiting for the whole batch
-- [ ] #2 Test: a task group containing one never-returning task does not prevent remaining queued requests from being dispatched
-- [ ] #3 Auto-pause still stops the whole batch — a top-up cannot re-dispatch into a just-paused queue
-- [ ] #4 Top-up respects the CURRENT adaptive concurrency limit, including a 429 collapse to 1 mid-pass
+- [x] #1 A slow request no longer blocks queued work: new requests start as soon as a slot frees, without waiting for the whole batch
+- [x] #2 Test: a task group containing one never-returning task does not prevent remaining queued requests from being dispatched
+- [x] #3 Auto-pause still stops the whole batch — a top-up cannot re-dispatch into a just-paused queue
+- [x] #4 Top-up respects the CURRENT adaptive concurrency limit, including a 429 collapse to 1 mid-pass
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Each completed task now refills the slot it freed, rather than the drain awaiting the whole group before fetching more.
+
+All three hazards named in the task were real and are handled:
+
+- **Auto-pause / auth failure** set a `stopDispatching` flag alongside `group.cancelAll()`, so a top-up cannot re-dispatch into a queue that has just decided to stop.
+- **Top-up reads the current adaptive limit** each time, not the value sampled when the pass began — otherwise a 429 collapsing the limit to 1 would be immediately undone by refilling to a stale higher number.
+- **In-flight ids are tracked in the loop**, because a row dispatched but not yet written as `running` would otherwise be re-fetched by the top-up query and run twice.
+
+**Two mistakes worth recording**, both of which produced code or tests that looked right:
+
+1. The first implementation inserted ids into the in-flight set but never removed them, because `ProcessOutcome` carries no id. The set only grew, top-up stopped after the first batch, and the drain behaved exactly like the barrier it replaced — while reading as though it didn't. The group now yields `(id, outcome)`.
+
+2. The first test asserted on queue depth and passed with **zero provider calls**: the synthetic `LLMRequest` rows had no job, so they were skipped before reaching the provider and nothing ever hung. It proved nothing. It now builds real jobs with captures and asserts the provider completed 3+ requests while one hangs — the old barrier reaches 1, so the assertion discriminates.
+<!-- SECTION:FINAL_SUMMARY:END -->

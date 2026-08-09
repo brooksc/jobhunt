@@ -20,6 +20,10 @@
     footer { border-top: 1px solid var(--border); padding: 28px 40px; font-size: 13px; color: var(--fg-mute); }
     footer a { color: var(--fg-mute); }
   </style>
+
+  <!-- Analytics: cookieless PostHog (marketing site only) -->
+  <script defer src="https://us-assets.i.posthog.com/static/array.js"></script>
+  <script defer src="/analytics.js"></script>
 </head>
 <body>
   <nav>
@@ -42,6 +46,10 @@
 
     <h2>AI processing</h2>
     <p>JobHunt sends job description text to an AI model for extraction and fit scoring. By default this is a local model via LM Studio or Ollama — no data leaves your machine. If you configure a cloud provider (OpenAI, Anthropic, Google, OpenRouter), job description text is sent to that provider under their own privacy policy. Your resume is included in fit-scoring prompts.</p>
+
+    <h2>This website</h2>
+    <p>This website (<code>jobhunt-app.com</code>) uses <a href="https://posthog.com" target="_blank" rel="noopener">PostHog</a> to count page views, so we know which pages are worth improving. It runs in cookieless mode: no cookies are set, nothing is stored in your browser, and no consent banner is needed. PostHog derives a visitor identifier server-side from a daily-rotating salt combined with your IP address and browser user agent; the salt is discarded each day, so visits cannot be linked across days or back to you. Session recording and surveys are disabled.</p>
+    <p>This applies to the website only. <strong>The Mac app and the Chrome extension contain no analytics of any kind</strong> and do not contact PostHog.</p>
 
     <h2>Data sharing</h2>
     <p>We do not sell, share, or transfer any user data to third parties for any purpose. The app has no analytics, no telemetry, and no crash reporting.</p>

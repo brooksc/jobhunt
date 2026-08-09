@@ -253,3 +253,87 @@ final class QueueOrphanReaperTests: XCTestCase {
         }
     }
 }
+
+/// One request that never returns must not hold back the others (TASK-671).
+///
+/// The drain used to dispatch a batch and await the WHOLE group before fetching more, so free slots
+/// idled until the batch's slowest member finished — measured 16s fastest against 139s slowest in a
+/// single batch. With continuous dispatch a slot is refilled the moment it frees.
+private final class OneHangsProvider: LLMProvider, @unchecked Sendable {
+    let id = "one-hangs"
+    let concurrencyLimit = 2
+    private let lock = NSLock()
+    private var seen = 0
+    /// Ids of requests that were allowed to complete, in order.
+    private(set) var completed: [Int] = []
+
+    func complete(_: ChatRequest) async throws -> ChatResponse {
+        let index: Int = lock.withLock {
+            seen += 1
+            return seen
+        }
+        if index == 1 {
+            // Never returns on its own; only cancellation ends it.
+            try await Task.sleep(nanoseconds: UInt64(3600) * 1_000_000_000)
+        }
+        lock.withLock { completed.append(index) }
+        return ChatResponse(content: "{}", model: "stub", responseFormat: .text)
+    }
+}
+
+final class QueueContinuousDispatchTests: XCTestCase {
+    /// The concurrency limit is 2, so the hanging request occupies one slot for the whole test. Under
+    /// the old barrier the drain awaited the entire batch, so the other slot served only the initial
+    /// pair and then idled; with continuous dispatch it keeps taking new work.
+    func testAHangingRequestDoesNotBlockTheRest() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        let provider = OneHangsProvider()
+
+        let queue = QueueActor(
+            store: store,
+            isPaused: { false },
+            onSetPaused: { _ in },
+            readExtractionSettings: {
+                ExtractionSettings(
+                    llmModel: "m", llmTimeout: 2, preferredLocations: "",
+                    locationFilterEnabled: false, locationAllowRemote: true,
+                    locationAllowHybrid: true, locationAllowOnsite: true
+                )
+            },
+            providerFactory: { provider }
+        )
+
+        // Real jobs with captures, or processRequest skips them before ever reaching the provider —
+        // the first version of this test "passed" with zero provider calls, so nothing hung and it
+        // proved nothing.
+        var jobIDs: [String] = []
+        for idx in 0 ..< 5 {
+            let capture = Capture(
+                url: "https://example.com/job\(idx)",
+                pageTitle: "Job \(idx)",
+                selectedText: "Description \(idx).",
+                rawHash: "cd-\(idx)"
+            )
+            let job = Job(jobNumber: idx + 1, title: "Job \(idx + 1)")
+            job.capture = capture
+            try await store.insert(job)
+            jobIDs.append(job.id)
+        }
+        try await queue.enqueue(jobIDs: jobIDs, mode: .extract)
+
+        let drain = Task { await queue.startProcessing() }
+        try await Task.sleep(nanoseconds: 2_500_000_000)
+        let reached = provider.completed.count
+        drain.cancel()
+        _ = await drain.value
+
+        // Deliberately tight. With limit 2 the old barrier dispatches exactly the initial pair, so
+        // ONE request completes and the rest wait for the hanging one — "at least 2" would have
+        // passed under the very behaviour this guards against.
+        XCTAssertGreaterThanOrEqual(
+            reached, 3,
+            "the free slot must keep taking new work while one request hangs (old barrier reached 1)"
+        )
+    }
+}

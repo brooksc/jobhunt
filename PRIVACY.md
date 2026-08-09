@@ -52,7 +52,9 @@ Consent is required before any data is sent to a cloud or non-local custom endpo
 
 ## Data sharing
 
-We do not sell, share, or transfer any user data to third parties for any purpose. The app has no analytics, no telemetry, and no crash reporting.
+We do not sell, share, or transfer any user data to third parties for any purpose. The app has no analytics, no telemetry, and no crash reporting. Neither does the Chrome extension.
+
+The marketing website (`jobhunt-app.com`) is the sole exception: it counts page views with PostHog in cookieless mode — no cookies, no browser storage, no cross-day linkage. See the [website privacy page](https://jobhunt-app.com/privacy.html). Nothing in the app or the extension contacts PostHog.
 
 ## Data retention
 

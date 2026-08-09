@@ -456,13 +456,46 @@ public actor QueueActor {
             }
             didEmitNotConfigured = false
 
-            await withTaskGroup(of: ProcessOutcome.self) { group in
+            // Continuous dispatch (TASK-671): keep the group FULL rather than draining it. The old
+            // shape awaited the whole batch before fetching more, so free slots idled until the
+            // batch's slowest member returned — measured 16s fastest against 139s slowest in one
+            // batch, i.e. five requests waiting two minutes on the sixth.
+            // The id travels with the outcome so the in-flight set can shrink; without it the set
+            // only ever grows and the top-up silently stops after the first batch — which looks
+            // exactly like the old barrier while claiming not to be.
+            await withTaskGroup(of: (String, ProcessOutcome).self) { group in
+                // Rows dispatched but not yet marked `running` in the store would otherwise be
+                // re-fetched by the top-up query and run twice.
+                var inFlight = Set<String>()
+                var stopDispatching = false
+
                 for req in requests {
+                    inFlight.insert(req.id)
                     group.addTask {
-                        await self.processRequest(req, provider: provider)
+                        await (req.id, self.processRequest(req, provider: provider))
                     }
                 }
-                for await outcome in group {
+
+                /// Refill up to the CURRENT effective limit — not the value sampled when the pass
+                /// began. A 429 collapses the limit to 1 mid-pass, and topping up to a stale higher
+                /// number would undo the backoff the collapse exists to apply.
+                func topUp() async {
+                    guard !stopDispatching, !Task.isCancelled else { return }
+                    guard await !isPaused() else { return }
+                    let current = adaptive?.effective ?? limit
+                    while inFlight.count < current {
+                        guard let next = try? await fetchQueuedRequests(limit: current)
+                            .first(where: { !inFlight.contains($0.id) })
+                        else { return }
+                        inFlight.insert(next.id)
+                        group.addTask {
+                            await (next.id, self.processRequest(next, provider: provider))
+                        }
+                    }
+                }
+
+                while let (finishedID, outcome) = await group.next() {
+                    inFlight.remove(finishedID)
                     switch outcome {
                     case .succeeded:
                         totalProcessed += 1
@@ -479,6 +512,7 @@ public actor QueueActor {
                             // TASK-449: cancel the rest of this batch so still-running sibling tasks
                             // stop before (or during) their provider call — auto-pause shouldn't keep
                             // spending on cloud requests after deciding to stop.
+                            stopDispatching = true
                             group.cancelAll()
                             break
                         }
@@ -490,6 +524,7 @@ public actor QueueActor {
                         totalFailed += 1
                         await onSetPaused(true)
                         emit(.authenticationFailed(statusCode: code))
+                        stopDispatching = true
                         group.cancelAll()
                     case .rateLimited:
                         // TASK-463: a 429 is transient — collapse concurrency to 1 and let the request
@@ -501,6 +536,11 @@ public actor QueueActor {
                         // so a user cancellation can't push the queue toward auto-pause.
                         break
                     }
+
+                    // One task just finished, so one slot is free. Auth failure and auto-pause both
+                    // call cancelAll() and set this, so a top-up can never re-dispatch into a queue
+                    // that has just decided to stop.
+                    await topUp()
                 }
             }
 

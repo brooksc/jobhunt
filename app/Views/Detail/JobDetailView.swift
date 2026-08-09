@@ -161,6 +161,7 @@ private struct DetailHeader: View {
     @State private var quickNoteText = ""
     @State private var showApplyConfirmation = false
     @State private var isEnqueuing = false
+    @State private var isRefreshingSource = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -380,6 +381,23 @@ private struct DetailHeader: View {
                 .buttonStyle(.plain)
                 .help("Add a note to the timeline")
 
+                // TASK-632: for a Greenhouse-backed posting the employer's own text is available
+                // from the public board API, and it is routinely better than what the career site's
+                // JavaScript shell let us scrape. Explicit per job — the board slug is a guess.
+                if isGreenhouseBacked {
+                    Button {
+                        refreshFromGreenhouse()
+                    } label: {
+                        Label("Refresh from Greenhouse", systemImage: "arrow.down.doc")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isRefreshingSource)
+                    .help("Replace the scraped description with the posting Greenhouse publishes, "
+                        + "then re-run extraction")
+                }
+
                 Spacer()
 
                 ExtractionChip(status: job.extractionStatus)
@@ -438,6 +456,56 @@ private struct DetailHeader: View {
 
     private var salaryText: String? {
         SalaryDisplay.text(min: job.salaryMin, max: job.salaryMax, currency: job.salaryCurrency)
+    }
+
+    /// Whether any of this job's URLs carries a `gh_jid` (TASK-632).
+    private var isGreenhouseBacked: Bool {
+        AvailabilityChecker.greenhouseJobID(
+            fromURLs: [job.capture?.url, job.applicationURL, job.capture?.canonicalURL]
+        ) != nil
+    }
+
+    /// Pull the canonical posting and re-extract on it. Reports what changed — including "nothing",
+    /// which is a real and useful outcome when the capture was already complete.
+    private func refreshFromGreenhouse() {
+        guard !isRefreshingSource else { return }
+        isRefreshingSource = true
+        let id = job.id
+        let service = jobService
+        Task {
+            let result = await service?.refreshFromGreenhouse(jobID: id)
+            await MainActor.run {
+                switch result {
+                case let .success(outcome):
+                    if outcome.changedAnything {
+                        var message = "Refreshed from Greenhouse board “\(outcome.board)”"
+                        if outcome.descriptionChanged { message += " — re-running extraction" }
+                        if !outcome.skippedOverrides.isEmpty {
+                            message += ". Kept your edits to "
+                                + outcome.skippedOverrides.joined(separator: ", ")
+                        }
+                        appServices.toastStore.show(message)
+                    } else {
+                        appServices.toastStore.show("Already up to date with the Greenhouse posting")
+                    }
+                case let .failure(error):
+                    appServices.toastStore.show(greenhouseFailureMessage(error), isError: true)
+                case nil:
+                    appServices.toastStore.show("Couldn't reach the job service", isError: true)
+                }
+                isRefreshingSource = false
+            }
+        }
+    }
+
+    private func greenhouseFailureMessage(_ error: GreenhouseJobBoard.RefreshError) -> String {
+        switch error {
+        case .notGreenhouse: "This posting doesn't carry a Greenhouse job id"
+        case .boardNotResolved:
+            "Couldn't work out which Greenhouse board this posting is on — the description is unchanged"
+        case .malformedResponse:
+            "Greenhouse returned something unexpected — the description is unchanged"
+        }
     }
 
     private func metaChip(_ text: String) -> some View {

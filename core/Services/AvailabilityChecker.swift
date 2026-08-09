@@ -948,7 +948,7 @@ public enum AvailabilityChecker {
 
     /// The Greenhouse posting id (`gh_jid`) found in the first of `urls` that carries one, via the shared
     /// ATS-id extraction (handles both `?gh_jid=N` on career sites and `/jobs/N` on greenhouse.io hosts).
-    static func greenhouseJobID(fromURLs urls: [String?]) -> String? {
+    public static func greenhouseJobID(fromURLs urls: [String?]) -> String? {
         for case let urlString? in urls {
             if let ats = DuplicateDetector.atsPostingID(urlString: urlString), ats.hasPrefix("gh:") {
                 return String(ats.dropFirst(3))
@@ -961,7 +961,7 @@ public enum AvailabilityChecker {
     /// URL carries the board authoritatively in its path; otherwise derive it from the career-site host
     /// (stripping suffixes like "careers"/"jobs" — `pinterestcareers` → `pinterest`) and the normalized
     /// company name. Deduped, order preserved.
-    static func greenhouseBoardCandidates(company: String?, urlString: String) -> [String] {
+    public static func greenhouseBoardCandidates(company: String?, urlString: String) -> [String] {
         var candidates: [String] = []
         if let comps = URLComponents(string: urlString), let host = comps.host?.lowercased() {
             if host.hasSuffix("greenhouse.io") {

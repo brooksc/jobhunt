@@ -159,6 +159,110 @@ public actor BackgroundStore {
         try saveAtomically()
     }
 
+    /// The three things a Greenhouse refresh needs from a job, read in one hop.
+    ///
+    /// A tuple crossing the actor boundary rather than the `Job` itself — `Job` is not `Sendable`,
+    /// and the alternative (a second fetch inside the apply) would race with the network wait.
+    public struct GreenhouseIdentity: Sendable, Equatable {
+        public let ghjid: String
+        public let company: String?
+        public let urlString: String
+    }
+
+    /// The posting's Greenhouse id and the fields needed to guess its board, or nil when the job
+    /// isn't Greenhouse-backed. The capture URL is checked first because it keeps the `?gh_jid=`
+    /// that an extracted application URL may not carry.
+    public func greenhouseIdentity(jobID: String) throws -> GreenhouseIdentity? {
+        guard let job = try modelContext.fetch(
+            FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID })
+        ).first else { return nil }
+        let capture = job.capture
+        guard let ghjid = AvailabilityChecker.greenhouseJobID(
+            fromURLs: [capture?.url, job.applicationURL, capture?.canonicalURL]
+        ) else { return nil }
+        return GreenhouseIdentity(
+            ghjid: ghjid,
+            company: job.company,
+            urlString: capture?.url ?? job.applicationURL ?? ""
+        )
+    }
+
+    /// What a Greenhouse refresh changed, so the caller can report it rather than claiming success
+    /// over a no-op.
+    public struct GreenhouseRefreshOutcome: Sendable, Equatable {
+        public var descriptionChanged = false
+        public var titleChanged = false
+        public var locationChanged = false
+        /// Fields left alone because the user had edited them by hand.
+        public var skippedOverrides: [String] = []
+        public var board = ""
+
+        public var changedAnything: Bool {
+            descriptionChanged || titleChanged || locationChanged
+        }
+    }
+
+    /// Replaces a job's captured description with the canonical Greenhouse posting and backfills the
+    /// clean metadata (TASK-632).
+    ///
+    /// Manual overrides are honoured exactly as extraction honours them: a field the user edited by
+    /// hand is skipped and *reported*, since silently keeping the user's value is indistinguishable
+    /// from the refresh not having worked.
+    ///
+    /// The description itself is not override-protected — it isn't user-authored, it's a scrape, and
+    /// replacing a JavaScript-shell scrape with the employer's own text is the entire point.
+    @discardableResult
+    public func applyGreenhouseRefresh(
+        jobID: String,
+        posting: GreenhouseJobBoard.Posting
+    ) throws -> GreenhouseRefreshOutcome {
+        guard let job = try modelContext.fetch(
+            FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID })
+        ).first else {
+            throw BackgroundStoreError.notFound(jobID)
+        }
+
+        var outcome = GreenhouseRefreshOutcome()
+        outcome.board = posting.board
+        let overrides = manualFieldOverrideSet(job.manualFieldOverridesJSON)
+
+        let cleaned = GreenhouseJobBoard.plainTextDescription(posting)
+        if !cleaned.isEmpty, let capture = job.capture, capture.cleanedDescription != cleaned {
+            // Keep `visibleText` in step: a later re-clean recomputes `cleanedDescription` from it,
+            // and leaving the old shell text there would silently undo this refresh.
+            capture.visibleText = posting.contentHTML
+            capture.cleanedDescription = cleaned
+            capture.cleanedHash = DuplicateDetector.cleanedHash(from: cleaned)
+            job.cleanedTextBytes = cleaned.utf8.count
+            outcome.descriptionChanged = true
+        }
+
+        if let title = posting.title, !title.isEmpty, title != job.title {
+            if overrides.contains("title") {
+                outcome.skippedOverrides.append("title")
+            } else {
+                job.title = title
+                outcome.titleChanged = true
+            }
+        }
+
+        if let location = posting.locationName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !location.isEmpty, location != job.location {
+            if overrides.contains("location") {
+                outcome.skippedOverrides.append("location")
+            } else {
+                job.location = location
+                outcome.locationChanged = true
+            }
+        }
+
+        if outcome.changedAnything {
+            job.updatedAt = Date()
+            try saveAtomically()
+        }
+        return outcome
+    }
+
     /// One-time re-clean: recompute every capture's `cleanedDescription` with the current cleaner
     /// (after improving JSON-LD preference / boilerplate stripping), refreshing the cleaned hash and
     /// the job's byte count. Returns the number of captures whose text changed.

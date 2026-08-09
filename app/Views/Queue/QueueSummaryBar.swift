@@ -23,8 +23,37 @@ struct QueueSummaryBar: View {
         requests.count(where: { $0.status == .failed || $0.status == .retryExhausted })
     }
 
+    /// Paused / Running / Waiting / Idle — see `QueueActivity`. Counts alone never said whether the
+    /// queue was actually doing anything, which is how a wedged queue looked identical to a busy one.
+    private var activity: QueueActivity {
+        QueueActivity.state(isPaused: isPaused, running: running, queued: queued)
+    }
+
+    private var activityColor: Color {
+        switch activity {
+        case .paused: .orange
+        case .running: .green
+        case .queued: .yellow
+        case .idle: .secondary
+        }
+    }
+
     var body: some View {
         HStack(spacing: 12) {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(activityColor)
+                    .frame(width: 7, height: 7)
+                Text(activity.label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(activity == .idle ? Color.secondary : .primary)
+            }
+            .help(activity.explanation)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Queue \(activity.label). \(activity.explanation)")
+
+            Divider().frame(height: 12)
+
             HStack(spacing: 6) {
                 countBadge(label: "Queued", count: queued, color: .blue)
                 countBadge(label: "Running", count: running, color: .green)

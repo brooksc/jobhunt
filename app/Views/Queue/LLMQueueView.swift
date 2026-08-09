@@ -93,6 +93,12 @@ struct LLMQueueView: View {
         allRequests.contains { $0.finishedAt != nil }
     }
 
+    /// Nothing waiting means nothing for the run button to do — a live control that does nothing is
+    /// how this button misled in the first place.
+    private var hasQueuedRequests: Bool {
+        activeRequests.contains { $0.status == .queued }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             QueueSummaryBar(
@@ -294,13 +300,17 @@ struct LLMQueueView: View {
                 Divider()
             }
 
-            // Resume Queue (starts drain loop for already-queued requests)
+            // Starts a drain for already-queued requests. NOT the pause toggle — that lives in the
+            // summary bar and in the Queue menu. This button was labelled "Resume Queue" regardless of
+            // state, so it read as "the queue is paused" even when it was running, and sent people
+            // hunting for a pause that didn't exist (TASK-667). Named for what it does instead.
             Button {
                 Task { await processAll() }
             } label: {
-                Label("Resume Queue", systemImage: "play.fill")
+                Label("Run Queued Requests", systemImage: "play.circle")
             }
-            .help("Resume the queue and start processing queued requests")
+            .disabled(!hasQueuedRequests)
+            .help("Start processing requests that are waiting. Resumes the queue first if it's paused.")
 
             // Clear all finished rows (Done / Failed / Exhausted / Cancelled) in one click.
             Button {

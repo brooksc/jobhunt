@@ -305,3 +305,67 @@ final class ProjectionsTests: XCTestCase {
         XCTAssertEqual(p.dimensions.first(where: { $0.name == "seniority" })?.score, 100, "250.5 clamps to 100")
     }
 }
+
+/// The number and the rows must move together. They didn't: rows came from the projection and
+/// updated the moment a correction was saved, while the ring read the persisted score and waited for
+/// the background recompute — so a requirement jumped from Gaps to Requirements met above a headline
+/// that hadn't changed, which reads as the correction being ignored.
+final class FitProjectionCorrectedScoreTests: XCTestCase {
+    private let json = """
+    {"overall": 60,
+     "dimensions": [{"name":"required_qualifications","score":80},
+                    {"name":"preferred_qualifications","score":60},
+                    {"name":"skills","score":70},
+                    {"name":"domain_fit","score":60},
+                    {"name":"experience_level","score":90}],
+     "requirement_assessments": [
+       {"requirement":"Experience with distributed systems","kind":"required","status":"missing",
+        "evidence":"Not evidenced — a reader of this resume would not credit it."},
+       {"requirement":"8 years of program management","kind":"required","status":"met",
+        "evidence":"Ten years leading programs."}
+     ]}
+    """
+
+    private func projection(_ feedback: [ScoringFeedback]) -> FitScoreProjection {
+        FitScoreProjection(
+            fitScore: JobFitScore(fitScore: 60, fitStatus: .succeeded, fitScoreJSON: json),
+            feedback: feedback,
+            jobNumber: 1
+        )
+    }
+
+    func testOverallScoreRespondsToACorrection() throws {
+        let before = try XCTUnwrap(projection([]).overallScore)
+        let after = try XCTUnwrap(
+            projection([ScoringFeedback(phrase: "distributed systems", kind: .alwaysCredit)]).overallScore
+        )
+        XCTAssertGreaterThan(after, before, "crediting a missing requirement must raise the score")
+    }
+
+    /// The regression in the other direction: "I don't have this" must cost, not just recolour a row.
+    func testMarkingSomethingMissingLowersTheScore() throws {
+        let before = try XCTUnwrap(projection([]).overallScore)
+        let after = try XCTUnwrap(
+            projection([ScoringFeedback(phrase: "program management", kind: .neverCredit)]).overallScore
+        )
+        XCTAssertLessThan(after, before)
+    }
+
+    /// A corrected row must not keep evidence written for the verdict it no longer has — a green tick
+    /// above "a reader of this resume would not credit it" is the app arguing with itself.
+    func testCorrectedRowDropsTheContradictoryEvidence() throws {
+        let p = projection([ScoringFeedback(phrase: "distributed systems", kind: .alwaysCredit)])
+        let row = try XCTUnwrap(p.requirementAssessments.first { $0.requirement.contains("distributed") })
+        XCTAssertEqual(row.status, "met")
+        XCTAssertFalse(
+            row.evidence.contains("would not credit"),
+            "evidence still describes the model's original verdict: \(row.evidence)"
+        )
+        XCTAssertTrue(row.evidence.contains("You marked this"))
+    }
+
+    func testUncorrectedRowsKeepTheirEvidence() throws {
+        let row = try XCTUnwrap(projection([]).requirementAssessments.first { $0.status == "met" })
+        XCTAssertEqual(row.evidence, "Ten years leading programs.")
+    }
+}

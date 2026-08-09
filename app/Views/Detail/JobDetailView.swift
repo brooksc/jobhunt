@@ -1332,6 +1332,17 @@ struct FitTabView: View {
         sortedScores.first { $0.fitScore != nil }
     }
 
+    /// The hero number, with corrections applied. Same reason as the per-résumé row: the persisted
+    /// value lags a correction by however long the background recompute takes, so the headline sat on
+    /// its old number while the requirement below it had already moved columns.
+    private var bestCorrectedScore: Int? {
+        guard let best = bestScore else { return nil }
+        let feedback = appServices.settings.scoringFeedback
+        guard let json = best.fitScoreJSON else { return best.fitScore }
+        return FitScorer.rescoreFromJSON(json, feedback: feedback, jobNumber: job.jobNumber)?.overall
+            ?? best.fitScore
+    }
+
     private var scoredCount: Int {
         sortedScores.lazy.count(where: { $0.fitScore != nil })
     }
@@ -1431,7 +1442,7 @@ struct FitTabView: View {
 
     private var fitHero: some View {
         HStack(spacing: 14) {
-            if let score = bestScore?.fitScore {
+            if let score = bestCorrectedScore {
                 FitRingView(score: score, size: 52)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Best match · \(score)")
@@ -1723,7 +1734,10 @@ private struct ResumeScoreCard: View {
 
                     Spacer()
 
-                    if let score = fitScore.fitScore {
+                    // The projection's score has the user's corrections applied; the stored value
+                    // doesn't move until the background recompute lands. Showing the stored one made a
+                    // correction look ignored — the row jumped columns while the number sat still.
+                    if let score = fitProjection?.overallScore ?? fitScore.fitScore {
                         Text("\(score)")
                             .font(.caption.weight(.semibold).monospacedDigit())
                             .foregroundStyle(fitColor(score))

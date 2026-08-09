@@ -176,12 +176,10 @@ EOF
 sleep 2
 
 scene "06-rescored"
-# The headline score does NOT refresh in place after a correction (the requirement row moves to
-# "met" but the ring keeps its old value) — reselecting rebuilds it. Filmed as-is rather than
-# faked; see the README.
-select_job Stripe >/dev/null
-[ "$(select_job Google)" = "ok" ] || fail "could not reselect Google"
-detail_tab 2 >/dev/null
+# The score updates in place now (TASK-660): the projection carries the corrected number, so the ring
+# and the requirement row move together. This used to need a reselect to rebuild the view, which the
+# recording filmed rather than faked — the workaround is gone, and the assertion below is what proves
+# it, since a stale ring would still read 84.
 AFTER=$(fit_score_text)
 echo "$AFTER" | grep -q "94" || fail "expected 94 after the correction, got: $AFTER"
 sleep 3.5

@@ -128,6 +128,18 @@ public struct FitScoreProjection {
     /// Structured per-requirement assessments (TASK-490). Empty for legacy fit scores that predate it.
     public let requirementAssessments: [RequirementAssessment]
     public let dimensions: [FitDimension]
+    /// The overall score **with the user's corrections applied**, recomputed from the stored analysis.
+    ///
+    /// The rows and the number used to run on two different clocks: the rows came from this
+    /// projection and updated the instant a correction was saved, while the ring read the persisted
+    /// `JobFitScore.fitScore`, which only moved once the background recompute finished. So a
+    /// requirement would jump from Gaps to Requirements met while the headline number sat unchanged —
+    /// which reads as the correction not having worked. Views should prefer this over the stored
+    /// value; the recompute then persists the same number it already shows.
+    ///
+    /// `nil` for a stored analysis that can't be rescored (legacy rows with no dimensions), in which
+    /// case the caller falls back to the persisted score.
+    public let overallScore: Int?
 
     /// `feedback` is applied here as well as when gaps are built, or the two disagree: flagging
     /// "I don't have this" moved the score while the row still displayed a green tick.
@@ -142,9 +154,18 @@ public struct FitScoreProjection {
                 // capacity to learn, JIRA" showing under Gaps is noise even at zero cost — it reads
                 // as something to fix when there is nothing to fix (job #718).
                 guard !FitScorer.isExcludedFromScoring(requirement: requirement) else { return nil }
+                // A correction replaces the model's verdict, so the model's evidence no longer
+                // describes what the row now says. Left in place, an `alwaysCredit` row showed a green
+                // tick above "Not evidenced — a reader of this resume would not credit it." Say who
+                // decided instead.
+                var evidence = a["evidence"] as? String ?? ""
                 switch feedback.verdict(forRequirement: requirement, jobNumber: jobNumber) {
-                case .forceMissing: status = "missing"
-                case .forceMet: status = "met"
+                case .forceMissing:
+                    status = "missing"
+                    evidence = "You marked this as something you don't have."
+                case .forceMet:
+                    status = "met"
+                    evidence = "You marked this as something you have."
                 case .ignore: return nil
                 case .none: break
                 }
@@ -152,7 +173,7 @@ public struct FitScoreProjection {
                     requirement: requirement,
                     kind: a["kind"] as? String ?? "unknown",
                     status: status,
-                    evidence: a["evidence"] as? String ?? "",
+                    evidence: evidence,
                     evidenceSupport: (a[EvidenceCheck.supportKey] as? String)
                         .flatMap(EvidenceCheck.Support.init(rawValue:)),
                     unsupportedEvidence: (a[EvidenceCheck.unsupportedSpansKey] as? [String]) ?? []
@@ -168,6 +189,12 @@ public struct FitScoreProjection {
             // Derive the met/not-met splits from the structured assessments (met vs partial+missing).
             requirementsMet = assessments.filter(\.isMet).map(\.requirement)
             requirementsNotMet = assessments.filter { !$0.isMet }.map(\.requirement)
+        }
+
+        // Same call the background recompute makes, so the number shown now is the number stored
+        // later — not an approximation of it.
+        overallScore = fitScore.fitScoreJSON.flatMap {
+            FitScorer.rescoreFromJSON($0, feedback: feedback, jobNumber: jobNumber)?.overall
         }
 
         dimensions = (dict?["dimensions"] as? [[String: Any]])?.compactMap { d in

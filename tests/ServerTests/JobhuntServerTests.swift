@@ -213,7 +213,19 @@ final class JobhuntServerTests: XCTestCase {
         req.httpBody = try JSONSerialization.data(withJSONObject: payloadObj)
         XCTAssertGreaterThan(req.httpBody?.count ?? 0, 1_048_576, "payload must exceed the old 1 MB MCP limit")
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        // A DEDICATED session, invalidated immediately, so this request's connection never returns to
+        // the shared pool. Pushing >1MB through `URLSession.shared` left a connection the next test
+        // inherited and the server then reset — CI run 30171362290 failed the following test with
+        // NSURLErrorDomain -1005 "network connection was lost" / "Connection reset by peer", and the
+        // same commit passed on re-run. ServerTests share one `JobhuntServer` deliberately (NWListener
+        // port lifecycle), so the only thing that can be isolated here is the client side.
+        //
+        // No retry is added anywhere: a retry that can swallow a transport error can also swallow a
+        // real regression, and this is cheaper and exact.
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+
+        let (data, response) = try await session.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 200, "a 1–4 MB MCP capture must be accepted, not 413")
         struct MCPCaptureBody: Decodable {

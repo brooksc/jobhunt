@@ -55,7 +55,11 @@ final class AppServices {
         let queue = QueueActor(
             store: store,
             isPaused: { await MainActor.run { settingsStore.llmQueuePaused } },
-            onSetPaused: { paused in await MainActor.run { settingsStore.llmQueuePaused = paused } },
+            // Through `setQueuePaused` so a resume also clears the stored pause reason (TASK-524):
+            // a stale "auto-paused after failures" surviving a successful resume would mislabel the
+            // user's next deliberate pause. The queue can't say *why* here — the reason is set by the
+            // `.autoPaused` / `.authenticationFailed` event handlers, which can.
+            onSetPaused: { paused in await MainActor.run { settingsStore.setQueuePaused(paused) } },
             readExtractionSettings: { await MainActor.run { settingsStore.extractionSettings() } },
             // Snapshot SettingsStore on the main actor (it's not Sendable); the built provider is
             // Sendable so it crosses back to queue isolation safely (TASK-381).

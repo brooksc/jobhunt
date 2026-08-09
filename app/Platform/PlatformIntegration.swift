@@ -14,6 +14,9 @@ public extension Notification.Name {
 public final class PlatformIntegration: NSObject, ObservableObject {
     private let router: Router
     private let modelContainer: ModelContainer
+    /// Needed only to record WHY the queue paused when it pauses itself (TASK-524) — the queue emits
+    /// the event but has no way to write the reason the UI reads.
+    private let settings: SettingsStore
     private var eventTask: Task<Void, Never>?
     /// Guards against repeated `start(queue:)` calls duplicating observers/subscriptions/prompts
     /// (TASK-429). `stop()` clears it so a restart is possible.
@@ -34,9 +37,10 @@ public final class PlatformIntegration: NSObject, ObservableObject {
     /// (e.g. to 0–10), this magic number must move with it, hence the explicit tie to the 0–100 scale.
     private let strongMatchThreshold = 75
 
-    public init(router: Router, modelContainer: ModelContainer) {
+    public init(router: Router, modelContainer: ModelContainer, settings: SettingsStore) {
         self.router = router
         self.modelContainer = modelContainer
+        self.settings = settings
         super.init()
     }
 
@@ -148,6 +152,10 @@ public final class PlatformIntegration: NSObject, ObservableObject {
             flushReady(failed: failed)
 
         case .autoPaused:
+            // The queue has already flipped the pause flag; record WHY, so the banner can say
+            // "auto-paused after repeated failures" rather than implying the user chose this
+            // (TASK-524).
+            settings.setQueuePaused(true, reason: .repeatedFailures)
             router.navigateToSection(.llmQueue)
 
         case .requestsReaped:
@@ -157,6 +165,7 @@ public final class PlatformIntegration: NSObject, ObservableObject {
             break
 
         case let .authenticationFailed(statusCode):
+            settings.setQueuePaused(true, reason: .authenticationFailed)
             // App-wide banner so it's visible from any screen, not only the LLM Queue (TASK-542).
             router.queueAlert = QueueAlert(
                 message: "API key rejected (HTTP \(statusCode)) — check your AI provider key in " +

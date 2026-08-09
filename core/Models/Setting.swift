@@ -54,6 +54,9 @@ public enum SettingsKey {
     /// schema migration is needed for what is a short, user-curated list.
     public static let scoringFeedback = "scoring_feedback"
     public static let llmQueuePaused = "llm_queue_paused"
+    /// Why the queue is paused (`QueuePauseReason`). Persisted separately from the boolean because a
+    /// user pause and an auto-pause need different words and different urgency (TASK-524).
+    public static let llmQueuePauseReason = "llm_queue_pause_reason"
     /// Hide the Debug settings tab. Default false (shown). Re-enable from General settings.
     public static let hideDebugTab = "hide_debug_tab"
     public static let llmOpenRouterFreeRotate = "llm_openrouter_free_rotate"

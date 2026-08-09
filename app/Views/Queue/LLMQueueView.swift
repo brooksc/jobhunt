@@ -99,6 +99,16 @@ struct LLMQueueView: View {
         activeRequests.contains { $0.status == .queued }
     }
 
+    /// The paused-queue banner, or nil when there's nothing to say (TASK-524). The rule lives in
+    /// Core (`QueuePauseBanner`) so "when do we speak up" is unit-tested rather than eyeballed.
+    private var pauseBanner: QueuePauseBanner? {
+        QueuePauseBanner.make(
+            isPaused: isPaused,
+            reason: settings.llmQueuePauseReason,
+            waiting: activeRequests.count(where: { $0.status == .queued })
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             QueueSummaryBar(
@@ -109,6 +119,13 @@ struct LLMQueueView: View {
             )
 
             Divider()
+
+            // Above the error row: when the queue has stopped itself, that IS the headline — a small
+            // green Resume button in the header was the only cue, and users read the silence as the
+            // app being broken instead (TASK-524).
+            if let banner = pauseBanner {
+                QueuePauseBannerView(banner: banner) { Task { await togglePause() } }
+            }
 
             if let msg = errorMessage {
                 HStack {
@@ -485,6 +502,9 @@ struct LLMQueueView: View {
     private func togglePause() async {
         let next = !isPaused
         isPaused = next
+        // Keep the persisted reason in step with a user-driven toggle, so a pause the user chose is
+        // never labelled as an automatic one (and vice versa).
+        settings.setQueuePaused(next, reason: .user)
         if next {
             await queueActor.pauseQueue()
         } else {

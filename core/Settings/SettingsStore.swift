@@ -32,6 +32,7 @@ private let settingsDefaults: [String: String] = [
     SettingsKey.minFitScore: "0",
     SettingsKey.scoringFeedback: "[]",
     SettingsKey.llmQueuePaused: "false",
+    SettingsKey.llmQueuePauseReason: QueuePauseReason.user.rawValue,
     SettingsKey.llmOpenRouterFreeRotate: "false",
     SettingsKey.availabilityAutoCheckEnabled: "true",
     SettingsKey.availabilityAutoCheckIntervalDays: "1",
@@ -176,6 +177,22 @@ public final class SettingsStore {
     public var llmQueuePaused: Bool {
         get { bool(forKey: SettingsKey.llmQueuePaused) }
         set { setBool(newValue, forKey: SettingsKey.llmQueuePaused) }
+    }
+
+    /// Why the queue is paused. Unrecognised values read back as `.user` — the conservative default,
+    /// since claiming an automatic failure that didn't happen would send the user looking for a
+    /// provider problem that isn't there.
+    public var llmQueuePauseReason: QueuePauseReason {
+        get { QueuePauseReason(rawValue: string(forKey: SettingsKey.llmQueuePauseReason)) ?? .user }
+        set { setLocal(newValue.rawValue, forKey: SettingsKey.llmQueuePauseReason) }
+    }
+
+    /// Pauses (or resumes) with the reason recorded in one step, so the two can't drift apart.
+    /// Resuming resets the reason to `.user`: a stale "auto-paused after failures" surviving a
+    /// successful resume would mislabel the next deliberate pause.
+    public func setQueuePaused(_ paused: Bool, reason: QueuePauseReason = .user) {
+        llmQueuePaused = paused
+        llmQueuePauseReason = paused ? reason : .user
     }
 
     /// The last-viewed sidebar selection, persisted so relaunch restores the same view. Opaque

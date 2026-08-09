@@ -138,18 +138,15 @@ struct JobhuntApp: App {
             // TASK-486: in UI tests, point the LLM at a localhost mock server (started by the test
             // runner) so the AI path runs end-to-end with no API key. Gated to uiTest mode so it can
             // never reconfigure a real user's provider.
-            if plan.mode == .uiTest, let mockPort = Self.llmMockPort() {
-                services.settings.llmProvider = "lmstudio" // OpenAI-compatible, no key/consent
-                services.settings.llmBaseURL = "http://127.0.0.1:\(mockPort)"
-                services.settings.setModelForProvider("mock-model", provider: "lmstudio")
-                services.settings.llmQueuePaused = false // let the queue process against the mock
-            }
+            if plan.mode == .uiTest { Self.pointLLMAtMock(services.settings) }
             let mgr = OnboardingManager(settings: services.settings)
             if plan.mode == .uiTest { mgr.isPresented = false } // Never block tests with onboarding
             onboardingManager = mgr
             let sharedRouter = Router()
             router = sharedRouter
-            let integration = PlatformIntegration(router: sharedRouter, modelContainer: container)
+            let integration = PlatformIntegration(
+                router: sharedRouter, modelContainer: container, settings: services.settings
+            )
             platformIntegration = integration
             storeFailure = nil
 
@@ -205,6 +202,17 @@ struct JobhuntApp: App {
                 message: message
             )
         }
+    }
+
+    /// TASK-486: in UI tests, point the LLM at a localhost mock server (started by the test runner)
+    /// so the AI path runs end-to-end with no API key. Only ever called in uiTest mode, so it can
+    /// never reconfigure a real user's provider.
+    private static func pointLLMAtMock(_ settings: SettingsStore) {
+        guard let mockPort = llmMockPort() else { return }
+        settings.llmProvider = "lmstudio" // OpenAI-compatible, no key/consent
+        settings.llmBaseURL = "http://127.0.0.1:\(mockPort)"
+        settings.setModelForProvider("mock-model", provider: "lmstudio")
+        settings.llmQueuePaused = false // let the queue process against the mock
     }
 
     /// Parse `--llm-mock-port <port>` (TASK-486), used only in UI tests to point the app at a

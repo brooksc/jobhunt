@@ -165,10 +165,21 @@ struct Sidebar: View {
                         if llmRunningCount > 0 {
                             ProgressView().controlSize(.small)
                         }
+                        // TASK-524 #5: a paused queue with work waiting is visible from every
+                        // section, not only after navigating to the queue. The badge alone can't
+                        // carry this — a count of 12 looks the same whether it's draining or stuck.
+                        if appServices.settings.llmQueuePaused, !outstandingLLMRequests.isEmpty {
+                            Image(systemName: "pause.circle.fill")
+                                .foregroundStyle(
+                                    appServices.settings.llmQueuePauseReason == .user
+                                        ? Color.secondary : .orange
+                                )
+                        }
                     }
                 )
                 .badge(outstandingLLMRequests.isEmpty ? 0 : outstandingLLMRequests.count)
-                .help("LLM processing queue status (badge = queued + running; spinner = processing)")
+                .help("LLM processing queue status (badge = queued + running; spinner = processing; "
+                    + "pause icon = paused with work waiting)")
 
                 sidebarRow(
                     .dataQuality,

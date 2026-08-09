@@ -1,15 +1,26 @@
 ---
 id: TASK-524
 title: 'LLM Queue: prominent in-app banner when the queue is auto-paused'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 04:41'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-08-09 23:00'
 labels:
   - ux
   - llm
   - queue
 dependencies: []
+modified_files:
+  - core/LLM/QueuePauseBanner.swift
+  - core/Models/Setting.swift
+  - core/Settings/SettingsStore.swift
+  - app/Views/Queue/QueuePauseBannerView.swift
+  - app/Views/Queue/LLMQueueView.swift
+  - app/Shell/Sidebar.swift
+  - app/Shell/AppServices.swift
+  - app/Platform/PlatformIntegration.swift
+  - app/JobhuntApp.swift
+  - tests/CoreTests/QueuePauseBannerTests.swift
 priority: medium
 ordinal: 10000
 ---
@@ -32,9 +43,25 @@ References: app/Views/Queue/LLMQueueView.swift, app/Platform/PlatformIntegration
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The LLM Queue view shows a prominent banner whenever the queue is paused with items waiting, with an inline Resume action
-- [ ] #2 The banner differentiates auto-pause (after failures) from a user-initiated pause
-- [ ] #3 The banner shows how many items are queued/waiting
-- [ ] #4 The banner disappears immediately when the queue resumes or the queue is empty
-- [ ] #5 Consider a lightweight global indicator (e.g. sidebar LLM Queue badge state or toolbar) so a paused queue is noticeable from other views
+- [x] #1 The LLM Queue view shows a prominent banner whenever the queue is paused with items waiting, with an inline Resume action
+- [x] #2 The banner differentiates auto-pause (after failures) from a user-initiated pause
+- [x] #3 The banner shows how many items are queued/waiting
+- [x] #4 The banner disappears immediately when the queue resumes or the queue is empty
+- [x] #5 Consider a lightweight global indicator (e.g. sidebar LLM Queue badge state or toolbar) so a paused queue is noticeable from other views
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+#2 needed state that didn't exist: the pause was a bare boolean, so nothing could tell an auto-pause from a user pause after the fact. New `QueuePauseReason` (user / repeatedFailures / authenticationFailed) is persisted next to it. The queue actor can't say why it paused, so the reason is written by the `.autoPaused` and `.authenticationFailed` event handlers in `PlatformIntegration` (which now takes a `SettingsStore`), and `SettingsStore.setQueuePaused(_:reason:)` resets it to `.user` on resume — a stale "auto-paused after failures" would otherwise mislabel the next deliberate pause. Unknown stored values read back as `.user`, the conservative direction.
+
+#1/#3/#4 `QueuePauseBanner.make(isPaused:reason:waiting:)` in Core returns the banner or nil, so the show/hide rule is unit-tested rather than eyeballed: paused with work waiting, nothing while running, and deliberately nothing when paused-and-empty (a banner that's always on screen is one people stop reading). The count is in the title; auth failure points at Settings → AI rather than at Resume, since resuming without fixing the key just fails again. `QueuePauseBannerView` renders it above the queue with an inline Resume.
+
+#5 The sidebar LLM Queue row shows a pause glyph — orange for automatic, secondary for a user pause — when paused with outstanding requests. The badge alone couldn't carry this: a count of 12 looks identical draining or wedged.
+
+10 tests. Two SwiftLint size limits tripped by the additions, fixed by extracting `QueuePauseBannerView` and `JobhuntApp.pointLLMAtMock` rather than by raising the limits.
+
+Gate: fast gate TEST SUCCEEDED, BUILD SUCCEEDED, swiftlint 0 violations in 320 files, swiftformat 0.61.1 clean.
+
+not verified: (visual) — banner and sidebar glyph appearance, and the end-to-end auto-pause path in a running app (it needs a real provider failing four times). The reason-writing and banner rules are covered by unit tests; the wiring between them is compile-checked only.
+<!-- SECTION:FINAL_SUMMARY:END -->

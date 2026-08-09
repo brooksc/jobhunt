@@ -24,6 +24,7 @@ public enum SettingsKey {
     public static let llmAPIKeyGoogle = "llm_api_key_google"
     public static let llmAPIKeyOpenRouter = "llm_api_key_openrouter"
     public static let llmAPIKeyCustom = "llm_api_key_custom"
+    public static let llmAPIKeyDeepSeek = "llm_api_key_deepseek"
     public static let llmModel = "llm_model"
     public static let llmTimeout = "llm_timeout"
     public static let siteReviewIntervalDays = "site_review_interval_days"
@@ -94,6 +95,6 @@ public enum SettingsKey {
     /// API key settings that must live in Keychain, not SwiftData (App Store hygiene).
     public static let keychainKeys: Set<String> = [
         llmAPIKey, llmAPIKeyOpenAI, llmAPIKeyAnthropic,
-        llmAPIKeyGoogle, llmAPIKeyOpenRouter, llmAPIKeyCustom
+        llmAPIKeyGoogle, llmAPIKeyOpenRouter, llmAPIKeyCustom, llmAPIKeyDeepSeek
     ]
 }

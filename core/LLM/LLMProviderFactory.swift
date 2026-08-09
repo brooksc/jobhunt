@@ -30,6 +30,16 @@ public enum LLMProviderFactory {
             return OpenRouterProvider(
                 apiKey: apiKey, model: model, timeoutSeconds: timeout, session: session, pool: pool
             )
+        case "deepseek":
+            // DeepSeek serves an OpenAI-compatible API, so the existing transport covers it —
+            // this is metadata and a picker entry, not a new client.
+            return CustomProvider(
+                baseURL: resolveBaseURL(provider: "deepseek", customBaseURL: ""),
+                apiKey: apiKey,
+                model: model,
+                timeoutSeconds: timeout,
+                session: session
+            )
         case "custom":
             let baseURL = settings.llmBaseURL
             return CustomProvider(
@@ -58,7 +68,7 @@ public enum LLMProviderFactory {
     /// by trying, and the existing auto-pause-on-failure covers an unreachable local server.
     public static func requiresAPIKey(provider: String) -> Bool {
         switch provider {
-        case "openai", "anthropic", "google", "openrouter": true
+        case "openai", "anthropic", "google", "openrouter", "deepseek": true
         default: false
         }
     }
@@ -78,6 +88,7 @@ public enum LLMProviderFactory {
         switch provider {
         case "openai": return "https://api.openai.com"
         case "openrouter": return "https://openrouter.ai/api"
+        case "deepseek": return "https://api.deepseek.com"
         case "anthropic": return "https://api.anthropic.com"
         case "google": return "https://generativelanguage.googleapis.com"
         default:

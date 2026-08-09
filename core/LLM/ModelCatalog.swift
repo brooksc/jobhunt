@@ -36,6 +36,13 @@ public enum ModelCatalog {
             )
         case "google":
             return try await fetchGoogle(apiKey: apiKey, session: session, timeout: timeoutSeconds)
+        case "deepseek":
+            // OpenAI-compatible /models, but the key IS required (unlike OpenRouter's public list).
+            try requireKey(apiKey, provider: provider)
+            return try await fetchOpenAIStyle(
+                url: "https://api.deepseek.com/v1/models",
+                headers: bearer(apiKey), session: session, timeout: timeoutSeconds
+            )
         default:
             // LM Studio, Custom, and any other OpenAI-compatible local endpoint.
             let base = normalizedBase(baseURL)

@@ -161,7 +161,18 @@
 
     <h2 id="direct">OpenRouter or DeepSeek directly?</h2>
     <p>The same model is available two ways. <strong>OpenRouter</strong> is one account and one key that reaches many models, so switching later is a dropdown rather than a signup — that's why we recommend it. <strong>DeepSeek's own API</strong> is typically cheaper for the same model and involves one fewer company handling your data.</p>
-    <p>Going direct works today via <strong>Provider → Custom</strong> with DeepSeek's base URL, but you'll have to type the model name yourself and JobHunt won't be able to estimate your costs. Making DeepSeek a first-class provider is on our list.</p>
+    <p><strong>DeepSeek is now a provider in its own right</strong> — pick it in Settings → AI Provider,
+    paste a key from platform.deepseek.com, and the model list loads the same way the others do. You no
+    longer need the Custom route or its hand-typed base URL.</p>
+    <p>One thing it still can't do: <strong>estimate your spend</strong>. The cost figures in Settings come
+    from OpenRouter's live pricing feed, and DeepSeek publishes no equivalent endpoint. We would rather
+    show nothing than hard-code a price table that quietly goes stale — DeepSeek's prices have been
+    rising. Use OpenRouter if you want JobHunt to track what you're spending; use DeepSeek directly if
+    you want the lower bill and fewer intermediaries, and check their pricing page yourself.</p>
+    <p class="note">Worth knowing before choosing DeepSeek either way: it was the <em>least consistent</em>
+    model we measured — 7–8 of 15 requirement verdicts changed between byte-identical requests, and
+    OpenRouter served it from five different providers across eight calls. See the consistency section
+    above.</p>
 
     <h2 id="privacy">What gets sent</h2>
     <p>With a cloud provider, JobHunt sends the job description text for extraction, and the description plus your <strong>résumé text</strong> for fit scoring. That's your employment history going to a third party, which is why JobHunt asks for explicit consent the first time and won't send anything before you agree. With a local model, none of this leaves your Mac. See the <a href="/privacy">Privacy Policy</a>.</p>

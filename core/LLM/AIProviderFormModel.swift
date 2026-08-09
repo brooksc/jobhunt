@@ -58,6 +58,11 @@ public final class AIProviderFormModel {
                 privacyURL: "https://openrouter.ai/privacy",
                 apiKeyURL: "https://openrouter.ai/keys"
             ),
+            .init(
+                id: "deepseek", label: "DeepSeek", isCloud: true,
+                privacyURL: "https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html",
+                apiKeyURL: "https://platform.deepseek.com/api_keys"
+            ),
             .init(id: "custom", label: "Custom", isCloud: false, privacyURL: nil, apiKeyURL: nil)
         ]
 

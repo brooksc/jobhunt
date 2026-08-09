@@ -195,6 +195,9 @@ public actor BackgroundStore {
         public var locationChanged = false
         /// Fields left alone because the user had edited them by hand.
         public var skippedOverrides: [String] = []
+        /// The ATS publish/update dates were recorded. Tracked separately from the content changes
+        /// because it alone doesn't warrant a re-extraction.
+        public var timestampsChanged = false
         public var board = ""
 
         public var changedAnything: Bool {
@@ -256,7 +259,15 @@ public actor BackgroundStore {
             }
         }
 
-        if outcome.changedAnything {
+        // Timestamps are recorded whether or not anything else changed: knowing the posting is
+        // four months old is useful precisely when the text hasn't moved (TASK-633).
+        if job.atsFirstPublishedAt != posting.firstPublished || job.atsUpdatedAt != posting.updatedAt {
+            job.atsFirstPublishedAt = posting.firstPublished
+            job.atsUpdatedAt = posting.updatedAt
+            outcome.timestampsChanged = true
+        }
+
+        if outcome.changedAnything || outcome.timestampsChanged {
             job.updatedAt = Date()
             try saveAtomically()
         }

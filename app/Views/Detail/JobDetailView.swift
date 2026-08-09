@@ -624,6 +624,20 @@ private struct DetailFooter: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
+            // TASK-633: how old the POSTING is, which the capture date above can't tell you — it
+            // says when we saw it, and a posting found weeks after it went up looks new by that
+            // measure. Authoritative only once refreshed from the ATS; the label says which.
+            if let freshness = postingFreshness {
+                Label(freshness.label, systemImage: "clock")
+                    .font(.caption2)
+                    .foregroundStyle(freshness.level == .stale ? AnyShapeStyle(Color.orange)
+                        : AnyShapeStyle(.tertiary))
+                    .labelStyle(.titleAndIcon)
+                    .help(freshness.confidence == .authoritative
+                        ? "From the employer's job board"
+                        : "Based on when you captured it — the posting may be older")
+            }
+
             // TASK-504: surface the application date once the job has been applied to.
             if let appliedAt = job.appliedAt {
                 Label(
@@ -683,6 +697,14 @@ private struct DetailFooter: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
+    }
+
+    private var postingFreshness: PostingFreshness? {
+        PostingFreshness.make(
+            firstPublished: job.atsFirstPublishedAt,
+            atsUpdated: job.atsUpdatedAt,
+            capturedAt: job.capture?.capturedAt
+        )
     }
 
     private func relativeCaptured(_ date: Date) -> String {

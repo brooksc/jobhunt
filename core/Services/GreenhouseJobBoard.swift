@@ -19,6 +19,9 @@ public enum GreenhouseJobBoard {
         public let locationName: String?
         public let departments: [String]
         public let updatedAt: Date?
+        /// When the posting first went up. Distinct from `updatedAt`, which moves on any edit —
+        /// see `PostingFreshness` for why the difference matters (TASK-633).
+        public let firstPublished: Date?
         public let absoluteURL: String?
         /// Which board slug answered — worth surfacing, since it's a guess.
         public let board: String
@@ -84,6 +87,7 @@ public enum GreenhouseJobBoard {
             locationName: (raw["location"] as? [String: Any])?["name"] as? String,
             departments: departments,
             updatedAt: (raw["updated_at"] as? String).flatMap(parseTimestamp),
+            firstPublished: (raw["first_published"] as? String).flatMap(parseTimestamp),
             absoluteURL: raw["absolute_url"] as? String,
             board: board
         )

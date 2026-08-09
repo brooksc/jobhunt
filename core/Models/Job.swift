@@ -56,6 +56,15 @@ public final class Job {
     /// Nil on rows ingested before this field was added; fall back to `createdAt` when nil.
     public var capturedAtDenormalized: Date?
 
+    /// When the employer's ATS says the posting was first published, and last changed (TASK-633).
+    ///
+    /// Authoritative in a way our capture date can never be: the capture date says when *we* saw it,
+    /// which for a posting found weeks after it went up says nothing about the posting. Nil until a
+    /// refresh from the ATS fills them in — both are optional additions, so no schema version bump
+    /// (see the policy in Schema.swift).
+    public var atsFirstPublishedAt: Date?
+    public var atsUpdatedAt: Date?
+
     @Relationship(deleteRule: .cascade)
     public var capture: Capture?
 

@@ -19,6 +19,7 @@ final class GreenhouseJobBoardDecodeTests: XCTestCase {
           "content": "\(content)",
           "absolute_url": "https://boards.greenhouse.io/acme/jobs/4567",
           "updated_at": "2026-07-14T10:11:12.000Z",
+          "first_published": "2026-05-02T09:00:00-04:00",
           "location": { "name": "San Francisco, CA" },
           "departments": [{ "name": "Engineering" }, { "name": "Platform" }]
           \(extra)
@@ -33,6 +34,7 @@ final class GreenhouseJobBoardDecodeTests: XCTestCase {
         XCTAssertEqual(posting.departments, ["Engineering", "Platform"])
         XCTAssertEqual(posting.board, "acme")
         XCTAssertNotNil(posting.updatedAt)
+        XCTAssertNotNil(posting.firstPublished)
     }
 
     /// `content` is the only field worth failing over: a posting with a title and no body gives the
@@ -95,6 +97,7 @@ final class GreenhouseRefreshApplyTests: XCTestCase {
             locationName: location,
             departments: ["Engineering"],
             updatedAt: nil,
+            firstPublished: nil,
             absoluteURL: nil,
             board: "acme"
         )

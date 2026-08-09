@@ -267,6 +267,24 @@ private struct AIProviderStep: View {
                     Link("Download LM Studio", destination: url).font(.caption)
                 }
 
+                // TASK-663: the recommendation belongs where the choice is made. Picking a provider and
+                // a model is the step people stall on, and until now the only guidance lived on a web
+                // page nothing in the app pointed at.
+                if model.selectedProviderID != ModelRecommendation.providerID
+                    || model.modelText != ModelRecommendation.modelID {
+                    Button("Use our recommendation: \(ModelRecommendation.modelLabel)") {
+                        model.applyRecommendation()
+                    }
+                    .font(.caption)
+                    .buttonStyle(.link)
+                }
+                Text(ModelRecommendation.summary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let url = URL(string: ModelRecommendation.helpURL) {
+                    Link(ModelRecommendation.linkText, destination: url).font(.caption)
+                }
+
                 if model.needsAPIKey {
                     SecureField("API Key", text: Binding(
                         get: { model.apiKeyText },

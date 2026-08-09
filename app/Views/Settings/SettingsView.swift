@@ -224,6 +224,20 @@ struct LLMTab: View {
                     .foregroundStyle(.secondary)
             }
 
+            // TASK-663: same recommendation as onboarding, from the same constant, next to the rows
+            // it's a recommendation about.
+            HStack(spacing: 8) {
+                if model.selectedProviderID != ModelRecommendation.providerID
+                    || model.modelText != ModelRecommendation.modelID {
+                    Button("Use recommended") { model.applyRecommendation() }
+                        .buttonStyle(.link)
+                }
+                if let url = URL(string: ModelRecommendation.helpURL) {
+                    Link(ModelRecommendation.linkText, destination: url)
+                }
+            }
+            .font(.caption)
+
             // TASK-462: OpenRouter free-model rotation + failover.
             if model.selectedProviderID == "openrouter" {
                 Toggle("Rotate free structured-output models", isOn: Binding(

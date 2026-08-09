@@ -190,6 +190,17 @@ public final class AIProviderFormModel {
         if canFetchModels { Task { await fetchModels() } }
     }
 
+    /// Applies the recommended provider + model in one action (TASK-663).
+    ///
+    /// Deliberately sets the model *after* `applyProviderChange`, which resets `modelText` to whatever
+    /// was last used for that provider. It also does not clear the API key: switching to the
+    /// recommendation with a key already stored for OpenRouter should leave the user configured, not
+    /// send them back to paste it again.
+    public func applyRecommendation() {
+        applyProviderChange(to: ModelRecommendation.providerID)
+        onModelChanged(ModelRecommendation.modelID)
+    }
+
     // MARK: - Model fetch (provider-scoped)
 
     public func fetchModels() async {

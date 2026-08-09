@@ -3,9 +3,10 @@ id: TASK-658
 title: >-
   LLM queue shows duration but not when — add a Queued/Completed time column per
   pane
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-02 18:09'
+updated_date: '2026-08-09 22:33'
 labels:
   - llm-queue
   - ui
@@ -37,9 +38,21 @@ Motivating case: the orphaned `running` row in [TASK-657] had been queued 12 min
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Active pane shows a Queued column sourced from createdAt
-- [ ] #2 Completed pane shows a Completed column sourced from finishedAt
-- [ ] #3 A timestamp from today renders as time only; older rows include the date
-- [ ] #4 A queued-but-not-started request shows its queued time (today Duration shows an em dash)
-- [ ] #5 The existing Duration column is unchanged
+- [x] #1 Active pane shows a Queued column sourced from createdAt
+- [x] #2 Completed pane shows a Completed column sourced from finishedAt
+- [x] #3 A timestamp from today renders as time only; older rows include the date
+- [x] #4 A queued-but-not-started request shows its queued time (its Completed cell renders an em dash)
+- [x] #5 The existing Duration column is unchanged
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Each pane now shows the timestamp that means something for its rows: Active shows **Queued** from `createdAt`, Completed shows **Completed** from `finishedAt`. The shared `requestTable` takes a `TimeColumn` rather than gaining both columns everywhere — a Completed column in the Active pane would be an em dash on every row.
+
+Same-day rows render time only; anything older carries its date. A column wide enough for a full date on every row would spend most of its width repeating today's date, and the date only starts carrying information once the row isn't from today.
+
+The formatting rule lives in `QueueTimestamp` in Core rather than the view, so it can be tested with an injected clock and a fixed locale — app-target code has no unit-test target. Three tests: today is time-only, older includes the date, and nil renders as an em dash (the case a queued-but-unstarted request produces in the Completed column).
+
+Duration is untouched, as criterion 5 requires.
+<!-- SECTION:FINAL_SUMMARY:END -->

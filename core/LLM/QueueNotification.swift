@@ -32,6 +32,19 @@ public extension QueueEvent {
                 navigate: "settings-ai",
                 requestsAttention: true
             )
+        case let .requestsReaped(count):
+            // Criterion 5: a reap must be visible outside the Debug tab. It is not an error — the
+            // queue recovered by itself — so it doesn't demand attention, but it has to be SEEN,
+            // because the silent version of this looked like "the queue is just slow".
+            QueueNotification(
+                id: "requests-reaped",
+                title: "AI queue recovered",
+                body: count == 1
+                    ? "A request stopped responding and was put back in the queue."
+                    : "\(count) requests stopped responding and were put back in the queue.",
+                navigate: "llmQueue",
+                requestsAttention: false
+            )
         case .autoPaused:
             QueueNotification(
                 id: "queue-auto-paused",

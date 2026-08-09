@@ -129,6 +129,22 @@ final class AppServices {
                 }
             })
 
+            // Reap orphaned `running` rows on a timer, not only when a drain happens to run.
+            //
+            // The orphan that prompted TASK-657 appeared with no drain active and no connection open:
+            // the row simply never left `running`. Reaping only at drain start would leave it there
+            // until new work arrived, and each orphan permanently leaks a slot from the adaptive
+            // concurrency pool — several would throttle the queue toward serial while looking, from
+            // the outside, merely slow.
+            let reaperQueue = queueActor
+            tasks.append(Task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(120))
+                    guard !Task.isCancelled else { return }
+                    _ = try? await reaperQueue.reapOrphanedRunning()
+                }
+            })
+
             // Persist the last-check timestamp through an explicit callback (TASK-428) rather than a
             // global notification observer: the checker hands us the completion time, we write the
             // setting on the main actor.

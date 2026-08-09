@@ -12,6 +12,10 @@ public enum QueueEvent: Sendable {
     /// The queue could not read its work from the store (a degraded state — NOT an empty queue).
     /// Carries a user-facing message for diagnostics/surfacing.
     case queueError(String)
+    /// One or more requests were found stuck in `running` past their bound and returned to the
+    /// queue. Emitted so a reap is visible outside the Debug tab — the failure it recovers from was
+    /// entirely silent.
+    case requestsReaped(count: Int)
     /// Work is queued but no usable AI provider is configured (a key-requiring provider with no key).
     /// Emitted once per unconfigured episode so the user can be told to set one up, instead of letting
     /// the requests fail repeatedly into an auto-pause (TASK-483). Pending work is left queued.
@@ -55,7 +59,7 @@ public actor QueueActor {
         continuations.removeValue(forKey: id)
     }
 
-    private func emit(_ event: QueueEvent) {
+    func emit(_ event: QueueEvent) {
         for continuation in continuations.values {
             continuation.yield(event)
         }
@@ -99,7 +103,7 @@ public actor QueueActor {
 
     // MARK: - Dependencies
 
-    private let store: BackgroundStore
+    let store: BackgroundStore
     /// Build a provider from current settings. Async + Sendable so the implementation can snapshot
     /// the (non-Sendable) SettingsStore on the main actor rather than reading it from queue isolation.
     private let providerFactory: @Sendable () async -> any LLMProvider
@@ -143,6 +147,12 @@ public actor QueueActor {
     /// Runtime concurrency that backs off on 429 and recovers on success (TASK-463). Re-seeded when
     /// the provider's static ceiling changes; resets each session (no persistence).
     private var adaptive: AdaptiveConcurrency?
+
+    /// Drop the adaptive pool so the next pass re-seeds it. Used after reaping orphans, whose slots
+    /// were being counted against the limit even though nothing was running in them.
+    func resetAdaptiveConcurrency() {
+        adaptive = nil
+    }
 
     static let maxRetries = 3
     /// Consecutive *provider* failures before the queue auto-pauses. A single flaky response (e.g. a
@@ -404,6 +414,10 @@ public actor QueueActor {
                 break
             }
             guard await !isPaused() else { break }
+
+            // Reclaim orphans before deciding how many slots are free — a leaked slot would
+            // otherwise shrink this pass's concurrency for no reason.
+            try? await reapOrphanedRunning()
 
             let provider = await providerFactory()
             // TASK-463: dispatch at the adaptive runtime concurrency (drops to 1 after a 429, recovers

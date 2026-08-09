@@ -150,6 +150,12 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         case .autoPaused:
             router.navigateToSection(.llmQueue)
 
+        case .requestsReaped:
+            // The notification (QueueEvent.notification) carries the user-facing message. Don't
+            // navigate: the queue recovered on its own and is still working, so yanking the user to
+            // another screen would be worse than the silence this replaces.
+            break
+
         case let .authenticationFailed(statusCode):
             // App-wide banner so it's visible from any screen, not only the LLM Queue (TASK-542).
             router.queueAlert = QueueAlert(

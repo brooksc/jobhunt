@@ -588,6 +588,12 @@ struct LLMQueueView: View {
             // screen, including this one, so don't also set the in-view banner (would double up).
             // Just reflect the paused state for the Resume button.
             isPaused = true
+        case let .requestsReaped(count):
+            // In-view banner as well as the notification: this screen is where someone watching a
+            // stuck queue is looking, and the recovery used to happen with no signal at all.
+            errorMessage = count == 1
+                ? "A request stopped responding and was put back in the queue."
+                : "\(count) requests stopped responding and were put back in the queue."
         case .processingComplete:
             break
         case .jobReady, .providerNotConfigured:

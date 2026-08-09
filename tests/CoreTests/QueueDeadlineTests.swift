@@ -123,3 +123,133 @@ final class QueueDeadlineTests: XCTestCase {
         await queue.startProcessing()
     }
 }
+
+/// The orphan reaper (TASK-657, defects 1 and 2).
+///
+/// A row left in `running` mid-session sat there until the app restarted, and each one permanently
+/// leaked a slot from the adaptive concurrency pool — several would throttle the queue toward serial
+/// while presenting only as "the LLM queue is slow", with no error written anywhere.
+final class QueueOrphanReaperTests: XCTestCase {
+    private func makeQueue(store: BackgroundStore, timeout: Int = 10) -> QueueActor {
+        QueueActor(
+            store: store,
+            isPaused: { false },
+            onSetPaused: { _ in },
+            readExtractionSettings: {
+                ExtractionSettings(
+                    llmModel: "m", llmTimeout: timeout, preferredLocations: "",
+                    locationFilterEnabled: false, locationAllowRemote: true,
+                    locationAllowHybrid: true, locationAllowOnsite: true
+                )
+            },
+            providerFactory: { LMStudioProvider() }
+        )
+    }
+
+    private func makeStore() throws -> (BackgroundStore, ModelContainer) {
+        let container = try ModelContainerFactory.inMemory()
+        return (BackgroundStore(modelContainer: container), container)
+    }
+
+    /// `startedAt` far enough back to exceed 2 × (llmTimeout × 1.5).
+    private func insertRunning(_ container: ModelContainer, id: String, startedAgo: TimeInterval) throws {
+        let ctx = ModelContext(container)
+        let req = LLMRequest(id: id, requestType: .extract, status: .running)
+        req.startedAt = Date(timeIntervalSinceNow: -startedAgo)
+        ctx.insert(req)
+        try ctx.save()
+    }
+
+    private func status(_ container: ModelContainer, _ id: String) throws -> LLMRequestStatus {
+        let ctx = ModelContext(container)
+        let req = try XCTUnwrap(
+            ctx.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == id })).first
+        )
+        return req.status
+    }
+
+    /// #1 and #6: a stale `running` row goes back to `queued` with no user action.
+    func testStaleRunningRowIsRequeued() async throws {
+        let (store, container) = try makeStore()
+        let queue = makeQueue(store: store, timeout: 10) // deadline 15s, reap bound 30s
+        try insertRunning(container, id: "orphan", startedAgo: 600)
+
+        let reaped = try await queue.reapOrphanedRunning()
+        XCTAssertEqual(reaped, 1)
+        XCTAssertEqual(try status(container, "orphan"), .queued)
+    }
+
+    /// #4: the orphan that prompted this left no evidence at all. Whatever else happens, the row now
+    /// records why it was requeued.
+    func testAReapedRowRecordsWhyItWasRequeued() async throws {
+        let (store, container) = try makeStore()
+        let queue = makeQueue(store: store)
+        try insertRunning(container, id: "orphan", startedAgo: 600)
+
+        _ = try await queue.reapOrphanedRunning()
+        let ctx = ModelContext(container)
+        let req = try XCTUnwrap(
+            ctx.fetch(FetchDescriptor<LLMRequest>(predicate: #Predicate { $0.id == "orphan" })).first
+        )
+        XCTAssertNotNil(req.error)
+        XCTAssertTrue(try XCTUnwrap(req.error).contains("Requeued automatically"))
+        XCTAssertNil(req.startedAt, "a requeued row must not keep the start time of the attempt that died")
+    }
+
+    /// A request still inside its budget must not be snatched away mid-flight.
+    func testAYoungRunningRowIsLeftAlone() async throws {
+        let (store, container) = try makeStore()
+        let queue = makeQueue(store: store, timeout: 300) // reap bound 900s
+        try insertRunning(container, id: "working", startedAgo: 60)
+
+        let reaped = try await queue.reapOrphanedRunning()
+        XCTAssertEqual(reaped, 0)
+        XCTAssertEqual(try status(container, "working"), .running)
+    }
+
+    /// #7: a cancellation that already reached a terminal status stays authoritative.
+    func testTerminalRowsAreNeverResurrected() async throws {
+        let (store, container) = try makeStore()
+        let queue = makeQueue(store: store)
+        let ctx = ModelContext(container)
+        for (id, st) in [("done", LLMRequestStatus.succeeded), ("stopped", .cancelled), ("bad", .failed)] {
+            let req = LLMRequest(id: id, requestType: .extract, status: st)
+            req.startedAt = Date(timeIntervalSinceNow: -600)
+            ctx.insert(req)
+        }
+        try ctx.save()
+
+        let reaped = try await queue.reapOrphanedRunning()
+        XCTAssertEqual(reaped, 0)
+        XCTAssertEqual(try status(container, "done"), .succeeded)
+        XCTAssertEqual(try status(container, "stopped"), .cancelled)
+        XCTAssertEqual(try status(container, "bad"), .failed)
+    }
+
+    /// A row with no `startedAt` can't be aged, so it is left alone rather than guessed at.
+    func testRunningRowWithNoStartTimeIsLeftAlone() async throws {
+        let (store, container) = try makeStore()
+        let queue = makeQueue(store: store)
+        let ctx = ModelContext(container)
+        ctx.insert(LLMRequest(id: "ageless", requestType: .extract, status: .running))
+        try ctx.save()
+
+        let reaped = try await queue.reapOrphanedRunning()
+        XCTAssertEqual(reaped, 0)
+        XCTAssertEqual(try status(container, "ageless"), .running)
+    }
+
+    /// #2: several orphans are all reclaimed in one pass, so leaked slots can't accumulate.
+    func testEveryOrphanIsReclaimedInOnePass() async throws {
+        let (store, container) = try makeStore()
+        let queue = makeQueue(store: store)
+        for i in 0 ..< 4 {
+            try insertRunning(container, id: "orphan-\(i)", startedAgo: 600)
+        }
+        let reaped = try await queue.reapOrphanedRunning()
+        XCTAssertEqual(reaped, 4)
+        for i in 0 ..< 4 {
+            XCTAssertEqual(try status(container, "orphan-\(i)"), .queued)
+        }
+    }
+}

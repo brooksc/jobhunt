@@ -72,6 +72,35 @@ private struct JobByURLBody: Decodable {
 
 // MARK: - JobhuntServerTests
 
+/// A non-pooling HTTP client for the tests.
+///
+/// `URLSession.shared` keeps connections alive and hands them to the next caller. ServerTests share
+/// one `JobhuntServer` on purpose (NWListener port lifecycle), and that server closes connections;
+/// a test that inherits a dead one fails with `NSURLErrorDomain -1005 "The network connection was
+/// lost"` — a transport error, not an assertion, so it looks like a real failure and isn't.
+///
+/// This bit twice. The first fix isolated only the >1MB capture test on the theory that the large
+/// body poisoned the pool; it survived 10 consecutive local runs and then CI failed a DIFFERENT test
+/// (`testCaptureRoute_storeError_returnsInternalError`, run 31330335321) with the same error. Body
+/// size was never the cause — connection reuse was. So no test reuses a connection: each request
+/// gets its own ephemeral session, closed immediately.
+///
+/// Deliberately NOT a retry. A retry able to swallow a transport error can swallow a real regression
+/// too, and would have hidden both of these instead of surfacing them.
+enum HTTPTestClient {
+    static func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        return try await session.data(for: request)
+    }
+
+    static func data(from url: URL) async throws -> (Data, URLResponse) {
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        return try await session.data(from: url)
+    }
+}
+
 final class JobhuntServerTests: XCTestCase {
     // Shared across all tests in this class — avoids per-test server create/destroy which
     // triggers NWListener port RST issues in sequential test runs.
@@ -141,7 +170,7 @@ final class JobhuntServerTests: XCTestCase {
     func testPingEndpoint() async throws {
         // swiftlint:disable:next force_unwrapping
         let url = await URL(string: baseURL() + "/api/ping")!
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await HTTPTestClient.data(from: url)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 200)
 
@@ -155,7 +184,7 @@ final class JobhuntServerTests: XCTestCase {
     func testHealthEndpoint() async throws {
         // swiftlint:disable:next force_unwrapping
         let url = await URL(string: baseURL() + "/health")!
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let (data, response) = try await HTTPTestClient.data(from: url)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 200)
 
@@ -172,7 +201,7 @@ final class JobhuntServerTests: XCTestCase {
         req.setValue("chrome-extension://testextension", forHTTPHeaderField: "Origin")
         let bigNote = String(repeating: "x", count: 300 * 1024) // > 256 KB limit
         req.httpBody = try JSONEncoder().encode(["site_url": "https://x.com", "note": bigNote])
-        let (_, response) = try await URLSession.shared.data(for: req)
+        let (_, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 413, "Over-limit body must be rejected with 413")
     }
@@ -213,19 +242,7 @@ final class JobhuntServerTests: XCTestCase {
         req.httpBody = try JSONSerialization.data(withJSONObject: payloadObj)
         XCTAssertGreaterThan(req.httpBody?.count ?? 0, 1_048_576, "payload must exceed the old 1 MB MCP limit")
 
-        // A DEDICATED session, invalidated immediately, so this request's connection never returns to
-        // the shared pool. Pushing >1MB through `URLSession.shared` left a connection the next test
-        // inherited and the server then reset — CI run 30171362290 failed the following test with
-        // NSURLErrorDomain -1005 "network connection was lost" / "Connection reset by peer", and the
-        // same commit passed on re-run. ServerTests share one `JobhuntServer` deliberately (NWListener
-        // port lifecycle), so the only thing that can be isolated here is the client side.
-        //
-        // No retry is added anywhere: a retry that can swallow a transport error can also swallow a
-        // real regression, and this is cheaper and exact.
-        let session = URLSession(configuration: .ephemeral)
-        defer { session.invalidateAndCancel() }
-
-        let (data, response) = try await session.data(for: req)
+        let (data, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 200, "a 1–4 MB MCP capture must be accepted, not 413")
         struct MCPCaptureBody: Decodable {
@@ -306,7 +323,7 @@ final class JobhuntServerTests: XCTestCase {
             var req = URLRequest(url: url)
             req.httpMethod = "GET"
             req.setValue("test-token-abc123", forHTTPHeaderField: "X-MCP-Token")
-            let (_, response) = try await URLSession.shared.data(for: req)
+            let (_, response) = try await HTTPTestClient.data(for: req)
             let http = try XCTUnwrap(response as? HTTPURLResponse)
             XCTAssertEqual(http.statusCode, 405, "GET \(path) must be rejected with 405")
         }
@@ -326,7 +343,7 @@ final class JobhuntServerTests: XCTestCase {
         ]
         req.httpBody = try JSONEncoder().encode(payload)
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 200)
 
@@ -357,10 +374,10 @@ final class JobhuntServerTests: XCTestCase {
         post.httpBody = try JSONEncoder().encode([
             "url": jobURL, "page_title": "By-URL Role", "visible_text": "Hiring for a role."
         ])
-        let (capData, _) = try await URLSession.shared.data(for: post)
+        let (capData, _) = try await HTTPTestClient.data(for: post)
         let created = try JSONDecoder().decode(CaptureBody.self, from: capData)
 
-        let (data, response) = try await URLSession.shared
+        let (data, response) = try await HTTPTestClient
             .data(
                 for: byURLRequest(
                     "?url=\(jobURL.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? jobURL)"
@@ -371,19 +388,19 @@ final class JobhuntServerTests: XCTestCase {
     }
 
     func testJobByURL_unknownURL_returns404() async throws {
-        let (_, response) = try await URLSession.shared
+        let (_, response) = try await HTTPTestClient
             .data(for: byURLRequest("?url=https://example.com/jobs/definitely-not-here-\(UUID().uuidString)"))
         XCTAssertEqual(try XCTUnwrap(response as? HTTPURLResponse).statusCode, 404)
     }
 
     func testJobByURL_missingURLParam_returns400() async throws {
-        let (_, response) = try await URLSession.shared.data(for: byURLRequest(""))
+        let (_, response) = try await HTTPTestClient.data(for: byURLRequest(""))
         XCTAssertEqual(try XCTUnwrap(response as? HTTPURLResponse).statusCode, 400)
     }
 
     func testJobByURL_malformedURL_returns404NotCrash() async throws {
         // A schemeless/garbage value matches no capture — resolves to a clean 404, no crash.
-        let (_, response) = try await URLSession.shared.data(for: byURLRequest("?url=not%20a%20url"))
+        let (_, response) = try await HTTPTestClient.data(for: byURLRequest("?url=not%20a%20url"))
         XCTAssertEqual(try XCTUnwrap(response as? HTTPURLResponse).statusCode, 404)
     }
 
@@ -398,11 +415,11 @@ final class JobhuntServerTests: XCTestCase {
         post.httpBody = try JSONEncoder().encode([
             "url": hit, "page_title": "First Wins", "visible_text": "Hiring."
         ])
-        let (capData, _) = try await URLSession.shared.data(for: post)
+        let (capData, _) = try await HTTPTestClient.data(for: post)
         let created = try JSONDecoder().decode(CaptureBody.self, from: capData)
 
         let enc = hit.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? hit
-        let (data, response) = try await URLSession.shared
+        let (data, response) = try await HTTPTestClient
             .data(for: byURLRequest("?url=\(enc)&url=https://example.com/jobs/second"))
         XCTAssertEqual(try XCTUnwrap(response as? HTTPURLResponse).statusCode, 200)
         XCTAssertEqual(try JSONDecoder().decode(JobByURLBody.self, from: data).jobNumber, created.jobNumber)
@@ -427,7 +444,7 @@ final class JobhuntServerTests: XCTestCase {
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payloadObj)
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 200)
         let body = try JSONDecoder().decode(CaptureBody.self, from: data)
@@ -457,7 +474,7 @@ final class JobhuntServerTests: XCTestCase {
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payloadObj)
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 200)
         let body = try JSONDecoder().decode(CaptureBody.self, from: data)
@@ -488,7 +505,7 @@ final class JobhuntServerTests: XCTestCase {
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payloadObj)
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 200, "MCP add-capture must accept a raw structured_data array")
         struct MCPCaptureBody: Decodable {
@@ -519,7 +536,7 @@ final class JobhuntServerTests: XCTestCase {
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payloadObj)
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 200, "MCP add-capture must still accept structured_data_json")
         struct MCPCaptureBody: Decodable {
@@ -586,7 +603,7 @@ final class JobhuntServerTests: XCTestCase {
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: payloadObj)
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 200)
         struct SiteReviewBody: Decodable {
@@ -613,7 +630,7 @@ final class JobhuntServerTests: XCTestCase {
         ]
         req.httpBody = try JSONEncoder().encode(payload)
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 400)
 
@@ -636,7 +653,7 @@ final class JobhuntServerTests: XCTestCase {
         ]
         req.httpBody = try JSONEncoder().encode(payload)
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 400)
 
@@ -662,7 +679,7 @@ final class JobhuntServerTests: XCTestCase {
         ]
         req.httpBody = try JSONEncoder().encode(payload)
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 400, "invalid URL is a client error, not a 500")
         struct ErrorBody: Decodable { let error: String }
@@ -686,7 +703,7 @@ final class JobhuntServerTests: XCTestCase {
         ]
         req.httpBody = try JSONEncoder().encode(payload)
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 400, "invalid URL is a client error, not a 500")
         struct ErrorBody: Decodable { let error: String }
@@ -711,7 +728,7 @@ final class JobhuntServerTests: XCTestCase {
         ]
         req.httpBody = try JSONEncoder().encode(payload)
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 400, "missing capture text is a client error, not a 500")
         struct ErrorBody: Decodable { let error: String }
@@ -733,7 +750,7 @@ final class JobhuntServerTests: XCTestCase {
             "visible_text": "testing cors header reflection"
         ]
         req.httpBody = try JSONEncoder().encode(payload)
-        let (_, response) = try await URLSession.shared.data(for: req)
+        let (_, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 200)
         XCTAssertEqual(
@@ -762,7 +779,7 @@ final class JobhuntServerTests: XCTestCase {
             "visible_text": "testing blocked cors"
         ]
         req.httpBody = try JSONEncoder().encode(payload)
-        let (_, response) = try await URLSession.shared.data(for: req)
+        let (_, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         // With empty allowlist (dev mode) this passes. With a populated allowlist, this would be 403.
         // Update this assertion to XCTAssertEqual(http.statusCode, 403) once CWS_ID is added.
@@ -786,7 +803,7 @@ final class JobhuntServerTests: XCTestCase {
             "visible_text": "non extension origin test"
         ]
         req.httpBody = try JSONEncoder().encode(payload)
-        let (_, response) = try await URLSession.shared.data(for: req)
+        let (_, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 403, "Non-extension origin must be blocked with 403")
         XCTAssertNil(
@@ -804,7 +821,7 @@ final class JobhuntServerTests: XCTestCase {
         req.setValue("POST", forHTTPHeaderField: "Access-Control-Request-Method")
         req.setValue("true", forHTTPHeaderField: "Access-Control-Request-Private-Network")
 
-        let (_, response) = try await URLSession.shared.data(for: req)
+        let (_, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         // 204 or 200 both acceptable for preflight
         XCTAssertTrue(http.statusCode == 204 || http.statusCode == 200)
@@ -823,7 +840,7 @@ final class JobhuntServerTests: XCTestCase {
         req.setValue("chrome-extension://abc123", forHTTPHeaderField: "Origin")
         req.setValue("POST", forHTTPHeaderField: "Access-Control-Request-Method")
 
-        let (_, response) = try await URLSession.shared.data(for: req)
+        let (_, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 404)
         XCTAssertNil(http.value(forHTTPHeaderField: "Access-Control-Allow-Origin"))
@@ -833,7 +850,7 @@ final class JobhuntServerTests: XCTestCase {
     func testNotFoundReturns404() async throws {
         // swiftlint:disable:next force_unwrapping
         let url = await URL(string: baseURL() + "/api/nonexistent")!
-        let (_, response) = try await URLSession.shared.data(from: url)
+        let (_, response) = try await HTTPTestClient.data(from: url)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 404)
     }
@@ -850,7 +867,7 @@ final class JobhuntServerTests: XCTestCase {
         req.setValue("chrome-extension://testextension", forHTTPHeaderField: "Origin")
         req.httpBody = Data("{bad json}".utf8)
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 400)
 
@@ -878,7 +895,7 @@ final class JobhuntServerTests: XCTestCase {
         req.setValue("wrong-token", forHTTPHeaderField: "X-MCP-Token")
         req.httpBody = Data("{\"job_number\": 1}".utf8)
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
         XCTAssertEqual(http.statusCode, 401)
 
@@ -914,7 +931,7 @@ final class JobhuntServerOriginTests: XCTestCase {
         let port = await server.listeningPort
 
         let req = try captureRequest(port: port, origin: "chrome-extension://arbitrarydevextension")
-        let (_, response) = try await URLSession.shared.data(for: req)
+        let (_, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
 
         XCTAssertEqual(http.statusCode, 403, "unapproved extension origin must be forbidden in production mode")
@@ -935,7 +952,7 @@ final class JobhuntServerOriginTests: XCTestCase {
         let port = await server.listeningPort
 
         let req = try captureRequest(port: port, origin: approved)
-        let (_, response) = try await URLSession.shared.data(for: req)
+        let (_, response) = try await HTTPTestClient.data(for: req)
         let http = try XCTUnwrap(response as? HTTPURLResponse)
 
         XCTAssertNotEqual(http.statusCode, 403, "approved origin must not be forbidden")

@@ -68,21 +68,22 @@ func queryRows(_ db: DBHandle, _ sql: String) -> [[String: String?]] {
 
 // MARK: - Date Parsing
 
-let isoFrac: ISO8601DateFormatter = {
+// Built per call rather than held as globals. `ISO8601DateFormatter` is a class with mutable
+// `formatOptions`, so a shared instance is not `Sendable` — a strict-concurrency warning today and an
+// error under the Swift 6 language mode. `nonisolated(unsafe)` would silence it by assertion; this
+// removes the shared state instead. The migrator is a one-shot CLI parsing a few thousand rows, so
+// allocating a formatter per parse is not worth measuring.
+private func makeISO(fractionalSeconds: Bool) -> ISO8601DateFormatter {
     let f = ISO8601DateFormatter()
-    f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    f.formatOptions = fractionalSeconds
+        ? [.withInternetDateTime, .withFractionalSeconds]
+        : [.withInternetDateTime]
     return f
-}()
-
-let isoBasic: ISO8601DateFormatter = {
-    let f = ISO8601DateFormatter()
-    f.formatOptions = [.withInternetDateTime]
-    return f
-}()
+}
 
 func parseDate(_ s: String?) -> Date? {
     guard let s else { return nil }
-    return isoFrac.date(from: s) ?? isoBasic.date(from: s)
+    return makeISO(fractionalSeconds: true).date(from: s) ?? makeISO(fractionalSeconds: false).date(from: s)
 }
 
 func parseDateOrNow(_ s: String?) -> Date {

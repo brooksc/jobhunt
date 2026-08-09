@@ -2,7 +2,9 @@ import Foundation
 
 /// Aggregated counts and short sorted lists derived from a jobs array in a single pass.
 /// Used by the dashboard to avoid iterating all jobs once per section.
-public struct JobStatusSummary {
+/// `Sendable` so `zero` can be a static let without a concurrency warning. Everything it holds is a
+/// value type; `funnelCounts` needs the explicit conformance because a tuple array doesn't infer it.
+public struct JobStatusSummary: @unchecked Sendable {
     public let total: Int
     public let active: Int
     public let interviews: Int

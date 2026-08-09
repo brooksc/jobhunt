@@ -3,9 +3,10 @@ id: TASK-668
 title: >-
   OverCreditEval fails for every model tested — the regression it guards is
   currently unguarded
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-07 00:23'
+updated_date: '2026-08-09 20:50'
 labels:
   - llm-eval
   - fit-scoring
@@ -47,8 +48,32 @@ Distinguishing (2) from (1) and (3) is the whole job: read the assertion, then r
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 It is established whether the assertion itself is at fault (e.g. substring-matching a technology name that a correct negative answer legitimately contains)
-- [ ] #2 OverCreditEval is run N times per model and reported as a pass rate, not a single pass/fail
-- [ ] #3 If the guard is genuinely unenforced, the named-technology rule is revalidated across repeats and more than one model
-- [ ] #4 No prompt change is made without measuring it across repeats against the existing fixtures
+- [x] #1 It is established whether the assertion itself is at fault (e.g. substring-matching a technology name that a correct negative answer legitimately contains)
+- [x] #2 OverCreditEval is run N times per model and reported as a pass rate, not a single pass/fail
+- [x] #3 If the guard is genuinely unenforced, the named-technology rule is revalidated across repeats and more than one model
+- [x] #4 No prompt change is made without measuring it across repeats against the existing fixtures
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+**Possibility 2 was correct: the assertion was at fault, not the models.**
+
+The eval had a second check that failed whenever the evidence string mentioned the named technology while the résumé didn't. But the *correct* answer names the thing in order to deny it:
+
+    status=partial  "…shows GPU architecture experience but does not mention CUDA."
+
+That is exactly the judgement the named-technology rule exists to produce, and the check flagged it as a regression. It failed deepseek, Haiku and Ministral identically, which read as "no model handles over-crediting" when all three were handling it correctly. A substring match cannot distinguish an assertion from a denial, and negation detection isn't worth the fragility, so `status` — the field that actually drives the score — is now the only assertion.
+
+**Measured pass rate (criterion 2), 5 repeats per model, both cases:**
+
+| Model | Passes |
+|---|---|
+| `deepseek/deepseek-v4-flash-0731` | 5/5 |
+| `anthropic/claude-haiku-4.5` | 5/5 |
+| `mistralai/ministral-14b-2512` | 5/5 |
+
+Every run returned `partial` or `missing` for CUDA and PCI, never `met`. So the guard **is** enforced; criterion 3's contingency ("if genuinely unenforced") does not arise, and criterion 4 holds trivially — **no prompt change was made**, which matters given a broad prompt rule has already regressed scoring once.
+
+**A measurement error worth recording.** My first three-model run reported all three passing, but `JOBHUNT_EVAL_REPEATS` and `JOBHUNT_EVAL_MODEL` never reached the test process: `xcodebuild` only forwards `TEST_RUNNER_`-prefixed variables. It had silently run one model, once, three times over. The only visible symptom was the absence of the `pass N/5` lines. Re-run correctly with the prefix, and the requirement is now documented in `EvalProvider` so the next person doesn't quietly measure nothing.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -434,12 +434,41 @@ struct NeedsActionView: View {
 private struct NeedsActionRow: View {
     let action: JobAction
     let onDone: () -> Void
+    /// Days from today. A count rather than a date because every caller but the custom picker
+    /// thinks in intervals, and the picker converts (see `SnoozeDefaults.days(until:)`).
     let onSnooze: (Int) -> Void
     let onSelectJob: () -> Void
     let onAddNote: (String) -> Void
 
     @State private var showNotePopover = false
     @State private var noteText = ""
+    @State private var showCustomSnooze = false
+    @State private var customSnoozeDate = Date()
+
+    /// Pick a return date directly. Converted to a day count so it goes through exactly the same
+    /// snooze path as the fixed intervals — a second write path for the same action is how the two
+    /// would drift.
+    private var customSnoozePopover: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            DatePicker(
+                "Snooze until",
+                selection: $customSnoozeDate,
+                in: Date()...,
+                displayedComponents: .date
+            )
+            .datePickerStyle(.graphical)
+            HStack {
+                Spacer()
+                Button("Cancel") { showCustomSnooze = false }
+                Button("Snooze") {
+                    onSnooze(SnoozeDefaults.days(until: customSnoozeDate))
+                    showCustomSnooze = false
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(16)
+    }
 
     private var job: Job? {
         action.job
@@ -557,6 +586,13 @@ private struct NeedsActionRow: View {
                         Button("1 week") { onSnooze(7) }
                         Button("2 weeks") { onSnooze(14) }
                         Button("1 month") { onSnooze(30) }
+                        Divider()
+                        // TASK-502 #1: the fixed intervals cover the common cases but not "they said
+                        // they'd get back to me after the 14th", which is the whole reason to snooze.
+                        Button("Custom date…") {
+                            customSnoozeDate = SnoozeDefaults.defaultCustomDate()
+                            showCustomSnooze = true
+                        }
                     } label: {
                         Image(systemName: "clock.arrow.circlepath")
                             .font(.system(size: 12))
@@ -567,6 +603,9 @@ private struct NeedsActionRow: View {
                     .menuIndicator(.hidden)
                     .fixedSize()
                     .help("Snooze…")
+                    .popover(isPresented: $showCustomSnooze) {
+                        customSnoozePopover
+                    }
                 }
             }
             .padding(.horizontal, 14)

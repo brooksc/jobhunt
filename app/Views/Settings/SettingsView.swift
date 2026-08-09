@@ -291,6 +291,7 @@ struct LLMTab: View {
                     .onSubmit { savePrices() }
                     .onChange(of: inputPriceFocused) { _, focused in if !focused { savePrices() } }
             }
+            priceError(priceInput)
             HStack {
                 Text("Output tokens")
                 Spacer()
@@ -301,6 +302,18 @@ struct LLMTab: View {
                     .onSubmit { savePrices() }
                     .onChange(of: outputPriceFocused) { _, focused in if !focused { savePrices() } }
             }
+            priceError(priceOutput)
+        }
+    }
+
+    /// TASK-502 #3: an unparseable price used to be dropped in silence — the field kept the typed
+    /// text and the estimate kept the old number, which is indistinguishable from a save.
+    @ViewBuilder
+    private func priceError(_ text: String) -> some View {
+        if let message = PriceInput.validationMessage(text) {
+            Label(message, systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(.orange)
         }
     }
 
@@ -322,6 +335,17 @@ struct LLMTab: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                // TASK-502 #2: the number is an average over assumed description lengths, and reads
+                // as a bill without saying so.
+                Text(
+                    "An average, not a bill. It assumes a typical job description length and the "
+                        + "prices entered above — your actual cost depends on the model, how long "
+                        + "each posting is, your resume, and any retries. Check your provider's "
+                        + "dashboard for what you were really charged."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -349,8 +373,14 @@ struct LLMTab: View {
         }
     }
 
+    /// Saves only what parses. An invalid entry leaves the stored price alone and keeps the typed
+    /// text on screen under its error, so the user can fix the typo rather than retype the number.
     private func savePrices() {
-        if let v = Double(priceInput) { settings.setDouble(v, forKey: SettingsKey.llmPriceInput) }
-        if let v = Double(priceOutput) { settings.setDouble(v, forKey: SettingsKey.llmPriceOutput) }
+        if case let .success(value) = PriceInput.parse(priceInput), let value {
+            settings.setDouble(value, forKey: SettingsKey.llmPriceInput)
+        }
+        if case let .success(value) = PriceInput.parse(priceOutput), let value {
+            settings.setDouble(value, forKey: SettingsKey.llmPriceOutput)
+        }
     }
 }

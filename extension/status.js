@@ -95,11 +95,23 @@
 
     const result = response.result || {};
     await loadQueue();
+
+    // A rejection is not a connectivity problem, and saying "could not reach JobHunt" about one sent
+    // people looking for a closed app that was in fact open and answering. Report it separately, and
+    // say the retry has stopped so nobody waits for it to clear on its own.
+    const rejected = result.rejected || 0;
+    const rejectedNote = rejected > 0
+      ? ` ${rejected} ${rejected === 1 ? "capture was" : "captures were"} refused by JobHunt and will `
+        + "not be retried — see Rejected below."
+      : "";
+
     if ((result.submitted || 0) === 0 && (result.remaining || 0) > 0) {
-      setStatus("Could not reach JobHunt. Open the Mac app and try again.");
+      setStatus("Could not reach JobHunt. Open the Mac app and try again." + rejectedNote);
       return;
     }
-    setStatus(`${result.submitted || 0} synced, ${result.remaining || 0} still saved locally.`);
+    setStatus(
+      `${result.submitted || 0} synced, ${result.remaining || 0} still saved locally.` + rejectedNote
+    );
   }
 
   async function clearQueue() {

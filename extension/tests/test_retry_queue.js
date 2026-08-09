@@ -204,3 +204,96 @@ describe('retry_queue: quota truncation marker (TASK-439)', () => {
     assert.equal(out.payload.visible_text_truncated, undefined);
   });
 });
+
+// TASK-514: a queued capture the app permanently refuses must stop being retried, and must stop
+// being reported as "could not reach JobHunt" — it is reachable, and it said no.
+describe('retry_queue: permanent rejection during flush', () => {
+    function permanentError(status) {
+        const e = new Error(`HTTP ${status}`);
+        e.permanent = true;
+        e.status = status;
+        return e;
+    }
+
+    async function queueOne(storage, url) {
+        await q.enqueueCapture(storage, { url, page_title: 'T', visible_text: 'x' });
+    }
+
+    test('moves a permanently rejected capture out of the retry queue', async () => {
+        const storage = mockStorage();
+        await queueOne(storage, 'https://example.com/a');
+
+        const result = await q.flushQueue(storage, async () => { throw permanentError(413); });
+
+        assert.equal(result.rejected, 1);
+        assert.equal(result.remaining, 0, 'a refused capture must not stay queued');
+        assert.equal((await q.getQueue(storage)).length, 0);
+    });
+
+    test('records why it was rejected, so the capture is not lost silently', async () => {
+        const storage = mockStorage();
+        await queueOne(storage, 'https://example.com/a');
+        await q.flushQueue(storage, async () => { throw permanentError(400); });
+
+        const rejected = await q.getRejected(storage);
+        assert.equal(rejected.length, 1);
+        assert.equal(rejected[0].status, 400);
+        assert.equal(rejected[0].payload.url, 'https://example.com/a');
+        assert.ok(rejected[0].rejected_at, 'needs a timestamp to be useful in the UI');
+    });
+
+    test('keeps retryable failures queued', async () => {
+        const storage = mockStorage();
+        await queueOne(storage, 'https://example.com/a');
+
+        // No `permanent` flag — a network error or a 5xx.
+        const result = await q.flushQueue(storage, async () => { throw new Error('offline'); });
+
+        assert.equal(result.remaining, 1);
+        assert.equal(result.rejected, 0);
+        assert.equal((await q.getRejected(storage)).length, 0);
+    });
+
+    test('still removes successful captures', async () => {
+        const storage = mockStorage();
+        await queueOne(storage, 'https://example.com/a');
+
+        const result = await q.flushQueue(storage, async () => {});
+        assert.equal(result.submitted, 1);
+        assert.equal(result.remaining, 0);
+        assert.equal(result.rejected, 0);
+    });
+
+    test('separates the three outcomes in one flush', async () => {
+        const storage = mockStorage();
+        await queueOne(storage, 'https://example.com/ok');
+        await queueOne(storage, 'https://example.com/refused');
+        await queueOne(storage, 'https://example.com/offline');
+
+        const result = await q.flushQueue(storage, async (payload) => {
+            if (payload.url.endsWith('/refused')) throw permanentError(400);
+            if (payload.url.endsWith('/offline')) throw new Error('network');
+        });
+
+        assert.equal(result.submitted, 1);
+        assert.equal(result.rejected, 1);
+        assert.equal(result.remaining, 1);
+        const stillQueued = await q.getQueue(storage);
+        assert.equal(stillQueued[0].payload.url, 'https://example.com/offline');
+    });
+
+    test('bounds the rejected list so it cannot grow without limit', async () => {
+        const storage = mockStorage();
+        for (let i = 0; i < q.MAX_REJECTED + 5; i += 1) {
+            await queueOne(storage, `https://example.com/j${i}`);
+        }
+        await q.flushQueue(storage, async () => { throw permanentError(400); });
+
+        const rejected = await q.getRejected(storage);
+        assert.equal(rejected.length, q.MAX_REJECTED);
+        assert.ok(
+            rejected[rejected.length - 1].payload.url.endsWith(`/j${q.MAX_REJECTED + 4}`),
+            'the newest rejection must survive the trim'
+        );
+    });
+});

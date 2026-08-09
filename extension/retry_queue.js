@@ -1,5 +1,10 @@
 (function () {
   const QUEUE_KEY = "jobhunt.captureQueue";
+  // Captures the app has permanently refused. Kept out of the retry queue so they stop being
+  // presented as "can't reach Jobhunt", and kept AT ALL so the user can see what was lost and why —
+  // silently dropping a capture the user made is worse than showing a rejected one.
+  const REJECTED_KEY = "jobhunt.rejectedCaptures";
+  const MAX_REJECTED = 20;
   const QUEUE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
   const MAX_QUEUE_SIZE = 50;
   // chrome.storage.local quota is 10 MB; keep the queue well under that.
@@ -92,29 +97,66 @@
     });
   }
 
+  async function getRejected(storageArea) {
+    const result = await storageArea.get({ [REJECTED_KEY]: [] });
+    return Array.isArray(result[REJECTED_KEY]) ? result[REJECTED_KEY] : [];
+  }
+
+  async function clearRejected(storageArea) {
+    await storageArea.set({ [REJECTED_KEY]: [] });
+  }
+
+  /** Flush the queue, separating permanent rejections from retryable failures.
+   *
+   *  Submission already classifies a permanent 4xx (everything except 408/429) via `error.permanent`
+   *  — TASK-438 uses it to avoid enqueueing a fresh capture that was refused. The flush path ignored
+   *  it and pushed every failure back onto the queue, so an already-queued capture that the app
+   *  refuses (400 validation, 413 too large) retried forever while the status page reported "Could
+   *  not reach Jobhunt". Wrong twice: it isn't a connectivity problem, and it never resolves. */
   function flushQueue(storageArea, submitCapture) {
     return withLock(async () => {
       const raw = await getQueue(storageArea);
       const queue = purgeExpired(raw);
       const remaining = [];
+      const newlyRejected = [];
       let submitted = 0;
 
       for (const item of queue) {
         try {
           await submitCapture(item.payload);
           submitted += 1;
-        } catch (_error) {
-          remaining.push(item);
+        } catch (error) {
+          if (error && error.permanent) {
+            newlyRejected.push({
+              payload: item.payload,
+              queued_at: item.queued_at,
+              rejected_at: new Date().toISOString(),
+              status: error.status || null,
+              error: error.message || "Rejected by Jobhunt"
+            });
+          } else {
+            remaining.push(item);
+          }
         }
       }
 
       await setQueue(storageArea, remaining);
-      return { submitted, remaining: remaining.length };
+      if (newlyRejected.length) {
+        const existing = await getRejected(storageArea);
+        // Newest last, bounded — this list is a diagnostic, not a second queue.
+        const merged = existing.concat(newlyRejected).slice(-MAX_REJECTED);
+        await storageArea.set({ [REJECTED_KEY]: merged });
+      }
+      return { submitted, remaining: remaining.length, rejected: newlyRejected.length };
     });
   }
 
   globalThis.jobhuntRetryQueue = {
     QUEUE_KEY,
+    REJECTED_KEY,
+    MAX_REJECTED,
+    getRejected,
+    clearRejected,
     QUEUE_TTL_MS,
     MAX_QUEUE_SIZE,
     MAX_ITEM_BYTES,

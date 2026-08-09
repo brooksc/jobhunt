@@ -3,9 +3,10 @@ id: TASK-666
 title: >-
   Demo résumés are 280-character stubs, so any real job captured in demo mode
   scores 0
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-05 19:16'
+updated_date: '2026-08-09 01:58'
 labels:
   - demo
   - fit-scoring
@@ -45,3 +46,13 @@ This is invisible for the *seeded* jobs, because their analyses are generated ra
 - [ ] #4 The résumés remain obviously fictional (invented employers)
 - [ ] #5 Two résumés are retained so the multi-résumé comparison still demonstrates
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed in `f15b3d3a` ("demo: give demo mode a real resume, so a real capture doesn't score 0").
+
+`DemoResumes` now carries two realistic documents — 3,829 and 1,278 characters — against the 280-character stubs this task was filed about. Confirmed live: real Reddit postings captured in demo mode during the v1.4.0 walkthrough recordings scored in the 41–53 range, not 0.
+
+Closed as part of a backlog sweep, not as new work.
+<!-- SECTION:FINAL_SUMMARY:END -->

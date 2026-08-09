@@ -149,6 +149,25 @@ public enum GreenhouseJobBoard {
         }
     }
 
+    /// The application form for a posting (TASK-635), via `?questions=true`.
+    ///
+    /// Separate call rather than always appending the parameter to `fetch`: the questions roughly
+    /// double the payload, and a refresh doesn't need them.
+    public static func fetchApplicationForm(
+        board: String,
+        ghjid: String,
+        session: URLSession = .shared
+    ) async -> ApplicationFormPreview? {
+        guard let url = URL(
+            string: "https://boards-api.greenhouse.io/v1/boards/\(board)/jobs/\(ghjid)?questions=true"
+        ) else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 12
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+        return ApplicationFormPreview.decode(data)
+    }
+
     /// Greenhouse stamps `updated_at` as ISO-8601, sometimes with fractional seconds.
     static func parseTimestamp(_ value: String) -> Date? {
         let withFraction = ISO8601DateFormatter()

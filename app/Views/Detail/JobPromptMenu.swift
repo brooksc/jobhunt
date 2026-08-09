@@ -195,20 +195,35 @@ struct JobPromptMenu: View {
     /// so it works regardless of the app's résumé/description state.
     private func copyAutoApply() {
         let url = JobURLPolicy.sourceURL(job: job) ?? ""
-        let prompt = JobPromptBuilder.build(
-            kind: .autoApply,
-            input: JobPromptInput(
-                role: "", company: "", location: "", sourceURL: url,
-                jobDescription: "", resumeName: "", resumeText: "", fit: nil,
-                personalInfo: appServices.settings.string(forKey: SettingsKey.applicationPersonalInfo)
+        let personalInfo = appServices.settings.string(forKey: SettingsKey.applicationPersonalInfo)
+        let jobID = job.id
+        let service = appServices.jobService
+
+        // TASK-635: when the employer's board publishes the application form, tell the agent what it
+        // will be asked *before* it starts clicking. Fetched here rather than stored: the form can
+        // change, and a stale field list is worse guidance than none. Best-effort — a board that
+        // doesn't publish questions just yields the prompt as it was.
+        Task {
+            let form = await service.applicationFormPreview(jobID: jobID)
+            let prompt = JobPromptBuilder.build(
+                kind: .autoApply,
+                input: JobPromptInput(
+                    role: "", company: "", location: "", sourceURL: url,
+                    jobDescription: "", resumeName: "", resumeText: "", fit: nil,
+                    personalInfo: personalInfo,
+                    applicationForm: form?.promptContext ?? ""
+                )
             )
-        )
-        setClipboard(prompt)
-        appServices.toastStore.show(
-            url.isEmpty
-                ? "Auto-Apply (Codex) prompt copied — add the job URL where marked, then paste into Codex"
-                : "Auto-Apply (Codex) prompt copied — paste into Codex"
-        )
+            await MainActor.run {
+                setClipboard(prompt)
+                let formNote = form.map { " (with its \($0.questions.count) form fields)" } ?? ""
+                appServices.toastStore.show(
+                    url.isEmpty
+                        ? "Auto-Apply (Codex) prompt copied — add the job URL where marked, then paste into Codex"
+                        : "Auto-Apply (Codex) prompt copied\(formNote) — paste into Codex"
+                )
+            }
+        }
     }
 
     /// Gate the first external open on the privacy acknowledgement; thereafter open directly.

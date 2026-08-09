@@ -163,6 +163,7 @@ private struct DetailHeader: View {
     @State private var isEnqueuing = false
     @State private var isRefreshingSource = false
     @State private var showOpenRoles = false
+    @State private var showApplicationForm = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -387,6 +388,16 @@ private struct DetailHeader: View {
                 // JavaScript shell let us scrape. Explicit per job — the board slug is a guess.
                 if isGreenhouseBacked {
                     Button {
+                        showApplicationForm = true
+                    } label: {
+                        Label("What it asks for", systemImage: "list.bullet.rectangle")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Preview the application form's questions before you start")
+
+                    Button {
                         showOpenRoles = true
                     } label: {
                         Label("Other roles here", systemImage: "building.2")
@@ -451,6 +462,9 @@ private struct DetailHeader: View {
         }
         .sheet(isPresented: $showOpenRoles) {
             OpenRolesSheet(jobID: job.id, companyName: job.displayCompany)
+        }
+        .sheet(isPresented: $showApplicationForm) {
+            ApplicationFormSheet(jobID: job.id)
         }
     }
 

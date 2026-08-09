@@ -67,6 +67,10 @@ public struct JobPromptInput: Sendable {
     /// connections, notes) used only by the `.requestReferral` prompt. Appended verbatim at the end as
     /// untrusted reference data; empty for every other kind. Never persisted by the builder.
     public let referralContext: String
+    /// The application form's questions, when the ATS publishes them (TASK-635). Used only by the
+    /// `.autoApply` prompt: telling the agent what the form asks up front beats having it discover
+    /// each field by clicking. Empty for every other kind.
+    public let applicationForm: String
 
     /// Optional prior fit analysis for the chosen resume. Omitted cleanly when unavailable.
     public struct FitSummary: Sendable {
@@ -88,7 +92,7 @@ public struct JobPromptInput: Sendable {
     public init(
         role: String, company: String, location: String, sourceURL: String,
         jobDescription: String, resumeName: String, resumeText: String, fit: FitSummary?,
-        personalInfo: String = "", referralContext: String = ""
+        personalInfo: String = "", referralContext: String = "", applicationForm: String = ""
     ) {
         self.role = role
         self.company = company
@@ -100,6 +104,7 @@ public struct JobPromptInput: Sendable {
         self.fit = fit
         self.personalInfo = personalInfo
         self.referralContext = referralContext
+        self.applicationForm = applicationForm
     }
 }
 
@@ -109,7 +114,11 @@ public enum JobPromptBuilder {
         // The Codex auto-apply agent prompt is a fixed template (it uses local files + the browser,
         // not embedded content) with only the job URL substituted.
         if kind == .autoApply {
-            return autoApplyPrompt(jobURL: input.sourceURL, personalInfo: input.personalInfo)
+            return autoApplyPrompt(
+                jobURL: input.sourceURL,
+                personalInfo: input.personalInfo,
+                applicationForm: input.applicationForm
+            )
         }
         var out = "# Task: \(kind.title) for the role below\n\n"
         out += """
@@ -275,6 +284,23 @@ public enum JobPromptBuilder {
     /// cover (contact, work authorization, EEO / voluntary self-identification) — overriding the
     /// "leave these for me" default below for those specific fields — while still reserving signatures,
     /// certifications, legal attestations, compensation, and anything not covered here for the user.
+    /// The form's fields, when known. Omitted entirely when not — an empty "the form asks for:"
+    /// heading would read as "it asks for nothing", which is worse than saying nothing.
+    private static func applicationFormSection(_ form: String) -> String {
+        let trimmed = form.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        return """
+
+
+        ## What the application form asks for
+
+        Published by the employer's job board, so it should be accurate. Prepare these before
+        starting, and treat anything not listed here as unexpected:
+
+        \(trimmed)
+        """
+    }
+
     private static func personalInfoSection(_ personalInfo: String) -> String {
         let trimmed = personalInfo.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
@@ -300,7 +326,9 @@ public enum JobPromptBuilder {
     /// Verbatim Codex browser-automation "auto-apply" prompt with the job URL substituted. The body is
     /// the user's own agent instructions (checkpoints, accuracy rules, "never submit"); only the URL is
     /// filled in — the `[PASTE URL HERE]` placeholder remains when the job has no known URL.
-    private static func autoApplyPrompt(jobURL: String, personalInfo: String) -> String {
+    private static func autoApplyPrompt(
+        jobURL: String, personalInfo: String, applicationForm: String
+    ) -> String {
         let urlLine = jobURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "[PASTE URL HERE]" : jobURL
         return """
         Use @Browser and my local résumé materials to prepare and complete one job application, \
@@ -308,7 +336,7 @@ public enum JobPromptBuilder {
 
         JOB POSTING URL:
         \(urlLine)
-        \(personalInfoSection(personalInfo))
+        \(personalInfoSection(personalInfo))\(applicationFormSection(applicationForm))
         ## Objective
 
         1. Open the job-posting URL.

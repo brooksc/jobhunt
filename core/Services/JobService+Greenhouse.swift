@@ -85,4 +85,27 @@ public extension JobService {
             excludingURLs: Set([resolved.absoluteURL, identity.urlString].compactMap(\.self))
         )
     }
+
+    /// What this job's application form will ask for (TASK-635), or nil when the board doesn't
+    /// publish it. Read-only — nothing here submits anything.
+    func applicationFormPreview(
+        jobID: String,
+        session: URLSession = .shared
+    ) async -> ApplicationFormPreview? {
+        guard let identity = try? await store.greenhouseIdentity(jobID: jobID) ?? nil else {
+            return nil
+        }
+        // Resolve the board through a posting fetch, same as the other board reads: a guessed slug
+        // that happens to exist would show another company's application form.
+        let posting = await GreenhouseJobBoard.fetch(
+            ghjid: identity.ghjid,
+            company: identity.company,
+            urlString: identity.urlString,
+            session: session
+        )
+        guard case let .success(resolved) = posting else { return nil }
+        return await GreenhouseJobBoard.fetchApplicationForm(
+            board: resolved.board, ghjid: identity.ghjid, session: session
+        )
+    }
 }

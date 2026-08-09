@@ -3,10 +3,10 @@ id: TASK-647
 title: >-
   ServerTests: flaky connection reset after the >1MB capture test poisons the
   next request
-status: Done
+status: In Progress
 assignee: []
 created_date: '2026-07-25 21:34'
-updated_date: '2026-08-09 18:56'
+updated_date: '2026-08-09 19:15'
 labels:
   - tests
   - ci
@@ -37,10 +37,16 @@ Options: have the large-body test not leave a poisoned connection behind (e.g. i
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 The >1MB capture test cannot leave a connection state that affects the following test
-- [x] #2 Any retry is limited to transport-level URLErrors and never masks an assertion failure
-- [x] #3 The suite passes repeatedly (e.g. 10 consecutive runs) with tests in the current order
+- [ ] #1 The >1MB capture test cannot leave a connection state that affects the following test
+- [ ] #2 Any retry is limited to transport-level URLErrors and never masks an assertion failure
+- [ ] #3 The suite passes repeatedly (e.g. 10 consecutive runs) with tests in the current order
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-08-09: reopened. The first fix — an ephemeral session for the >1MB test only — passed 10 consecutive local runs and then failed on CI immediately (run 31330335321, commit f969ed65) with the SAME -1005 'network connection was lost', but in a DIFFERENT test: `testCaptureRoute_storeError_returnsInternalError` (JobhuntServerTests.swift:853). So the large body was never the cause, only the case that happened to be observed. The real cause is `URLSession.shared` pooling keep-alive connections to a shared NWListener server that closes them; any test can inherit a dead one. Fixing it properly means no test reusing a pooled connection.
+<!-- SECTION:NOTES:END -->
 
 ## Final Summary
 

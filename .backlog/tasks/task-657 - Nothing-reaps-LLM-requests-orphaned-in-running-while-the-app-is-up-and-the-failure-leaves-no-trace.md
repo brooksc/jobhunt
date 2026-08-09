@@ -3,10 +3,10 @@ id: TASK-657
 title: >-
   LLM queue wedges: batch barrier + isRunning guard mean one slow request stalls
   everything, unrecoverable without a relaunch
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-02 18:05'
-updated_date: '2026-08-06 22:26'
+updated_date: '2026-08-09 19:46'
 labels:
   - llm-queue
   - reliability
@@ -40,18 +40,18 @@ Note `llm_timeout` is unset in the store, so the default 300s applied — and th
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A request left in 'running' past a duration bound is returned to 'queued' while the app stays running, with no user action
-- [ ] #2 A reaped request releases its adaptive-concurrency slot, so repeated orphans cannot throttle the queue
+- [x] #1 A request left in 'running' past a duration bound is returned to 'queued' while the app stays running, with no user action
+- [x] #2 A reaped request releases its adaptive-concurrency slot, so repeated orphans cannot throttle the queue
 - [x] #3 A request cannot exceed a total wall-clock bound even if the connection trickles bytes (timeoutInterval alone is insufficient)
-- [ ] #4 Every exit from 'running' writes an attempt row or an error, so an orphan leaves diagnosable evidence
-- [ ] #5 A reap is visible outside the Debug tab
-- [ ] #6 Unit test: a 'running' row with a stale startedAt is requeued by the reaper and its slot freed
-- [ ] #7 A cancellation that already set a terminal status is not overwritten by the reaper
-- [ ] #8 A slow request no longer blocks queued work: new requests start as soon as a slot frees, without waiting for the whole batch
+- [x] #4 Every exit from 'running' writes an attempt row or an error, so an orphan leaves diagnosable evidence
+- [ ] #5 not verified (visual): a reap is visible outside the Debug tab — it emits .requestsReaped, which produces a system notification and an in-view banner in LLMQueueView; the wiring compiles and the event is covered, but neither surface was observed rendering
+- [x] #6 Unit test: a 'running' row with a stale startedAt is requeued by the reaper and its slot freed
+- [x] #7 A cancellation that already set a terminal status is not overwritten by the reaper
+- [ ] #8 MOVED to TASK-671: a slow request no longer blocks queued work (batch barrier → continuous dispatch)
 - [x] #9 A wedged drain can be recovered from the UI without quitting the app
 - [x] #10 Every request has a total wall-clock bound, independent of URLRequest.timeoutInterval, after which it is cancelled and requeued
 - [x] #11 cancelProcessing() cannot hang indefinitely on a child task that ignores cancellation
-- [ ] #12 Test: a task group containing one never-returning task does not prevent remaining queued requests from being dispatched
+- [ ] #12 MOVED to TASK-671: test that a never-returning task does not block remaining queued requests
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -92,3 +92,21 @@ Seven tests in `QueueDeadlineTests`: a never-returning operation is cancelled pr
 
 **Still open — the batch barrier.** `withTaskGroup` awaits the whole batch before fetching more, so free slots idle while the slowest member finishes, and throughput runs at the worst case (measured 16s fastest, 139s slowest in one batch). That is now a latency cost rather than a correctness one: with requests bounded, a slow member can no longer wedge anything. Worth doing, but it is a real rewrite of the drain loop and did not belong in the same change as the safety fix.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The wall-clock deadline, the supersedable drain and the non-hanging cancel landed earlier (`f96ae375`, `5fd91355`). This finishes defects 1 and 2 — the reaper — and splits the batch barrier out.
+
+**Defect 1, the orphan.** `reapOrphanedRunning()` returns any row still `running` past 2 × the request deadline to `queued` and re-seeds the adaptive pool, so slots the orphans were holding come back. It runs in two places, and both are needed: at the start of each drain pass (cheap, and stops a leaked slot shrinking that pass's concurrency), and on a 2-minute heartbeat in `AppServices`. The heartbeat is the important one — the observed orphan appeared with **no drain running**, so a drain-only reap would have left it until new work happened to arrive.
+
+**Defect 2, the missing evidence.** A reaped row now records why it was requeued, and `startedAt` is cleared so it can't be re-aged against a dead attempt.
+
+**Judgement call on the bound:** 2 × the deadline (i.e. 3 × `llmTimeout`) rather than a new setting. Anything still `running` at that point has escaped the deadline path entirely, which is precisely the orphan case; a legitimately slow request is cancelled and requeued by the deadline long before.
+
+**Criteria 8 and 12 moved to TASK-671.** With the deadline and the reaper in place the batch barrier is a throughput cost, not a wedge, and doing it safely needs care around `group.cancelAll()` on auto-pause and the adaptive limit changing mid-pass. Landing what works rather than holding the reaper behind it.
+
+**Criterion 5 is `not verified`**: the reap emits `.requestsReaped`, wired to a system notification and an in-view banner, but neither was observed rendering.
+
+**Tests** (`QueueOrphanReaperTests`, 6): stale row requeued; reason recorded and `startedAt` cleared; young row untouched; terminal rows never resurrected; a row with no `startedAt` left alone rather than guessed at; four orphans all reclaimed in one pass.
+<!-- SECTION:FINAL_SUMMARY:END -->

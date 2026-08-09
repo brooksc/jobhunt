@@ -15,6 +15,7 @@ enum Mode {
     case pruneOrphanReferralAttempts(storePath: String)
     case recomputeFitMirrors(storePath: String)
     case recheckEvidence(storePath: String)
+    case normalizeSeniority(storePath: String)
     case detectDuplicates(storePath: String)
     case repairDuplicateJobNumbers(storePath: String)
     case unmarkHeuristicDuplicates(storePath: String)
@@ -31,7 +32,7 @@ enum Mode {
             return false
         case .repairFitScores, .patch, .patchFitScores, .reclean, .backfillModels,
              .pruneOrphanFitScores, .pruneOrphanAttempts, .pruneOrphanReferralAttempts,
-             .recomputeFitMirrors, .recheckEvidence, .detectDuplicates,
+             .recomputeFitMirrors, .recheckEvidence, .normalizeSeniority, .detectDuplicates,
              .repairDuplicateJobNumbers, .unmarkHeuristicDuplicates, .recomputeCriteria,
              .repairCanonicalURLs, .mergeJob:
             return true
@@ -66,6 +67,7 @@ private func printUsage() {
     fputs("  JobhuntMigrator --prune-orphan-attempts [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --recompute-fit-mirrors [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --recheck-evidence [--store <path>]\n", stderr)
+    fputs("  JobhuntMigrator --normalize-seniority [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --detect-duplicates [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --unmark-heuristic-duplicates [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --recompute-criteria [--store <path>]\n", stderr)
@@ -92,6 +94,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
     var pruneOrphanAttempts = false
     var recomputeFitMirrors = false
     var recheckEvidence = false
+    var normalizeSeniority = false
     var detectDuplicates = false
     var repairDuplicateJobNumbers = false
     var unmarkHeuristicDuplicates = false
@@ -129,6 +132,8 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
             recomputeFitMirrors = true
         case "--recheck-evidence":
             recheckEvidence = true
+        case "--normalize-seniority":
+            normalizeSeniority = true
         case "--detect-duplicates":
             detectDuplicates = true
         case "--repair-duplicate-job-numbers":
@@ -187,6 +192,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
         ("--prune-orphan-attempts", pruneOrphanAttempts),
         ("--recompute-fit-mirrors", recomputeFitMirrors),
         ("--recheck-evidence", recheckEvidence),
+        ("--normalize-seniority", normalizeSeniority),
         ("--detect-duplicates", detectDuplicates),
         ("--repair-duplicate-job-numbers", repairDuplicateJobNumbers),
         ("--unmark-heuristic-duplicates", unmarkHeuristicDuplicates),
@@ -222,6 +228,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
     if pruneOrphanAttempts { return .pruneOrphanAttempts(storePath: storePath) }
     if recomputeFitMirrors { return .recomputeFitMirrors(storePath: storePath) }
     if recheckEvidence { return .recheckEvidence(storePath: storePath) }
+    if normalizeSeniority { return .normalizeSeniority(storePath: storePath) }
     if detectDuplicates { return .detectDuplicates(storePath: storePath) }
     if repairDuplicateJobNumbers { return .repairDuplicateJobNumbers(storePath: storePath) }
     if unmarkHeuristicDuplicates { return .unmarkHeuristicDuplicates(storePath: storePath) }

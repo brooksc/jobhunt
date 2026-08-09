@@ -441,6 +441,30 @@ public actor BackgroundStore {
         return changed
     }
 
+    /// Collapse stored `seniority` onto the canonical bands.
+    ///
+    /// 55 distinct values across 415 jobs — case duplicates, five spellings of mid-level, and strings
+    /// with no level in them at all ("5+ years", "III"). That text feeds the fit-scoring prompt's
+    /// `experience_level` dimension, so the mess was degrading scores, not just blocking a filter.
+    ///
+    /// Idempotent: the normalizer maps every canonical value to itself, so a second run changes
+    /// nothing. Values carrying no level become nil rather than a guessed band.
+    public func normalizeStoredSeniority() throws -> (changed: Int, cleared: Int) {
+        var changed = 0
+        var cleared = 0
+        for job in try modelContext.fetch(FetchDescriptor<Job>()) {
+            guard let raw = job.seniority else { continue }
+            let normalized = SeniorityNormalizer.normalize(raw)
+            guard normalized != raw else { continue }
+            job.seniority = normalized
+            job.updatedAt = Date()
+            changed += 1
+            if normalized == nil { cleared += 1 }
+        }
+        if changed > 0 { try modelContext.save() }
+        return (changed, cleared)
+    }
+
     /// Re-run the evidence check over every stored fit analysis, marking verdicts whose quoted
     /// evidence no résumé supports.
     ///
@@ -1057,7 +1081,12 @@ public actor BackgroundStore {
         if !overrides.contains("salaryCurrency") { job.salaryCurrency = result.salaryCurrency }
         if !overrides.contains("salaryNote") { job.salaryNote = result.salaryNote }
         if !overrides.contains("employmentType") { job.employmentType = result.employmentType }
-        if !overrides.contains("seniority") { job.seniority = result.seniority }
+        // Normalize on the way in as well as constraining the prompt: the model still returns the
+        // posting's own wording often enough, and one canonical value is what the fit-scoring prompt
+        // and any future filter both depend on.
+        if !overrides.contains("seniority") {
+            job.seniority = SeniorityNormalizer.normalize(result.seniority)
+        }
         if !overrides.contains("applicationURL") { job.applicationURL = result.applicationURL }
         job.extractionConfidence = result.extractionConfidence
         job.meetsCriteria = result.meetsCriteria

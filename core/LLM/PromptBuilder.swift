@@ -101,7 +101,8 @@ public enum PromptBuilder {
         - salary_currency: string or null
         - salary_note: string or null
         - employment_type: one of "full_time", "part_time", "contract", "internship", "temporary", "unknown"
-        - seniority: string or null
+        - seniority: one of \(SeniorityLevel
+            .promptList), or null — the LEVEL, not the years. Use null when the posting states only an experience range ("5+ years") or a bare grade ("III"), which carry no level on their own.
         - skills: array of strings
         - summary: string or null
         - requirements: array of strings

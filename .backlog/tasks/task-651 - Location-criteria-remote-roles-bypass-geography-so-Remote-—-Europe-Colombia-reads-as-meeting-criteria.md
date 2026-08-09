@@ -3,10 +3,10 @@ id: TASK-651
 title: >-
   Location criteria: remote roles bypass geography, so "Remote —
   Europe/Colombia" reads as meeting criteria
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-27 20:19'
-updated_date: '2026-07-27 20:19'
+updated_date: '2026-08-09 19:36'
 labels:
   - extraction
   - filters
@@ -48,9 +48,23 @@ Design notes:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A remote role whose stated geography excludes the user does not read as meeting criteria
-- [ ] #2 A bare "Remote" with no stated geography continues to meet criteria (no new false negatives)
-- [ ] #3 The user can express a remote-eligibility region without conflating it with onsite preferred locations
-- [ ] #4 Existing hybrid/onsite behaviour is unchanged
-- [ ] #5 Pure logic is unit-tested: Remote - US, Remote (Europe), Remote with no geography, and remote with an unrelated HQ city in the location field
+- [x] #1 A remote role whose stated geography excludes the user does not read as meeting criteria
+- [x] #2 A bare "Remote" with no stated geography continues to meet criteria (no new false negatives)
+- [x] #3 The user can express a remote-eligibility region without conflating it with onsite preferred locations
+- [x] #4 Existing hybrid/onsite behaviour is unchanged
+- [x] #5 Pure logic is unit-tested: Remote - US, Remote (Europe), Remote with no geography, and remote with an unrelated HQ city in the location field
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Criteria 1, 2, 4 and 5 were already satisfied by `RemoteGeography` (11 existing tests), which had replaced the `case .remote: return allowRemote` short-circuit the report quotes. Criterion 3 — expressing remote eligibility without conflating it with onsite preferences — was the real gap, and underneath it a worse assumption.
+
+**New setting `remote_eligibility_regions`,** separate from `preferredLocations`, surfaced in Settings → Location and threaded through `ExtractionSettings`, `LocationContext`, both `LocationCriteria.meets` callers, and `recomputeMeetsCriteria`. Empty reproduces the previous behaviour exactly.
+
+**The assumption it exposed:** `RemoteGeography.classify` consulted a hardcoded `usTokens` list as an *eligibility* signal, so "Remote - US" passed for everyone. Fine while the app assumed a US-based user; wrong the moment the user says otherwise. With explicit regions set, any **recognised** region that isn't theirs now rules the posting out — including the US. Unrecognised text ("Global", "Multiple Locations", an unrelated HQ city) is still `indeterminate` and still passes, so the asymmetry that guards against false negatives is intact; it simply no longer treats one country as everyone's home.
+
+I found this because the test failed first: with eligibility `Canada`, `Remote - United States` still passed, because `usTokens` short-circuits to `.eligible` before any foreign check.
+
+**Tests** (`RemoteEligibilityRegionTests`, 7): foreign remote ruled out; bare "Remote"/nil/"Global" still pass; eligibility works independently of commuting preference in both directions; unrelated HQ city; empty setting falls back; the setting applies even with no preferred locations (a path that returned early); hybrid and onsite unchanged. All 26 location tests pass.
+<!-- SECTION:FINAL_SUMMARY:END -->

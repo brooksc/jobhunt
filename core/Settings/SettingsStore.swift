@@ -236,6 +236,13 @@ public final class SettingsStore {
         set { setLocal(newValue, forKey: SettingsKey.preferredLocations) }
     }
 
+    /// Where the user may work remotely — see `SettingsKey.remoteEligibilityRegions`. Empty keeps the
+    /// previous behaviour.
+    public var remoteEligibilityRegions: String {
+        get { string(forKey: SettingsKey.remoteEligibilityRegions) }
+        set { setLocal(newValue, forKey: SettingsKey.remoteEligibilityRegions) }
+    }
+
     /// Minimum acceptable salary; 0 means no salary requirement. Compared against the top of a
     /// job's range, so a posting is only rejected when even its ceiling falls short.
     public var minSalary: Int {
@@ -397,6 +404,7 @@ public final class SettingsStore {
             llmBaseURL: baseURL,
             consentGranted: consentGranted,
             preferredLocations: combined,
+            remoteEligibilityRegions: remoteEligibilityRegions,
             locationFilterEnabled: locationFilterEnabled,
             locationAllowRemote: locationAllowRemote,
             locationAllowHybrid: locationAllowHybrid,
@@ -444,6 +452,8 @@ public struct ExtractionSettings: Sendable {
     /// True when the current provider has explicit consent to receive job/resume data.
     public let consentGranted: Bool
     public let preferredLocations: String
+    /// Where the user may work remotely; empty falls back to `preferredLocations`.
+    public let remoteEligibilityRegions: String
     public let locationFilterEnabled: Bool
     public let locationAllowRemote: Bool
     public let locationAllowHybrid: Bool
@@ -456,6 +466,7 @@ public struct ExtractionSettings: Sendable {
         llmBaseURL: String = "http://127.0.0.1:1234",
         consentGranted: Bool = true,
         preferredLocations: String,
+        remoteEligibilityRegions: String = "",
         locationFilterEnabled: Bool,
         locationAllowRemote: Bool,
         locationAllowHybrid: Bool,
@@ -467,6 +478,7 @@ public struct ExtractionSettings: Sendable {
         self.llmBaseURL = llmBaseURL
         self.consentGranted = consentGranted
         self.preferredLocations = preferredLocations
+        self.remoteEligibilityRegions = remoteEligibilityRegions
         self.locationFilterEnabled = locationFilterEnabled
         self.locationAllowRemote = locationAllowRemote
         self.locationAllowHybrid = locationAllowHybrid

@@ -33,6 +33,16 @@ public enum SettingsKey {
     public static let preferredMetros = "preferred_metros"
     public static let locationFilterEnabled = "location_filter_enabled"
     public static let locationAllowRemote = "location_allow_remote"
+    /// Where the user is eligible to work *remotely*, kept separate from `preferredLocations`.
+    ///
+    /// Those two answer different questions. Preferred locations is "where would I commute to",
+    /// which is about onsite/hybrid; remote eligibility is "which country's remote postings can I
+    /// legally take". Conflating them meant a user whose preferred location is "Seattle, WA" had no
+    /// way to say "remote anywhere in the US" without also implying they'd only commute to the US,
+    /// and a non-US user had no way to say anything at all — eligibility fell back to a hardcoded
+    /// list of US tokens. Empty means "use preferred locations, then the US fallback", i.e. exactly
+    /// the previous behaviour.
+    public static let remoteEligibilityRegions = "remote_eligibility_regions"
     public static let locationAllowHybrid = "location_allow_hybrid"
     public static let locationAllowOnsite = "location_allow_onsite"
     /// Minimum acceptable salary. 0 disables the check. Compared against the TOP of a job's range.

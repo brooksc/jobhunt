@@ -21,12 +21,33 @@ public enum RemoteGeography {
         case indeterminate
     }
 
-    public static func classify(location: String?, preferredTerms: [String]) -> Verdict {
+    /// - Parameter explicitRegions: true when `preferredTerms` came from the user's stated remote
+    ///   eligibility rather than from their commuting preferences.
+    ///
+    ///   It changes what the built-in US list means. By default the US tokens are an *eligibility*
+    ///   signal — the app assumed a US-based user, so "Remote - US" passed no matter what. Once the
+    ///   user has said where they can work, that assumption is wrong: for someone eligible in Canada
+    ///   only, "Remote - United States" names a region they can't take. So with explicit regions, any
+    ///   RECOGNISED region that isn't theirs rules the posting out. Unrecognised text is still
+    ///   `indeterminate` and still passes — the asymmetry that protects against false negatives is
+    ///   unchanged, it just no longer hardcodes one country as everyone's home.
+    public static func classify(
+        location: String?,
+        preferredTerms: [String],
+        explicitRegions: Bool = false
+    ) -> Verdict {
         let raw = location ?? ""
         let haystack = normalizeForMatch(raw)
         guard !haystack.isEmpty else { return .indeterminate }
 
         if preferredTerms.contains(where: { termMatches(raw, term: $0) }) { return .eligible }
+
+        if explicitRegions {
+            // Named somewhere recognisable, and it wasn't one of theirs.
+            let recognised = usTokens.union(foreignTokens)
+            return contains(haystack, anyOf: recognised) ? .outOfBounds : .indeterminate
+        }
+
         // Eligibility wins over a foreign hit, so a multi-region posting ("EMEA and AMER time
         // zones", "Toronto, San Francisco, London") is not mistaken for a foreign-only one.
         if contains(haystack, anyOf: usTokens) { return .eligible }

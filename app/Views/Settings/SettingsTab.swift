@@ -167,11 +167,13 @@ struct JobsSettingsTab: View {
         let preferred = combinedPreferredLocations(
             locations: settings.preferredLocations, metros: settings.preferredMetros
         )
+        let eligibility = settings.remoteEligibilityRegions
         let (enabled, remote) = (settings.locationFilterEnabled, settings.locationAllowRemote)
         let (hybrid, onsite) = (settings.locationAllowHybrid, settings.locationAllowOnsite)
         do {
             let changed = try await appServices.backgroundStore.recomputeMeetsCriteria(
-                preferredLocations: preferred, allowRemote: remote, allowHybrid: hybrid,
+                preferredLocations: preferred, remoteEligibilityRegions: eligibility,
+                allowRemote: remote, allowHybrid: hybrid,
                 allowOnsite: onsite, filterEnabled: enabled
             )
             // Silent when nothing moved — this also runs once on appear, which must not toast.
@@ -216,6 +218,19 @@ struct JobsSettingsTab: View {
                 Text("Metros expand to their cities/states and are combined with preferred locations for extraction.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                TextField("Remote eligibility (e.g. US, Canada)", text: Binding(
+                    get: { settings.remoteEligibilityRegions },
+                    set: { settings.remoteEligibilityRegions = $0 }
+                ))
+                Text(
+                    "Where you can legally work remotely. Separate from preferred locations, which "
+                        + "are about commuting. A remote job that names only other regions stops "
+                        + "meeting criteria; one that names no region still passes. Leave empty to "
+                        + "keep using preferred locations."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
         }
     }

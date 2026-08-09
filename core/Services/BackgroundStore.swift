@@ -491,6 +491,7 @@ public actor BackgroundStore {
     /// changed. Run via JobhuntMigrator.
     public func recomputeMeetsCriteria(
         preferredLocations: String?,
+        remoteEligibilityRegions: String? = nil,
         allowRemote: Bool,
         allowHybrid: Bool,
         allowOnsite: Bool,
@@ -507,7 +508,8 @@ public actor BackgroundStore {
 
             let meets = LocationCriteria.meets(
                 remoteType: inferred, location: job.location,
-                preferredLocations: preferredLocations, allowRemote: allowRemote,
+                preferredLocations: preferredLocations,
+                remoteEligibilityRegions: remoteEligibilityRegions, allowRemote: allowRemote,
                 allowHybrid: allowHybrid, allowOnsite: allowOnsite, filterEnabled: filterEnabled
             )
             let verdictChanged = job.meetsCriteria != meets
@@ -535,6 +537,7 @@ public actor BackgroundStore {
                 locations: byKey[SettingsKey.preferredLocations],
                 metros: byKey[SettingsKey.preferredMetros]
             ),
+            remoteEligibilityRegions: byKey[SettingsKey.remoteEligibilityRegions],
             allowRemote: flag(SettingsKey.locationAllowRemote),
             allowHybrid: flag(SettingsKey.locationAllowHybrid),
             allowOnsite: flag(SettingsKey.locationAllowOnsite),

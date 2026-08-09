@@ -272,6 +272,8 @@ public enum PromptBuilder {
 /// Location preferences for prompt building.
 public struct LocationContext: Sendable {
     public let preferredLocations: String
+    /// Where the user may work remotely, when they've said so explicitly.
+    public let remoteEligibilityRegions: String
     public let allowRemote: Bool
     public let allowHybrid: Bool
     public let allowOnsite: Bool
@@ -285,11 +287,13 @@ public struct LocationContext: Sendable {
 
     public init(
         preferredLocations: String = "",
+        remoteEligibilityRegions: String = "",
         allowRemote: Bool = true,
         allowHybrid: Bool = true,
         allowOnsite: Bool = true
     ) {
         self.preferredLocations = preferredLocations
+        self.remoteEligibilityRegions = remoteEligibilityRegions
         self.allowRemote = allowRemote
         self.allowHybrid = allowHybrid
         self.allowOnsite = allowOnsite

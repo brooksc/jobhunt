@@ -117,6 +117,7 @@ public enum ExtractionEngine {
 
         let locationContext = LocationContext(
             preferredLocations: settings.preferredLocations,
+            remoteEligibilityRegions: settings.remoteEligibilityRegions,
             allowRemote: settings.locationAllowRemote,
             allowHybrid: settings.locationAllowHybrid,
             allowOnsite: settings.locationAllowOnsite
@@ -199,6 +200,7 @@ public enum ExtractionEngine {
             remoteType: remoteType,
             location: extracted["location"] as? String,
             preferredLocations: settings.preferredLocations,
+            remoteEligibilityRegions: settings.remoteEligibilityRegions,
             allowRemote: settings.locationAllowRemote,
             allowHybrid: settings.locationAllowHybrid,
             allowOnsite: settings.locationAllowOnsite,

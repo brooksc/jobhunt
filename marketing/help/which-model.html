@@ -93,8 +93,10 @@
     <p class="note">* DeepSeek has announced price rises, so this figure is already out of date.
     Accuracy is both suites passing over three repeats. Consistency is how many of 15 requirement
     verdicts changed across byte-identical requests at temperature 0.</p>
-    <p><strong>If you want maximum consistency, use Claude Haiku 4.5.</strong> It never changed a single
-    verdict across eight identical runs — the only model that managed it — at roughly six times the cost.
+    <p><strong>If you want the steadiest answers, use Claude Haiku 4.5.</strong> It was the most
+    consistent model in both measurements, at roughly six times the cost — though a later re-measurement
+    (below) found it is not perfectly stable either, so treat this as "steadiest available", not
+    "deterministic".
     On a 500-posting search that's about $3.90 rather than $0.60, which may well be worth it.</p>
 
     <h2 id="stability">Consistency: does it give the same answer twice?</h2>
@@ -111,6 +113,29 @@
         <tr><td>DeepSeek V4 Flash</td><td class="num">7 of 15</td><td class="num">~10–16 points</td></tr>
       </tbody>
     </table>
+    <p><strong>Re-measured on 2026-08-09, and the swings are larger than the table above.</strong> The
+    numbers above came from one posting with 15 requirements. A second, independent measurement — a
+    different posting with 7 requirements, scored repeatedly through the app's own scoring path — found
+    considerably more movement:</p>
+    <table>
+      <thead><tr><th>Model</th><th class="num">Usable runs</th><th class="num">Scores</th><th class="num">Spread</th><th class="num">Verdicts changed</th></tr></thead>
+      <tbody>
+        <tr><td>Claude Haiku 4.5</td><td class="num">4</td><td class="num">73, 69, 65, 72</td><td class="num">8 points</td><td class="num">1 of 7</td></tr>
+        <tr><td>Ministral 14B</td><td class="num">5</td><td class="num">67, 67, 62, 81, 72</td><td class="num">19 points</td><td class="num">1 of 7</td></tr>
+      </tbody>
+    </table>
+    <p>Two things follow. The <em>ordering</em> holds — Haiku is still the steadier of the two, by roughly
+    a factor of two. But <strong>neither model is near-deterministic</strong>, and the "0 points" above
+    should be read as "0 on that posting", not as a property of the model. A job's score can move by 8 to
+    19 points between identical requests, which is more than enough to reorder your list around a
+    threshold.</p>
+    <p class="note">Caveat, stated plainly: these are 4–5 usable samples per model on a single posting.
+    That is enough to show the earlier figures were optimistic — one 19-point swing disproves "~2 points"
+    — but not enough to rank models precisely. We are reporting it because publishing a
+    consistency claim we could no longer reproduce would be worse than publishing an uncertain one.</p>
+    <p class="note">Separately, and affecting both models: <strong>2 to 4 of every 6–8 requests returned
+    an empty response</strong> and had to be discarded. That is an aggregator-level failure rather than a
+    model one; the app retries, so it shows up as slowness rather than as an error.</p>
     <p class="note">Temperature 0 does not make hosted inference deterministic. Batched serving means the
     result can depend on what else was in the batch, and aggregators may route the same request to a different
     host each time — we saw one model served by five different providers across eight calls. Pinning the

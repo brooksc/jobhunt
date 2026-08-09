@@ -6,6 +6,11 @@ useDefault = true
 description = "Non-secret test/mock/fixture material and generated dirs"
 paths = [
   '''tests/Support/MockLLM/.*''',
+  # Backlog task files are prose. The generic-api-key rule fires on high-entropy-looking phrases in
+  # acceptance criteria — the first hit was the sentence "A gh_jid job can be refreshed from the
+  # Greenhouse API". Nothing here is ever a credential: these files are plans and notes, written by
+  # hand and reviewed in the diff like any other text.
+  '''\.backlog/.*''',
   '''.*\.xcresult/.*''',
   '''DerivedData/.*''',
   '''Derived/.*''',

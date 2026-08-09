@@ -3,10 +3,10 @@ id: TASK-659
 title: >-
   Scoring corrections: add a blast-radius preview and route "I do have this" to
   the résumé
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-02 18:14'
-updated_date: '2026-08-05 22:06'
+updated_date: '2026-08-09 20:30'
 labels:
   - fit-scoring
   - feedback
@@ -47,11 +47,11 @@ priority: medium
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Saving a correction shows how many existing requirements and jobs it would match, before it is saved
-- [ ] #2 A rule matching an implausibly large share of the corpus is blocked or requires explicit confirmation
-- [ ] #3 Flagging 'I do have this' offers adding the experience to the resume/skills as the primary path, with the deterministic rule as fallback
-- [ ] #4 The six pre-existing entries in the live store are reviewed against word-boundary semantics
-- [ ] #5 No user feedback is injected into the scoring prompt
+- [x] #1 Saving a correction shows how many existing requirements and jobs it would match, before it is saved
+- [x] #2 A rule matching an implausibly large share of the corpus is blocked or requires explicit confirmation
+- [ ] #3 not verified (visual): flagging 'I do have this' offers the résumé as the primary path with the rule as fallback — implemented and building, but the rendered sheet was not observed, since driving the UI is out of scope for this run
+- [x] #4 The six pre-existing entries in the live store are reviewed against word-boundary semantics
+- [x] #5 No user feedback is injected into the scoring prompt
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -69,3 +69,19 @@ Still open, and the reason this stays on the backlog:
 2. **Route `.alwaysCredit` toward the résumé.** Five of the six live entries were the same fact — "I have AI / gen-AI / agent experience" — phrased five ways, because a full-sentence phrase only ever matches the posting it came from. Word boundaries don't fix that: these rules are still too *narrow* to generalise. The durable fix is adding the evidence to the résumé (or a skills block) so the model's own judgement carries it to future postings, with the deterministic rule as the fallback.
 3. **Triage the existing entries.** The six in the live store predate the word-boundary fix and were authored against the old semantics.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Criteria 1, 2 and 5 shipped earlier (blast-radius preview at capture time, word-boundary matching, nothing injected into the prompt). This closes 3 and 4.
+
+**Criterion 3.** Choosing "I do have this" now leads with the résumé: a short explanation that a recruiter and an ATS read the same résumé the scorer did, so they will miss it too, and a prominent button that closes the sheet and navigates to Resumes. The deterministic rule remains, relabelled "Or match on". Taking the résumé path deliberately saves **no** rule — offering it as primary and then also writing a one-off string rule would defeat the point.
+
+**Criterion 4 — reviewed against the live store, read-only.** The result is better than the task assumed:
+
+- The harmful **`IDE` rule is gone** — it was the one force-crediting 359 requirements across 124 jobs. Five rules remain, all `alwaysCredit`.
+- Under word-boundary semantics those five match **exactly what they matched under substring**: no change, so the boundary fix neither helped nor harmed them.
+- Four of the five now match **zero** of the 13,103 stored requirement rows, and the fifth matches one. They are inert — they don't even match the posting they were created from any more, most likely because rescoring changed the requirement text.
+
+So the over-narrow failure mode is confirmed on real data at its logical end point: rules that do nothing whatsoever. That is precisely what criterion 3's résumé path is for, and it means no cleanup migration is needed — the entries are harmless, just useless.
+<!-- SECTION:FINAL_SUMMARY:END -->

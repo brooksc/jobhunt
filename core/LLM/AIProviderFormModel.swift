@@ -150,7 +150,11 @@ public final class AIProviderFormModel {
         // field to rebuild (and drop focus) — a pasted newline/space does, and the field re-syncs.
         if cleaned != new { apiKeySanitizeCount += 1 }
         apiKeyText = cleaned
-        settings.setAPIKey(cleaned, forProvider: selectedProviderID)
+        // The throw exists for programmatic callers (restore, key rotation). This is the interactive
+        // path and can't propagate: `setAPIKey` has already set `keychainWriteError`, which
+        // SettingsView renders, so the user still sees a failed write. Explicitly discarded, not
+        // accidentally.
+        try? settings.setAPIKey(cleaned, forProvider: selectedProviderID)
     }
 
     public func onModelChanged(_ new: String) {

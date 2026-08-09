@@ -77,7 +77,7 @@ public final class SettingsStore {
     private func migrateRemovedProviders() {
         let current = cache[SettingsKey.llmProvider]
         if current == "foundation_models" || current == "apple" {
-            set("lmstudio", forKey: SettingsKey.llmProvider)
+            setLocal("lmstudio", forKey: SettingsKey.llmProvider)
         }
     }
 
@@ -90,16 +90,38 @@ public final class SettingsStore {
         return cache[key] ?? settingsDefaults[key] ?? ""
     }
 
-    public func set(_ value: String, forKey key: String) {
-        if SettingsKey.keychainKeys.contains(key) {
-            do {
-                try keychain.set(value, forKey: key)
-                keychainWriteError = nil
-            } catch {
-                keychainWriteError = error.localizedDescription
-            }
+    /// Write a setting.
+    ///
+    /// Throws only for the six keychain-backed API-key keys, whose write can genuinely fail (locked
+    /// keychain, denied ACL). It used to catch that, set `keychainWriteError` and return normally, so
+    /// a programmatic caller — a restore or a key rotation — was told the write succeeded when the
+    /// key had not been stored. `keychainWriteError` is still set for the UI to observe; the throw is
+    /// additional, not a replacement.
+    public func set(_ value: String, forKey key: String) throws {
+        guard SettingsKey.keychainKeys.contains(key) else {
+            setLocal(value, forKey: key)
             return
         }
+        do {
+            try keychain.set(value, forKey: key)
+            keychainWriteError = nil
+        } catch {
+            keychainWriteError = error.localizedDescription
+            throw error
+        }
+    }
+
+    /// The non-keychain write, which cannot fail.
+    ///
+    /// Exists because SwiftUI property setters can't throw: the typed shortcut properties below would
+    /// otherwise need `try?`, which would put silent failure back exactly where it was removed. Every
+    /// one of them writes a non-keychain key, so routing them here is safe rather than a loophole —
+    /// the assert holds that line if a future key changes category.
+    private func setLocal(_ value: String, forKey key: String) {
+        assert(
+            !SettingsKey.keychainKeys.contains(key),
+            "\(key) is keychain-backed — use the throwing set(_:forKey:) so a failed write is visible"
+        )
         cache[key] = value
         persistToStore(key: key, value: value)
     }
@@ -110,7 +132,7 @@ public final class SettingsStore {
     }
 
     public func setBool(_ value: Bool, forKey key: String) {
-        set(value ? "true" : "false", forKey: key)
+        setLocal(value ? "true" : "false", forKey: key)
     }
 
     public func int(forKey key: String) -> Int {
@@ -118,7 +140,7 @@ public final class SettingsStore {
     }
 
     public func setInt(_ value: Int, forKey key: String) {
-        set(String(value), forKey: key)
+        setLocal(String(value), forKey: key)
     }
 
     public func double(forKey key: String) -> Double {
@@ -126,24 +148,24 @@ public final class SettingsStore {
     }
 
     public func setDouble(_ value: Double, forKey key: String) {
-        set(String(value), forKey: key)
+        setLocal(String(value), forKey: key)
     }
 
     // MARK: - Typed shortcut properties (most-used settings)
 
     public var llmProvider: String {
         get { string(forKey: SettingsKey.llmProvider) }
-        set { set(newValue, forKey: SettingsKey.llmProvider) }
+        set { setLocal(newValue, forKey: SettingsKey.llmProvider) }
     }
 
     public var llmBaseURL: String {
         get { string(forKey: SettingsKey.llmBaseURL) }
-        set { set(newValue, forKey: SettingsKey.llmBaseURL) }
+        set { setLocal(newValue, forKey: SettingsKey.llmBaseURL) }
     }
 
     public var llmModel: String {
         get { string(forKey: SettingsKey.llmModel) }
-        set { set(newValue, forKey: SettingsKey.llmModel) }
+        set { setLocal(newValue, forKey: SettingsKey.llmModel) }
     }
 
     public var llmTimeout: Int {
@@ -160,14 +182,14 @@ public final class SettingsStore {
     /// token serialized by `SidebarItem.persistedID`; "" means none stored yet (default view).
     public var lastSidebarSelection: String {
         get { string(forKey: SettingsKey.lastSidebarSelection) }
-        set { set(newValue, forKey: SettingsKey.lastSidebarSelection) }
+        set { setLocal(newValue, forKey: SettingsKey.lastSidebarSelection) }
     }
 
     /// Persisted Jobs-list sort (review-2 #7). Survives sidebar-selection resets and relaunch.
     /// Stored as the `JobsSortKey` rawValue; the view maps it back to the enum.
     public var jobsSortKey: String {
         get { string(forKey: SettingsKey.jobsSortKey) }
-        set { set(newValue, forKey: SettingsKey.jobsSortKey) }
+        set { setLocal(newValue, forKey: SettingsKey.jobsSortKey) }
     }
 
     public var jobsSortAscending: Bool {
@@ -179,7 +201,7 @@ public final class SettingsStore {
     /// user picks a tab; the detail view maps it back to the enum with an Overview fallback.
     public var detailLastTab: String {
         get { string(forKey: SettingsKey.detailLastTab) }
-        set { set(newValue, forKey: SettingsKey.detailLastTab) }
+        set { setLocal(newValue, forKey: SettingsKey.detailLastTab) }
     }
 
     /// TASK-462: when on (and provider is OpenRouter), rotate over free structured-output models with
@@ -211,7 +233,7 @@ public final class SettingsStore {
 
     public var preferredLocations: String {
         get { string(forKey: SettingsKey.preferredLocations) }
-        set { set(newValue, forKey: SettingsKey.preferredLocations) }
+        set { setLocal(newValue, forKey: SettingsKey.preferredLocations) }
     }
 
     /// Minimum acceptable salary; 0 means no salary requirement. Compared against the top of a
@@ -240,7 +262,7 @@ public final class SettingsStore {
             guard let data = try? JSONEncoder().encode(newValue),
                   let json = String(data: data, encoding: .utf8)
             else { return }
-            set(json, forKey: SettingsKey.scoringFeedback)
+            setLocal(json, forKey: SettingsKey.scoringFeedback)
         }
     }
 
@@ -254,7 +276,7 @@ public final class SettingsStore {
 
     public var preferredMetros: String {
         get { string(forKey: SettingsKey.preferredMetros) }
-        set { set(newValue, forKey: SettingsKey.preferredMetros) }
+        set { setLocal(newValue, forKey: SettingsKey.preferredMetros) }
     }
 
     public var siteReviewIntervalDays: Int {
@@ -277,7 +299,7 @@ public final class SettingsStore {
     }
 
     public func setModelForProvider(_ model: String, provider: String) {
-        set(model, forKey: "llm_model_\(provider)")
+        setLocal(model, forKey: "llm_model_\(provider)")
         llmModel = model
     }
 
@@ -310,7 +332,9 @@ public final class SettingsStore {
         provider == "default" ? SettingsKey.llmAPIKey : "llm_api_key_\(provider)"
     }
 
-    public func setAPIKey(_ value: String, forProvider provider: String) {
+    /// Throws for the same reason `set` does — this is the path the API-key field actually uses, and
+    /// it swallowed failures identically.
+    public func setAPIKey(_ value: String, forProvider provider: String) throws {
         let key = keychainKey(forProvider: provider)
         // Trim pasted whitespace/newlines — a trailing space alone makes a valid key get rejected
         // (e.g. Google returns 401) with no obvious cause.
@@ -320,6 +344,7 @@ public final class SettingsStore {
             keychainWriteError = nil
         } catch {
             keychainWriteError = error.localizedDescription
+            throw error
         }
     }
 

@@ -32,7 +32,8 @@ public enum ConsentHelper {
 
     public static func setConsent(provider: String, granted: Bool, settings: SettingsStore) {
         let key = "llm_consent_\(provider)"
-        settings.set(granted ? "1" : "0", forKey: key)
+        // Consent flags are plain settings, never keychain-backed, so this cannot actually throw.
+        try? settings.set(granted ? "1" : "0", forKey: key)
     }
 
     /// True when the URL resolves to a loopback / on-device address.

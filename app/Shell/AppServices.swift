@@ -150,7 +150,8 @@ final class AppServices {
                             store: store, settings: settingsStore
                         ) { date in
                             await MainActor.run {
-                                settingsStore.set(
+                                // Timestamp setting, never keychain-backed — cannot throw.
+                                try? settingsStore.set(
                                     ISO8601DateFormatter().string(from: date),
                                     forKey: SettingsKey.availabilityLastAutoCheckAt
                                 )
@@ -179,7 +180,8 @@ final class AppServices {
            Date().timeIntervalSince(when) < 86400 {
             return // already notified within the last 24h
         }
-        settings.set(
+        // Timestamp setting, never keychain-backed — cannot throw.
+        try? settings.set(
             ISO8601DateFormatter().string(from: Date()),
             forKey: SettingsKey.availabilityLastNotifiedAt
         )

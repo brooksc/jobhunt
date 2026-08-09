@@ -345,7 +345,7 @@ struct DebugTab: View {
             .help("Show the first-run setup flow again. Dismissing keeps your setup; this is just a preview.")
 
             Button("Reset First-Run Setup") {
-                appServices.settings.set("", forKey: "onboarding_complete")
+                try? appServices.settings.set("", forKey: "onboarding_complete")
                 NotificationCenter.default.post(name: .reopenOnboarding, object: nil)
             }
             .help("Clears the onboarding-complete flag and re-presents the first-run wizard, as on a fresh install.")

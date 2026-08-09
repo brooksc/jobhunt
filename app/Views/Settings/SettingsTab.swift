@@ -355,7 +355,7 @@ struct JobsSettingsTab: View {
                 .frame(minHeight: 80, maxHeight: 200)
                 .border(Color(NSColor.separatorColor), width: 0.5)
                 .onChange(of: customJDText) { _, new in
-                    settings.set(new, forKey: SettingsKey.jobDescriptionMarkdown)
+                    try? settings.set(new, forKey: SettingsKey.jobDescriptionMarkdown)
                 }
         }
     }
@@ -375,7 +375,7 @@ struct JobsSettingsTab: View {
                 .frame(minHeight: 120, maxHeight: 260)
                 .border(Color(NSColor.separatorColor), width: 0.5)
                 .onChange(of: applicationDetailsText) { _, new in
-                    settings.set(new, forKey: SettingsKey.applicationPersonalInfo)
+                    try? settings.set(new, forKey: SettingsKey.applicationPersonalInfo)
                 }
         }
     }
@@ -403,7 +403,7 @@ struct JobsSettingsTab: View {
         let sweep = await AvailabilityChecker.findGoneJobsRotating(eligible, settings: settings)
 
         let now = ISO8601DateFormatter().string(from: Date())
-        settings.set(now, forKey: SettingsKey.availabilityLastAutoCheckAt)
+        try? settings.set(now, forKey: SettingsKey.availabilityLastAutoCheckAt)
 
         unverifiedJobs = sweep.unverified
         if sweep.gone.isEmpty {

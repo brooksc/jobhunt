@@ -1174,24 +1174,24 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         XCTAssertEqual(result.reason, "disabled")
     }
 
-    func testMaybeRunStaleCheckSkipsWhenIntervalNotElapsed() async {
+    func testMaybeRunStaleCheckSkipsWhenIntervalNotElapsed() async throws {
         let context = ModelContext(container)
         let settings = SettingsStore(modelContext: context)
         settings.setBool(true, forKey: SettingsKey.availabilityAutoCheckEnabled)
         // Set last check to now → interval hasn't elapsed.
-        settings.set(ISO8601DateFormatter().string(from: Date()), forKey: SettingsKey.availabilityLastAutoCheckAt)
+        try settings.set(ISO8601DateFormatter().string(from: Date()), forKey: SettingsKey.availabilityLastAutoCheckAt)
 
         let result = await AvailabilityChecker.maybeRunStaleCheck(store: store, settings: settings, session: session)
         XCTAssertTrue(result.skipped)
         XCTAssertEqual(result.reason, "interval")
     }
 
-    func testMaybeRunStaleCheckRunsWhenEnabledAndIntervalElapsed() async {
+    func testMaybeRunStaleCheckRunsWhenEnabledAndIntervalElapsed() async throws {
         let context = ModelContext(container)
         let settings = SettingsStore(modelContext: context)
         settings.setBool(true, forKey: SettingsKey.availabilityAutoCheckEnabled)
         // Last check was a long time ago.
-        settings.set("2020-01-01T00:00:00Z", forKey: SettingsKey.availabilityLastAutoCheckAt)
+        try settings.set("2020-01-01T00:00:00Z", forKey: SettingsKey.availabilityLastAutoCheckAt)
 
         let result = await AvailabilityChecker.maybeRunStaleCheck(store: store, settings: settings, session: session)
         XCTAssertFalse(result.skipped)
@@ -1212,11 +1212,11 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
 
     /// TASK-428/389 AC#2/#4: the last-check timestamp is advanced only after a valid pass, delivered
     /// through the explicit `onAutoCheckCompleted` callback (no global notification observer).
-    func testMaybeRunStaleCheck_invokesCompletionCallbackOnSuccessfulPass() async {
+    func testMaybeRunStaleCheck_invokesCompletionCallbackOnSuccessfulPass() async throws {
         let context = ModelContext(container)
         let settings = SettingsStore(modelContext: context)
         settings.setBool(true, forKey: SettingsKey.availabilityAutoCheckEnabled)
-        settings.set("2020-01-01T00:00:00Z", forKey: SettingsKey.availabilityLastAutoCheckAt)
+        try settings.set("2020-01-01T00:00:00Z", forKey: SettingsKey.availabilityLastAutoCheckAt)
 
         let recorder = CompletionRecorder()
         let result = await AvailabilityChecker.maybeRunStaleCheck(
@@ -1232,13 +1232,13 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         XCTAssertNotNil(date, "callback must carry the completion timestamp")
     }
 
-    func testMaybeRunStaleCheck_fetchFailure_doesNotAdvanceTimestamp() async {
+    func testMaybeRunStaleCheck_fetchFailure_doesNotAdvanceTimestamp() async throws {
         // TASK-479/389 AC#4: a store fetch failure must surface as fetch-error and NOT invoke the
         // completion callback (so the interval gate isn't advanced without a real check).
         let context = ModelContext(container)
         let settings = SettingsStore(modelContext: context)
         settings.setBool(true, forKey: SettingsKey.availabilityAutoCheckEnabled)
-        settings.set("2020-01-01T00:00:00Z", forKey: SettingsKey.availabilityLastAutoCheckAt)
+        try settings.set("2020-01-01T00:00:00Z", forKey: SettingsKey.availabilityLastAutoCheckAt)
         struct FakeStoreError: Error {}
         await store.setFetchFault(FakeStoreError())
 
@@ -1284,8 +1284,8 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         let context = ModelContext(container)
         let settings = SettingsStore(modelContext: context)
         settings.setBool(true, forKey: SettingsKey.availabilityAutoCheckEnabled)
-        settings.set("2020-01-01T00:00:00Z", forKey: SettingsKey.availabilityLastAutoCheckAt)
-        settings.set("21", forKey: SettingsKey.availabilityStaleDays)
+        try settings.set("2020-01-01T00:00:00Z", forKey: SettingsKey.availabilityLastAutoCheckAt)
+        try settings.set("21", forKey: SettingsKey.availabilityStaleDays)
 
         let found = await AvailabilityChecker.maybeFindStaleGoneJobs(
             store: store, settings: settings, session: session

@@ -1305,7 +1305,8 @@ struct JobsView: View {
         let found = sweep.gone
         guard !task.isCancelled else { progress = nil; return } // user cancelled — leave everything untouched
 
-        appServices.settings.set(
+        // Timestamp setting, never keychain-backed — cannot throw.
+        try? appServices.settings.set(
             ISO8601DateFormatter().string(from: Date()),
             forKey: SettingsKey.availabilityLastAutoCheckAt
         )

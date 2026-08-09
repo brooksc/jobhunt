@@ -76,8 +76,8 @@ final class SettingsStoreTests: XCTestCase {
 
     // MARK: - Round-trip
 
-    func testSetAndGetString() {
-        store.set("openai", forKey: SettingsKey.llmProvider)
+    func testSetAndGetString() throws {
+        try store.set("openai", forKey: SettingsKey.llmProvider)
         XCTAssertEqual(store.string(forKey: SettingsKey.llmProvider), "openai")
     }
 
@@ -105,14 +105,14 @@ final class SettingsStoreTests: XCTestCase {
     }
 
     func testSettingPersistedToStore() throws {
-        store.set("anthropic", forKey: SettingsKey.llmProvider)
+        try store.set("anthropic", forKey: SettingsKey.llmProvider)
         let fetched = try context.fetch(FetchDescriptor<Setting>())
         XCTAssertTrue(fetched.contains { $0.key == SettingsKey.llmProvider && $0.value == "anthropic" })
     }
 
     func testSettingUpdatedNotDuplicated() throws {
-        store.set("openai", forKey: SettingsKey.llmProvider)
-        store.set("anthropic", forKey: SettingsKey.llmProvider)
+        try store.set("openai", forKey: SettingsKey.llmProvider)
+        try store.set("anthropic", forKey: SettingsKey.llmProvider)
         let fetched = try context.fetch(FetchDescriptor<Setting>())
         let providerSettings = fetched.filter { $0.key == SettingsKey.llmProvider }
         XCTAssertEqual(providerSettings.count, 1)
@@ -122,16 +122,16 @@ final class SettingsStoreTests: XCTestCase {
     // MARK: - Keychain (API keys must NOT go to SwiftData)
 
     func testAPIKeyNotInSwiftData() throws {
-        store.setAPIKey("sk-test-key", forProvider: "openai")
+        try store.setAPIKey("sk-test-key", forProvider: "openai")
         let fetched = try context.fetch(FetchDescriptor<Setting>())
         XCTAssertFalse(fetched.contains { $0.key.hasPrefix("llm_api_key") })
     }
 
-    func testAPIKeyRoundTripKeychain() {
-        store.setAPIKey("sk-test-openai", forProvider: "openai")
+    func testAPIKeyRoundTripKeychain() throws {
+        try store.setAPIKey("sk-test-openai", forProvider: "openai")
         XCTAssertEqual(store.apiKey(forProvider: "openai"), "sk-test-openai")
         // Clean up
-        store.setAPIKey("", forProvider: "openai")
+        try store.setAPIKey("", forProvider: "openai")
     }
 
     func testKeychainStoreSetGetDelete() throws {
@@ -392,6 +392,58 @@ final class ConsentHelperSnapshotTests: XCTestCase {
     }
 }
 
+/// A keychain that always refuses the write, so the failure path is exercised rather than assumed.
+private struct RefusingKeychain: KeychainAccess {
+    func set(_: String, forKey _: String) throws {
+        throw KeychainError.addFailed(-25299)
+    }
+
+    func read(_: String) throws -> String? {
+        nil
+    }
+
+    func delete(_: String) throws {
+        throw KeychainError.deleteFailed(-25299)
+    }
+}
+
+/// A failed keychain write used to be indistinguishable from a successful one: `set` caught the
+/// error, set `keychainWriteError` for the UI, and returned normally — so a restore or key rotation
+/// was told the key had been stored when it hadn't.
+final class SettingsStoreKeychainFailureTests: XCTestCase {
+    private func store() throws -> SettingsStore {
+        let container = try ModelContainer(
+            for: Schema(SchemaV1.models),
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        return SettingsStore(modelContext: ModelContext(container), keychain: RefusingKeychain())
+    }
+
+    func testSetThrowsWhenTheKeychainWriteFails() throws {
+        let s = try store()
+        XCTAssertThrowsError(try s.set("sk-live-123", forKey: SettingsKey.llmAPIKeyOpenAI))
+    }
+
+    func testSetAPIKeyThrowsWhenTheKeychainWriteFails() throws {
+        let s = try store()
+        XCTAssertThrowsError(try s.setAPIKey("sk-live-123", forProvider: "openai"))
+    }
+
+    /// The throw is additional, not a replacement — the UI still reads this flag.
+    func testKeychainWriteErrorIsStillSetForTheUI() throws {
+        let s = try store()
+        XCTAssertThrowsError(try s.setAPIKey("sk-live-123", forProvider: "openai"))
+        XCTAssertNotNil(s.keychainWriteError)
+    }
+
+    /// Ordinary settings share the entry point and must not become throwing in practice.
+    func testNonKeychainSettingsStillWriteCleanly() throws {
+        let s = try store()
+        try s.set("dark", forKey: "appearance")
+        XCTAssertEqual(s.string(forKey: "appearance"), "dark")
+    }
+}
+
 // MARK: - KeychainError LocalizedError tests
 
 final class KeychainErrorTests: XCTestCase {
@@ -452,7 +504,7 @@ final class MCPTokenManagerTests: XCTestCase {
     }
 
     /// TASK-530 AC#3: a failed write leaves no misleading token file behind.
-    func testFailedGenerationLeavesNoFile() {
+    func testFailedGenerationLeavesNoFile() throws {
         let bad = testURL.appendingPathComponent("no-such-dir").appendingPathComponent("token")
         XCTAssertThrowsError(try MCPTokenManager.generateAndWrite(at: bad))
         XCTAssertFalse(FileManager.default.fileExists(atPath: bad.path))
@@ -475,7 +527,7 @@ final class MCPTokenManagerTests: XCTestCase {
 
         // A write while in the load-failure recovery state must NOT persist (could clobber unread
         // stored values), though the in-memory cache updates for the session.
-        settings.set("should-not-persist", forKey: SettingsKey.preferredLocations)
+        try settings.set("should-not-persist", forKey: SettingsKey.preferredLocations)
         let fresh = ModelContext(container)
         let rows = try fresh.fetch(FetchDescriptor<Setting>(
             predicate: #Predicate { $0.key == "preferred_locations" }

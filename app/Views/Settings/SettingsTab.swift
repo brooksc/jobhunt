@@ -108,6 +108,8 @@ struct JobsSettingsTab: View {
     @Environment(AppServices.self) var appServices
     /// How many stored requirements each correction currently matches, keyed by feedback id.
     @State var feedbackMatchCounts: [String: Int] = [:]
+    /// The correction currently open in the editor sheet (TASK-654).
+    @State var editingFeedback: ScoringFeedback?
     @Query private var allJobs: [Job]
 
     var body: some View {

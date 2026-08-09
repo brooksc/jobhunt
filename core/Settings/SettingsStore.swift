@@ -281,6 +281,18 @@ public final class SettingsStore {
         scoringFeedback = scoringFeedback.filter { $0.id != id }
     }
 
+    /// Replaces a correction in place, keeping its position in the list.
+    ///
+    /// Position matters more than it looks: `verdict(forRequirement:jobNumber:)` short-circuits on
+    /// the first `neverCredit` it finds, so reordering the array on every edit would be a silent
+    /// change to which rule wins when two match.
+    public func updateScoringFeedback(_ updated: ScoringFeedback) {
+        guard let index = scoringFeedback.firstIndex(where: { $0.id == updated.id }) else { return }
+        var entries = scoringFeedback
+        entries[index] = updated
+        scoringFeedback = entries
+    }
+
     public var preferredMetros: String {
         get { string(forKey: SettingsKey.preferredMetros) }
         set { setLocal(newValue, forKey: SettingsKey.preferredMetros) }

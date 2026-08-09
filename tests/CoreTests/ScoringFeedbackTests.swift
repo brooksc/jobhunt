@@ -388,3 +388,68 @@ final class ScoringFeedbackBlastRadiusTests: XCTestCase {
         XCTAssertGreaterThan(preview.totalJobs, 0)
     }
 }
+
+/// Editing a correction rather than deleting and re-creating it (TASK-654).
+final class ScoringFeedbackEditingTests: XCTestCase {
+    /// #1: the point of edit-in-place is the three fields delete-and-recreate destroyed — the note's
+    /// original context, the job that motivated the rule, and the age that says whether it predates
+    /// your current résumé.
+    func testUpdatingPreservesIdentityAndProvenance() {
+        let original = ScoringFeedback(
+            phrase: "electrical", kind: .neverCredit, jobNumber: 231, note: "matched too much"
+        )
+        let narrowed = original.updating(phrase: "electrical engineering")
+
+        XCTAssertEqual(narrowed.phrase, "electrical engineering")
+        XCTAssertEqual(narrowed.id, original.id)
+        XCTAssertEqual(narrowed.jobNumber, 231)
+        XCTAssertEqual(narrowed.createdAt, original.createdAt)
+        XCTAssertEqual(narrowed.note, "matched too much")
+        XCTAssertEqual(narrowed.kind, .neverCredit)
+    }
+
+    func testUpdatingChangesOnlyWhatIsPassed() {
+        let original = ScoringFeedback(phrase: "CUDA", kind: .neverCredit, note: "n")
+        XCTAssertEqual(original.updating(kind: .alwaysCredit).phrase, "CUDA")
+        XCTAssertEqual(original.updating(note: "n2").kind, .neverCredit)
+    }
+
+    /// #2: the two score-moving kinds move scores in opposite directions, and the UI colours on this.
+    func testPolarityDistinguishesTheOppositeKinds() {
+        XCTAssertEqual(ScoringFeedback.Kind.alwaysCredit.polarity, .credits)
+        XCTAssertEqual(ScoringFeedback.Kind.neverCredit.polarity, .penalises)
+        XCTAssertEqual(ScoringFeedback.Kind.notARequirement.polarity, .neutral)
+        XCTAssertEqual(ScoringFeedback.Kind.jobSpecific.polarity, .neutral)
+    }
+
+    /// Order is not cosmetic: `verdict(forRequirement:jobNumber:)` returns on the first `neverCredit`
+    /// it meets, so an edit that moved the entry to the end of the array would silently change which
+    /// rule wins when two match the same requirement.
+    @MainActor
+    func testUpdateKeepsListPosition() throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = SettingsStore(modelContext: ModelContext(container))
+        let first = ScoringFeedback(phrase: "kubernetes", kind: .alwaysCredit)
+        let second = ScoringFeedback(phrase: "terraform", kind: .neverCredit)
+        store.scoringFeedback = [first, second]
+
+        store.updateScoringFeedback(first.updating(phrase: "kubernetes operators"))
+
+        XCTAssertEqual(store.scoringFeedback.count, 2)
+        XCTAssertEqual(store.scoringFeedback[0].id, first.id)
+        XCTAssertEqual(store.scoringFeedback[0].phrase, "kubernetes operators")
+        XCTAssertEqual(store.scoringFeedback[1].id, second.id)
+    }
+
+    /// An id that isn't in the list is a no-op, not an append — a stale sheet must not resurrect a
+    /// correction the user deleted behind it.
+    @MainActor
+    func testUpdateIgnoresUnknownID() throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = SettingsStore(modelContext: ModelContext(container))
+        store.scoringFeedback = [ScoringFeedback(phrase: "kubernetes", kind: .alwaysCredit)]
+        store.updateScoringFeedback(ScoringFeedback(phrase: "gone", kind: .neverCredit))
+        XCTAssertEqual(store.scoringFeedback.count, 1)
+        XCTAssertEqual(store.scoringFeedback[0].phrase, "kubernetes")
+    }
+}

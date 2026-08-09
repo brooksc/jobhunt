@@ -41,6 +41,26 @@ public struct ScoringFeedback: Codable, Sendable, Identifiable, Equatable {
             }
         }
 
+        /// Which direction this kind pushes a score. `alwaysCredit` and `neverCredit` have opposite
+        /// effects on every job, and in one undifferentiated list that difference is invisible —
+        /// which is the whole reason the list gets hard to reason about past a handful of entries.
+        public enum Polarity: Sendable {
+            /// Raises scores: the requirement is credited.
+            case credits
+            /// Lowers scores: a confirmed gap, penalised.
+            case penalises
+            /// Removes the requirement from scoring entirely, in neither direction.
+            case neutral
+        }
+
+        public var polarity: Polarity {
+            switch self {
+            case .alwaysCredit: .credits
+            case .neverCredit: .penalises
+            case .notARequirement, .jobSpecific: .neutral
+            }
+        }
+
         public var explanation: String {
             switch self {
             case .neverCredit:
@@ -87,6 +107,27 @@ public struct ScoringFeedback: Codable, Sendable, Identifiable, Equatable {
         self.jobNumber = jobNumber
         self.note = note
         self.createdAt = createdAt
+    }
+}
+
+// MARK: - Editing
+
+public extension ScoringFeedback {
+    /// A copy with the user-editable fields replaced, keeping everything that identifies it.
+    ///
+    /// `id`, `jobNumber` and `createdAt` are deliberately *not* editable. Delete-and-recreate was the
+    /// only way to narrow an over-broad phrase, and it threw away exactly those three — the note's
+    /// context, the job that motivated the rule, and the age that tells you whether it predates your
+    /// current résumé.
+    func updating(phrase: String? = nil, kind: Kind? = nil, note: String? = nil) -> ScoringFeedback {
+        ScoringFeedback(
+            id: id,
+            phrase: phrase ?? self.phrase,
+            kind: kind ?? self.kind,
+            jobNumber: jobNumber,
+            note: note ?? self.note,
+            createdAt: createdAt
+        )
     }
 }
 

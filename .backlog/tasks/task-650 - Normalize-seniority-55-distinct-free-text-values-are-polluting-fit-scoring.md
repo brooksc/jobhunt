@@ -1,9 +1,10 @@
 ---
 id: TASK-650
 title: 'Normalize seniority: 55 distinct free-text values are polluting fit scoring'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-26 20:23'
+updated_date: '2026-08-09 20:25'
 labels:
   - llm
   - data-quality
@@ -41,10 +42,26 @@ Open question worth deciding first: the right enum. Something like intern / entr
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The extraction prompt constrains seniority to a documented enum, as remote_type already is
-- [ ] #2 A pure, unit-tested normalizer maps legacy free-text values (case variants, mid_senior/mid-level spellings, Sr./III) onto the enum
-- [ ] #3 Values that carry no reliable level signal (bare year ranges) normalize to null rather than being guessed into a band
-- [ ] #4 A migrator mode backfills stored seniority for existing jobs, and is idempotent
-- [ ] #5 Fit-scoring prompts receive the normalized value
-- [ ] #6 Distinct stored seniority values drop from 55 to the enum's size (plus null)
+- [x] #1 The extraction prompt constrains seniority to a documented enum, as remote_type already is
+- [x] #2 A pure, unit-tested normalizer maps legacy free-text values (case variants, mid_senior/mid-level spellings, Sr./III) onto the enum
+- [x] #3 Values that carry no reliable level signal (bare year ranges) normalize to null rather than being guessed into a band
+- [x] #4 A migrator mode backfills stored seniority for existing jobs, and is idempotent
+- [x] #5 Fit-scoring prompts receive the normalized value
+- [ ] #6 not verified (needs the live store): distinct stored values drop from 55 to the enum's size plus null — proven on synthetic data (8 values collapse to 3) and idempotent, but the real 415-job store was not touched, since that needs the app quit and a backup, which is the user's call
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+**The enum, which the task left open.** intern / entry / mid / senior / lead / staff / principal / manager / director / executive. Both tracks are represented because postings use both, and folding `Director` into `Principal` would erase the distinction the user is actually triaging on. `lead` is included over the task's sketch because the live store has 18 of them.
+
+**Bare years and ordinals normalize to null, not a band.** "5+ years" maps to different levels by company and industry, and "III" has no scale attached. Since this text feeds `experience_level` scoring, guessing a band would push fabricated evidence into the score — worse than the honest absence the scorer already handles.
+
+**A compound takes its lower bound** (`Senior/Principal` → `senior`): that is the level the posting will actually consider, and overstating it inflates the fit of roles the candidate is under-levelled for.
+
+Applied in three places, because one is not enough: the prompt now constrains the value the way `remote_type` already does; the write path normalizes again (the model still returns the posting's own wording often enough); and `--normalize-seniority` backfills stored rows. The backfill is idempotent because every canonical value is a fixed point of the normalizer — asserted directly over `SeniorityLevel.allCases`.
+
+**Tests** (15): case variants collapse; five mid-level spellings collapse; abbreviations (`Sr.`, `Jr`); unusable values clear to null; compounds take the first level; the management track stays distinct; longer phrases beat their prefixes (`Senior Manager` is a manager, not a senior IC); no substring false positives (`seniority`, `vpn`); and four store-level tests covering collapse, clearing, idempotency and canonical rows being left untouched.
+
+Criterion 6 is `not verified`: the collapse is proven on synthetic data and by construction, but the real 415-job store was not touched — that needs the app quit and a backup first, which is the user's call.
+<!-- SECTION:FINAL_SUMMARY:END -->

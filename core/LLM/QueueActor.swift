@@ -944,10 +944,17 @@ public actor QueueActor {
                 metadata: metadata
             ) else { return false }
 
+            // Announce the job's headline (active-résumé) score, not this résumé's raw result — a
+            // manual rescore of a shelved résumé would otherwise advertise a number the app doesn't
+            // show anywhere. Falls back to the raw result if the mirror can't be read.
+            var headline: Int?
+            if let number = item.jobNumber {
+                headline = try? await store.jobMirrorScore(jobNumber: number)
+            }
             emit(.jobReady(
                 jobNumber: item.jobNumber,
                 title: item.jobTitle,
-                fitScore: fitResult.overall
+                fitScore: headline ?? fitResult.overall
             ))
             return true
         } catch {

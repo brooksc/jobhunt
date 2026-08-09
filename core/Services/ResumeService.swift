@@ -104,5 +104,10 @@ public actor ResumeService {
             r.active = active
             r.updatedAt = Date()
         }
+        // The job-level fit mirror is derived from ACTIVE résumés only, so flipping this flag changes
+        // what every job row, filter, sort and dashboard aggregate should say. Without this, a
+        // deactivated résumé kept driving the headline number until something unrelated triggered a
+        // recompute — the score was hidden in the Fit tab while still ranking the list.
+        try await store.recomputeAllJobFitMirrors()
     }
 }

@@ -402,11 +402,21 @@ public actor BackgroundStore {
             return (nil, .running, nil)
         } else if job.fitScores.contains(where: { $0.fitStatus == .pending && ($0.resume?.active ?? false) }) {
             return (nil, .pending, nil)
-        } else if job.fitScores.contains(where: { $0.fitStatus == .failed }) {
+        } else if job.fitScores.contains(where: { $0.fitStatus == .failed && ($0.resume?.active ?? false) }) {
             return (nil, .failed, nil)
         } else {
             return (nil, FitStatus.none, nil)
         }
+    }
+
+    /// The job's headline fit score — the ACTIVE-résumé mirror, not any one résumé's result.
+    ///
+    /// The ready-notification used to advertise whatever score had just been computed, so manually
+    /// rescoring a shelved résumé would announce a number the app itself no longer shows anywhere.
+    public func jobMirrorScore(jobNumber: Int) throws -> Int? {
+        try modelContext.fetch(
+            FetchDescriptor<Job>(predicate: #Predicate { $0.jobNumber == jobNumber })
+        ).first?.fitScore
     }
 
     /// One-time cleanup: recompute every job's denormalized fit mirror, touching only jobs whose

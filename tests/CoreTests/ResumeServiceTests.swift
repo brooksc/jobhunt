@@ -511,3 +511,102 @@ private struct NoOpProvider: LLMProvider {
         throw LLMProviderError.httpError(statusCode: 503, body: "no-op")
     }
 }
+
+/// The job-level fit mirror is what the job list, filters, sorting and dashboard all read. It is
+/// defined as the best score among ACTIVE résumés, so toggling a résumé's active flag has to move it
+/// — otherwise a résumé the user shelved keeps ranking their list while its card is hidden from the
+/// Fit tab, and the two disagree.
+final class InactiveResumeFitMirrorTests: XCTestCase {
+    private var container: ModelContainer!
+    private var store: BackgroundStore!
+    private var service: ResumeService!
+
+    override func setUp() async throws {
+        container = try ModelContainerFactory.inMemory()
+        store = BackgroundStore(modelContainer: container)
+        service = ResumeService(store: store)
+    }
+
+    override func tearDown() async throws {
+        container = nil; store = nil; service = nil
+    }
+
+    /// Two résumés, both scored; the weaker one is the only active one after the toggle.
+    private func seed() throws -> (jobID: String, strongID: String, weakID: String) {
+        let ctx = ModelContext(container)
+        let strong = Resume(id: "r-strong", name: "Strong", text: "…", active: true, sortOrder: 0)
+        let weak = Resume(id: "r-weak", name: "Weak", text: "…", active: true, sortOrder: 1)
+        let job = Job(id: "j1", jobNumber: 1, company: "Acme", title: "TPM")
+        ctx.insert(strong); ctx.insert(weak); ctx.insert(job)
+        for (resume, score) in [(strong, 90), (weak, 40)] {
+            let fs = JobFitScore(fitScore: score, fitStatus: .succeeded, fitScoreJSON: "{}")
+            fs.resume = resume
+            fs.job = job
+            ctx.insert(fs)
+        }
+        try ctx.save()
+        return (job.id, strong.id, weak.id)
+    }
+
+    private func mirror(_ jobID: String) throws -> (Int?, FitStatus) {
+        let ctx = ModelContext(container)
+        let job = try XCTUnwrap(
+            ctx.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID })).first
+        )
+        return (job.fitScore, job.fitStatus)
+    }
+
+    func testDeactivatingDropsThatResumeOutOfTheHeadline() async throws {
+        let ids = try seed()
+        try await store.recomputeAllJobFitMirrors()
+        XCTAssertEqual(try mirror(ids.jobID).0, 90, "best of the two active résumés")
+
+        try await service.setResumeActive(id: ids.strongID, active: false)
+        XCTAssertEqual(
+            try mirror(ids.jobID).0, 40,
+            "with the 90 résumé deactivated the headline must fall to the remaining active one"
+        )
+    }
+
+    /// Deactivating preserves the score; reactivating brings it back with no rescoring.
+    func testReactivatingRestoresWithoutRescoring() async throws {
+        let ids = try seed()
+        try await service.setResumeActive(id: ids.strongID, active: false)
+        XCTAssertEqual(try mirror(ids.jobID).0, 40)
+
+        try await service.setResumeActive(id: ids.strongID, active: true)
+        XCTAssertEqual(try mirror(ids.jobID).0, 90, "the preserved score becomes eligible again")
+
+        let ctx = ModelContext(container)
+        XCTAssertEqual(try ctx.fetch(FetchDescriptor<JobFitScore>()).count, 2, "nothing was deleted")
+    }
+
+    /// With every résumé inactive the job is unscored, not stale.
+    func testAllInactiveLeavesNoScore() async throws {
+        let ids = try seed()
+        try await service.setResumeActive(id: ids.strongID, active: false)
+        try await service.setResumeActive(id: ids.weakID, active: false)
+        let (score, status) = try mirror(ids.jobID)
+        XCTAssertNil(score)
+        XCTAssertEqual(status, FitStatus.none)
+    }
+
+    /// The branch that was missed: a FAILED score from an inactive résumé must not set the job's fit
+    /// status to failed — succeeded/running/pending already filtered on active, `.failed` did not.
+    func testFailedScoreFromAnInactiveResumeIsIgnored() async throws {
+        let ctx = ModelContext(container)
+        let shelved = Resume(id: "r-old", name: "Shelved", text: "…", active: false, sortOrder: 0)
+        let job = Job(id: "j2", jobNumber: 2, company: "Acme", title: "TPM")
+        let fs = JobFitScore(fitScore: nil, fitStatus: .failed, fitScoreJSON: nil)
+        fs.resume = shelved
+        fs.job = job
+        ctx.insert(shelved); ctx.insert(job); ctx.insert(fs)
+        try ctx.save()
+
+        try await store.recomputeAllJobFitMirrors()
+        XCTAssertEqual(
+            try mirror("j2").1, FitStatus.none,
+            "a failure belonging to a shelved résumé must not show as the job's fit state"
+        )
+    }
+}

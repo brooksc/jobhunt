@@ -170,23 +170,25 @@ struct StoreRecoveryView: View {
     }
 
     private func startFresh() {
-        let storeURL = failure.storeURL
-        let timestamp = Int(Date().timeIntervalSince1970)
-        let corruptURL = storeURL.deletingLastPathComponent()
-            .appendingPathComponent("jobhunt.store.corrupt-\(timestamp)")
-        // Move (not delete) so the user can recover manually if needed
-        try? FileManager.default.moveItem(at: storeURL, to: corruptURL)
-        // Also move companion WAL/SHM files (hyphen-separated, as SQLite actually creates them)
-        let walFile = storeURL.deletingLastPathComponent()
-            .appendingPathComponent(storeURL.lastPathComponent + "-wal")
-        let shmFile = storeURL.deletingLastPathComponent()
-            .appendingPathComponent(storeURL.lastPathComponent + "-shm")
-        let corruptWal = corruptURL.deletingLastPathComponent()
-            .appendingPathComponent(corruptURL.lastPathComponent + "-wal")
-        let corruptShm = corruptURL.deletingLastPathComponent()
-            .appendingPathComponent(corruptURL.lastPathComponent + "-shm")
-        try? FileManager.default.moveItem(at: walFile, to: corruptWal)
-        try? FileManager.default.moveItem(at: shmFile, to: corruptShm)
-        NSApp.terminate(nil)
+        do {
+            let outcome = try StoreQuarantine.moveAside(storeURL: failure.storeURL)
+            if !outcome.strandedCompanions.isEmpty {
+                // Neither moved nor deleted: a stale -wal beside the new store is not inert, so say so
+                // rather than restarting into a database SQLite may try to replay into.
+                restoreError = "The damaged database was moved aside, but leftover "
+                    + outcome.strandedCompanions.joined(separator: " and ")
+                    + " files could not be removed. Delete them from "
+                    + failure.storeURL.deletingLastPathComponent().path
+                    + " before relaunching."
+                showRestoreError = true
+                return
+            }
+            NSApp.terminate(nil)
+        } catch {
+            // Do NOT terminate. Quitting here relaunched straight back into the same corrupt store
+            // with no explanation — the recovery action became a loop.
+            restoreError = error.localizedDescription
+            showRestoreError = true
+        }
     }
 }

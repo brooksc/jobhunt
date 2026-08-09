@@ -22,4 +22,7 @@ regexes = [
   # unpacked extension's id so a release build can be dogfooded with the locally-loaded extension.
   # The Web Store publishes this key, and it's stripped from the uploaded zip (package-extension.sh).
   '''vkl/1pnj2/gBXaeQnxaLq6096tz6P6coEAC''',
+  # PostHog project API token (extension/.env) — public by design: it's a write-only client token
+  # meant to be embedded in browser-shipped code (baked into dist/service_worker.js at build time).
+  '''phc_qNZcpeGwgfKCViFpw3iQyqfuXMuPDPHGKBNLMC9dDf8S''',
 ]

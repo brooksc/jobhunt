@@ -82,6 +82,10 @@
     link.download = jobhuntCsv.csvFilename();
     link.click();
     URL.revokeObjectURL(url);
+    await chrome.runtime.sendMessage({
+      type: "captureQueueExported",
+      captureCount: queue.length,
+    });
     setStatus("CSV exported.");
   }
 

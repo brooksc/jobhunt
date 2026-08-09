@@ -2,6 +2,15 @@
   "name": "jobhunt-extension",
   "private": true,
   "scripts": {
+    "build": "dotenv -- esbuild service_worker.js --bundle --outfile=dist/service_worker.js --format=iife --define:process.env.NODE_ENV=\\\"production\\\" --define:process.env.POSTHOG_PROJECT_TOKEN=\\\"${POSTHOG_PROJECT_TOKEN}\\\" --define:process.env.POSTHOG_HOST=\\\"${POSTHOG_HOST}\\\"",
+    "pretest": "npm run build",
     "test": "node --test tests/test_retry_queue.js tests/test_export_csv.js tests/test_service_worker_contract.js tests/test_capture_version.js tests/test_preflight_security.js tests/test_preflight_location.js tests/test_greenhouse_timeout.js tests/test_export_privacy.js tests/test_ats_enrichment.js"
+  },
+  "dependencies": {
+    "posthog-js": "^1.414.0"
+  },
+  "devDependencies": {
+    "dotenv-cli": "^11.0.0",
+    "esbuild": "^0.28.2"
   }
 }

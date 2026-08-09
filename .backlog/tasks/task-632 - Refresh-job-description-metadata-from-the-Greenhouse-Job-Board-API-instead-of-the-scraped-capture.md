@@ -6,7 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-07-22 23:20'
-updated_date: '2026-08-09 23:22'
+updated_date: '2026-08-09 23:23'
 labels:
   - greenhouse
   - extraction
@@ -56,4 +56,6 @@ One thing worth recording: the API's `content` is HTML that has *also* been HTML
 15 tests. Gate: fast gate TEST SUCCEEDED, BUILD SUCCEEDED, swiftlint 0 violations in 328 files, swiftformat 0.61.1 clean. `JobService.swift` crossed the file-length limit, so the new methods live in `JobService+Greenhouse.swift`.
 
 not verified: no live call was made to boards-api.greenhouse.io from this environment, so the real payload shape is matched against Greenhouse's documented fields and the decode is tested against a fixture, not against production JSON. The button's appearance is also (visual) unverified.
+
+**Verified against the live API after the fact.** Fetched `gitlab/8503792002` from boards-api.greenhouse.io (public, no key): every field the decoder reads is present and shaped as expected, and `content` is confirmed double-escaped. One correction to the assumption above — `updated_at` came back as `2026-08-03T16:43:10-04:00`, an offset rather than the `Z` the docs suggest; `.withInternetDateTime` handles it, and the format is now pinned in the test. The earlier "no live call was made" caveat no longer applies to the payload shape; only the UI button's appearance remains (visual) unverified.
 <!-- SECTION:FINAL_SUMMARY:END -->

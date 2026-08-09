@@ -1476,6 +1476,7 @@ struct FitTabView: View {
 // MARK: - Resume score card (accordion)
 
 private struct ResumeScoreCard: View {
+    @Environment(Router.self) private var router
     let fitScore: JobFitScore
     let isBest: Bool
     /// The résumé has been edited since this score was computed — the score is real work and still
@@ -1542,6 +1543,13 @@ private struct ResumeScoreCard: View {
                     currentStatus: item.status,
                     jobNumber: fitScore.job?.jobNumber,
                     onSave: { saveScoringFeedback($0) },
+                    onEditResume: {
+                        // Close the sheet and go where the fix actually is. Nothing is saved: the
+                        // rule is the fallback, so choosing the résumé path shouldn't also leave a
+                        // one-off string rule behind.
+                        feedbackTarget = nil
+                        router.navigateToSection(.resumes)
+                    },
                     onCancel: { feedbackTarget = nil },
                     measureReach: { phrase, kind, jobNumber in
                         try? await appServices.jobService.scoringFeedbackMatchPreview(

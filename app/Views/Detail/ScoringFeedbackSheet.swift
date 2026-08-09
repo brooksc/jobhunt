@@ -15,6 +15,8 @@ struct ScoringFeedbackSheet: View {
     let currentStatus: String
     let jobNumber: Int?
     let onSave: (ScoringFeedback) -> Void
+    /// Take the user to their résumé, which is the real fix for "I do have this".
+    let onEditResume: () -> Void
     let onCancel: () -> Void
     /// Measures what the candidate phrase would hit. Injected rather than reached through the
     /// environment so the sheet stays previewable and testable.
@@ -31,6 +33,7 @@ struct ScoringFeedbackSheet: View {
         currentStatus: String,
         jobNumber: Int?,
         onSave: @escaping (ScoringFeedback) -> Void,
+        onEditResume: @escaping () -> Void,
         onCancel: @escaping () -> Void,
         measureReach: @escaping (String, ScoringFeedback.Kind, Int?) async -> FeedbackMatchPreview?
     ) {
@@ -38,6 +41,7 @@ struct ScoringFeedbackSheet: View {
         self.currentStatus = currentStatus
         self.jobNumber = jobNumber
         self.onSave = onSave
+        self.onEditResume = onEditResume
         self.onCancel = onCancel
         self.measureReach = measureReach
         _phrase = State(initialValue: requirement)
@@ -83,9 +87,41 @@ struct ScoringFeedbackSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            // "I do have this" is usually a résumé gap, not a scoring defect. Five of the six rules
+            // in the live store were the same fact ("I have AI / gen-AI / agent experience") written
+            // five ways — each one a full sentence that could only ever match the posting it came
+            // from. Fixing the résumé generalises through the model's own judgement to any future
+            // phrasing; a rule does not. The flag's own copy already says this, so the sheet leads
+            // with it and keeps the rule as the fallback.
+            if kind == .alwaysCredit {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Your résumé doesn't say this", systemImage: "doc.text")
+                        .font(.caption.weight(.semibold))
+                    Text(
+                        "A recruiter or an ATS reads the same résumé the scorer did, so they'll miss "
+                            + "it too. Adding it there fixes every future job at once — a correction "
+                            + "here only fixes the wording below."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    Button {
+                        onEditResume()
+                    } label: {
+                        Label("Add it to my résumé…", systemImage: "square.and.pencil")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
+                .padding(10)
+                .background(Color.accentColor.opacity(0.07))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+
             if kind != .jobSpecific {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Match on").font(.caption.weight(.semibold))
+                    Text(kind == .alwaysCredit ? "Or match on" : "Match on")
+                        .font(.caption.weight(.semibold))
                     TextField("phrase", text: $phrase, axis: .vertical)
                         .lineLimit(1 ... 3)
                     Text(

@@ -38,3 +38,37 @@ final class QueueActivityTests: XCTestCase {
         }
     }
 }
+
+/// The queue showed how long each request took but never when, so a row sitting since yesterday
+/// looked identical to one enqueued a minute ago — the distinction you need when it appears stuck.
+final class QueueTimestampTests: XCTestCase {
+    private let calendar = Calendar(identifier: .gregorian)
+    private let locale = Locale(identifier: "en_US_POSIX")
+
+    private func label(_ date: Date?, now: Date) -> String {
+        QueueTimestamp.label(for: date, now: now, calendar: calendar, locale: locale)
+    }
+
+    /// #3: today is time-only. A column wide enough for a date on every row would spend most of its
+    /// width repeating today's date.
+    func testTodayShowsTimeOnly() {
+        let now = Date(timeIntervalSince1970: 1_760_000_000)
+        let earlier = now.addingTimeInterval(-3600)
+        let text = label(earlier, now: now)
+        XCTAssertFalse(text.contains("/"), "same-day rows must not carry a date: \(text)")
+        XCTAssertTrue(text.contains(":"), "expected a time: \(text)")
+    }
+
+    /// #3: once it isn't today, the date is the part that carries information.
+    func testOlderRowsIncludeTheDate() {
+        let now = Date(timeIntervalSince1970: 1_760_000_000)
+        let yesterday = now.addingTimeInterval(-36 * 3600)
+        let text = label(yesterday, now: now)
+        XCTAssertTrue(text.contains("/"), "an older row must show its date: \(text)")
+    }
+
+    /// #4: a queued-but-unstarted request has no finish time; the column must not invent one.
+    func testNilRendersAsADash() {
+        XCTAssertEqual(label(nil, now: Date()), "—")
+    }
+}

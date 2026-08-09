@@ -138,6 +138,7 @@ struct LLMQueueView: View {
                     systemImage: "checkmark.circle",
                     requests: completedPaneRequests,
                     emptyText: "No completed requests yet",
+                    time: .completed,
                     clearAction: { Task { await clearCompleted() } }
                 )
             }
@@ -166,6 +167,7 @@ struct LLMQueueView: View {
         systemImage: String,
         requests: [LLMRequest],
         emptyText: String,
+        time: TimeColumn = .queued,
         clearAction: (() -> Void)? = nil
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -199,14 +201,30 @@ struct LLMQueueView: View {
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                requestTable(requests)
+                requestTable(requests, time: time)
             }
         }
         .frame(minHeight: 120)
     }
 
+    /// Which timestamp a pane shows. The queue reported how LONG each request took but never WHEN,
+    /// so a row sitting since yesterday looked identical to one enqueued a minute ago — precisely the
+    /// distinction you need when the queue appears stuck. Each pane shows the timestamp that means
+    /// something for its rows: when work was queued, or when it finished.
+    enum TimeColumn {
+        case queued
+        case completed
+
+        var title: String {
+            switch self {
+            case .queued: "Queued"
+            case .completed: "Completed"
+            }
+        }
+    }
+
     /// The request table (shared columns + selection + context menu), rendered for a given subset.
-    private func requestTable(_ requests: [LLMRequest]) -> some View {
+    private func requestTable(_ requests: [LLMRequest], time: TimeColumn = .queued) -> some View {
         Table(requests, selection: $selection) {
             TableColumn("Type") { req in
                 Text(req.requestType == .extract ? "Extract" : "Fit")
@@ -242,6 +260,13 @@ struct LLMQueueView: View {
                     .lineLimit(1)
                     .foregroundStyle(.secondary)
             }
+
+            TableColumn(time.title) { req in
+                Text(QueueTimestamp.label(for: time == .queued ? req.createdAt : req.finishedAt))
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+            .width(90)
 
             TableColumn("Duration") { req in
                 Text(durationString(for: req))

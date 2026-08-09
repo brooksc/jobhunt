@@ -386,6 +386,28 @@ public actor JobhuntServer {
         sendResponse(response, on: connection)
     }
 
+    // SECURITY MODEL — read this before treating the origin check as authentication.
+    //
+    // **The loopback binding is the boundary. CORS is not.** `Origin` is a header a browser sets and
+    // any local process can forge with one line of curl, so the check below cannot authenticate a
+    // caller. What actually keeps other machines out is `params.requiredInterfaceType = .loopback`
+    // (see `start()`): non-loopback peers are refused at the OS networking layer and never reach any
+    // of this code.
+    //
+    // So the extension routes (/captures, /site-reviews, /api/jobs/by-url, /api/app/focus) are
+    // protected against the network, and NOT against a hostile process already running as this user.
+    // That is a deliberate choice for a single-user localhost companion app: any such process could
+    // read the SwiftData store directly anyway, so a token on these routes would add ceremony without
+    // moving the boundary. MCP routes DO carry a bearer token, for a different reason — that helper is
+    // driven by third-party AI clients, so the token scopes which of them may act on the user's data.
+    //
+    // What the origin check IS for: stopping *other Chrome extensions* driving these routes from the
+    // browser, where the same-origin policy makes `Origin` trustworthy. That is a real boundary, and
+    // it is the only thing this function is claiming.
+    //
+    // If a hostile-localhost threat model ever matters, the fix is a launch-time shared secret handed
+    // to the extension at port discovery — not a stricter origin list.
+    //
     // TASK-334 / TASK-431: Only approved Jobhunt extension origins may use the extension routes and
     // receive reflected CORS headers. Any installed Chrome extension can forge
     // `Origin: chrome-extension://<its-id>`, so reflecting CORS / authorizing routes for all

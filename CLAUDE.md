@@ -321,4 +321,14 @@ When adding a new fixup: add a `BackgroundStore` (or other JobhuntCore) method +
 - **Server errors**: Use `safeServerError(_:context:)` instead of `error.localizedDescription` in HTTP response bodies to avoid leaking file paths or SwiftData internals.
 - **HTTP server**: `JobhuntServer.receiveRequest` accumulates TCP chunks until a complete request (headers + full Content-Length body) is parsed before dispatching. Don't process partial reads.
 - **Test isolation**: `ServerTests` share one `JobhuntServer` instance across all tests in the class (static `sharedServer`) to avoid NWListener port lifecycle issues.
-- **CORS**: Only `chrome-extension://` origins are allowed CORS headers. The allowlist in `JobhuntServer.allowedExtensionOrigins` is empty during development (permits all `chrome-extension://` origins); add the CWS ID after publishing.
+- **CORS is not the security boundary — the loopback binding is.** `Origin` is forgeable by any local
+  process, so the extension-route check cannot authenticate a caller. What keeps other machines out is
+  `requiredInterfaceType = .loopback`, enforced by the OS before any request is parsed. The origin
+  allowlist exists to stop *other Chrome extensions* driving those routes from the browser, where the
+  same-origin policy makes `Origin` trustworthy. Extension routes are therefore protected against the
+  network but not against a hostile process running as this user — deliberate, since such a process
+  could read the SwiftData store directly. MCP routes carry a bearer token for a different reason:
+  they are driven by third-party AI clients, so the token scopes which may act on the user's data.
+  The allowlist now contains the published CWS ID (`JobhuntServer.productionExtensionOrigin`); debug
+  builds additionally permit any `chrome-extension://` origin so unpacked dev builds work, and release
+  builds fail closed. Full rationale in the comment above `isAllowedExtensionOrigin`.

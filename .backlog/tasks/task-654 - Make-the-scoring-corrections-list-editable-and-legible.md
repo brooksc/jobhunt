@@ -1,9 +1,10 @@
 ---
 id: TASK-654
 title: Make the scoring-corrections list editable and legible
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-01 19:49'
+updated_date: '2026-08-09 22:52'
 labels:
   - fit-scoring
   - ui
@@ -11,6 +12,12 @@ dependencies: []
 references:
   - app/Views/Settings/ScoringFeedbackSettings.swift
   - core/Services/ScoringFeedback.swift
+modified_files:
+  - core/Services/ScoringFeedback.swift
+  - core/Settings/SettingsStore.swift
+  - app/Views/Settings/ScoringFeedbackSettings.swift
+  - app/Views/Settings/SettingsTab.swift
+  - tests/CoreTests/ScoringFeedbackTests.swift
 priority: medium
 ---
 
@@ -40,9 +47,27 @@ Corrections live as JSON in the `scoring_feedback` setting (no schema migration)
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An existing correction's phrase, kind and note can be edited in place, preserving its id and source job
-- [ ] #2 Positive and negative corrections are visually distinguishable at a glance
-- [ ] #3 Each entry shows how many jobs it currently matches, so an over-broad phrase is visible before it does damage
-- [ ] #4 Each entry shows when it was created and links back to the job it came from
-- [ ] #5 Editing or deleting recomputes affected scores immediately, as saving already does
+- [x] #1 An existing correction's phrase, kind and note can be edited in place, preserving its id and source job
+- [x] #2 Positive and negative corrections are visually distinguishable at a glance
+- [x] #3 Each entry shows how many jobs it currently matches, so an over-broad phrase is visible before it does damage
+- [x] #4 Each entry shows when it was created and links back to the job it came from
+- [x] #5 Editing or deleting recomputes affected scores immediately, as saving already does
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+#1 `ScoringFeedback.updating(phrase:kind:note:)` returns a copy with the editable fields replaced and `id`, `jobNumber` and `createdAt` carried over; a `ScoringFeedbackEditor` sheet edits phrase/kind/note with the existing `rejectionReason` shown live and Save disabled while it's non-nil. `SettingsStore.updateScoringFeedback` replaces in place — deliberately preserving array position, since `verdict(forRequirement:jobNumber:)` returns on the first `neverCredit` it meets and re-appending would silently change which rule wins when two match.
+
+#2 New `Kind.Polarity` (credits / penalises / neutral) drives a coloured glyph per row, so the two kinds with opposite effects are distinguishable without reading the label.
+
+#3 Was already shipped — `matchCountLabel` shows the live match count and calls out a correction matching nothing. Left as-is.
+
+#4 Each row shows the creation date and, where there is a source job, a `jobhunt://jobs/N` link. Settings is its own window, so the existing deep-link handler in `PlatformIntegration` is the right route rather than reaching for the main window's router.
+
+#5 `saveFeedbackEdit` calls `recomputeAllFitScores()` and refreshes match counts, mirroring `removeFeedback`.
+
+5 tests added (`ScoringFeedbackEditingTests`). Gate: fast gate TEST SUCCEEDED, app target BUILD SUCCEEDED, swiftlint 0 violations, swiftformat 0.61.1 clean.
+
+not verified: (visual) — row layout with the new glyph/date/link at real Settings widths, and the editor sheet's appearance. No screen access was taken; behaviour is covered at the model level.
+<!-- SECTION:FINAL_SUMMARY:END -->

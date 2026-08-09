@@ -27,7 +27,7 @@ implementable but not *visually* confirmable; they are WORK with a parked criter
 | 500 — Cut Contacts & Cover Letters | (a) | Removal is a breaking schema change and a product call about dropping features. Pairs with 480. |
 | 653 — Headless-browser availability checking | (a) | Adds a browser runtime to a local-first Mac app — a material architecture and footprint decision, not a routine call. |
 
-## WORK (42)
+## WORK (43, including 671 created during the run)
 
 Ordered as the goal requires: correctness bugs, then scoring, then features; cheapest first.
 
@@ -41,7 +41,8 @@ Ordered as the goal requires: correctness bugs, then scoring, then features; che
 | 586 — SettingsStore.set swallows keychain write failure | |
 | 614 — Fit scores from inactive resumes still shown | |
 | 651 — Remote roles bypass geography criteria | "Remote — Europe/Colombia" reads as meeting criteria. |
-| 657 — LLM queue batch barrier | Deadline + stale-drain supersede landed in `f96ae375`; the barrier→continuous-dispatch half remains. |
+| 657 — LLM queue orphan reaper | **Done.** Deadline + stale-drain supersede landed earlier; the reaper landed here. The barrier half was split to 671 rather than held behind it. |
+| 671 — batch barrier → continuous dispatch | Split out of 657 during this run. WORK, not a parking place: a split only justifies landing the safe half first, not shelving the rest. |
 | 548 — Start Fresh not atomic or failure-visible | Destructive path; test hard. |
 | 514 — Queued captures with permanent server rejections | |
 | 587 — Loopback binding is the real security boundary, not CORS | Document or enforce. |

@@ -8,10 +8,17 @@ import Foundation
 /// model being considered as a replacement. Every prompt change was therefore judged either by
 /// eyeballing production re-scores or not at all.
 ///
-///     JOBHUNT_EVAL_PROVIDER=openrouter \
-///     JOBHUNT_EVAL_MODEL=deepseek/deepseek-v4-flash-0731 \
-///     JOBHUNT_EVAL_API_KEY=sk-or-... \
-///       xcodebuild test -scheme Jobhunt-DMG -only-testing:LLMEval
+///     TEST_RUNNER_JOBHUNT_EVAL_PROVIDER=openrouter \
+///     TEST_RUNNER_JOBHUNT_EVAL_MODEL=deepseek/deepseek-v4-flash-0731 \
+///     TEST_RUNNER_JOBHUNT_EVAL_REPEATS=5 \
+///       xcodebuild test -scheme Jobhunt-Eval -only-testing:LLMEval
+///
+/// **The `TEST_RUNNER_` prefix is required, not optional.** `xcodebuild` does not pass arbitrary
+/// environment variables through to the test process; only `TEST_RUNNER_`-prefixed ones reach it
+/// (which is why `value(env:file:)` below checks both spellings). Without the prefix the variable is
+/// silently ignored and the harness falls back to the config file — so a run that looks like it
+/// measured three models can quietly have measured one, five times, with no error anywhere. That
+/// happened while validating TASK-668; the giveaway was that the `pass N/5` lines never printed.
 ///
 /// The legacy `JOBHUNT_LLM_URL` / `JOBHUNT_LLM_MODEL` pair still selects LM Studio, so existing
 /// invocations keep working.

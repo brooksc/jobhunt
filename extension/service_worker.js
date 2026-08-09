@@ -1,6 +1,11 @@
-importScripts("capture.js");
-importScripts("retry_queue.js");
-importScripts("export_csv.js");
+import "./capture.js";
+import "./retry_queue.js";
+import "./export_csv.js";
+import "./posthog.js";
+
+function captureAnalytics(event, properties = {}) {
+  globalThis.jobhuntPosthog?.capture(event, properties);
+}
 
 const BUILD_DATE = "2026-06-02";
 
@@ -243,9 +248,21 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === "flushCaptureQueue") {
     flushQueuedCaptures()
-      .then((result) => sendResponse({ ok: true, result }))
+      .then((result) => {
+        captureAnalytics("capture_queue_sync_completed", {
+          submitted_count: result.submitted,
+          remaining_count: result.remaining,
+        });
+        sendResponse({ ok: true, result });
+      })
       .catch((error) => sendResponse({ ok: false, error: String(error) }));
     return true;
+  }
+
+  if (message.type === "captureQueueExported") {
+    captureAnalytics("capture_queue_exported", { capture_count: message.captureCount });
+    sendResponse({ ok: true });
+    return false;
   }
 
   return false;
@@ -422,6 +439,11 @@ async function captureCurrentTab(tab, userNote = "") {
 
   const { payload, action } = await captureTabPayload(tab.id, userNote);
   const result = await submitOrQueue(payload);
+  captureAnalytics("job_capture_completed", {
+    capture_source: userNote ? "note" : "direct",
+    result: result?.queued ? "queued" : result?.permanent ? "rejected" : "submitted",
+    open_in_app_requested: action === "open",
+  });
   if (action === "open" && result && !result.queued) {
     await openApp(result.job_number);
   }
@@ -559,6 +581,7 @@ async function markSiteReviewed(tab) {
   const payload = buildSiteReviewPayload(tab);
   try {
     await submitSiteReview(payload);
+    captureAnalytics("site_review_marked");
     await showBadge("REV", "#137333");
   } catch (_error) {
     await showBadge("ERR", "#b00020");
@@ -658,6 +681,10 @@ async function openQueueStatus({ background = false } = {}) {
 
 async function syncQueueFromMenu() {
   const result = await flushQueuedCaptures();
+  captureAnalytics("capture_queue_sync_completed", {
+    submitted_count: result.submitted,
+    remaining_count: result.remaining,
+  });
   if (result.submitted === 0 && result.remaining > 0) {
     await showBadge("ERR", "#b00020");
   } else if (result.remaining > 0) {
@@ -676,15 +703,18 @@ async function exportQueueCsv() {
   const csv = jobhuntCsv.queueToCsv(queue);
   const dataUrl = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
   await chrome.downloads.download({ url: dataUrl, filename: jobhuntCsv.csvFilename() });
+  captureAnalytics("capture_queue_exported", { capture_count: queue.length });
   await showBadge("CSV", "#137333");
 }
 
 async function checkServerConnection() {
   try {
     const port = await findServerPort();
+    captureAnalytics("server_connection_checked", { connected: true });
     await chrome.action.setTitle({ title: `Capture job [${BUILD_DATE}] — server on :${port}` });
     await showBadge("OK", "#137333");
   } catch (_error) {
+    captureAnalytics("server_connection_checked", { connected: false });
     await chrome.action.setTitle({ title: `Capture job [${BUILD_DATE}] — server not found` });
     await showBadge("ERR", "#b00020");
   }
@@ -710,6 +740,7 @@ async function openJobInApp(tab) {
 }
 
 async function openApp(jobNumber) {
+  captureAnalytics("jobhunt_app_opened");
   try {
     // Ask the Electron window to focus and navigate — no new browser tab needed.
     const focusUrl = await serverUrl("/api/app/focus");

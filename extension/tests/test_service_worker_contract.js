@@ -96,7 +96,7 @@ global.chrome = {
 
 eval(fs.readFileSync(path.join(__dirname, '../retry_queue.js'), 'utf8'));
 eval(fs.readFileSync(path.join(__dirname, '../export_csv.js'), 'utf8'));
-eval(fs.readFileSync(path.join(__dirname, '../service_worker.js'), 'utf8'));
+eval(fs.readFileSync(path.join(__dirname, '../dist/service_worker.js'), 'utf8'));
 
 assert.ok(messageListener, 'service_worker.js must register a chrome.runtime.onMessage listener');
 

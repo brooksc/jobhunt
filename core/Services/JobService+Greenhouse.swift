@@ -54,4 +54,35 @@ public extension JobService {
         if case let .failure(error) = result { return error }
         return .malformedResponse
     }
+
+    /// Every other open role on the same Greenhouse board, ranked against this job (TASK-634).
+    ///
+    /// Resolves the board by fetching this posting first rather than guessing again: a wrong slug
+    /// would list another company's whole board, which is a confusing failure and a silent one.
+    /// Returns an empty list on any failure — this is a discovery aid, not something to interrupt
+    /// the user with when a board is unreachable.
+    func openRolesAtSameCompany(
+        jobID: String,
+        session: URLSession = .shared
+    ) async -> [OpenRoleRelevance.Scored] {
+        guard let identity = try? await store.greenhouseIdentity(jobID: jobID) ?? nil else {
+            return []
+        }
+        let posting = await GreenhouseJobBoard.fetch(
+            ghjid: identity.ghjid,
+            company: identity.company,
+            urlString: identity.urlString,
+            session: session
+        )
+        guard case let .success(resolved) = posting else { return [] }
+
+        let roles = await GreenhouseJobBoard.listOpenRoles(board: resolved.board, session: session)
+        return OpenRoleRelevance.rank(
+            roles: roles,
+            title: resolved.title,
+            location: resolved.locationName,
+            // Drop the posting the user is already looking at.
+            excludingURLs: Set([resolved.absoluteURL, identity.urlString].compactMap(\.self))
+        )
+    }
 }

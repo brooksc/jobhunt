@@ -162,6 +162,7 @@ private struct DetailHeader: View {
     @State private var showApplyConfirmation = false
     @State private var isEnqueuing = false
     @State private var isRefreshingSource = false
+    @State private var showOpenRoles = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -386,6 +387,16 @@ private struct DetailHeader: View {
                 // JavaScript shell let us scrape. Explicit per job — the board slug is a guess.
                 if isGreenhouseBacked {
                     Button {
+                        showOpenRoles = true
+                    } label: {
+                        Label("Other roles here", systemImage: "building.2")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("List this company's other open roles from its job board")
+
+                    Button {
                         refreshFromGreenhouse()
                     } label: {
                         Label("Refresh from Greenhouse", systemImage: "arrow.down.doc")
@@ -437,6 +448,9 @@ private struct DetailHeader: View {
                 .padding(.horizontal, 14)
                 .padding(.bottom, 10)
             }
+        }
+        .sheet(isPresented: $showOpenRoles) {
+            OpenRolesSheet(jobID: job.id, companyName: job.displayCompany)
         }
     }
 

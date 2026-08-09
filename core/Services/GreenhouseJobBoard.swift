@@ -27,6 +27,18 @@ public enum GreenhouseJobBoard {
         public let board: String
     }
 
+    /// One row of the board's open-roles list (TASK-634). Deliberately not `Posting`: the list
+    /// endpoint omits `content`, and a type that claims a description it doesn't have would invite
+    /// a caller to refresh a job from an empty body.
+    public struct OpenRole: Sendable, Equatable, Identifiable {
+        public let id: String
+        public let title: String
+        public let locationName: String?
+        public let absoluteURL: String
+        public let updatedAt: Date?
+        public let firstPublished: Date?
+    }
+
     public enum RefreshError: Error, Equatable {
         /// No `gh_jid` in any of the job's URLs — this posting isn't Greenhouse-backed.
         case notGreenhouse
@@ -91,6 +103,50 @@ public enum GreenhouseJobBoard {
             absoluteURL: raw["absolute_url"] as? String,
             board: board
         )
+    }
+
+    /// Every open posting on a board (TASK-634).
+    ///
+    /// The board slug is still a guess, so this takes the resolved board from a successful posting
+    /// fetch rather than guessing again — listing the wrong company's 189 open roles would be a
+    /// confusing failure, and a silent one.
+    public static func listOpenRoles(
+        board: String,
+        session: URLSession = .shared
+    ) async -> [OpenRole] {
+        guard let url = URL(string: "https://boards-api.greenhouse.io/v1/boards/\(board)/jobs")
+        else { return [] }
+        var request = URLRequest(url: url)
+        // Bounded, and longer than the single-posting timeout: gitlab's board returns 189 roles.
+        request.timeoutInterval = 20
+        guard let (data, response) = try? await session.data(for: request),
+              let http = response as? HTTPURLResponse, http.statusCode == 200 else { return [] }
+        return decodeRoles(data)
+    }
+
+    /// Split out so the list payload is testable without a network round trip.
+    public static func decodeRoles(_ data: Data) -> [OpenRole] {
+        guard let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let jobs = raw["jobs"] as? [[String: Any]] else { return [] }
+        return jobs.compactMap { entry in
+            // A row with no URL can't be added, and one with no title can't be judged — skip rather
+            // than render a blank row the user can't act on.
+            guard let absoluteURL = entry["absolute_url"] as? String, !absoluteURL.isEmpty,
+                  let title = (entry["title"] as? String)?
+                  .trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty
+            else { return nil }
+            let id = (entry["id"] as? Int).map(String.init)
+                ?? (entry["id"] as? String)
+                ?? absoluteURL
+            return OpenRole(
+                id: id,
+                title: title,
+                locationName: (entry["location"] as? [String: Any])?["name"] as? String,
+                absoluteURL: absoluteURL,
+                updatedAt: (entry["updated_at"] as? String).flatMap(parseTimestamp),
+                firstPublished: (entry["first_published"] as? String).flatMap(parseTimestamp)
+            )
+        }
     }
 
     /// Greenhouse stamps `updated_at` as ISO-8601, sometimes with fractional seconds.

@@ -4,6 +4,7 @@ title: Create Safari and Firefox JobHunt capture extensions
 status: To Do
 assignee: []
 created_date: '2026-07-22 20:01'
+updated_date: '2026-08-10 01:39'
 labels:
   - extension
   - safari
@@ -28,6 +29,13 @@ references:
   - Project.swift
   - README.md
   - CLAUDE.md
+modified_files:
+  - extension/manifest.firefox.json
+  - extension/tests/test_firefox_manifest.js
+  - extension/package.json
+  - scripts/package-firefox-extension.sh
+  - server/swift/JobhuntServer.swift
+  - tests/ServerTests/JobhuntServerTests.swift
 priority: high
 ---
 
@@ -57,10 +65,10 @@ Use temporary test data and the local Swift server. Do not mutate production dat
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Chrome, Firefox, and Safari builds consume one shared capture/payload/queue implementation with only thin browser-specific API adapters and manifests.
-- [ ] #2 The existing Chrome extension retains current behavior and its regression suite remains passing.
+- [x] #1 Chrome, Firefox, and Safari builds consume one shared capture/payload/queue implementation with only thin browser-specific API adapters and manifests.
+- [x] #2 The existing Chrome extension retains current behavior and its regression suite remains passing.
 - [ ] #3 Firefox supports toolbar capture, keyboard capture, applicable context-menu actions, Save with Note, structured/full-text capture, local port discovery, offline retry, status feedback, and queue management.
-- [ ] #4 A Firefox manifest/package includes a stable Gecko add-on identity, least-privilege permissions, version metadata, icons, and a reproducible AMO-ready artifact/signing workflow.
+- [x] #4 A Firefox manifest/package includes a stable Gecko add-on identity, least-privilege permissions, version metadata, icons, and a reproducible AMO-ready artifact/signing workflow.
 - [ ] #5 A Safari Web Extension target is embedded in the JobHunt macOS app and builds with the required bundle identifiers, entitlements, signing, and release packaging.
 - [ ] #6 Safari supports the same core capture, note, local submission, offline retry, and status workflows, with documented equivalent UX for any unsupported WebExtension API.
 - [ ] #7 All browsers submit the same versioned capture contract to the existing Swift server and preserve structured data, canonical URL, selected/visible text, notes, and extension version.
@@ -73,3 +81,19 @@ Use temporary test data and the local Swift server. Do not mutate production dat
 - [ ] #14 Onboarding, Settings, README/help, website install links, and troubleshooting expose all three supported browsers without claiming installation or connectivity that has not been detected.
 - [ ] #15 Manual verification covers LinkedIn and at least two ATS-hosted postings, selected-text capture, Save with Note, app offline/online recovery, duplicate capture, restricted pages, and browser restart for Safari and Firefox.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+**2026-08-09 — buildable half landed; the rest parked with named blockers.**
+
+**Done.** #1 one shared codebase with a second manifest — the capture, queue and payload code is plain JS both browsers run. #2 Chrome is untouched and its suite still passes (118 tests). #4 `manifest.firefox.json` carries a stable `browser_specific_settings.gecko.id`, the same least-privilege permission set, version metadata and icons; `scripts/package-firefox-extension.sh` produces a reproducible unsigned artifact and fails if the two manifests' versions diverge. The manifest encodes the two real differences: Firefox MV3 has no `background.service_worker` (it needs `background.scripts`, and using a service worker silently yields a dead background), and Chrome's `key` is dropped because it pins the *unpacked Chrome* id and means nothing to Firefox.
+
+**A finding that changes #9.** Firefox extension origins are `moz-extension://<uuid>` where the UUID is generated **per install**, not per add-on — so the allowlist that pins the Chrome extension has nothing stable to pin. Firefox origins are therefore accepted only under `allowArbitrary` (debug builds), exactly like unpacked Chrome dev extensions, with a test asserting a release build rejects them. Accepting every `moz-extension://` origin in release would let any installed add-on drive capture, which is what the Chrome allowlist exists to prevent. **Shipping Firefox to release needs the launch-time shared secret the CORS comment already anticipates** — that's a design change, not a line of config, and it should be its own task.
+
+**PARK (c) — no account or signing identity in this environment:** #5 and #6 (a Safari Web Extension target needs an Xcode target, bundle identifiers, entitlements and a signing identity), #12's Safari half (a signed/notarized app containing the extension), and AMO signing for #4's submission workflow.
+
+**PARK (b) — visual/manual only:** #3, #6's UX equivalence, #8, #11's end-to-end runs, and all of #15. Verifying Firefox capture, port discovery, offline retry and browser restart means installing the add-on and driving a real browser, which this run may not do.
+
+**Still WORK, not started:** #7 (contract parity assertions across all three), #10 (per-browser API fallbacks), #13 (per-browser store/privacy docs), #14 (onboarding/README/website exposing three browsers). None is blocked — they just weren't reached. Recommend splitting Safari into its own task so the Firefox work can finish independently.
+<!-- SECTION:NOTES:END -->

@@ -132,7 +132,14 @@ struct JobsView: View {
                     jobIDsToDelete = []
                     Task {
                         for id in ids {
-                            do { try await svc.delete(jobID: id) } catch { toast.show(
+                            // Read the number BEFORE the delete — afterwards there's nothing to read,
+                            // and a stale Spotlight hit that opens the app and finds nothing is worse
+                            // than no hit at all (TASK-590 #3).
+                            let number = await svc.jobNumber(forID: id)
+                            do {
+                                try await svc.delete(jobID: id)
+                                if let number { SpotlightIndexer.remove(jobNumbers: [number]) }
+                            } catch { toast.show(
                                 "Delete failed: \(error.localizedDescription)",
                                 isError: true
                             ) }

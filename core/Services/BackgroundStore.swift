@@ -1409,6 +1409,24 @@ public actor BackgroundStore {
 
     /// Create + link a follow-up action to a job by id (TASK-526). Throws `notFound` if the job is
     /// gone — a user-facing write must not silently no-op (TASK-578).
+    /// Every job as a Spotlight entry (TASK-590). Jobs that can't be linked or named are dropped by
+    /// `SpotlightEntry.make` rather than indexed as blanks.
+    public func spotlightEntries() throws -> [SpotlightEntry] {
+        try modelContext.fetch(FetchDescriptor<Job>()).compactMap { job in
+            SpotlightEntry.make(
+                jobNumber: job.jobNumber,
+                title: job.title,
+                company: job.company,
+                location: job.location,
+                salary: SalaryDisplay.text(
+                    min: job.salaryMin, max: job.salaryMax, currency: job.salaryCurrency
+                ),
+                status: job.status.displayName,
+                skills: JobDetailProjection(job: job).skills
+            )
+        }
+    }
+
     /// Follow-ups that are due right now, flattened for the notifier (TASK-589).
     ///
     /// Filtered in Swift rather than in the `#Predicate`: the snooze rule involves comparing two

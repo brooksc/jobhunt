@@ -305,6 +305,15 @@ public actor JobService {
         try await setStatus(.archived, for: jobID)
     }
 
+    /// The job number of a job about to be deleted, so the caller can drop it from Spotlight
+    /// (TASK-590 #3). Read before the delete, since afterwards there's nothing to read.
+    public func jobNumber(forID jobID: String) async -> Int? {
+        let id = jobID
+        return try? await store.fetch(
+            FetchDescriptor<Job>(predicate: #Predicate { $0.id == id })
+        ).first?.jobNumber
+    }
+
     public func delete(jobID: String) async throws {
         let id = jobID
         try await store.deleteOne(Job.self, predicate: #Predicate { $0.id == id }, id: jobID)

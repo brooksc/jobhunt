@@ -2728,7 +2728,12 @@ struct RawTabView: View {
                             let id = job.id
                             onClose()
                             Task {
-                                do { try await jobService?.delete(jobID: id) } catch { appServices.toastStore.show(
+                                // Number read before the delete — see the Jobs list's delete path.
+                                let number = await jobService?.jobNumber(forID: id)
+                                do {
+                                    try await jobService?.delete(jobID: id)
+                                    if let number { SpotlightIndexer.remove(jobNumbers: [number]) }
+                                } catch { appServices.toastStore.show(
                                     "Couldn't delete job: \(error.localizedDescription)",
                                     isError: true
                                 ) }

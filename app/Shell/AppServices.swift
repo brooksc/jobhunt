@@ -91,6 +91,44 @@ final class AppServices {
         mcpTokenWasGenerated = !mcpToken.isEmpty
     }
 
+    /// TASK-590: publish jobs to Spotlight once at launch. A one-shot pass rather than a watcher —
+    /// the corpus is a few hundred rows, re-indexing is cheap, and an entry going stale until the
+    /// next launch is a far smaller problem than a change-observer firing on every extraction write.
+    private func spotlightIndexTask() -> Task<Void, Never> {
+        let spotlightStore = backgroundStore
+        return Task { @MainActor in
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            guard let entries = try? await spotlightStore.spotlightEntries() else { return }
+            SpotlightIndexer.index(entries)
+        }
+    }
+
+    /// TASK-589: follow-ups become due while the app is open; without this they only surface if the
+    /// user happens to open Needs Action, which defeats the point of a due date.
+    ///
+    /// Notified ids are held in memory, not persisted. Re-reminding once per launch is reasonable
+    /// for a reminder, and a stored flag would need a migration plus a rule for when to clear it —
+    /// the exact stale-flag shape CLAUDE.md warns about.
+    private func followUpNotifierTask() -> Task<Void, Never> {
+        let followUpStore = backgroundStore
+        return Task { @MainActor [weak self] in
+            var notified: Set<String> = []
+            while !Task.isCancelled {
+                // First pass after a short delay rather than immediately: at launch the store is
+                // still opening and the user hasn't seen the window yet.
+                try? await Task.sleep(for: .seconds(60))
+                guard !Task.isCancelled, let self else { return }
+                guard let due = try? await followUpStore.dueFollowUps() else { continue }
+                if let notification = DueFollowUps.notification(for: due, alreadyNotified: notified) {
+                    platformIntegration?.notifyFollowUpsDue(notification)
+                    notified.formUnion(notification.coveredIDs)
+                }
+                try? await Task.sleep(for: .seconds(15 * 60))
+            }
+        }
+    }
+
     /// Starts runtime services and launch-time side effects: the local HTTP server, LLM-queue crash
     /// recovery, the availability-check loop, and the availability-completion observer. Call once,
     /// from the launch owner, for interactive modes — fixture generation skips this so it never
@@ -154,30 +192,8 @@ final class AppServices {
                 }
             })
 
-            // Follow-ups become due while the app is open; without this they only surface if the user
-            // happens to open Needs Action, which defeats the point of a due date (TASK-589).
-            //
-            // Notified ids are held in memory, not persisted. Re-reminding once per launch is
-            // reasonable behaviour for a reminder, and a stored flag would need a migration plus a
-            // rule for when to clear it — the exact shape of stale-flag bug CLAUDE.md warns about.
-            let followUpStore = backgroundStore
-            tasks.append(Task { @MainActor [weak self] in
-                var notified: Set<String> = []
-                while !Task.isCancelled {
-                    // First pass after a short delay rather than immediately: at launch the store is
-                    // still opening and the user hasn't seen the window yet.
-                    try? await Task.sleep(for: .seconds(60))
-                    guard !Task.isCancelled, let self else { return }
-                    guard let due = try? await followUpStore.dueFollowUps() else { continue }
-                    if let notification = DueFollowUps.notification(
-                        for: due, alreadyNotified: notified
-                    ) {
-                        platformIntegration?.notifyFollowUpsDue(notification)
-                        notified.formUnion(notification.coveredIDs)
-                    }
-                    try? await Task.sleep(for: .seconds(15 * 60))
-                }
-            })
+            tasks.append(spotlightIndexTask())
+            tasks.append(followUpNotifierTask())
 
             // Persist the last-check timestamp through an explicit callback (TASK-428) rather than a
             // global notification observer: the checker hands us the completion time, we write the

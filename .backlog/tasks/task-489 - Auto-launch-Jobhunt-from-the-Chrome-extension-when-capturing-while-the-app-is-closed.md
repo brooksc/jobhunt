@@ -3,16 +3,24 @@ id: TASK-489
 title: >-
   Auto-launch Jobhunt from the Chrome extension when capturing while the app is
   closed
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-18 18:53'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-08-10 01:36'
 labels:
   - extension
   - ux
   - macos
   - feature
 dependencies: []
+modified_files:
+  - extension/launch_app.js
+  - extension/service_worker.js
+  - extension/status.html
+  - extension/status.js
+  - extension/package.json
+  - extension/tests/test_launch_app.js
+  - app/Platform/PlatformIntegration.swift
 priority: medium
 ordinal: 3000
 ---
@@ -38,9 +46,31 @@ References: extension/service_worker.js, extension/retry_queue.js, app/Platform/
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Capturing while the app is closed launches Jobhunt via the jobhunt:// scheme and the capture syncs once the server is reachable
-- [ ] #2 Works on both DMG and MAS builds (scheme launch + localhost flush are sandbox-safe)
-- [ ] #3 Behavior is opt-in via a Settings toggle, default off
-- [ ] #4 The full capture is sent over localhost HTTP (queue flush), not through the URL
-- [ ] #5 App handles jobhunt://launch (brings the app to foreground; no-op otherwise)
+- [ ] #1 not verified: (visual) — the end-to-end launch needs a real Chrome plus a quit app, which means driving the UI. The launch/poll/flush logic, the cooldown and the failure paths are unit-tested; the app's jobhunt://launch handling is compile-checked.
+- [x] #2 Works on both DMG and MAS builds (scheme launch + localhost flush are sandbox-safe)
+- [x] #3 Behavior is opt-in via a Settings toggle, default off
+- [x] #4 The full capture is sent over localhost HTTP (queue flush), not through the URL
+- [x] #5 App handles jobhunt://launch (brings the app to foreground; no-op otherwise)
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+`extension/launch_app.js` opens `jobhunt://launch`, polls `/api/ping` for up to 12s, and the service worker flushes the queue when the app answers.
+
+#4 The scheme carries **nothing but the launch** — a capture can be several MB and a URL can't be — so the capture still goes over localhost HTTP. A test asserts the URL has no query string, since that's the property that would quietly erode.
+
+#5 `PlatformIntegration.handleDeepLink` now handles `jobhunt://launch` by activating; the guard was restructured so a non-`jobs` host is no longer silently dropped.
+
+#2 Nothing here is DMG-only: registering and receiving a URL scheme is sandbox-safe and the MAS build already runs the capture server.
+
+#3 Off by default, with a toggle on the extension's status page.
+
+**Ordering decision:** queue first, launch second. If the launch fails the capture is already stored, rather than the capture depending on the launch surviving. A launch timeout is likewise *not* an error — the capture is queued, which is exactly the previous behaviour.
+
+**Cooldown, 30s:** without it, capturing three jobs in a row with the app shut fires three `jobhunt://` opens and Chrome shows its external-protocol prompt for each. Injected clock, so the cooldown is tested without waiting.
+
+#1 rewritten `not verified: (visual)` — proving the end-to-end launch needs a real Chrome and a quit app, i.e. driving the UI, which is out of bounds here.
+
+10 extension tests (116 total pass). Gate: fast gate TEST SUCCEEDED, swiftlint 0 violations in 359 files, swiftformat clean, `npm test` 116/116.
+<!-- SECTION:FINAL_SUMMARY:END -->

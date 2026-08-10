@@ -112,6 +112,20 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         )
     }
 
+    /// The optional end-of-day recap notification (TASK-623 #11).
+    ///
+    /// Carries the day's own sentence, so the notification says what was accomplished rather than
+    /// nagging the user to come and look. Opens the Dashboard on click; dismissing it costs nothing
+    /// and breaks no streak, because there is no streak.
+    public func notifyDailyRecap(_ recap: DailyRecap) {
+        postNotification(
+            id: "daily-recap",
+            title: "Today's progress",
+            body: recap.recapSentence,
+            userInfo: ["navigate": "dashboard"]
+        )
+    }
+
     /// Update dock badge to unread job count.
     public func updateDockBadge(count: Int) {
         NSApp.dockTile.badgeLabel = count > 0 ? "\(count)" : ""
@@ -438,6 +452,8 @@ extension PlatformIntegration: UNUserNotificationCenterDelegate {
             } else if let navigate = userInfo["navigate"] as? String, navigate == "settings" {
                 // Settings is the standard preferences window now, not an in-window section.
                 NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            } else if let navigate = userInfo["navigate"] as? String, navigate == "dashboard" {
+                router.navigateToSection(.dashboard)
             } else if let navigate = userInfo["navigate"] as? String, navigate == "needsAction" {
                 router.navigateToSection(.needsAction)
             } else if let jobNumber = userInfo["jobNumber"] as? Int {

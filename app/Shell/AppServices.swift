@@ -104,6 +104,36 @@ final class AppServices {
         }
     }
 
+    /// TASK-623 #11: the optional end-of-day recap reminder.
+    ///
+    /// Re-reads the setting each cycle rather than capturing it, so toggling it off takes effect
+    /// without a relaunch. Checks every 15 minutes and fires once per local day — the schedule
+    /// itself is computed by `RecapReminderSchedule`, which is pure so the day-boundary behaviour is
+    /// testable without waiting a day.
+    private func recapReminderTask() -> Task<Void, Never> {
+        let recapStore = backgroundStore
+        return Task { @MainActor [weak self] in
+            var lastFiredDay: Date?
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(15 * 60))
+                guard !Task.isCancelled, let self else { return }
+                guard settings.dailyRecapReminderEnabled else { continue }
+
+                let now = Date()
+                let calendar = Calendar.current
+                let today = calendar.startOfDay(for: now)
+                if let lastFiredDay, calendar.isDate(lastFiredDay, inSameDayAs: today) { continue }
+                // Fire once the hour has arrived, not before.
+                let hour = calendar.component(.hour, from: now)
+                guard hour >= settings.dailyRecapReminderHour else { continue }
+
+                guard let recap = try? await recapStore.todayRecap() else { continue }
+                platformIntegration?.notifyDailyRecap(recap)
+                lastFiredDay = today
+            }
+        }
+    }
+
     /// TASK-589: follow-ups become due while the app is open; without this they only surface if the
     /// user happens to open Needs Action, which defeats the point of a due date.
     ///
@@ -193,6 +223,7 @@ final class AppServices {
             })
 
             tasks.append(spotlightIndexTask())
+            tasks.append(recapReminderTask())
             tasks.append(followUpNotifierTask())
 
             // Persist the last-check timestamp through an explicit callback (TASK-428) rather than a

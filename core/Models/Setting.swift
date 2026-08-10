@@ -56,6 +56,11 @@ public enum SettingsKey {
     /// User-authored prompt templates as a JSON array (TASK-627). Stored as a setting rather than a
     /// model: no migration, and the whole list round-trips as one value.
     public static let customPromptTemplates = "custom_prompt_templates"
+    /// End-of-day recap reminder (TASK-623 #11). Off by default — an unasked-for daily nudge about
+    /// job hunting is exactly the kind of pressure this feature is meant not to apply.
+    public static let dailyRecapReminderEnabled = "daily_recap_reminder_enabled"
+    /// Hour of the local day (0–23) the reminder fires.
+    public static let dailyRecapReminderHour = "daily_recap_reminder_hour"
     public static let llmQueuePaused = "llm_queue_paused"
     /// Why the queue is paused (`QueuePauseReason`). Persisted separately from the boolean because a
     /// user pause and an auto-pause need different words and different urgency (TASK-524).

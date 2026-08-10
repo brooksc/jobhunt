@@ -57,6 +57,26 @@ struct SettingsTab: View {
                 ),
                 in: 1 ... 60
             )
+
+            // TASK-623 #11: opt-in, and off by default. A daily nudge nobody asked for is exactly
+            // the pressure the recap feature is meant not to apply, so dismissing it costs nothing
+            // and there is no streak to break.
+            Toggle("Remind me to close out my day", isOn: Binding(
+                get: { settings.dailyRecapReminderEnabled },
+                set: { settings.dailyRecapReminderEnabled = $0 }
+            ))
+            .help("A single optional notification with the day's summary. Off by default.")
+
+            if settings.dailyRecapReminderEnabled {
+                Stepper(
+                    "Remind at \(settings.dailyRecapReminderHour):00",
+                    value: Binding(
+                        get: { settings.dailyRecapReminderHour },
+                        set: { settings.dailyRecapReminderHour = $0 }
+                    ),
+                    in: 0 ... 23
+                )
+            }
         }
     }
 

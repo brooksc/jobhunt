@@ -32,6 +32,8 @@ private let settingsDefaults: [String: String] = [
     SettingsKey.minFitScore: "0",
     SettingsKey.scoringFeedback: "[]",
     SettingsKey.customPromptTemplates: "[]",
+    SettingsKey.dailyRecapReminderEnabled: "false",
+    SettingsKey.dailyRecapReminderHour: "18",
     SettingsKey.llmQueuePaused: "false",
     SettingsKey.llmQueuePauseReason: QueuePauseReason.user.rawValue,
     SettingsKey.llmOpenRouterFreeRotate: "false",
@@ -178,6 +180,20 @@ public final class SettingsStore {
     public var llmQueuePaused: Bool {
         get { bool(forKey: SettingsKey.llmQueuePaused) }
         set { setBool(newValue, forKey: SettingsKey.llmQueuePaused) }
+    }
+
+    /// TASK-623 #11: opt-in only. A daily nudge nobody asked for is the pressure this feature is
+    /// specifically meant not to apply, so the default is off and dismissing it costs nothing.
+    public var dailyRecapReminderEnabled: Bool {
+        get { bool(forKey: SettingsKey.dailyRecapReminderEnabled) }
+        set { setBool(newValue, forKey: SettingsKey.dailyRecapReminderEnabled) }
+    }
+
+    /// Hour of the local day the reminder fires, clamped to 0–23 so a bad stored value can't make
+    /// the scheduler compute a date in the past forever.
+    public var dailyRecapReminderHour: Int {
+        get { min(max(int(forKey: SettingsKey.dailyRecapReminderHour), 0), 23) }
+        set { setInt(min(max(newValue, 0), 23), forKey: SettingsKey.dailyRecapReminderHour) }
     }
 
     /// User-authored prompt templates (TASK-627), ordered for the menu.

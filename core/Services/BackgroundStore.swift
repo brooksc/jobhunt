@@ -1409,6 +1409,25 @@ public actor BackgroundStore {
 
     /// Create + link a follow-up action to a job by id (TASK-526). Throws `notFound` if the job is
     /// gone — a user-facing write must not silently no-op (TASK-578).
+    /// Today's recap, for the optional end-of-day reminder (TASK-623 #11).
+    ///
+    /// Built here rather than read off the dashboard view: the reminder fires whether or not the
+    /// Dashboard has ever been shown, so it can't depend on a view's `@Query`.
+    public func todayRecap(now: Date = Date(), calendar: Calendar = .current) throws -> DailyRecap {
+        let events = try modelContext.fetch(FetchDescriptor<JobEvent>()).map {
+            DashboardMetrics.RecapEvent(
+                eventType: $0.eventType, note: $0.note, occurredAt: $0.occurredAt,
+                jobID: $0.job?.id, jobNumber: $0.job?.jobNumber,
+                company: $0.job?.company, title: $0.job?.title
+            )
+        }
+        let completions = try modelContext.fetch(FetchDescriptor<JobAction>())
+            .compactMap(\.completedAt)
+        return DashboardMetrics.buildDailyRecap(
+            events: events, followUpCompletions: completions, day: now, calendar: calendar
+        )
+    }
+
     /// Every job as a Spotlight entry (TASK-590). Jobs that can't be linked or named are dropped by
     /// `SpotlightEntry.make` rather than indexed as blanks.
     public func spotlightEntries() throws -> [SpotlightEntry] {

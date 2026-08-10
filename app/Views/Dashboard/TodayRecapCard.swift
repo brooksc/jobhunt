@@ -67,6 +67,7 @@ struct TodayRecapCard: View {
     }
 
     @State private var range: RecapRange = .week
+    @State private var showCloseOut = false
 
     private func totals(days: Int) -> [(day: Date, total: Int)] {
         DashboardMetrics.buildRecapWindow(
@@ -87,6 +88,16 @@ struct TodayRecapCard: View {
             GroupBox {
                 VStack(alignment: .leading, spacing: 12) {
                     if recap.hasActivity { todayBreakdown } else { emptyToday }
+
+                    // TASK-623 #3: an explicit place to stop for the day. Separate from the always-on
+                    // card because closing out is a deliberate act — the point is a moment of
+                    // closure, not another number on a dashboard.
+                    HStack {
+                        Button("Close Out My Day…") { showCloseOut = true }
+                            .buttonStyle(.link)
+                            .help("A written summary of what you got done today")
+                        Spacer()
+                    }
                     // Offer the strip whenever there's any activity across the longest window.
                     if totals(days: RecapRange.month.rawValue).contains(where: { $0.total > 0 }) {
                         Divider()
@@ -94,6 +105,19 @@ struct TodayRecapCard: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showCloseOut) {
+            CloseOutDaySheet(
+                recap: recap,
+                weekTotals: totals(days: RecapRange.week.rawValue),
+                monthTotals: totals(days: RecapRange.month.rawValue),
+                onSelectDay: { selected in
+                    showCloseOut = false
+                    drilldown = Drilldown(
+                        id: "\(selected.timeIntervalSinceReferenceDate)-all", day: selected, focus: nil
+                    )
+                }
+            )
         }
         .sheet(item: $drilldown) { target in
             DayActivitySheet(

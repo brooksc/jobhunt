@@ -204,6 +204,29 @@ public enum DashboardMetrics {
     }
 }
 
+/// When the optional end-of-day reminder should next fire (TASK-623 #11).
+///
+/// Pure, so the day-boundary and timezone behaviour (#8) is testable without waiting a day.
+public enum RecapReminderSchedule {
+    /// The next occurrence of `hour:00` local time strictly after `now`.
+    ///
+    /// Strictly after, not at-or-after: firing again the instant one fires would produce a loop, and
+    /// a reminder is a once-a-day thing. Computed through `Calendar`, so a DST transition moves the
+    /// wall-clock hour correctly rather than drifting by an hour twice a year.
+    public static func nextFireDate(
+        after now: Date, hour: Int, calendar: Calendar = .current
+    ) -> Date? {
+        let clamped = min(max(hour, 0), 23)
+        var components = calendar.dateComponents([.year, .month, .day], from: now)
+        components.hour = clamped
+        components.minute = 0
+        components.second = 0
+        guard let today = calendar.date(from: components) else { return nil }
+        if today > now { return today }
+        return calendar.date(byAdding: .day, value: 1, to: today)
+    }
+}
+
 /// A humane end-of-day summary of the meaningful, user-driven work done on a given day (TASK-623).
 public struct DailyRecap: Sendable, Equatable {
     public var captured = 0 // jobs found / captured
@@ -227,6 +250,61 @@ public struct DailyRecap: Sendable, Equatable {
 
     public var hasActivity: Bool {
         total > 0
+    }
+
+    /// A plain sentence describing the day (TASK-623 #3).
+    ///
+    /// Written as prose rather than a counter list because the point of the feature is closure, and
+    /// "you applied to 3 roles and cleared out 5" reads like an accomplishment where "applied: 3"
+    /// reads like a dashboard.
+    ///
+    /// Ordered by what the user is likeliest to feel good about — applications first, housekeeping
+    /// last — and capped at the three largest categories. A sentence listing ten clauses stops being
+    /// a sentence.
+    public var recapSentence: String {
+        guard hasActivity else {
+            // #9: neutral. No streak language, no red state, nothing implying a failure — a day
+            // without job-hunting is a normal day, and this feature must not editorialise about it.
+            return "No tracked activity today."
+        }
+
+        // Field named `amount`, not `count`: `$0.count > 0` on a tuple reads as a collection check
+        // (SwiftLint flags it as one), and the ambiguity is worth avoiding in its own right.
+        let clauses: [(amount: Int, text: String)] = [
+            (offers, phrase(offers, "offer", "offers", verb: "received")),
+            (interviews, phrase(interviews, "interview", "interviews", verb: "reached")),
+            (applied, phrase(applied, "application", "applications", verb: "sent")),
+            (movedToInterested, phrase(movedToInterested, "role", "roles", verb: "shortlisted")),
+            (referralsRequested, phrase(referralsRequested, "referral", "referrals", verb: "asked for")),
+            (followUpsCompleted, phrase(followUpsCompleted, "follow-up", "follow-ups", verb: "completed")),
+            (captured, phrase(captured, "job", "jobs", verb: "saved")),
+            (notesAdded, phrase(notesAdded, "note", "notes", verb: "wrote")),
+            (triaged, phrase(triaged, "job", "jobs", verb: "cleared out")),
+            (duplicatesResolved, phrase(duplicatesResolved, "duplicate", "duplicates", verb: "resolved"))
+        ]
+
+        let present = clauses.filter { $0.amount > 0 }.map(\.text)
+        let shown = Array(present.prefix(3))
+        var sentence = "Today you " + list(shown)
+        if present.count > shown.count {
+            let rest = present.count - shown.count
+            sentence += ", and \(rest) more thing\(rest == 1 ? "" : "s")"
+        }
+        return sentence + "."
+    }
+
+    private func phrase(_ count: Int, _ singular: String, _ plural: String, verb: String) -> String {
+        "\(verb) \(count) \(count == 1 ? singular : plural)"
+    }
+
+    /// Oxford-comma list. Three clauses is the cap, so this never has to handle a long tail.
+    private func list(_ items: [String]) -> String {
+        switch items.count {
+        case 0: ""
+        case 1: items[0]
+        case 2: "\(items[0]) and \(items[1])"
+        default: items.dropLast().joined(separator: ", ") + ", and " + (items.last ?? "")
+        }
     }
 }
 

@@ -198,11 +198,13 @@ private struct DetailHeader: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
+                    .help("Previous job")
                     Button { onNavigateNext() } label: {
                         Image(systemName: "chevron.down").font(.caption)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
+                    .help("Next job")
                     Button { onClose() } label: {
                         Image(systemName: "xmark").font(.caption)
                     }
@@ -686,6 +688,7 @@ private struct DetailFooter: View {
                         completeWithUndo(actionID: action.id)
                     } label: { Image(systemName: "checkmark").font(.caption2) }
                         .buttonStyle(.bordered).controlSize(.mini)
+                        .help("Mark this follow-up done")
                 }
             }
             if job.status == .pursuing || job.status == .new,
@@ -1128,6 +1131,7 @@ struct OverviewTabView: View {
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
+                            .help("Remove this skill")
                         }
                         .padding(.leading, 8)
                         .padding(.trailing, 6)
@@ -1148,10 +1152,12 @@ struct OverviewTabView: View {
                                 Image(systemName: "checkmark").font(.caption2)
                             }
                             .buttonStyle(.plain)
+                            .help("Add this skill")
                             Button { showAddSkill = false; newSkillText = "" } label: {
                                 Image(systemName: "xmark").font(.caption2)
                             }
                             .buttonStyle(.plain)
+                            .help("Cancel")
                         }
                     } else {
                         Button { showAddSkill = true } label: {

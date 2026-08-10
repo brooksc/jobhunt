@@ -154,6 +154,7 @@ struct ToastView: View {
                 Image(systemName: "xmark")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .help("Dismiss")
             }
             .buttonStyle(.plain)
         }

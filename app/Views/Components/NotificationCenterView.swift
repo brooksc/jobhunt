@@ -63,6 +63,7 @@ struct NotificationCenterView: View {
                 Image(systemName: "xmark").font(.caption2).foregroundStyle(.tertiary)
             }
             .buttonStyle(.plain)
+            .help("Dismiss this notification")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)

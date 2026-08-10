@@ -944,6 +944,7 @@ struct JobsView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
+            .help("Remove this filter")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)

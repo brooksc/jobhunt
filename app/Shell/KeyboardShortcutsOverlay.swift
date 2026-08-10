@@ -50,6 +50,7 @@ struct KeyboardShortcutsView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close")
+            .help("Close")
         }
         .padding(16)
     }

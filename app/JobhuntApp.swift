@@ -148,6 +148,9 @@ struct JobhuntApp: App {
                 router: sharedRouter, modelContainer: container, settings: services.settings
             )
             platformIntegration = integration
+            // Lets the runtime loops post notifications (TASK-589) without AppServices owning the
+            // integration — see the weak reference's comment.
+            services.platformIntegration = integration
             storeFailure = nil
 
             Task { @MainActor in

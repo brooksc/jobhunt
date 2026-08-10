@@ -1409,6 +1409,33 @@ public actor BackgroundStore {
 
     /// Create + link a follow-up action to a job by id (TASK-526). Throws `notFound` if the job is
     /// gone — a user-facing write must not silently no-op (TASK-578).
+    /// Follow-ups that are due right now, flattened for the notifier (TASK-589).
+    ///
+    /// Filtered in Swift rather than in the `#Predicate`: the snooze rule involves comparing two
+    /// optional dates against `now`, the rule is shared with the UI's own due-ness check, and at a
+    /// few hundred actions the scan is imperceptible (see the scale convention in CLAUDE.md).
+    public func dueFollowUps(now: Date = Date()) throws -> [DueFollowUps.Item] {
+        try modelContext.fetch(FetchDescriptor<JobAction>())
+            .filter {
+                DueFollowUps.isDue(
+                    dueDate: $0.dueDate, completedAt: $0.completedAt,
+                    snoozedUntil: $0.snoozedUntil, now: now
+                )
+            }
+            // An action with no job can't be opened or described — those are orphans, and the
+            // migrator has a mode for pruning them.
+            .compactMap { action in
+                guard let job = action.job else { return nil }
+                return DueFollowUps.Item(
+                    id: action.id,
+                    jobNumber: job.jobNumber,
+                    title: job.title ?? "",
+                    company: job.company,
+                    note: action.note
+                )
+            }
+    }
+
     public func insertJobAction(jobID: String, note: String, dueDate: Date) throws {
         let jid = jobID
         let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))

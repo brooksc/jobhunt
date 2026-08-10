@@ -30,6 +30,11 @@ final class AppServices {
     /// True when this launch generated and wrote an MCP token file, so normal shutdown should delete
     /// it (TASK-530). False when no token was generated (fixture/MAS modes, or a failed write).
     let mcpTokenWasGenerated: Bool
+    /// Set by the launch owner once platform integration exists (TASK-589). Weak, and deliberately
+    /// one-directional: the runtime loops need to *post* a notification, and giving AppServices a
+    /// strong handle to the object that observes it would be a retain cycle through the app's two
+    /// longest-lived types.
+    weak var platformIntegration: PlatformIntegration?
     var serverRunning: Bool = false
     var serverError: String?
     /// Owns the long-lived runtime tasks' lifecycle: idempotent start, and a shutdown that cancels
@@ -146,6 +151,31 @@ final class AppServices {
                     try? await Task.sleep(for: .seconds(120))
                     guard !Task.isCancelled else { return }
                     _ = try? await reaperQueue.reapOrphanedRunning()
+                }
+            })
+
+            // Follow-ups become due while the app is open; without this they only surface if the user
+            // happens to open Needs Action, which defeats the point of a due date (TASK-589).
+            //
+            // Notified ids are held in memory, not persisted. Re-reminding once per launch is
+            // reasonable behaviour for a reminder, and a stored flag would need a migration plus a
+            // rule for when to clear it — the exact shape of stale-flag bug CLAUDE.md warns about.
+            let followUpStore = backgroundStore
+            tasks.append(Task { @MainActor [weak self] in
+                var notified: Set<String> = []
+                while !Task.isCancelled {
+                    // First pass after a short delay rather than immediately: at launch the store is
+                    // still opening and the user hasn't seen the window yet.
+                    try? await Task.sleep(for: .seconds(60))
+                    guard !Task.isCancelled, let self else { return }
+                    guard let due = try? await followUpStore.dueFollowUps() else { continue }
+                    if let notification = DueFollowUps.notification(
+                        for: due, alreadyNotified: notified
+                    ) {
+                        platformIntegration?.notifyFollowUpsDue(notification)
+                        notified.formUnion(notification.coveredIDs)
+                    }
+                    try? await Task.sleep(for: .seconds(15 * 60))
                 }
             })
 

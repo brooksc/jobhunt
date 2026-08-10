@@ -89,6 +89,29 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         NotificationCenter.default.removeObserver(self)
     }
 
+    /// Post a due-follow-up notification (TASK-589).
+    ///
+    /// A follow-up only surfaced if the user happened to open Needs Action, which defeats the point
+    /// of a due date. The click deep-links to the job when one is unambiguous, and to the Needs
+    /// Action list when several are due — opening an arbitrary one of five would be worse than
+    /// opening none.
+    public func notifyFollowUpsDue(_ notification: DueFollowUps.Notification) {
+        var userInfo: [AnyHashable: Any] = [:]
+        if let jobNumber = notification.jobNumber {
+            userInfo["jobNumber"] = jobNumber
+        } else {
+            userInfo["navigate"] = "needsAction"
+        }
+        postNotification(
+            // Distinct id per cycle so a second batch doesn't silently replace the first in
+            // Notification Center.
+            id: "follow-ups-\(notification.coveredIDs.sorted().joined(separator: "-").hashValue)",
+            title: notification.title,
+            body: notification.body,
+            userInfo: userInfo
+        )
+    }
+
     /// Update dock badge to unread job count.
     public func updateDockBadge(count: Int) {
         NSApp.dockTile.badgeLabel = count > 0 ? "\(count)" : ""
@@ -415,6 +438,8 @@ extension PlatformIntegration: UNUserNotificationCenterDelegate {
             } else if let navigate = userInfo["navigate"] as? String, navigate == "settings" {
                 // Settings is the standard preferences window now, not an in-window section.
                 NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            } else if let navigate = userInfo["navigate"] as? String, navigate == "needsAction" {
+                router.navigateToSection(.needsAction)
             } else if let jobNumber = userInfo["jobNumber"] as? Int {
                 navigateToJob(number: jobNumber)
             }

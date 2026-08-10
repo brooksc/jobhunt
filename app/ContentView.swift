@@ -6,6 +6,9 @@ import SwiftUI
 struct ContentView: View {
     var router: Router
     var theme: Theme
+    /// Persisted across launches (TASK-508). `NavigationSplitViewVisibility` isn't
+    /// `RawRepresentable`, so a token is stored and mapped — `@SceneStorage` needs a plain value.
+    @SceneStorage("jobs.columnVisibility") private var columnVisibilityToken = ""
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var selectedJobIDs: Set<String> = []
     @State private var showNotifications = false
@@ -23,6 +26,33 @@ struct ContentView: View {
                 QueueAlertBanner(alert: alert, router: router) { router.queueAlert = nil }
             }
             splitView
+        }
+        .onAppear {
+            columnVisibility = SplitVisibilityToken.visibility(for: columnVisibilityToken)
+        }
+        .onChange(of: columnVisibility) { _, new in
+            columnVisibilityToken = SplitVisibilityToken.token(for: new)
+        }
+    }
+
+    /// Maps `NavigationSplitViewVisibility` to a storable token and back (TASK-508).
+    ///
+    /// `detailOnly` is deliberately *not* restored as itself: relaunching into a hidden sidebar with
+    /// no selected job leaves an empty window and no obvious way back. It restores as `all`.
+    private enum SplitVisibilityToken {
+        static func token(for visibility: NavigationSplitViewVisibility) -> String {
+            switch visibility {
+            case .detailOnly: "detailOnly"
+            case .doubleColumn: "doubleColumn"
+            default: "all"
+            }
+        }
+
+        static func visibility(for token: String) -> NavigationSplitViewVisibility {
+            switch token {
+            case "doubleColumn": .doubleColumn
+            default: .all
+            }
         }
     }
 

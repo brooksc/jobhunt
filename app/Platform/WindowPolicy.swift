@@ -57,6 +57,14 @@ public final class WindowPolicy {
     static func apply(to window: NSWindow) {
         guard shouldConstrain(window) else { return }
         window.minSize = minimumSize
+        // TASK-508 #3: frame restoration, made deterministic. SwiftUI restores a window's frame only
+        // when the system's "Close windows when quitting an app" is off — a setting we don't control
+        // and shouldn't fight. An autosave name persists size and position through AppKit either way.
+        // Set once: assigning it repeatedly is harmless, but AppKit reads the saved frame on the
+        // first assignment only.
+        if window.frameAutosaveName.isEmpty {
+            window.setFrameAutosaveName("jobhunt.main")
+        }
     }
 
     /// Reads the flags off the window and asks Core. This adapter is the only AppKit-aware part.

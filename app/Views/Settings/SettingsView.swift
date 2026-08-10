@@ -89,6 +89,10 @@ struct LLMTab: View {
     @Query(sort: \Resume.sortOrder) private var resumes: [Resume]
     @Query private var jobs: [Job]
 
+    /// TASK-665: narrows a several-hundred-entry model menu. The picker ignores keystrokes, so
+    /// without this the only way to reach a model is scrolling — slow with a mouse, impossible with
+    /// a keyboard alone.
+    @State private var modelFilter: String = ""
     @State private var priceInput: String = ""
     @State private var priceOutput: String = ""
     @FocusState private var inputPriceFocused: Bool
@@ -101,6 +105,17 @@ struct LLMTab: View {
 
     private var activeResume: Resume? {
         resumes.first { $0.active }
+    }
+
+    /// The models the picker shows. Always includes the current selection even when it doesn't match
+    /// the filter, or typing would silently blank out what's already selected.
+    private var visibleModels: [String] {
+        var models = ModelFilter.matching(modelFilter, in: model.fetchedModels)
+        if !model.modelText.isEmpty, !models.contains(model.modelText),
+           model.fetchedModels.contains(model.modelText) {
+            models.insert(model.modelText, at: 0)
+        }
+        return models
     }
 
     private var costEstimate: CostEstimate? {
@@ -177,6 +192,18 @@ struct LLMTab: View {
                 }
             }
 
+            if ModelFilter.shouldOfferFilter(modelCount: model.fetchedModels.count) {
+                HStack {
+                    Text("Filter")
+                    TextField("e.g. haiku, deepseek", text: $modelFilter)
+                    if !modelFilter.isEmpty {
+                        Text("\(visibleModels.count) of \(model.fetchedModels.count)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
             HStack {
                 if model.fetchedModels.isEmpty {
                     TextField("Model", text: Binding(
@@ -190,10 +217,10 @@ struct LLMTab: View {
                     )) {
                         // No silent default — the user must pick. The placeholder represents
                         // "not yet selected" (empty model id).
-                        if !model.fetchedModels.contains(model.modelText) {
+                        if !visibleModels.contains(model.modelText) {
                             Text("Select a model…").tag("")
                         }
-                        ForEach(model.fetchedModels, id: \.self) { Text($0).tag($0) }
+                        ForEach(visibleModels, id: \.self) { Text($0).tag($0) }
                     }
                     Button("Clear") { model.fetchedModels = [] }
                         .buttonStyle(.borderless)

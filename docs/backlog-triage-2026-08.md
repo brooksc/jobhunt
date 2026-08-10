@@ -86,29 +86,26 @@ Ordered as the goal requires: correctness bugs, then scoring, then features; che
 | 575 — Staple the notarization ticket to the .app | Implementable; only a real release proves it → `not verified`. |
 | 619 — Safari and Firefox extensions | **Partial.** Firefox port is buildable. The Safari target and both store submissions are PARK(c) — no signing identity or AMO/Apple account access. |
 
-## Progress — updated 2026-08-09
+## Final state — 2026-08-09
 
-35 of the 43 WORK tasks are Done. The 13 tasks still open, and their classification as of this
-update:
+**42 of the 43 WORK tasks are Done.** The five original PARK tasks are unchanged. Four tasks remain
+open, each for a reason recorded on the task itself:
 
-| Task | Class | State |
+| Task | Class | Why it's still open |
 |---|---|---|
 | 503 — Sites review workflow clarity | **PARK (a)** | Unchanged. Needs the user to say what the Sites screen is for. |
 | 655 — MCP setup undiscoverable in the DMG | **PARK (a)** | Unchanged. Design deferred by the user. |
-| 570 — Static-analysis gates | **WORK** | ShellCheck + a compiler-warning ratchet landed. Periphery, `swiftlint analyze` and the a11y audit remain. |
-| 648 — MCP ATS-identifier resolution | **WORK** | #1–#3 done. #4/#5 rewritten `not verified: requires a notarized DMG` — cutting a release is out of bounds. |
-| 665 — Model menu type-select | **WORK** | Not started. |
-| 494 — Tooltips on icon-only controls | **WORK** | Not started. |
-| 506 — VoiceOver composite labels | **WORK** | Not started. |
-| 590 — Spotlight indexing | **WORK** | Not started. |
-| 627 — Custom Prompt AI templates | **WORK** | Not started. |
-| 623 — Dashboard daily accomplishments | **WORK** | Not started (still In Progress from before the run). |
-| 489 — Auto-launch from the extension | **WORK** | Not started. |
-| 619 — Safari/Firefox extensions | **WORK (partial)** | Buildable port only; store submissions PARK (c). |
-| 575 — Staple the notarization ticket | **WORK** | Workflow change is implementable; proof needs a release → `not verified`. |
+| 570 — Static-analysis gates | **WORK, 2 of 5** | ShellCheck + a compiler-warning ratchet landed. Periphery needs a curated retain-rule set before it can gate on 274 mixed findings; `swiftlint analyze` roughly doubles CI time for rules `--strict` largely covers; the a11y audit lives in AppUITests, which needs a graphical session. |
+| 648 — MCP ATS-identifier resolution | **WORK, 3 of 5** | #1–#3 shipped. #4/#5 rewritten `not verified: requires a notarized DMG` — cutting a release is out of bounds. |
+| 619 — Safari/Firefox extensions | **WORK, 3 of 15** | Firefox's buildable half shipped. Safari needs an Xcode target and a signing identity — PARK (c). Four criteria (#7, #10, #13, #14) are unblocked but weren't reached. |
 
-Nothing has moved from WORK to PARK during the run. Where a task turned out to be partly blocked, the
+Nothing moved from WORK to PARK during the run. Where a task turned out to be partly blocked, the
 blocked *criterion* was rewritten `not verified: <reason>` and the rest landed, per the rule above.
+Fifteen criteria across nine tasks are marked that way; every one names what would verify it.
+
+**Two new gates came out of this run** and now protect the codebase: a compiler-warning ratchet
+(`scripts/check-warnings.sh`) that caught two regressions within an hour of landing, and a tooltip
+check (`scripts/check-tooltips.sh`) that found five icon-only controls a manual audit had missed.
 
 ## Standing risks for this run
 

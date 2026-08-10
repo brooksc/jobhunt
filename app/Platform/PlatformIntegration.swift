@@ -22,6 +22,10 @@ public final class PlatformIntegration: NSObject, ObservableObject {
     /// (TASK-429). `stop()` clears it so a restart is possible.
     public private(set) var isStarted = false
     private let focusNotificationName = Notification.Name("JobhuntFocusRequest")
+    /// Window sizing lives in its own type (TASK-557) — this one is the queue/notification adapter,
+    /// and the two have nothing to do with each other. Held here only because `start`/`stop` are the
+    /// app's single lifecycle hook.
+    private let windowPolicy = WindowPolicy()
 
     /// Jobs that became ready during the current drain, keyed by job number (TASK-482). `jobReady`
     /// fires twice per job (after extraction with a nil fit, then after fit with the score), so we
@@ -54,7 +58,7 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         registerNotificationDelegate()
         observeFocusRequests()
         observeAvailabilityExpiry()
-        applyWindowPolicy()
+        windowPolicy.start()
 
         eventTask = Task { [weak self] in
             for await event in await queue.subscribe() {
@@ -71,6 +75,7 @@ public final class PlatformIntegration: NSObject, ObservableObject {
 
         eventTask?.cancel()
         eventTask = nil
+        windowPolicy.stop()
         NotificationCenter.default.removeObserver(self, name: focusNotificationName, object: nil)
         NotificationCenter.default.removeObserver(self, name: .jobUnavailable, object: nil)
         if UNUserNotificationCenter.current().delegate === self {
@@ -82,12 +87,6 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         // Best-effort teardown if the owner drops us without calling stop().
         eventTask?.cancel()
         NotificationCenter.default.removeObserver(self)
-    }
-
-    private func applyWindowPolicy() {
-        // Set minimum window size once at launch. The scene declares defaultSize(1200×750)
-        // for first run; we only enforce the floor, not force-resize user-restored windows.
-        NSApp.mainWindow?.minSize = NSSize(width: 900, height: 600)
     }
 
     /// Update dock badge to unread job count.

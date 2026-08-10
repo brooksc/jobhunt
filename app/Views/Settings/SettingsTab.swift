@@ -110,6 +110,8 @@ struct JobsSettingsTab: View {
     @State var feedbackMatchCounts: [String: Int] = [:]
     /// The correction currently open in the editor sheet (TASK-654).
     @State var editingFeedback: ScoringFeedback?
+    /// The prompt template open in the editor sheet (TASK-627).
+    @State var editingPrompt: PromptTemplate?
     @Query private var allJobs: [Job]
 
     var body: some View {
@@ -117,6 +119,7 @@ struct JobsSettingsTab: View {
             locationSection
             requirementsSection
             scoringFeedbackSection
+            customPromptsSection
             availabilitySection
             customExtractionSection
             applicationDetailsSection

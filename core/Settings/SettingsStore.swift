@@ -31,6 +31,7 @@ private let settingsDefaults: [String: String] = [
     SettingsKey.minSalary: "0",
     SettingsKey.minFitScore: "0",
     SettingsKey.scoringFeedback: "[]",
+    SettingsKey.customPromptTemplates: "[]",
     SettingsKey.llmQueuePaused: "false",
     SettingsKey.llmQueuePauseReason: QueuePauseReason.user.rawValue,
     SettingsKey.llmOpenRouterFreeRotate: "false",
@@ -177,6 +178,61 @@ public final class SettingsStore {
     public var llmQueuePaused: Bool {
         get { bool(forKey: SettingsKey.llmQueuePaused) }
         set { setBool(newValue, forKey: SettingsKey.llmQueuePaused) }
+    }
+
+    /// User-authored prompt templates (TASK-627), ordered for the menu.
+    ///
+    /// A decode failure yields an empty list rather than throwing: a corrupt value would otherwise
+    /// make Settings unopenable, and the templates are re-creatable. The write is the recovery.
+    public var customPromptTemplates: [PromptTemplate] {
+        get {
+            let json = string(forKey: SettingsKey.customPromptTemplates)
+            guard let data = json.data(using: .utf8),
+                  let decoded = try? JSONDecoder().decode([PromptTemplate].self, from: data)
+            else { return [] }
+            return decoded.sorted { $0.sortOrder < $1.sortOrder }
+        }
+        set {
+            guard let data = try? JSONEncoder().encode(newValue),
+                  let json = String(data: data, encoding: .utf8) else { return }
+            setLocal(json, forKey: SettingsKey.customPromptTemplates)
+        }
+    }
+
+    /// Only the enabled ones, in order — what the Prompt AI menu shows.
+    public var enabledPromptTemplates: [PromptTemplate] {
+        customPromptTemplates.filter(\.isEnabled)
+    }
+
+    public func upsertPromptTemplate(_ template: PromptTemplate) {
+        var templates = customPromptTemplates
+        if let index = templates.firstIndex(where: { $0.id == template.id }) {
+            templates[index] = template
+        } else {
+            var appended = template
+            // Append rather than insert: a new prompt belongs at the end of the user's own order.
+            appended.sortOrder = (templates.map(\.sortOrder).max() ?? -1) + 1
+            templates.append(appended)
+        }
+        customPromptTemplates = templates
+    }
+
+    public func removePromptTemplate(id: String) {
+        customPromptTemplates = customPromptTemplates.filter { $0.id != id }
+    }
+
+    /// Moves a template one place up or down, renumbering so the order is always dense.
+    public func movePromptTemplate(id: String, up: Bool) {
+        var templates = customPromptTemplates
+        guard let index = templates.firstIndex(where: { $0.id == id }) else { return }
+        let target = up ? index - 1 : index + 1
+        guard templates.indices.contains(target) else { return }
+        templates.swapAt(index, target)
+        for (position, var template) in templates.enumerated() {
+            template.sortOrder = position
+            templates[position] = template
+        }
+        customPromptTemplates = templates
     }
 
     /// Why the queue is paused. Unrecognised values read back as `.user` — the conservative default,

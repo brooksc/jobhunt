@@ -83,6 +83,17 @@ struct JobPromptMenu: View {
             // plain Copy/Open submenu.
             Button("\(JobPromptKind.requestReferral.title)…") { referralFlow = .prompt }
                 .disabled(!isUsable)
+            // TASK-627 #8: user-authored prompts, in their own group and their own order, so they
+            // can't be mistaken for the built-ins — which stay exactly as they were (#13).
+            let custom = appServices.settings.enabledPromptTemplates
+            if !custom.isEmpty {
+                Divider()
+                Section("Custom Prompts") {
+                    ForEach(custom) { template in
+                        Button(template.name) { copyCustom(template) }
+                    }
+                }
+            }
             Divider()
             // Codex auto-apply agent prompt — uses local files + the browser, so it's always available
             // (independent of the app's résumé) and copy-only (meant to paste into a Codex session).
@@ -268,6 +279,59 @@ struct JobPromptMenu: View {
     private func setClipboard(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    /// #9/#11: resolve the template against this job and copy it. No network, no provider call —
+    /// these are prompts to paste somewhere else.
+    ///
+    /// A template that needs the job description or a résumé and can't have one is refused rather
+    /// than copied with a "[not available]" hole in it: pasting that wastes a round trip through
+    /// whatever the user pastes it into. Optional gaps render the marker and are mentioned in the
+    /// toast, so nothing is silently empty.
+    private func copyCustom(_ template: PromptTemplate) {
+        let rendered = PromptTemplateRenderer.render(template.body, values: customValues())
+        guard rendered.isUsable else {
+            let missing = rendered.missingRequired.map(\.label).joined(separator: ", ")
+            appServices.toastStore.show(
+                "Can't build “\(template.name)” for this job — missing \(missing).", isError: true
+            )
+            return
+        }
+        setClipboard(rendered.text)
+        let note = rendered.missingOptional.isEmpty
+            ? ""
+            : " (no \(rendered.missingOptional.map(\.label).joined(separator: ", ")))"
+        appServices.toastStore.show("“\(template.name)” copied\(note)")
+    }
+
+    /// #10: the résumé and fit analysis come from the same selection the built-in prompts use, so a
+    /// custom prompt can't quietly score against a different résumé than the rest of the screen.
+    private func customValues() -> PromptTemplateRenderer.Values {
+        let resume = usableResume
+        return PromptTemplateRenderer.Values(
+            company: job.company,
+            title: job.title,
+            location: job.location,
+            url: JobURLPolicy.sourceURL(job: job),
+            // #12: the cleaned description verbatim — no truncation, no reflowing.
+            description: job.capture?.cleanedDescription,
+            resumeText: resume?.text,
+            fitAnalysis: resume.flatMap(fitAnalysisText)
+        )
+    }
+
+    /// The fit analysis as prose, built from the same projection the Fit tab renders.
+    private func fitAnalysisText(for resume: Resume) -> String? {
+        guard let summary = fitSummary(for: resume) else { return nil }
+        var lines = ["Overall fit score: \(summary.overall) out of 100."]
+        if !summary.requirementsMet.isEmpty {
+            lines.append("Met: " + summary.requirementsMet.joined(separator: "; "))
+        }
+        if !summary.requirementGaps.isEmpty {
+            lines.append("Gaps: " + summary.requirementGaps.joined(separator: "; "))
+        }
+        lines.append(contentsOf: summary.dimensionNotes)
+        return lines.joined(separator: "\n")
     }
 
     private func promptInput(resume: Resume, referralContext: String = "") -> JobPromptInput {

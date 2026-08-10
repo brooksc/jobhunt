@@ -1,4 +1,18 @@
+import JobhuntCore
 import SwiftUI
+
+/// Maps a fit band to its colour. The thresholds live in Core (`FitBand`) so the colour and the
+/// spoken label can't drift apart — they were three separate copies before (TASK-506 #4).
+extension FitBand {
+    var color: Color {
+        switch self {
+        case .strong: Color(red: 0.34, green: 0.76, blue: 0.45)
+        case .good: .accentColor
+        case .partial: .orange
+        case .low: Color(red: 0.88, green: 0.45, blue: 0.44)
+        }
+    }
+}
 
 // MARK: - FitRingView
 
@@ -8,10 +22,7 @@ struct FitRingView: View {
     var size: CGFloat = 32
 
     var color: Color {
-        if score >= 85 { return Color(red: 0.34, green: 0.76, blue: 0.45) }
-        if score >= 70 { return .accentColor }
-        if score >= 55 { return .orange }
-        return Color(red: 0.88, green: 0.45, blue: 0.44)
+        FitBand.band(for: score).color
     }
 
     var body: some View {
@@ -29,6 +40,9 @@ struct FitRingView: View {
         }
         .frame(width: size, height: size)
         .animation(.easeInOut(duration: 0.3), value: score)
+        // #1: the number alone means nothing without the scale; the band alone loses 55-vs-69.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(FitBand.accessibilityLabel(score: score))
     }
 
     private var ringWidth: CGFloat {
@@ -43,17 +57,11 @@ struct FitPillView: View {
     let score: Int
 
     private var color: Color {
-        if score >= 85 { return Color(red: 0.34, green: 0.76, blue: 0.45) }
-        if score >= 70 { return .accentColor }
-        if score >= 55 { return .orange }
-        return Color(red: 0.88, green: 0.45, blue: 0.44)
+        FitBand.band(for: score).color
     }
 
     private var label: String {
-        if score >= 85 { return "Strong fit" }
-        if score >= 70 { return "Good fit" }
-        if score >= 55 { return "Partial fit" }
-        return "Low fit"
+        FitBand.band(for: score).label
     }
 
     var body: some View {
@@ -70,6 +78,11 @@ struct FitPillView: View {
         .background(color.opacity(0.12))
         .overlay(Capsule().stroke(color.opacity(0.28), lineWidth: 0.5))
         .clipShape(Capsule())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(FitBand.accessibilityLabel(score: score))
+        // The pill shows only the number; the band is the part a sighted user infers from colour,
+        // so it has to be spoken.
+        .help(label)
     }
 }
 

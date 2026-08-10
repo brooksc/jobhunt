@@ -1445,6 +1445,29 @@ private struct JobListRow: View {
         //
         .padding(.vertical, 3)
         .contentShape(Rectangle())
+        // TASK-506 #2: one stop per row instead of a dozen. Left as separate elements, VoiceOver
+        // walks the ring, title, company, location, remote tag, status chip and unread dot one at a
+        // time — and several of those ("circle") say nothing at all.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityDescription)
+    }
+
+    /// Composed in Core so the sentence is unit-tested rather than eyeballed.
+    private var accessibilityDescription: String {
+        JobRowAccessibility.label(
+            title: job.displayTitle,
+            company: job.company,
+            location: job.location,
+            // Spoken though the row doesn't show it: a VoiceOver user is navigating the list one
+            // row at a time, and salary is a thing you filter on. Cheap to say, expensive to go
+            // hunting for.
+            salary: SalaryDisplay.text(
+                min: job.salaryMin, max: job.salaryMax, currency: job.salaryCurrency
+            ),
+            fitScore: job.fitScore,
+            status: job.status.displayName,
+            isUnread: job.unread
+        )
     }
 
     private var fitRing: some View {

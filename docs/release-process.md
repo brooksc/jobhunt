@@ -132,7 +132,11 @@ gh run watch "$(gh run list --workflow=release-dmg.yml --limit 1 --json database
    `--options runtime --timestamp` — Xcode's archive signing skips them, which otherwise makes
    notarization fail.
 8. **Smoke check** — app + MCP helper + Sparkle embedded & signed with hardened runtime.
-9. **Create DMG** → **Notarize** (`notarytool --wait`, must report `Accepted`) → **staple**.
+9. **Notarize + staple the app** (TASK-575) — submitted as a ditto zip, since `notarytool` won't take
+   a bundle; the ticket is stapled to `Jobhunt.app` and `stapler validate` asserts it. Then
+   **Create DMG** → **Notarize the DMG** (`notarytool --wait`, must report `Accepted`) → **staple**,
+   and validate the app *inside* the mounted DMG. Both get a ticket: stapling only the DMG leaves the
+   copied-out app relying on an online Gatekeeper check, so a first launch while offline can hang.
 10. **EdDSA-sign + publish `appcast.xml`** (Sparkle `generate_appcast`).
 11. **Package the Chrome extension** zip.
 12. **Upload** DMG + `.sha256` + `appcast.xml` + provenance + extension zip to the GitHub release.
@@ -143,6 +147,7 @@ cd /tmp
 curl -fsSL -o jh.dmg "https://github.com/brooksc/jobhunt/releases/download/vX.Y.Z/Jobhunt-vX.Y.Z.dmg"
 xcrun stapler validate jh.dmg                 # → "The validate action worked!"
 hdiutil attach jh.dmg -nobrowse -quiet -mountpoint /tmp/jhmnt
+xcrun stapler validate /tmp/jhmnt/Jobhunt.app # the APP's own ticket (TASK-575), not just the DMG's
 spctl -a -t exec -vvv /tmp/jhmnt/Jobhunt.app  # → "accepted, source=Notarized Developer ID"
 hdiutil detach /tmp/jhmnt -quiet
 curl -fsSL "https://github.com/brooksc/jobhunt/releases/latest/download/appcast.xml"  # has sparkle:edSignature

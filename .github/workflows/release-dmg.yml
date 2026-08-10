@@ -198,6 +198,52 @@ jobs:
 
           echo "DMG smoke check passed"
 
+      # TASK-575: notarize and staple the APP before it goes into the DMG.
+      #
+      # Stapling only the DMG leaves the copied-out app with no ticket of its own. Gatekeeper then
+      # has to verify it online, so a user who drags the app to /Applications and first launches it
+      # offline can be delayed or blocked. Apple's guidance is to staple both; a ticket on the app
+      # survives being copied out of the DMG, which is how every user actually installs it.
+      #
+      # `notarytool` won't take a bundle directly, so the app is zipped for submission (ditto with
+      # --keepParent, which preserves the .app wrapper) and the ticket is stapled to the original
+      # bundle afterwards. The zip is a submission vehicle only and is not shipped.
+      - name: Notarize and staple the app
+        run: |
+          set -euo pipefail
+          APP="build/export-dmg/Jobhunt.app"
+          ZIP="build/Jobhunt-app-for-notarization.zip"
+          /usr/bin/ditto -c -k --keepParent "$APP" "$ZIP"
+
+          # Same status-not-exit-code handling as the DMG submission below: `--wait` exits 0 even on
+          # Invalid, which would otherwise fall through to a `stapler` failure with an opaque Error 65.
+          SUBMIT_OUTPUT=$(xcrun notarytool submit "$ZIP" \
+            --apple-id "${{ secrets.APPLE_ID }}" \
+            --password "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" \
+            --team-id "${{ secrets.APPLE_TEAM_ID }}" \
+            --wait 2>&1) || true
+          echo "$SUBMIT_OUTPUT"
+          SUBMISSION_ID=$(echo "$SUBMIT_OUTPUT" | grep -Eo 'id: [0-9a-f-]+' | head -1 | awk '{print $2}')
+          STATUS=$(echo "$SUBMIT_OUTPUT" | awk -F': *' '/status:/{s=$2} END{print s}')
+          echo "App notarization status: ${STATUS:-unknown} (submission ${SUBMISSION_ID:-none})"
+          if [ "$STATUS" != "Accepted" ]; then
+            if [ -n "$SUBMISSION_ID" ]; then
+              echo "--- notarization log ($SUBMISSION_ID) ---"
+              xcrun notarytool log "$SUBMISSION_ID" \
+                --apple-id "${{ secrets.APPLE_ID }}" \
+                --password "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" \
+                --team-id "${{ secrets.APPLE_TEAM_ID }}" || true
+            fi
+            echo "ERROR: app notarization not Accepted (status=${STATUS:-unknown})." >&2
+            exit 1
+          fi
+
+          xcrun stapler staple "$APP"
+          # Assert it, rather than trusting the staple exit code: this is the whole point of the step,
+          # and a missing ticket is invisible until a user launches offline.
+          xcrun stapler validate "$APP"
+          rm -f "$ZIP"
+
       - name: Create DMG (styled, with Applications drop-link)
         run: |
           set -euo pipefail
@@ -246,6 +292,15 @@ jobs:
             exit 1
           fi
           xcrun stapler staple "$DMG"
+
+          # TASK-575: prove the app inside the shipped DMG carries its own ticket, not just the DMG.
+          # Mount read-only, validate the app as a user's copy would be validated, and detach.
+          MOUNT=$(mktemp -d)
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT"
+          xcrun stapler validate "$MOUNT/Jobhunt.app" \
+            || { hdiutil detach "$MOUNT" || true; echo "ERROR: app in DMG has no stapled ticket" >&2; exit 1; }
+          spctl --assess --type execute --verbose=2 "$MOUNT/Jobhunt.app"
+          hdiutil detach "$MOUNT"
 
       # TASK-566: EdDSA-sign the stapled DMG and publish a Sparkle appcast so DMG installs
       # auto-update. Must run AFTER stapling — the signature covers the final DMG bytes.

@@ -186,3 +186,76 @@ final class MarkJobAppliedTests: XCTestCase {
         XCTAssertFalse(result.created, "the exact capture match must still win over the applicationURL")
     }
 }
+
+/// ATS-identifier resolution (TASK-648): the same posting reached by two URL shapes is one job.
+final class MarkAppliedATSIDTests: XCTestCase {
+    private func makeService() throws -> (JobService, BackgroundStore) {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        let queue = QueueActor(
+            store: store, isPaused: { true }, onSetPaused: { _ in },
+            readExtractionSettings: { ExtractionSettings(
+                llmModel: "", preferredLocations: "", locationFilterEnabled: false,
+                locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true
+            ) },
+            providerFactory: { NoOpProvider() }
+        )
+        return (JobService(store: store, queue: queue), store)
+    }
+
+    @discardableResult
+    private func capture(_ service: JobService, url: String, title: String = "TPM") async throws -> Int {
+        try await service.ingestCapture(CapturePayload(
+            url: url, pageTitle: title, visibleText: "We are hiring a \(title). Responsibilities..."
+        )).jobNumber
+    }
+
+    /// #1: captured from the board, applied from the company's embedded careers page. No
+    /// normalization reconciles a path id with a query parameter on a different host — the ATS id is
+    /// the thing that's actually equal.
+    func testBoardURLAndEmbeddedURLResolveToOneJob() async throws {
+        let (service, _) = try makeService()
+        let number = try await capture(service, url: "https://boards.greenhouse.io/acme/jobs/12345")
+
+        let result = try await service.markJobApplied(
+            url: "https://acme.com/careers?gh_jid=12345"
+        )
+        XCTAssertFalse(result.created, "should have matched the captured job, not created a second")
+        XCTAssertEqual(result.jobNumber, number)
+    }
+
+    /// #3: two postings on the same embedded board must stay distinct — the ids differ, so matching
+    /// on the id must not collapse them the way matching on the host would.
+    func testTwoPostingsOnOneEmbeddedBoardStayDistinct() async throws {
+        let (service, _) = try makeService()
+        let first = try await capture(service, url: "https://acme.com/careers?gh_jid=111", title: "TPM")
+        let second = try await capture(service, url: "https://acme.com/careers?gh_jid=222", title: "SRE")
+        XCTAssertNotEqual(first, second)
+
+        let result = try await service.markJobApplied(url: "https://boards.greenhouse.io/acme/jobs/222")
+        XCTAssertFalse(result.created)
+        XCTAssertEqual(result.jobNumber, second)
+    }
+
+    /// A posting with no ATS id must not fall back to matching *some* job — an unrelated URL creates
+    /// a new one, as it did before.
+    func testNonATSURLStillCreatesANewJob() async throws {
+        let (service, _) = try makeService()
+        try await capture(service, url: "https://boards.greenhouse.io/acme/jobs/12345")
+
+        let result = try await service.markJobApplied(url: "https://example.com/careers/some-role")
+        XCTAssertTrue(result.created)
+    }
+
+    /// #2: the id lives in the URL, so stripping it as a tracking parameter would destroy exactly the
+    /// signal this resolution depends on. Guards the same invariant as
+    /// `testEmbeddedBoardJobIDIsNotStrippedAsTracking`, from the consuming side.
+    func testATSIDSurvivesNormalization() throws {
+        let normalized = try XCTUnwrap(
+            URLNormalizer.normalized("https://acme.com/careers?gh_jid=12345&utm_source=x")
+        )
+        XCTAssertTrue(normalized.contains("gh_jid=12345"), normalized)
+        XCTAssertFalse(normalized.contains("utm_source"), normalized)
+        XCTAssertEqual(DuplicateDetector.atsPostingID(urlString: normalized), "gh:12345")
+    }
+}

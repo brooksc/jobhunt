@@ -118,10 +118,37 @@ extension JobService {
             let jobs = try await store.fetch(FetchDescriptor<Job>())
             matched = jobs.filter { $0.applicationURL.map { URLNormalizer.normalized($0) == target } ?? false }
         }
+        if matched.isEmpty {
+            matched = try await jobsMatchingATSID(of: url)
+        }
         if matched.count > 1 {
             throw MarkAppliedError.ambiguous(matches: matched.compactMap(\.jobNumber).sorted())
         }
         return matched.first
+    }
+
+    /// Jobs carrying the same ATS posting id as `url` (TASK-648 #1).
+    ///
+    /// The same Greenhouse posting reached via `boards.greenhouse.io/acme/jobs/12345` and via an
+    /// embedded `acme.com/careers?gh_jid=12345` has two URL shapes that no amount of normalization
+    /// reconciles — one is a path, the other a query parameter on a different host. The id is the
+    /// thing that's actually equal, so it's *extracted and compared*, never normalized away.
+    ///
+    /// Deliberately last: URL matching is exact and this is an inference. `gh_jid` is only
+    /// company-unique in principle, and two postings on one embedded board must stay distinct —
+    /// which they do, because their ids differ (pinned by a test).
+    private func jobsMatchingATSID(of url: String) async throws -> [Job] {
+        guard let atsID = DuplicateDetector.atsPostingID(urlString: url) else { return [] }
+        var matched: [Job] = []
+        for capture in try await store.fetch(FetchDescriptor<Capture>()) {
+            let ids = [capture.url, capture.canonicalURL, capture.job?.applicationURL]
+                .compactMap(\.self)
+                .compactMap { DuplicateDetector.atsPostingID(urlString: $0) }
+            guard ids.contains(atsID), let job = capture.job,
+                  !matched.contains(where: { $0.id == job.id }) else { continue }
+            matched.append(job)
+        }
+        return matched
     }
 
     private func applyToExisting(_ job: Job, matchedURL: String, note: String?) async throws -> MarkAppliedResult {

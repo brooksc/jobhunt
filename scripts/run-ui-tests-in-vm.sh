@@ -64,7 +64,6 @@ SSH_PASS="admin"
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o PreferredAuthentications=password"
 
 MOUNT_NAME="project"
-GUEST_SRC="/Users/admin/src"
 # Host-built test products land here (inside project dir so virtiofs shares them).
 HOST_PRODUCTS="build/Jobhunt-testing"
 # VM copies artifacts here before running test-without-building.
@@ -178,7 +177,7 @@ tart run "$VM_NAME" \
     --no-graphics \
     --dir="${MOUNT_NAME}:${REPO_ROOT}:ro" \
     &
-TART_PID=$!
+# No need to hold the PID: cleanup stops the VM by name via `tart stop`.
 
 # Ensure VM is stopped on script exit unless --no-shutdown was passed
 cleanup() {

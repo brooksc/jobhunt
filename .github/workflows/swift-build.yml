@@ -124,3 +124,11 @@ jobs:
 
       - name: SwiftFormat check
         run: swiftformat app core server/swift mcp/swift tests --lint
+
+      # Compiler-warning ratchet (TASK-570): fails when the distinct-warning count grows past the
+      # committed baseline. Not a zero-warning gate — SwiftData's own #Predicate/SortDescriptor
+      # machinery emits ~49 KeyPath-Sendable warnings under strict concurrency that are Apple's to
+      # fix. The runner's Xcode differs from the dev machine's, so DEVELOPER_DIR is left unset here
+      # and the script falls back to whatever xcode-select points at.
+      - name: Compiler-warning ratchet
+        run: DEVELOPER_DIR="$(xcode-select -p)" ./scripts/check-warnings.sh

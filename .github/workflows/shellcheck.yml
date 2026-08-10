@@ -1,0 +1,21 @@
+name: shellcheck
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout@v4.2.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      # Gates at `warning`, not `note`. The scripts carry ~58 style notes (mostly SC2086 word-splitting
+      # on paths we control); failing on those would mean either 58 edits to release-critical scripts
+      # or a wall of inline disables, and neither buys correctness. Warnings and errors are the ones
+      # that indicate a real bug — the two that existed (unused variables in the VM test runner) were
+      # fixed rather than suppressed.
+      - name: Lint shell scripts
+        run: shellcheck --severity=warning scripts/*.sh

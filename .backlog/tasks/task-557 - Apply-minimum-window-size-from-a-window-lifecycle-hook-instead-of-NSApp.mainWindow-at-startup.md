@@ -3,10 +3,10 @@ id: TASK-557
 title: >-
   Apply minimum window size from a window lifecycle hook instead of
   NSApp.mainWindow at startup
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-19 23:50'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-08-10 00:23'
 labels:
   - audit
   - lifecycle
@@ -17,8 +17,10 @@ references:
   - 'app/Platform/PlatformIntegration.swift:73'
   - 'app/JobhuntApp.swift:83'
 modified_files:
+  - app/Platform/WindowPolicy.swift
   - app/Platform/PlatformIntegration.swift
-  - app/JobhuntApp.swift
+  - core/Services/WindowSizePolicy.swift
+  - tests/CoreTests/WindowSizePolicyTests.swift
 priority: low
 ordinal: 26000
 ---
@@ -35,7 +37,21 @@ Suggested implementation: move minimum-size application to a window lifecycle po
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The minimum window size is applied when a real `NSWindow` exists, independent of launch timing.
-- [ ] #2 The window policy is not silently skipped when `NSApp.mainWindow` is nil during startup.
-- [ ] #3 The implementation keeps notification/queue integration separate from window-specific lifecycle code, or documents the adapter boundary clearly.
+- [x] #1 The minimum window size is applied when a real `NSWindow` exists, independent of launch timing.
+- [x] #2 The window policy is not silently skipped when `NSApp.mainWindow` is nil during startup.
+- [x] #3 The implementation keeps notification/queue integration separate from window-specific lifecycle code, or documents the adapter boundary clearly.
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+#1/#2 The floor is now applied on `NSWindow.didBecomeKeyNotification` plus a sweep of existing windows at start, instead of once from `NSApp.mainWindow` during `PlatformIntegration.start` — which at launch is frequently nil, so the policy applied or didn't depending on timing and never retried. Observing the notification also covers a window opened later in the session.
+
+#3 The adapter boundary is now a file boundary. `WindowSizePolicy` (Core) holds the numbers and the which-windows rule as plain inputs; `WindowPolicy` (app) is the only AppKit-aware part, reading flags off each window and asking Core. Core rather than app because **the app target has no unit-test target** — only XCUITest, which needs a graphical session — so an `NSWindow`-shaped rule would have had no coverage at all. Panels and the SwiftUI Settings scene are excluded: they size from their content, and forcing 900×600 on Settings would make it enormous.
+
+Worth noting: the compiler-warning ratchet added an hour earlier (TASK-570) caught two new warnings from this change's `deinit` — reaching a non-Sendable observer token from a nonisolated deinit is a Swift 6 error. Removed rather than baselined; the observer block captures no `self`, so an un-removed one holds nothing alive.
+
+5 tests. Gate: fast gate TEST SUCCEEDED, swiftlint 0 violations in 342 files, swiftformat clean, warning ratchet back at 58/58.
+
+not verified: (visual) — that a window can no longer be dragged below 900×600 in a running app. The rule is unit-tested; the AppKit wiring is compile-checked only.
+<!-- SECTION:FINAL_SUMMARY:END -->

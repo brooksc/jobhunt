@@ -450,11 +450,23 @@ public actor JobhuntServer {
     /// Pure decision used by both the route guard and CORS reflection. Approves `origin` if it is a
     /// chrome-extension origin that is explicitly allowlisted, or — only when `allowArbitrary` —
     /// any chrome-extension origin. Non-extension origins are never approved here.
+    /// Firefox's extension origins are `moz-extension://<uuid>` where the UUID is generated **per
+    /// install**, not per add-on (TASK-619). An allowlist therefore cannot pin the Firefox build the
+    /// way `productionExtensionOrigin` pins the Chrome one — there is no stable value to list.
+    ///
+    /// So Firefox origins are accepted only under `allowArbitrary`, i.e. debug builds, exactly as
+    /// unpacked Chrome dev extensions are. Shipping Firefox to release needs the launch-time shared
+    /// secret the comment above already anticipates; an allowlist can't do it. Recorded on TASK-619
+    /// rather than papered over by accepting every `moz-extension://` origin in release, which would
+    /// let any installed Firefox add-on drive capture.
+    static let firefoxExtensionScheme = "moz-extension://"
+
     static func isApprovedExtensionOrigin(
         _ origin: String,
         allowlist: Set<String>,
         allowArbitrary: Bool
     ) -> Bool {
+        if origin.hasPrefix(firefoxExtensionScheme) { return allowArbitrary }
         guard origin.hasPrefix("chrome-extension://") else { return false }
         if allowlist.contains(origin) { return true }
         return allowArbitrary

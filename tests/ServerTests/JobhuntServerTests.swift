@@ -964,6 +964,30 @@ final class JobhuntServerOriginTests: XCTestCase {
         await server.stop()
     }
 
+    /// TASK-619: Firefox extension origins are `moz-extension://<uuid>` where the UUID is per
+    /// *install*, so there is no stable value an allowlist could pin. They're therefore accepted only
+    /// in debug (`allowArbitrary`), exactly like unpacked Chrome dev extensions.
+    ///
+    /// The release case is the one that matters: accepting every `moz-extension://` origin would let
+    /// any installed Firefox add-on drive capture, which is precisely what the Chrome allowlist
+    /// exists to prevent.
+    func testFirefoxOriginsAreDebugOnly() {
+        let allow: Set = ["chrome-extension://approved"]
+        XCTAssertTrue(JobhuntServer.isApprovedExtensionOrigin(
+            "moz-extension://11111111-2222-3333-4444-555555555555",
+            allowlist: allow,
+            allowArbitrary: true
+        ))
+        XCTAssertFalse(
+            JobhuntServer.isApprovedExtensionOrigin(
+                "moz-extension://11111111-2222-3333-4444-555555555555",
+                allowlist: allow,
+                allowArbitrary: false
+            ),
+            "a release build must not accept an unpinnable Firefox origin"
+        )
+    }
+
     func testIsApprovedExtensionOrigin_decisionLogic() {
         let allow: Set = ["chrome-extension://approved"]
         // Non-extension origins are never approved, even with allowArbitrary.

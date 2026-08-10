@@ -131,10 +131,20 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         NSApp.dockTile.badgeLabel = count > 0 ? "\(count)" : ""
     }
 
-    /// Handle jobhunt://jobs/N deep link.
+    /// Handle `jobhunt://` deep links: `jobhunt://jobs/N` and `jobhunt://launch`.
     public func handleDeepLink(_ url: URL) {
-        guard url.scheme == "jobhunt",
-              url.host == "jobs",
+        guard url.scheme == "jobhunt" else { return }
+
+        // TASK-489: the extension opens this to start the app when a capture finds it closed. The
+        // capture itself follows over localhost HTTP — a capture can be several MB and a URL can't
+        // be — so there is nothing to do here beyond existing, which the launch has accomplished.
+        // Activating is deliberate: the user just asked for a capture and should see it land.
+        if url.host == "launch" {
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        guard url.host == "jobs",
               let numberString = url.pathComponents.dropFirst().first,
               let jobNumber = Int(numberString) else { return }
         navigateToJob(number: jobNumber)

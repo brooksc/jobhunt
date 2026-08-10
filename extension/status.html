@@ -15,6 +15,15 @@
         <button id="clear" type="button">Clear queue</button>
       </div>
       <!-- TASK-440: privacy notice — the CSV contains the full captured page content. -->
+      <p class="auto-launch">
+        <label>
+          <input type="checkbox" id="auto-launch" />
+          Launch JobHunt automatically when capturing
+        </label>
+      </p>
+      <p id="auto-launch-note" class="export-privacy">Off by default. When on, capturing while JobHunt
+        is closed starts it and sends the capture straight away. Chrome asks for permission the first
+        time; tick &ldquo;Always allow&rdquo; to avoid being asked again.</p>
       <p id="export-privacy" class="export-privacy">Exported CSV files include the full captured page text, your selected text, the job URL, and any notes. Save them somewhere private.</p>
       <p id="status" role="status"></p>
       <section>
@@ -42,6 +51,7 @@
     </main>
     <script src="retry_queue.js"></script>
     <script src="export_csv.js"></script>
+    <script src="launch_app.js"></script>
     <script src="status.js"></script>
   </body>
 </html>

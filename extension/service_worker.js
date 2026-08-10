@@ -1,5 +1,6 @@
 importScripts("capture.js");
 importScripts("retry_queue.js");
+importScripts("launch_app.js");
 importScripts("export_csv.js");
 
 const BUILD_DATE = "2026-06-02";
@@ -475,6 +476,37 @@ async function captureTabPayload(tabId, userNote = "") {
   return { payload, action };
 }
 
+/** Last `jobhunt://launch` attempt, so a burst of captures doesn't fire one prompt per capture. */
+let lastLaunchAttemptAt = 0;
+
+/**
+ * TASK-489: start the app, then retry. Opt-in and off by default.
+ *
+ * Only the launch goes through the URL scheme — the capture itself still flushes over localhost
+ * HTTP, because a capture can be several MB and a URL can't be.
+ */
+async function tryLaunchAndFlush() {
+  if (!(await jobhuntLaunch.isEnabled(chrome.storage.local))) return false;
+
+  const result = await jobhuntLaunch.launchAndWait({
+    openURL: async (url) => { await chrome.tabs.create({ url, active: false }); },
+    isServerReady: async () => {
+      try {
+        await findServerPort();
+        return true;
+      } catch (_) {
+        return false;
+      }
+    },
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    now: () => Date.now(),
+    lastAttemptAt: lastLaunchAttemptAt,
+  });
+
+  if (result.launched) lastLaunchAttemptAt = Date.now();
+  return result.ready === true;
+}
+
 async function submitOrQueue(payload) {
   await flushQueuedCaptures();
 
@@ -489,6 +521,8 @@ async function submitOrQueue(payload) {
       await showBadge("ERR", "#c0392b");
       return { queued: false, permanent: true, status: error.status, error: error.message };
     }
+    // Queue first, launch second: if the app comes up we flush immediately, and if it doesn't the
+    // capture is already safely stored rather than depending on the launch succeeding.
     const enqueueResult = await jobhuntRetryQueue.enqueueCapture(chrome.storage.local, payload);
     if (enqueueResult.duplicate) {
       await showBadge("DUP", "#f9ab00");
@@ -498,6 +532,14 @@ async function submitOrQueue(payload) {
       await showBadge("ERR", "#c0392b");
       return { queued: false, error: enqueueResult.error };
     }
+    if (await tryLaunchAndFlush()) {
+      const flushed = await flushQueuedCaptures();
+      if (flushed.remaining === 0) {
+        await showBadge("OK", "#137333");
+        return { queued: false, launched: true, submitted: flushed.submitted };
+      }
+    }
+
     await showBadge("Q", "#f9ab00");
     await showQueuedStatus(enqueueResult.length);
     return { queued: true, queueLength: enqueueResult.length };

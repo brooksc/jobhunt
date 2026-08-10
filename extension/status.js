@@ -149,3 +149,14 @@
 
   await loadQueue();
 })();
+
+// TASK-489: the auto-launch toggle. Off by default — launching an app is not something to do behind
+// someone's back, and Chrome's external-protocol prompt makes it visible anyway.
+(async function initAutoLaunch() {
+  const box = document.getElementById("auto-launch");
+  if (!box || typeof jobhuntLaunch === "undefined") return;
+  box.checked = await jobhuntLaunch.isEnabled(chrome.storage.local);
+  box.addEventListener("change", async () => {
+    await jobhuntLaunch.setEnabled(chrome.storage.local, box.checked);
+  });
+})();

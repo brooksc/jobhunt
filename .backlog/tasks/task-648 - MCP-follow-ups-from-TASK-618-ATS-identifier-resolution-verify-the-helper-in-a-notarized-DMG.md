@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-07-25 21:34'
+updated_date: '2026-08-10 00:03'
 labels:
   - mcp
   - release
@@ -16,6 +17,9 @@ references:
   - core/Services/URLNormalizer.swift
   - tests/CoreTests/MarkJobAppliedTests.swift
   - .github/workflows/release-dmg.yml
+modified_files:
+  - core/Services/JobService+MarkApplied.swift
+  - tests/CoreTests/MarkJobAppliedTests.swift
 priority: medium
 ---
 
@@ -33,9 +37,19 @@ Do the AC #16 check as part of the next release that ships `mark_job_applied`.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The same posting reached via an ATS board URL and via an embedded board URL carrying the same ATS id resolves to one job
-- [ ] #2 gh_jid/ashby_jid remain un-stripped by URLNormalizer; the existing over-normalization regression test still passes
-- [ ] #3 Focused tests cover ATS-id matching, including two distinct postings on one embedded board staying distinct
+- [x] #1 The same posting reached via an ATS board URL and via an embedded board URL carrying the same ATS id resolves to one job
+- [x] #2 gh_jid/ashby_jid remain un-stripped by URLNormalizer; the existing over-normalization regression test still passes
+- [x] #3 Focused tests cover ATS-id matching, including two distinct postings on one embedded board staying distinct
 - [ ] #4 A notarized DMG is inspected: Contents/Helpers/jobhunt-mcp is present, executable, Developer ID signed with hardened runtime
 - [ ] #5 The DMG-installed helper completes initialize/tools/list/tools-call against the running app without re-signing
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+**2026-08-09 — AC #1–#3 done; #4–#5 parked as release-gated.**
+
+`resolveJob` gained a final `jobsMatchingATSID` step: it extracts the ATS id from the incoming URL via `DuplicateDetector.atsPostingID` and compares it against the ids on every capture URL, canonical URL and applicationURL. Deliberately *last*, after every URL match — those are exact, this is an inference. 4 tests: board-vs-embedded resolving to one job, two postings on one embedded board staying distinct, a non-ATS URL still creating a new job, and `gh_jid` surviving normalization while `utm_source` doesn't (#2, guarded from the consuming side).
+
+#4 and #5 are **not verified: requires a notarized DMG**, which means cutting a release — out of scope without an explicit request, and the task itself says to do this check as part of the next release that ships `mark_job_applied`. Leaving the task open for those two.
+<!-- SECTION:NOTES:END -->

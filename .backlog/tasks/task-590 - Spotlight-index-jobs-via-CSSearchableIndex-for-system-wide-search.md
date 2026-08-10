@@ -1,15 +1,25 @@
 ---
 id: TASK-590
 title: 'Spotlight: index jobs via CSSearchableIndex for system-wide search'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-02 21:52'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-08-10 01:13'
 labels: []
 dependencies: []
 references:
   - app/Platform/PlatformIntegration.swift
   - app/Views/Settings/DataSettingsView.swift
+modified_files:
+  - core/Services/SpotlightEntry.swift
+  - core/Services/BackgroundStore.swift
+  - core/Services/JobService.swift
+  - app/Platform/SpotlightIndexer.swift
+  - app/Shell/AppServices.swift
+  - app/Views/Settings/DataSettingsTab.swift
+  - app/Views/Jobs/JobsView.swift
+  - app/Views/Detail/JobDetailView.swift
+  - tests/CoreTests/SpotlightEntryTests.swift
 priority: low
 ordinal: 39000
 ---
@@ -38,8 +48,26 @@ ordinal: 39000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Typing a company name or job title in macOS Spotlight returns matching jobs
-- [ ] #2 Clicking a Spotlight result opens the app at that job (deep link)
-- [ ] #3 Deleting a job removes it from the Spotlight index
-- [ ] #4 Settings → Data has a 'Clear Spotlight Index' option
+- [ ] #1 not verified: (visual) — Spotlight results were not exercised on a live desktop. The indexed title, keywords and description are unit-tested and the CoreSpotlight call is compile-checked.
+- [ ] #2 not verified: (visual) — clicking a Spotlight result was not exercised. The item carries the same jobhunt://jobs/N link the notification path already uses and PlatformIntegration.handleDeepLink already resolves.
+- [x] #3 Deleting a job removes it from the Spotlight index
+- [x] #4 Settings → Data has a 'Clear Spotlight Index' option
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+`SpotlightEntry` (Core) decides what gets indexed and is unit-tested; `SpotlightIndexer` (app) is a thin CoreSpotlight adapter, since the framework can't be exercised in a unit test.
+
+#1/#2 are implemented but rewritten `not verified: (visual)` — confirming a Spotlight result appears and opens needs a live desktop, which is out of bounds for this run. The link is `jobhunt://jobs/N`, the same one the follow-up notifications use and `PlatformIntegration.handleDeepLink` already resolves, so #2 rides on an existing, working path rather than a new one.
+
+#3 The delete paths read the job number **before** deleting — afterwards there's nothing to read — and remove the item. A stale hit that opens the app onto a missing job is the failure worth avoiding.
+
+#4 "Clear Spotlight Index" in Settings → Data, scoped to this app's domain identifier rather than a global index wipe.
+
+**Judgement calls.** A job with no number isn't indexed (a hit that opens the app and lands nowhere is worse than no hit) and neither is one with no title *and* no company (a blank row). The company is added as a keyword as well as appearing in the title, so searching "Acme" finds every Acme job whatever its title reads like. Indexing is a one-shot pass 5s after launch rather than a change observer: a few hundred rows are cheap to re-index, and an entry going stale until the next launch is a far smaller problem than an observer firing on every extraction write.
+
+9 tests. Two SwiftLint limits tripped by the additions — fixed by extracting `DataSettingsTab` to its own file and the two runtime loops into named methods, rather than by raising the limits.
+
+Gate: fast gate TEST SUCCEEDED, BUILD SUCCEEDED, swiftlint 0 violations in 353 files, swiftformat 0.61.1 clean, tooltip check passes.
+<!-- SECTION:FINAL_SUMMARY:END -->

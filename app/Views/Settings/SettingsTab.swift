@@ -123,6 +123,9 @@ struct JobsSettingsTab: View {
     @State private var goneJobs: [GoneJobResult] = []
     @State private var unverifiedJobs: [UnverifiedJobResult] = []
     @State private var showingExpiredConfirmation = false
+    /// Coverage of the run behind the sheet — see ExpiredConfirmationSheet.coverageLine.
+    @State private var lastCheckedCount = 0
+    @State private var lastPlannedCount = 0
 
     /// Internal, not private: the extracted scoring-feedback section is an extension on this view.
     @Environment(AppServices.self) var appServices
@@ -154,6 +157,8 @@ struct JobsSettingsTab: View {
             ExpiredConfirmationSheet(
                 goneJobs: goneJobs,
                 unverifiedJobs: unverifiedJobs,
+                checkedCount: lastCheckedCount,
+                plannedCount: lastPlannedCount,
                 onConfirm: { markExpired($0) },
                 onDismiss: {
                     showingExpiredConfirmation = false
@@ -446,6 +451,8 @@ struct JobsSettingsTab: View {
         try? settings.set(now, forKey: SettingsKey.availabilityLastAutoCheckAt)
 
         unverifiedJobs = sweep.unverified
+        lastCheckedCount = sweep.checkedCount
+        lastPlannedCount = eligible.count
         if sweep.gone.isEmpty {
             // Never claim jobs are "still available" when some were never actually reached — a
             // bot-challenged or rate-limited posting is unknown, not live.
@@ -489,6 +496,11 @@ struct ExpiredConfirmationSheet: View {
     /// Jobs the sweep could not verify either way. Shown so the result never reads as an exhaustive
     /// "these are the only expired ones" — a check that was blocked proves nothing.
     let unverifiedJobs: [UnverifiedJobResult]
+    /// How many postings this run actually reached, and how many it set out to reach. Both are needed
+    /// to say what "7 gone" is 7 *out of* — without that the result reads as a verdict on the whole
+    /// view, which it never is.
+    let checkedCount: Int
+    let plannedCount: Int
     let onConfirm: ([GoneJobResult]) -> Void
     let onDismiss: () -> Void
 
@@ -498,14 +510,39 @@ struct ExpiredConfirmationSheet: View {
     init(
         goneJobs: [GoneJobResult],
         unverifiedJobs: [UnverifiedJobResult] = [],
+        checkedCount: Int = 0,
+        plannedCount: Int = 0,
         onConfirm: @escaping ([GoneJobResult]) -> Void,
         onDismiss: @escaping () -> Void
     ) {
         self.goneJobs = goneJobs
         self.unverifiedJobs = unverifiedJobs
+        self.checkedCount = checkedCount
+        self.plannedCount = plannedCount
         self.onConfirm = onConfirm
         self.onDismiss = onDismiss
         _selected = State(initialValue: Set(goneJobs.map(\.jobID)))
+    }
+
+    /// What this run covered, stated in the header rather than left to be inferred.
+    ///
+    /// "7 postings appear to be gone" out of an archive of 400 invites exactly one question — is that
+    /// really all? — and the answer (how many were actually reached, and how many couldn't be) was
+    /// sitting below the results inside the scroll view, where nobody scrolls past a checklist to
+    /// find it. A months-old posting that answers 200 from a client-rendered page is *unverified*,
+    /// not alive, and that distinction is the whole basis for trusting a short list.
+    private var coverageLine: String? {
+        guard checkedCount > 0 || plannedCount > 0 else { return nil }
+        var parts = ["\(checkedCount) checked"]
+        let deferred = unverifiedJobs.count(where: { $0.reason == .notCheckedThisRun })
+        if deferred > 0 {
+            parts.append("\(deferred) held for a later run")
+        }
+        let unresolved = unverifiedJobs.count - deferred
+        if unresolved > 0 {
+            parts.append("\(unresolved) couldn't be verified")
+        }
+        return parts.joined(separator: " · ")
     }
 
     private var sweep: AvailabilitySweep {
@@ -544,6 +581,14 @@ struct ExpiredConfirmationSheet: View {
             )
             .font(.subheadline)
             .foregroundStyle(.secondary)
+
+            // Pinned, not buried below the results: this is what qualifies the number above it.
+            if let coverageLine {
+                Label(coverageLine, systemImage: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             // Ticking or clearing ~100 checkboxes by hand is not a workflow.
             if goneJobs.count > 1 {

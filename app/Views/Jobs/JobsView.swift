@@ -53,6 +53,10 @@ struct JobsView: View {
     @State private var goneJobs: [GoneJobResult] = []
     @State private var unverifiedJobs: [UnverifiedJobResult] = []
     @State private var showingExpiredConfirmation = false
+    /// Coverage of the run behind the confirmation sheet, so it can say what the gone list is
+    /// a subset OF rather than presenting itself as a verdict on the whole view.
+    @State private var lastCheckedCount = 0
+    @State private var lastPlannedCount = 0
     @State private var isCheckingAvailability = false
     @State private var isScanningDuplicates = false
     /// Progress for a running long task (availability check / duplicate scan), shown as a modal dialog
@@ -111,6 +115,8 @@ struct JobsView: View {
                 ExpiredConfirmationSheet(
                     goneJobs: goneJobs,
                     unverifiedJobs: unverifiedJobs,
+                    checkedCount: lastCheckedCount,
+                    plannedCount: lastPlannedCount,
                     onConfirm: { markExpired($0) },
                     onDismiss: { showingExpiredConfirmation = false }
                 )
@@ -1427,6 +1433,8 @@ struct JobsView: View {
             )
         }
         unverifiedJobs = sweep.unverified
+        lastCheckedCount = sweep.checkedCount
+        lastPlannedCount = planned.checking
         if found.isEmpty {
             // Show the result in the dialog itself (no transient toast) — the user dismisses it.
             // A blocked or deferred check proves nothing, so don't report those jobs as available.

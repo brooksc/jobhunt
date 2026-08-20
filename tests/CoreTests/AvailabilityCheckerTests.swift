@@ -1425,3 +1425,91 @@ final class AvailabilityScopeTests: XCTestCase {
         XCTAssertFalse(AvailabilityChecker.coversScheduledSweep(checked: [archived], allJobs: [archived]))
     }
 }
+
+/// The seam the earlier tests missed. `checkableJobs` was verified in isolation while `findGoneJobs`
+/// still carried its own hardcoded `.pursuing || .applied` filter, so a run over 584 archived jobs
+/// checked NOTHING and reported "All 584 postings in view are still available" — a false all-clear.
+/// These drive the whole path, not the helper.
+final class AvailabilityScopeEndToEndTests: XCTestCase {
+    private var container: ModelContainer!
+    private var session: URLSession!
+
+    override func setUp() async throws {
+        container = try ModelContainerFactory.inMemory()
+        MockURLProtocol.reset()
+        session = MockURLProtocol.makeSession()
+    }
+
+    override func tearDown() async throws {
+        container = nil
+        MockURLProtocol.reset()
+    }
+
+    private func job(_ status: JobStatus, url: String) throws -> Job {
+        let context = ModelContext(container)
+        let job = Job(title: "T", status: status)
+        let capture = Capture(url: url, pageTitle: "T", rawHash: UUID().uuidString, capturedAt: Date())
+        job.capture = capture
+        context.insert(capture)
+        context.insert(job)
+        try context.save()
+        return job
+    }
+
+    private func stub404(_ pattern: String) {
+        MockURLProtocol.handlers.append((pattern, { request in
+            (
+                HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!,
+                Data()
+            )
+        }))
+    }
+
+    /// A dead archived posting must come back as gone when the caller asked for an unrestricted run.
+    func testArchivedJobIsActuallyCheckedWhenUnrestricted() async throws {
+        let archived = try job(.archived, url: "https://jobs.example.com/archived-1")
+        stub404("archived-1")
+
+        let sweep = await AvailabilityChecker.findGoneJobs(
+            [archived], restrictToStatuses: nil, session: session
+        )
+        XCTAssertEqual(sweep.gone.map(\.jobID), [archived.id], "an archived posting must be checkable on demand")
+        XCTAssertEqual(sweep.checkedCount, 1)
+    }
+
+    /// And the run must report what it reached, so the UI can't turn a no-op into an all-clear.
+    func testCheckedCountReflectsRealRequestsNotInputSize() async throws {
+        let archived = try job(.archived, url: "https://jobs.example.com/live-1")
+
+        let unrestricted = await AvailabilityChecker.findGoneJobs(
+            [archived], restrictToStatuses: nil, session: session
+        )
+        XCTAssertEqual(unrestricted.checkedCount, 1)
+
+        // The scheduled sweep's default excludes it — and then checkedCount must be 0, NOT the
+        // input size. This is the exact assertion whose absence let the false all-clear ship.
+        let restricted = await AvailabilityChecker.findGoneJobs([archived], session: session)
+        XCTAssertTrue(restricted.gone.isEmpty)
+        XCTAssertEqual(restricted.checkedCount, 0, "nothing was checked, so nothing may be claimed")
+    }
+
+    /// The scheduled sweep's protections are unchanged: an interviewing job is not checked by it.
+    func testScheduledSweepStillProtectsInterviewAndOffer() async throws {
+        for status in [JobStatus.interview, .offer, .rejected, .new] {
+            let row = try job(status, url: "https://jobs.example.com/protected-\(status.rawValue)")
+            stub404("protected-\(status.rawValue)")
+            let sweep = await AvailabilityChecker.findGoneJobs([row], session: session)
+            XCTAssertTrue(sweep.gone.isEmpty, "\(status) must stay out of the scheduled sweep")
+            XCTAssertEqual(sweep.checkedCount, 0)
+        }
+    }
+
+    /// ...but the scheduled sweep's own population is still checked, so the default isn't inert.
+    func testScheduledSweepStillChecksPursuedJobs() async throws {
+        let pursuing = try job(.pursuing, url: "https://jobs.example.com/pursued-1")
+        stub404("pursued-1")
+        let sweep = await AvailabilityChecker.findGoneJobs([pursuing], session: session)
+        XCTAssertEqual(sweep.gone.map(\.jobID), [pursuing.id])
+        XCTAssertEqual(sweep.checkedCount, 1)
+    }
+}

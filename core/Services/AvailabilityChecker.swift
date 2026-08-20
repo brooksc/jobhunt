@@ -114,10 +114,23 @@ public struct UnverifiedJobResult: Sendable {
 public struct AvailabilitySweep: Sendable {
     public let gone: [GoneJobResult]
     public let unverified: [UnverifiedJobResult]
+    /// How many jobs this run actually reached the network for.
+    ///
+    /// The UI used to derive this as `handedIn - unverified.count`, which assumes the checker looked
+    /// at everything it was given. When a status filter inside `findGoneJobs` silently dropped 584
+    /// archived jobs, that arithmetic produced "All 584 postings in view are still available" from a
+    /// run that made zero requests. A count the checker reports itself can't be talked into an
+    /// all-clear it didn't earn.
+    public let checkedCount: Int
 
-    public init(gone: [GoneJobResult], unverified: [UnverifiedJobResult] = []) {
+    public init(
+        gone: [GoneJobResult],
+        unverified: [UnverifiedJobResult] = [],
+        checkedCount: Int = 0
+    ) {
         self.gone = gone
         self.unverified = unverified
+        self.checkedCount = checkedCount
     }
 
     /// Counts per reason, most common first — what the "unable to check" line is built from.
@@ -819,7 +832,9 @@ public enum AvailabilityChecker {
                 await tick()
             }
         }
-        return AvailabilitySweep(gone: gone, unverified: blocked)
+        return AvailabilitySweep(
+            gone: gone, unverified: blocked, checkedCount: specs.count - blocked.count
+        )
     }
 
     /// The gentle LinkedIn pass: one at a time with a pace gap, stopping the moment LinkedIn throttles
@@ -849,7 +864,9 @@ public enum AvailabilityChecker {
             }
             try? await Task.sleep(for: linkedInPaceDelay)
         }
-        return AvailabilitySweep(gone: gone, unverified: skipped)
+        return AvailabilitySweep(
+            gone: gone, unverified: skipped, checkedCount: specs.count - skipped.count
+        )
     }
 
     /// `findGoneJobs` with the LinkedIn rotation cursor read and advanced, so successive runs cover
@@ -858,28 +875,52 @@ public enum AvailabilityChecker {
     public static func findGoneJobsRotating(
         _ jobs: [Job],
         settings: SettingsStore,
+        restrictToStatuses: Set<JobStatus>? = scheduledSweepStatuses,
         session: URLSession = .shared,
         onProgress: (@Sendable (_ checked: Int, _ total: Int) async -> Void)? = nil
     ) async -> AvailabilitySweep {
         let offset = settings.int(forKey: SettingsKey.linkedInRotationOffset)
-        let results = await findGoneJobs(jobs, session: session, linkedInOffset: offset, onProgress: onProgress)
+        let results = await findGoneJobs(
+            jobs,
+            restrictToStatuses: restrictToStatuses,
+            session: session,
+            linkedInOffset: offset,
+            onProgress: onProgress
+        )
         // Advance by the cap regardless of how many LinkedIn jobs existed this run; the slice applies
         // modulo, so an over-large cursor simply wraps.
         settings.setInt(offset &+ maxLinkedInPerRun, forKey: SettingsKey.linkedInRotationOffset)
         return results
     }
 
+    /// Which statuses the **scheduled** sweep is allowed to check.
+    ///
+    /// Interested (`.pursuing`) and Applied both qualify: a role you applied to can be pulled just as
+    /// a saved one can. Interview/offer/rejected stay protected — a job you're actively interviewing
+    /// for belongs in `.interview`, not `.applied` — and terminal statuses are already excluded
+    /// upstream by `fetchStaleEligibleJobs`.
+    public static let scheduledSweepStatuses: Set<JobStatus> = [.pursuing, .applied]
+
+    /// - Parameter restrictToStatuses: statuses this run may check, or `nil` to check every job
+    ///   handed in. **`nil` is for callers that have already chosen the scope themselves** — the
+    ///   on-demand, view-scoped check does, and passing anything else there silently discards the
+    ///   user's selection. The default keeps the scheduled sweep's protected statuses.
+    ///
+    ///   This started as an unconditional `filter` here as well as at every call site. When the Jobs
+    ///   list began checking the view rather than a hardcoded status pair, this copy silently
+    ///   discarded all 584 archived jobs and the run reported "All 584 postings in view are still
+    ///   available" — a false all-clear, which is the worst answer this function can give. Hence a
+    ///   parameter: the scope is now stated by the caller, once.
     public static func findGoneJobs(
         _ jobs: [Job],
+        restrictToStatuses: Set<JobStatus>? = scheduledSweepStatuses,
         session: URLSession = .shared,
         linkedInOffset: Int = 0,
         onProgress: (@Sendable (_ checked: Int, _ total: Int) async -> Void)? = nil
     ) async -> AvailabilitySweep {
-        // Interested (.pursuing) AND Applied jobs are checked: a role you applied to can be pulled
-        // just as a saved one can. Interview/offer/rejected stay protected — a job you're actively
-        // interviewing for belongs in .interview, not .applied. No status is changed here; results are
-        // returned for user confirmation.
-        let eligible = jobs.filter { $0.status == .pursuing || $0.status == .applied }
+        let eligible = restrictToStatuses.map { allowed in
+            jobs.filter { allowed.contains($0.status) }
+        } ?? jobs
         guard !eligible.isEmpty else { return AvailabilitySweep(gone: []) }
 
         // Jobs with no usable URL can't be checked at all — previously dropped silently.
@@ -944,7 +985,8 @@ public enum AvailabilityChecker {
         let linkedIn = await linkedInResults
         return AvailabilitySweep(
             gone: concurrent.gone + linkedIn.gone,
-            unverified: uncheckable + concurrent.unverified + linkedIn.unverified + deferred
+            unverified: uncheckable + concurrent.unverified + linkedIn.unverified + deferred,
+            checkedCount: concurrent.checkedCount + linkedIn.checkedCount
         )
     }
 

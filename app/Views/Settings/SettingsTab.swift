@@ -449,8 +449,10 @@ struct JobsSettingsTab: View {
         if sweep.gone.isEmpty {
             // Never claim jobs are "still available" when some were never actually reached — a
             // bot-challenged or rate-limited posting is unknown, not live.
-            let verified = eligible.count - sweep.unverified.count
-            var message = sweep.unverified.isEmpty
+            // Same rule as the Jobs list: the checker reports what it reached, so an all-clear can
+            // only be claimed when every job handed in was genuinely checked.
+            let verified = sweep.checkedCount
+            var message = verified == eligible.count
                 ? "All \(eligible.count) jobs are still available"
                 : "No expired postings found — \(verified) of \(eligible.count) verified"
             if let summary = sweep.unverifiedSummary { message += ". \(summary)" }

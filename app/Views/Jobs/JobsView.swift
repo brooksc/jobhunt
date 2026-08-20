@@ -1375,8 +1375,10 @@ struct JobsView: View {
 
         let model = TaskProgressModel(title: "Checking availability", total: eligible.count)
         let task = Task {
+            // nil: the scope is `availabilityCandidates` — what the user is looking at. The default
+            // would re-narrow to Interested/Applied and silently drop everything else.
             await AvailabilityChecker.findGoneJobsRotating(
-                eligible, settings: appServices.settings
+                eligible, settings: appServices.settings, restrictToStatuses: nil
             ) { checked, total in
                 await MainActor.run { model.current = checked; model.total = total }
             }
@@ -1401,8 +1403,10 @@ struct JobsView: View {
         if found.isEmpty {
             // Show the result in the dialog itself (no transient toast) — the user dismisses it.
             // A blocked or deferred check proves nothing, so don't report those jobs as available.
-            let verified = eligible.count - sweep.unverified.count
-            var completion = sweep.unverified.isEmpty
+            // The checker reports what it actually reached; never infer it from the input count.
+            // An all-clear is only claimable when every job handed in was genuinely checked.
+            let verified = sweep.checkedCount
+            var completion = verified == eligible.count
                 ? "All \(eligible.count) postings in view are still available."
                 : "No expired postings found — \(verified) of \(eligible.count) verified."
             if let summary = sweep.unverifiedSummary { completion += " \(summary)" }
@@ -1418,7 +1422,7 @@ struct JobsView: View {
         notifyIfBackgrounded(
             title: "Availability check complete",
             body: found.isEmpty
-                ? "\(eligible.count - sweep.unverified.count) of \(eligible.count) verified available"
+                ? "\(sweep.checkedCount) of \(eligible.count) verified available"
                 : "\(found.count) job(s) may be gone"
         )
     }

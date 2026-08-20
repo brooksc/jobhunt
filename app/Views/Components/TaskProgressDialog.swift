@@ -18,6 +18,14 @@ final class TaskProgressModel {
     var completion: String?
     var onDone: () -> Void = {}
 
+    /// One line explaining a total that doesn't match what the user was offered.
+    ///
+    /// The availability check is the case this exists for: the menu offers "Check Availability of 400
+    /// Shown", then the dialog counts to 342, because LinkedIn is checked a capped dozen at a time by
+    /// rotation. Both numbers are correct and the difference is deliberate, but a bare "50 / 342"
+    /// after asking for 400 reads as jobs having gone missing.
+    var note: String?
+
     init(title: String, total: Int) {
         self.title = title
         self.total = total
@@ -60,6 +68,13 @@ struct TaskProgressDialog: View {
                 Text("\(model.current) / \(model.total)")
                     .font(.callout.monospacedDigit())
                     .foregroundStyle(.secondary)
+                if let note = model.note {
+                    Text(note)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Button("Cancel", role: .cancel) { model.onCancel() }
                     .keyboardShortcut(.cancelAction)
             }

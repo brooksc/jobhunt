@@ -1374,13 +1374,28 @@ struct JobsView: View {
         defer { isCheckingAvailability = false }
 
         let model = TaskProgressModel(title: "Checking availability", total: eligible.count)
+        // What the menu offered, so the dialog can explain a smaller real total (see the note below).
+        let requested = eligible.count
         let task = Task {
             // nil: the scope is `availabilityCandidates` — what the user is looking at. The default
             // would re-narrow to Interested/Applied and silently drop everything else.
             await AvailabilityChecker.findGoneJobsRotating(
                 eligible, settings: appServices.settings, restrictToStatuses: nil
             ) { checked, total in
-                await MainActor.run { model.current = checked; model.total = total }
+                await MainActor.run {
+                    model.current = checked
+                    model.total = total
+                    // The run's real total is smaller than what the menu offered whenever LinkedIn
+                    // postings fall outside this run's rotation window (capped per run so a burst of
+                    // guest requests can't get us throttled — a throttled check reads as "available"
+                    // and would expire live jobs). Say so here rather than leaving the shortfall to
+                    // be discovered in the summary at the end.
+                    let deferred = requested - total
+                    model.note = deferred > 0
+                        ? "\(deferred) LinkedIn posting\(deferred == 1 ? "" : "s") are checked on later "
+                        + "runs — LinkedIn throttles rapid checks, so they go a few at a time."
+                        : nil
+                }
             }
         }
         model.onCancel = { task.cancel() }

@@ -31,6 +31,21 @@ public enum DueFollowUps {
         /// Every id covered, so the caller can mark them notified — including the ones folded into a
         /// summary. Marking only the named ones would re-notify the rest forever.
         public let coveredIDs: [String]
+
+        /// The notification-centre identifier for this batch.
+        ///
+        /// Same set of follow-ups → same id, so a repeat replaces rather than stacks; a different
+        /// set → a different id, so a second batch isn't swallowed by the first. Computed with an
+        /// explicit FNV-1a rather than `hashValue`: Swift seeds its hasher per process, so a
+        /// `hashValue`-derived id is a *different string every launch* — which is precisely when the
+        /// same follow-ups are most likely to come round again.
+        public var notificationID: String {
+            var hash: UInt64 = 0xCBF2_9CE4_8422_2325
+            for byte in coveredIDs.sorted().joined(separator: "\u{1}").utf8 {
+                hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01B3
+            }
+            return "follow-ups-\(String(hash, radix: 16))"
+        }
     }
 
     /// Above this, one summary instead of a stack of banners. Five is where a notification centre
@@ -47,7 +62,9 @@ public enum DueFollowUps {
     ) -> Bool {
         guard completedAt == nil else { return false }
         guard dueDate <= now else { return false }
-        if let snoozedUntil, snoozedUntil > now { return false }
+        if let snoozedUntil, snoozedUntil > now {
+            return false
+        }
         return true
     }
 
@@ -94,7 +111,9 @@ public enum DueFollowUps {
         let role = [item.title, item.company].compactMap { $0?.isEmpty == false ? $0 : nil }
             .joined(separator: " at ")
         let trimmedNote = item.note.trimmingCharacters(in: .whitespacesAndNewlines)
-        if role.isEmpty { return trimmedNote.isEmpty ? "Follow up" : trimmedNote }
+        if role.isEmpty {
+            return trimmedNote.isEmpty ? "Follow up" : trimmedNote
+        }
         return trimmedNote.isEmpty ? role : "\(role) — \(trimmedNote)"
     }
 }

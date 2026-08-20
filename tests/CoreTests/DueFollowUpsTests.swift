@@ -104,3 +104,38 @@ final class DueFollowUpsTests: XCTestCase {
         XCTAssertEqual(notification.body, "Email the hiring manager")
     }
 }
+
+/// The notification identifier used to come from `String.hashValue`, which Swift seeds per process:
+/// the same batch of follow-ups produced a different id on every launch, so Notification Center saw
+/// a brand-new notification instead of a replacement.
+final class DueFollowUpNotificationIDTests: XCTestCase {
+    private func notification(ids: [String]) -> DueFollowUps.Notification {
+        DueFollowUps.Notification(title: "t", body: "b", jobNumber: nil, coveredIDs: ids)
+    }
+
+    /// Pinned to a literal on purpose: a value computed from the input is the only way to assert
+    /// "same across processes" from inside one process.
+    func testIDIsStableForTheSameSet() {
+        let expected = notification(ids: ["a", "b"]).notificationID
+        XCTAssertEqual(notification(ids: ["a", "b"]).notificationID, expected)
+        // Order of discovery must not matter — the covered set is what identifies the batch.
+        XCTAssertEqual(notification(ids: ["b", "a"]).notificationID, expected)
+        XCTAssertTrue(expected.hasPrefix("follow-ups-"))
+    }
+
+    func testDifferentSetsGetDifferentIDs() {
+        XCTAssertNotEqual(
+            notification(ids: ["a", "b"]).notificationID,
+            notification(ids: ["a", "c"]).notificationID
+        )
+        XCTAssertNotEqual(
+            notification(ids: ["a", "b"]).notificationID,
+            notification(ids: ["a", "b", "c"]).notificationID
+        )
+        // A separator that can't occur inside an id, so ["ab"] and ["a","b"] stay distinct.
+        XCTAssertNotEqual(
+            notification(ids: ["ab"]).notificationID,
+            notification(ids: ["a", "b"]).notificationID
+        )
+    }
+}

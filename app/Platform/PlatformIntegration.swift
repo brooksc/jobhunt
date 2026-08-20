@@ -103,9 +103,9 @@ public final class PlatformIntegration: NSObject, ObservableObject {
             userInfo["navigate"] = "needsAction"
         }
         postNotification(
-            // Distinct id per cycle so a second batch doesn't silently replace the first in
-            // Notification Center.
-            id: "follow-ups-\(notification.coveredIDs.sorted().joined(separator: "-").hashValue)",
+            // Derived from the covered ids (see `notificationID`): a second batch doesn't silently
+            // replace the first, and the same batch keeps the same id across launches.
+            id: notification.notificationID,
             title: notification.title,
             body: notification.body,
             userInfo: userInfo
@@ -185,7 +185,9 @@ public final class PlatformIntegration: NSObject, ObservableObject {
                 body: spec.body,
                 userInfo: spec.navigate.map { ["navigate": $0] } ?? [:]
             )
-            if spec.requestsAttention { NSApp.requestUserAttention(.criticalRequest) }
+            if spec.requestsAttention {
+                NSApp.requestUserAttention(.criticalRequest)
+            }
         }
 
         switch event {
@@ -247,8 +249,12 @@ public final class PlatformIntegration: NSObject, ObservableObject {
             return
         }
         var entry = pendingReady[number] ?? PendingReadyJob(title: title, fitScore: nil)
-        if let title { entry.title = title }
-        if let fitScore { entry.fitScore = fitScore }
+        if let title {
+            entry.title = title
+        }
+        if let fitScore {
+            entry.fitScore = fitScore
+        }
         pendingReady[number] = entry
     }
 
@@ -285,8 +291,12 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         } else {
             let strong = ready.values.count(where: { ($0.fitScore ?? 0) >= strongMatchThreshold })
             var body = "\(ready.count) jobs ready to review"
-            if strong > 0 { body += " · \(strong) strong match\(strong == 1 ? "" : "es")" }
-            if failed > 0 { body += " · \(failed) failed" }
+            if strong > 0 {
+                body += " · \(strong) strong match\(strong == 1 ? "" : "es")"
+            }
+            if failed > 0 {
+                body += " · \(failed) failed"
+            }
             postNotification(
                 id: "processing-complete",
                 title: "AI Processing Done",

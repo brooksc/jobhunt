@@ -131,3 +131,91 @@ final class RemoteEligibilityRegionTests: XCTestCase {
         }
     }
 }
+
+/// Two-letter state abbreviations used to be matched as whole words, so ordinary English in a
+/// location string satisfied the US check and the foreign check below it never ran. "Remote in
+/// Europe" read as eligible via Indiana, "LATAM or EMEA" via Oregon, "Rio de Janeiro" via Delaware —
+/// silently defeating the geography filter these tests exist to protect.
+final class RemoteGeographyStopwordTests: XCTestCase {
+    /// The three strings observed misclassifying, plus the connector words most likely to recur.
+    func testConnectorWordsAreNotUSStateSignals() {
+        let foreignOnly = [
+            "Remote — Rio de Janeiro",
+            "Remote in Europe",
+            "Remote — LATAM or EMEA",
+            "Anywhere in the EU",
+            "Remote - Berlin or Munich",
+            "Ciudad de México"
+        ]
+        for location in foreignOnly {
+            XCTAssertEqual(
+                RemoteGeography.classify(location: location, preferredTerms: []),
+                .outOfBounds,
+                "\(location) names only foreign places"
+            )
+        }
+    }
+
+    /// The abbreviations must not leak back in through the user's own preferred locations either:
+    /// `parsePreferredLocations` expands "CO" to ["CO", "Colorado"], so the bare form is redundant.
+    func testRedundantStateAbbreviationInPreferredTermsDoesNotMatchProse() {
+        XCTAssertEqual(
+            RemoteGeography.classify(
+                location: "Remote in Europe", preferredTerms: ["CO", "Colorado"]
+            ),
+            .outOfBounds
+        )
+        // A two-letter term the user supplied that ISN'T a redundant state abbreviation still counts.
+        XCTAssertEqual(
+            RemoteGeography.classify(location: "Remote - UK", preferredTerms: ["UK"]),
+            .eligible
+        )
+    }
+
+    /// Dropping the abbreviations must not turn genuine US postings into foreign ones: they either
+    /// still match on a real place name, or fall to `.indeterminate`, which callers treat as passing.
+    func testUSPostingsAreStillNotRuledOut() {
+        for location in ["Remote - US", "Remote — Austin, TX", "Remote (Seattle, WA)", "Remote - TX"] {
+            XCTAssertNotEqual(
+                RemoteGeography.classify(location: location, preferredTerms: []),
+                .outOfBounds,
+                "\(location) must never read as out of bounds"
+            )
+        }
+        XCTAssertEqual(
+            RemoteGeography.classify(location: "Remote — Austin, TX", preferredTerms: []),
+            .eligible
+        )
+    }
+
+    /// Accented spellings must classify the same as their ASCII forms. `normalizeForMatch` turns an
+    /// accented letter into a space, splitting the word ("México" → "m xico"), so every accented
+    /// place in the token list was unreachable from a posting that spelled it correctly.
+    func testAccentedPlaceNamesAreRecognised() {
+        for location in [
+            "Ciudad de México",
+            "Remote — São Paulo",
+            "Remote - Bogotá",
+            "Medellín, Colombia",
+            "Remote (Kraków)",
+            "Zürich, Switzerland"
+        ] {
+            XCTAssertEqual(
+                RemoteGeography.classify(location: location, preferredTerms: []),
+                .outOfBounds,
+                "\(location) is a foreign place however it is spelled"
+            )
+        }
+    }
+
+    /// End to end through the filter: the bug's user-visible shape was a Europe-only role sitting in
+    /// the list looking qualified.
+    func testFilterRulesOutEuropeOnlyRemoteRole() {
+        XCTAssertFalse(LocationCriteria.meets(
+            remoteType: .remote,
+            location: "Remote in Europe",
+            preferredLocations: "Seattle, WA",
+            allowRemote: true, allowHybrid: true, allowOnsite: true, filterEnabled: true
+        ))
+    }
+}

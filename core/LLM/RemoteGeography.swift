@@ -37,10 +37,13 @@ public enum RemoteGeography {
         explicitRegions: Bool = false
     ) -> Verdict {
         let raw = location ?? ""
-        let haystack = normalizeForMatch(raw)
+        let haystack = normalizeForMatch(foldingDiacritics(raw))
         guard !haystack.isEmpty else { return .indeterminate }
 
-        if preferredTerms.contains(where: { termMatches(raw, term: $0) }) { return .eligible }
+        let terms = withoutRedundantStateAbbreviations(preferredTerms)
+        if terms.contains(where: { termMatches(raw, term: $0) }) {
+            return .eligible
+        }
 
         if explicitRegions {
             // Named somewhere recognisable, and it wasn't one of theirs.
@@ -50,9 +53,46 @@ public enum RemoteGeography {
 
         // Eligibility wins over a foreign hit, so a multi-region posting ("EMEA and AMER time
         // zones", "Toronto, San Francisco, London") is not mistaken for a foreign-only one.
-        if contains(haystack, anyOf: usTokens) { return .eligible }
-        if contains(haystack, anyOf: foreignTokens) { return .outOfBounds }
+        if contains(haystack, anyOf: usTokens) {
+            return .eligible
+        }
+        if contains(haystack, anyOf: foreignTokens) {
+            return .outOfBounds
+        }
         return .indeterminate
+    }
+
+    /// Folds accents to ASCII before the shared normalizer sees the string.
+    ///
+    /// `normalizeForMatch` replaces anything outside `[a-z0-9]` with a space, so an accented letter
+    /// doesn't merely fail to match — it *splits the word*: "México" became "m xico" and "São Paulo"
+    /// became "s o paulo", so neither could ever match `mexico city` or `sao paulo` in the token
+    /// list. Every accented place in that list (Bogotá, Medellín, Kraków, Zürich, São Paulo) was
+    /// therefore unreachable from a posting that spelled it properly.
+    private static func foldingDiacritics(_ value: String) -> String {
+        value.folding(options: [.diacriticInsensitive], locale: Locale(identifier: "en_US"))
+    }
+
+    /// `stateNameToAbbrev` inverted. Built from the same table so the two can't drift.
+    private static let abbreviationToStateName: [String: String] = Dictionary(
+        uniqueKeysWithValues: stateNameToAbbrev.map { ($1, $0) }
+    )
+
+    /// Drops a two-letter US state abbreviation when the same list already carries its full name.
+    ///
+    /// `parsePreferredLocations` expands "CO" into `["CO", "Colorado"]`, so the abbreviation is pure
+    /// redundancy here — and a harmful kind: matched as a whole word it fires on ordinary prose
+    /// ("Remote in Europe" for Indiana, "Berlin or Munich" for Oregon), the same silent false-eligible
+    /// the token list below avoids. A two-letter term that is *not* a redundant state abbreviation is
+    /// kept: "UK" is the user's own word and nothing else supplies it.
+    private static func withoutRedundantStateAbbreviations(_ terms: [String]) -> [String] {
+        let present = Set(terms.map { normalizeForMatch($0) })
+        return terms.filter { term in
+            let normalized = normalizeForMatch(term)
+            guard normalized.count == 2,
+                  let fullName = abbreviationToStateName[normalized] else { return true }
+            return !present.contains(fullName)
+        }
     }
 
     /// Word-boundary matching throughout — a substring test would let "Austria" satisfy "us" and
@@ -70,8 +110,20 @@ public enum RemoteGeography {
         return !phrases.isDisjoint(with: tokens)
     }
 
-    /// US states (name + abbreviation) come from the existing normalization tables so the two can't
-    /// drift; the rest are national/regional words and the metros most common in postings.
+    /// US state *names* come from the existing normalization tables so the two can't drift; the rest
+    /// are national/regional words and the metros most common in postings.
+    ///
+    /// **Two-letter state abbreviations are deliberately excluded.** `contains` matches whole words,
+    /// and a bare abbreviation is a whole word in ordinary prose: `in` (Indiana), `or` (Oregon),
+    /// `de` (Delaware), `la`, `me`, `hi`, `co`, `ok`, `ne`, `pa`. Including them made "Remote in
+    /// Europe", "Remote — LATAM or EMEA" and "Rio de Janeiro" all classify as `.eligible`, because
+    /// the US pass runs before the foreign one — silently defeating the geography check this type
+    /// exists to perform.
+    ///
+    /// Losing them costs almost nothing in the other direction: an abbreviation-only string
+    /// ("Remote — TX") now lands on `.indeterminate`, which callers already treat as passing, and
+    /// any posting that names a real place ("Austin, TX", "Remote - US") still matches on the city
+    /// or country token. A false `.eligible` is silent; a false `.indeterminate` is harmless.
     private static let usTokens: Set<String> = {
         var tokens: Set = [
             "us", "u s", "usa", "united states", "america", "americas", "amer", "north america",
@@ -85,9 +137,8 @@ public enum RemoteGeography {
             "columbus", "cleveland", "indianapolis", "milwaukee", "sacramento", "honolulu",
             "anchorage", "albuquerque", "oklahoma city", "new orleans", "louisville", "memphis"
         ]
-        for (name, abbr) in stateNameToAbbrev {
+        for (name, _) in stateNameToAbbrev {
             tokens.insert(normalizeForMatch(name))
-            tokens.insert(normalizeForMatch(abbr))
         }
         return tokens
     }()

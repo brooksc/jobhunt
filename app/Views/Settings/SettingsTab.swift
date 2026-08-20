@@ -512,17 +512,74 @@ struct ExpiredConfirmationSheet: View {
         AvailabilitySweep(gone: goneJobs, unverified: unverifiedJobs)
     }
 
+    /// Header and footer are pinned outside the scroll view, and the sheet's height is bounded.
+    ///
+    /// This was one unbounded `VStack` with a row per result. That reads fine for the two or three
+    /// gone jobs the scheduled sweep turns up, but the on-demand archive check found ~100 at once and
+    /// the sheet simply grew past the bottom of the screen — no scrolling, and the Mark Expired and
+    /// Dismiss buttons unreachable, so the only exit was cancelling the whole check.
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            Divider()
+            ScrollView {
+                resultsList
+                    .padding(20)
+            }
+            Divider()
+            footer
+        }
+        // Bounded so a large result set scrolls instead of growing off-screen. idealHeight keeps the
+        // common small-result case from opening as a mostly-empty tall sheet.
+        .frame(minWidth: 520, idealWidth: 620, minHeight: 360, idealHeight: 560, maxHeight: 720)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 8) {
             Text("Jobs No Longer Available")
                 .font(.headline)
             Text(
-                "\(goneJobs.count) of your Interested or Applied jobs appear to be gone. "
+                "\(goneJobs.count) posting\(goneJobs.count == 1 ? "" : "s") appear to be gone. "
                     + "Select which to mark as Expired."
             )
             .font(.subheadline)
             .foregroundStyle(.secondary)
 
+            // Ticking or clearing ~100 checkboxes by hand is not a workflow.
+            if goneJobs.count > 1 {
+                HStack(spacing: 12) {
+                    Button("Select All") { selected = Set(goneJobs.map(\.jobID)) }
+                        .disabled(selected.count == goneJobs.count)
+                    Button("Deselect All") { selected = [] }
+                        .disabled(selected.isEmpty)
+                    Spacer()
+                    Text("\(selected.count) of \(goneJobs.count) selected")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.link)
+                .font(.caption)
+            }
+        }
+        .padding(20)
+    }
+
+    private var footer: some View {
+        HStack {
+            Button("Dismiss") { onDismiss() }
+                .buttonStyle(.bordered)
+            Spacer()
+            Button("Mark \(selected.count) Expired") {
+                let toMark = goneJobs.filter { selected.contains($0.jobID) }
+                onConfirm(toMark)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(selected.isEmpty)
+        }
+        .padding(20)
+    }
+
+    private var resultsList: some View {
+        VStack(alignment: .leading, spacing: 16) {
             VStack(spacing: 0) {
                 ForEach(goneJobs, id: \.jobID) { job in
                     HStack(alignment: .top, spacing: 10) {
@@ -604,21 +661,7 @@ struct ExpiredConfirmationSheet: View {
                 .background(Color(nsColor: .controlBackgroundColor))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
-
-            HStack {
-                Button("Dismiss") { onDismiss() }
-                    .buttonStyle(.bordered)
-                Spacer()
-                Button("Mark \(selected.count) Expired") {
-                    let toMark = goneJobs.filter { selected.contains($0.jobID) }
-                    onConfirm(toMark)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(selected.isEmpty)
-            }
         }
-        .padding(20)
-        .frame(minWidth: 460)
     }
 
     private func jobLabel(_ job: GoneJobResult) -> String {

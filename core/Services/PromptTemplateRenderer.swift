@@ -86,8 +86,12 @@ public enum PromptTemplateRenderer {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if trimmedName.isEmpty { errors.append(.emptyName) }
-        if trimmedBody.isEmpty { errors.append(.emptyBody) }
+        if trimmedName.isEmpty {
+            errors.append(.emptyName)
+        }
+        if trimmedBody.isEmpty {
+            errors.append(.emptyBody)
+        }
         if trimmedName.count > PromptTemplate.maximumNameLength {
             errors.append(.nameTooLong(limit: PromptTemplate.maximumNameLength))
         }
@@ -96,7 +100,9 @@ public enum PromptTemplateRenderer {
         }
 
         let scan = scanTokens(body)
-        if scan.unterminated { errors.append(.unterminatedToken) }
+        if scan.unterminated {
+            errors.append(.unterminatedToken)
+        }
         for unknown in scan.unknown {
             errors.append(.unknownToken(unknown))
         }
@@ -127,26 +133,53 @@ public enum PromptTemplateRenderer {
 
     /// Substitutes values into the template. Unknown tokens are left verbatim rather than deleted —
     /// validation catches them at save time, and silently eating text at render time would be worse.
+    ///
+    /// One left-to-right pass over the body, sharing `scanTokens`' notion of a token, for two
+    /// reasons a per-variable `replacingOccurrences` got wrong:
+    ///
+    /// - **Padding.** The scanner trims, so `{{ job.title }}` validates as a known variable, but a
+    ///   replace of the exact `{{job.title}}` never matched it — the literal token was copied to the
+    ///   clipboard and wasn't even reported missing.
+    /// - **Substituted text.** A replace pass runs over the output of the previous one, so a job
+    ///   description containing something shaped like `{{resume.text}}` would have had the résumé
+    ///   spliced into it. A single pass only ever substitutes tokens the *author* wrote.
     public static func render(_ body: String, values: Values) -> Rendered {
-        var output = body
+        var output = ""
         var missingRequired: [PromptVariable] = []
         var missingOptional: [PromptVariable] = []
+        var remainder = Substring(body)
 
-        for variable in variablesUsed(in: body) {
-            if let value = values.value(for: variable) {
-                output = output.replacingOccurrences(of: variable.token, with: value)
-            } else if variable.isRequiredWhenUsed {
-                missingRequired.append(variable)
-                output = output.replacingOccurrences(
-                    of: variable.token, with: variable.notAvailableMarker
-                )
+        while let open = remainder.range(of: "{{") {
+            let afterOpen = remainder[open.upperBound...]
+            // Unterminated: everything from here on is literal text the user typed.
+            guard let close = afterOpen.range(of: "}}") else { break }
+
+            output += remainder[..<open.lowerBound]
+            let name = String(afterOpen[..<close.lowerBound])
+                .trimmingCharacters(in: .whitespaces)
+
+            if let variable = PromptVariable(rawValue: name) {
+                if let value = values.value(for: variable) {
+                    output += value
+                } else {
+                    if variable.isRequiredWhenUsed {
+                        if !missingRequired.contains(variable) {
+                            missingRequired.append(variable)
+                        }
+                    } else {
+                        if !missingOptional.contains(variable) {
+                            missingOptional.append(variable)
+                        }
+                    }
+                    output += variable.notAvailableMarker
+                }
             } else {
-                missingOptional.append(variable)
-                output = output.replacingOccurrences(
-                    of: variable.token, with: variable.notAvailableMarker
-                )
+                output += remainder[open.lowerBound ..< close.upperBound]
             }
+
+            remainder = afterOpen[close.upperBound...]
         }
+        output += remainder
 
         return Rendered(
             text: output, missingRequired: missingRequired, missingOptional: missingOptional

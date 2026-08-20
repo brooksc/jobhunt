@@ -52,20 +52,25 @@
 
     <div class="rec">
       <div class="label">Recommended</div>
-      <div class="model">Ministral 14B, via OpenRouter</div>
-      <p>It gives the <strong>same answer twice</strong>, passes both of our accuracy suites over repeated
-      runs, and costs <strong>about 12¢ per 100 job postings</strong>. Flat $0.20 per million tokens in
-      either direction, so the bill doesn't move around either.</p>
-      <p class="note">Changed in August 2026. We previously recommended DeepSeek V4 Flash on a cheaper
-      headline price. Then we measured consistency and found it returns different verdicts for identical
-      input — enough to move a score 10–16 points on a re-run. It has also announced price rises.</p>
+      <div class="model">Gemini 3.7 Flash, via OpenRouter</div>
+      <p>It passed <strong>every judgement check we have</strong> — 25 of 25 — and changed <strong>no
+      verdicts</strong> across five byte-identical runs. It costs <strong>about 53¢ per 100 job
+      postings</strong> to score.</p>
+      <p>The reason we're confident: we ran <strong>GPT-5.6 Sol</strong>, a frontier model, against the
+      same fixtures in the same session. It scored <em>identically</em> — 25 of 25, no verdict changes —
+      at <strong>six times the price</strong>. There was nothing left for it to fix. When the expensive
+      model can't beat the cheap one, buy the cheap one.</p>
+      <p class="note">Changed in August 2026, from Ministral 14B. Ministral was picked on a consistency
+      measurement, before we had a repeatable judgement benchmark. It has not been re-run against the
+      current fixtures, so we are not claiming Gemini beats it — we're saying Gemini is the model we
+      have current, repeated evidence for.</p>
     </div>
 
     <h3>Setting it up</h3>
     <ol>
       <li>Create an account at <a href="https://openrouter.ai" target="_blank" rel="noopener">openrouter.ai</a> and add a few dollars of credit.</li>
       <li>Create an API key and copy it.</li>
-      <li>In JobHunt: <strong>Settings → AI</strong>, set <strong>Provider</strong> to <strong>OpenRouter</strong>, paste the key, click <strong>Fetch Models</strong>, and choose <code>mistralai/ministral-14b-2512</code>.</li>
+      <li>In JobHunt: <strong>Settings → AI</strong>, set <strong>Provider</strong> to <strong>OpenRouter</strong>, paste the key, click <strong>Fetch Models</strong>, and choose <code>google/gemini-3.7-flash</code>.</li>
       <li>JobHunt will ask you to confirm before it sends anything to a cloud provider. That prompt is deliberate — see <a href="#privacy">below</a>.</li>
     </ol>
     <p>You can change this later at any time, and changing it doesn't rescore the jobs you already have unless you ask it to. It's a low-stakes decision.</p>
@@ -74,35 +79,47 @@
     <p>Run a model on your own Mac with <a href="https://lmstudio.ai" target="_blank" rel="noopener">LM Studio</a> or <a href="https://ollama.com" target="_blank" rel="noopener">Ollama</a>, and point JobHunt at <code>http://127.0.0.1:1234</code>. It costs nothing, and no job description or résumé ever leaves your machine.</p>
     <p>The honest trade-off: local models are slower, and on consumer hardware they are generally less reliable at the structured extraction JobHunt asks for — a malformed response means a job fails to extract and gets retried. <strong>We have not benchmarked local models</strong>, so we can't tell you how much accuracy you give up. If privacy is the priority, this is the option; if accuracy is, it isn't.</p>
 
-    <h2 id="tested">What we tested</h2>
+    <h2 id="tested">What we tested — August 2026</h2>
     <p>Two things, and both matter. <strong>Accuracy</strong>: fixtures built from real failures we hit —
     a model crediting experience the résumé didn't support, or penalising a requirement no candidate could
-    fail. <strong>Consistency</strong>: whether the same request twice gives the same answer. Every result
-    below is from repeated runs, not a single pass.</p>
+    fail. <strong>Consistency</strong>: whether the same request twice gives the same answer. Every model
+    below saw the <em>same fixtures in the same run</em>, five times each, because a single pass measures
+    a sample rather than a model.</p>
     <table>
-      <thead><tr><th>Model</th><th class="num">Accuracy</th><th class="num">Consistency</th><th class="num">100 jobs</th></tr></thead>
+      <thead><tr><th>Model</th><th class="num">Judgement</th><th class="num">Verdicts changed</th><th class="num">Scoring 100 jobs</th></tr></thead>
       <tbody>
-        <tr><td>Ministral 14B</td><td class="num">passed both</td><td class="num">2 of 15 changed</td><td class="num">$0.12</td></tr>
-        <tr><td>Claude Haiku 4.5</td><td class="num">passed both</td><td class="num"><strong>0 of 15</strong></td><td class="num">$0.78</td></tr>
-        <tr><td>DeepSeek V4 Flash</td><td class="num">passed both</td><td class="num">7 of 15 changed</td><td class="num">$0.09*</td></tr>
-        <tr><td>Gemini 3.5 Flash Lite</td><td class="num">not re-run</td><td class="num">5 of 15 changed</td><td class="num">$0.28</td></tr>
-        <tr><td>Phi-4</td><td class="num">not re-run</td><td class="num">3 of 15 changed</td><td class="num">$0.09</td></tr>
-        <tr><td>Claude Sonnet 5</td><td class="num">not re-run</td><td class="num">6 of 15 changed</td><td class="num">$1.55</td></tr>
+        <tr><td>Gemini 3.7 Flash</td><td class="num"><strong>25 of 25</strong></td><td class="num"><strong>0 of 4</strong></td><td class="num">$0.53</td></tr>
+        <tr><td>GPT-5.6 Sol</td><td class="num"><strong>25 of 25</strong></td><td class="num"><strong>0 of 4</strong></td><td class="num">$3.17</td></tr>
+        <tr><td>DeepSeek V4 Flash</td><td class="num">30 of 33</td><td class="num">0 of 4</td><td class="num">$0.13</td></tr>
+        <tr><td>GPT-5.6 Luna</td><td class="num">23 of 25</td><td class="num">1 of 4</td><td class="num">$0.26</td></tr>
+        <tr><td>Gemini 3.1 Flash Lite</td><td class="num">18 of 25</td><td class="num">1 of 4</td><td class="num">$0.27</td></tr>
+        <tr><td>Claude Haiku 4.5</td><td class="num">not measured</td><td class="num">—</td><td class="num">$2.10</td></tr>
       </tbody>
     </table>
-    <p class="note">* DeepSeek has announced price rises, so this figure is already out of date.
-    Accuracy is both suites passing over three repeats. Consistency is how many of 15 requirement
-    verdicts changed across byte-identical requests at temperature 0.</p>
-    <p><strong>If you want the steadiest answers, use Claude Haiku 4.5.</strong> It was the most
-    consistent model in both measurements, at roughly six times the cost — though a later re-measurement
-    (below) found it is not perfectly stable either, so treat this as "steadiest available", not
-    "deterministic".
-    On a 500-posting search that's about $3.90 rather than $0.60, which may well be worth it.</p>
+    <p class="note">Judgement is how many fit-scoring checks passed across five repeats of the fixture
+    set. Verdicts changed is how many of four requirement judgements flipped between byte-identical
+    requests at temperature 0. Costs are the scoring call only, measured from real billing on a real
+    résumé; extraction adds roughly a third again. Haiku's run died when our API account hit its credit
+    ceiling — we've left it unmeasured rather than publish the number that failure produced.</p>
+
+    <h3>Two warnings from this round</h3>
+    <p><strong>Gemini 3.1 Flash Lite has got worse — switch off it.</strong> On the fixture where a
+    candidate migrated GPU workloads but has never written CUDA, it credited "expertise in the CUDA
+    ecosystem" as fully met on <em>five runs out of five</em>. That is precisely the flattery this suite
+    exists to catch. Its scores also swing enormously on identical input — one fixture ranged from 17 to
+    56. An earlier version of this page rated it well; that no longer holds.</p>
+    <p><strong>DeepSeek V4 Flash judges well but answers unreliably.</strong> Its judgement was fine, but
+    it was roughly five times slower per call than everything else, and one response came back as
+    malformed JSON that JobHunt could not parse at all. A model that occasionally returns nothing usable
+    is a different problem from one that scores generously — the app retries, so you see it as slowness.</p>
 
     <h2 id="stability">Consistency: does it give the same answer twice?</h2>
     <p>This turned out to matter more than the accuracy score, and we didn't measure it at first. We sent
     the <em>byte-identical</em> scoring request to each model several times, at temperature 0, and counted how
     often the verdict on a requirement changed between runs.</p>
+    <p class="note">The two tables in this section are from <strong>earlier rounds</strong>, on models we
+    have since stopped recommending. They are kept because the lesson generalises and the current
+    recommendation rests on it. For the current numbers, see the table above.</p>
     <table>
       <thead><tr><th>Model</th><th class="num">Verdicts that changed</th><th class="num">Score swing</th></tr></thead>
       <tbody>
@@ -144,20 +161,31 @@
     across it on a re-score. If that matters to you, prefer a model higher up this table.</p>
 
     <h2 id="cost">What it costs</h2>
-    <p>JobHunt sends a job description for extraction, then the description plus your résumé for scoring. Measured across a real corpus that works out to roughly <strong>5,500 input and 450 output tokens per job</strong>. At current OpenRouter prices:</p>
+    <p>JobHunt sends a job description for extraction, then the description plus your résumé for scoring.
+    We measured the scoring call directly from real billing — about <strong>6,900 input tokens</strong>
+    against a full résumé — and extraction adds roughly a third again. These are <em>total</em> figures
+    for both calls, at OpenRouter prices checked on 20 August 2026:</p>
     <table>
       <thead><tr><th>Model</th><th class="num">100 jobs</th><th class="num">500 jobs</th><th class="num">Tested?</th></tr></thead>
       <tbody>
-        <tr><td>DeepSeek V4 Flash</td><td class="num">$0.09</td><td class="num">$0.45</td><td class="num">✓ 7/7</td></tr>
-        <tr><td>Gemini 3.1 Flash Lite</td><td class="num">$0.21</td><td class="num">$1.03</td><td class="num">✓ 5/7</td></tr>
-        <tr><td>Gemini 3.5 Flash Lite</td><td class="num">$0.28</td><td class="num">$1.39</td><td class="num">—</td></tr>
-        <tr><td>Claude Haiku 4.5</td><td class="num">$0.78</td><td class="num">$3.89</td><td class="num">—</td></tr>
-        <tr><td>Claude Sonnet 5</td><td class="num">$1.55</td><td class="num">$7.77</td><td class="num">—</td></tr>
+        <tr><td>DeepSeek V4 Flash</td><td class="num">$0.17</td><td class="num">$0.85</td><td class="num">✓ 30/33</td></tr>
+        <tr><td>GPT-5.6 Luna</td><td class="num">$0.35</td><td class="num">$1.75</td><td class="num">✓ 23/25</td></tr>
+        <tr><td>Gemini 3.7 Flash</td><td class="num">$0.71</td><td class="num">$3.55</td><td class="num">✓ 25/25</td></tr>
+        <tr><td>Claude Haiku 4.5</td><td class="num">$2.80</td><td class="num">$14.00</td><td class="num">—</td></tr>
+        <tr><td>GPT-5.6 Sol</td><td class="num">$4.23</td><td class="num">$21.15</td><td class="num">✓ 25/25</td></tr>
+        <tr><td>Claude Sonnet 5</td><td class="num">$4.50</td><td class="num">$22.50</td><td class="num">—</td></tr>
         <tr><td>Local model</td><td class="num">free</td><td class="num">free</td><td class="num">—</td></tr>
       </tbody>
     </table>
-    <p class="note">Estimates, not invoices. Longer postings cost more, retries cost more, and providers change their prices. JobHunt shows a live cost estimate for your actual corpus in <strong>Settings → AI</strong>.</p>
-    <p>The headline is that the good option is also the cheap one. Paying 17× more for Claude Sonnet 5 is not obviously buying you a better job search, and we haven't measured that it buys better scores at all.</p>
+    <p class="note">Estimates, not invoices. Longer postings cost more, retries cost more, and providers
+    change their prices — several third-party pricing trackers we checked were wrong by a factor of two
+    in both directions, so these come from OpenRouter's own feed. Note that reasoning models bill their
+    thinking as output: Gemini 3.7 Flash spends about 800 such tokens per score, which is already in the
+    figures above. JobHunt shows a live cost estimate for your actual corpus in <strong>Settings →
+    AI</strong>.</p>
+    <p>The headline is that the good option is also a cheap one. The most expensive model we tested
+    scored exactly the same as the one we recommend, for six times the money — so the question isn't how
+    much to spend, it's which of the cheap models actually holds up.</p>
 
     <h2 id="direct">OpenRouter or DeepSeek directly?</h2>
     <p>The same model is available two ways. <strong>OpenRouter</strong> is one account and one key that reaches many models, so switching later is a dropdown rather than a signup — that's why we recommend it. <strong>DeepSeek's own API</strong> is typically cheaper for the same model and involves one fewer company handling your data.</p>
@@ -178,7 +206,13 @@
     <p>With a cloud provider, JobHunt sends the job description text for extraction, and the description plus your <strong>résumé text</strong> for fit scoring. That's your employment history going to a third party, which is why JobHunt asks for explicit consent the first time and won't send anything before you agree. With a local model, none of this leaves your Mac. See the <a href="/privacy">Privacy Policy</a>.</p>
 
     <div class="stamp">
-      <p>Benchmarked against JobHunt 1.3.0 in August 2026, with prices taken from OpenRouter at that time. Consistency measured separately in August 2026; the accuracy numbers above are single-sample and, given what we found about consistency, are being re-run across repeats. Model lineups and prices move quickly — if this page looks out of date, it probably is. <a href="https://github.com/brooksc/jobhunt/issues">Tell us</a> and we'll re-run it.</p>
+      <p>Current numbers benchmarked on <strong>20 August 2026</strong>: five fixtures, five repeats per
+      model, every model in one run against identical input, prices read live from OpenRouter the same
+      day. Only fit scoring was re-benchmarked — extraction was not, so the cost figures for it are
+      estimates and its accuracy is untested this round. Claude Haiku 4.5 and Ministral 14B are
+      unmeasured against the current fixtures. Model lineups and prices move quickly — if this page looks
+      out of date, it probably is. <a href="https://github.com/brooksc/jobhunt/issues">Tell us</a> and
+      we'll re-run it.</p>
     </div>
   </div>
   <footer>

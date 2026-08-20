@@ -1150,6 +1150,41 @@ public enum AvailabilityChecker {
         return (checked: checkedJobs.count, unavailable: unavailableCount, marked: markedCount, failed: failedCount)
     }
 
+    // MARK: - On-demand, view-scoped checking
+
+    /// Which of `jobs` an on-demand check should actually fetch.
+    ///
+    /// The Jobs list checks what it is currently showing, so this is the rule that decides what a
+    /// view's worth of rows costs in requests. It exists mainly for the **Archived** view: `.archived`
+    /// is a terminal status, so `fetchStaleEligibleJobs` skips it and nothing in the app ever checks
+    /// an archived posting. That left no way to find out which of several hundred archived jobs are
+    /// dead — which is the first thing you want to know before deciding whether any of the rest are
+    /// worth reconsidering under a better extraction and scoring prompt.
+    ///
+    /// Excluded: `.expired` (re-confirming a dead posting is dead costs a request and changes
+    /// nothing), `.duplicate` (the surviving job is the one that matters), and anything `JobURLPolicy`
+    /// won't give a URL for (it cannot be checked at all). Everything else in view is fair game —
+    /// deliberately including `.archived`, which is the entire point.
+    public static func checkableJobs(from jobs: [Job]) -> [Job] {
+        jobs.filter { job in
+            guard job.status != .expired, job.status != .duplicate else { return false }
+            return JobURLPolicy.availabilityCheckURL(job: job) != nil
+        }
+    }
+
+    /// Whether an on-demand run over `checked` also did the scheduled sweep's work.
+    ///
+    /// The scheduled sweep watches Interested and Applied jobs. An on-demand check over some other
+    /// view — the Archived one above, say — proves nothing about those, so the caller must not reset
+    /// the sweep's interval on the strength of it, or the jobs the user is actually pursuing go
+    /// unchecked for a day because they looked at their archive.
+    public static func coversScheduledSweep(checked: [Job], allJobs: [Job]) -> Bool {
+        let checkedIDs = Set(checked.map(\.id))
+        let scheduled = allJobs.filter { $0.status == .pursuing || $0.status == .applied }
+        guard !scheduled.isEmpty else { return false }
+        return scheduled.allSatisfy { checkedIDs.contains($0.id) }
+    }
+
     // MARK: - checkStaleJobs
 
     /// Checks jobs that haven't been touched in `staleDays` days. `limit` caps how many are checked

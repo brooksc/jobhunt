@@ -1342,3 +1342,86 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
 }
 
 // swiftlint:enable force_unwrapping
+
+/// On-demand, view-scoped checking. Nothing in the app ever checked an archived posting — `.archived`
+/// is terminal, so the scheduled sweep skips it — which left no way to tell which of several hundred
+/// archived jobs are dead before deciding whether the rest deserve another look.
+final class AvailabilityScopeTests: XCTestCase {
+    private var container: ModelContainer!
+
+    override func setUp() async throws {
+        container = try ModelContainerFactory.inMemory()
+    }
+
+    override func tearDown() async throws {
+        container = nil
+    }
+
+    private func job(_ status: JobStatus, url: String? = "https://boards.greenhouse.io/acme/jobs/1") throws -> Job {
+        let context = ModelContext(container)
+        let job = Job(title: "T", status: status)
+        if let url {
+            let capture = Capture(url: url, pageTitle: "T", rawHash: UUID().uuidString, capturedAt: Date())
+            job.capture = capture
+            context.insert(capture)
+        }
+        context.insert(job)
+        try context.save()
+        return job
+    }
+
+    /// The whole point: an archived posting is checkable on demand.
+    func testArchivedJobsAreCheckable() throws {
+        let archived = try job(.archived)
+        XCTAssertEqual(AvailabilityChecker.checkableJobs(from: [archived]).map(\.id), [archived.id])
+    }
+
+    /// Every non-terminal status stays checkable too — this replaced a hardcoded Interested/Applied
+    /// filter, so nothing that used to be checked may drop out.
+    func testPreviouslyCheckedStatusesStillQualify() throws {
+        for status in [JobStatus.new, .pursuing, .applied, .interview, .offer, .rejected, .passed, .closed] {
+            let row = try job(status)
+            XCTAssertEqual(
+                AvailabilityChecker.checkableJobs(from: [row]).count, 1,
+                "\(status) must remain checkable"
+            )
+        }
+    }
+
+    /// Re-confirming a dead posting costs a request and changes nothing; the surviving job is the one
+    /// that matters for a duplicate; and a job with no URL cannot be checked at all.
+    func testKnownOrUnobtainableAnswersAreSkipped() throws {
+        let expired = try job(.expired)
+        let duplicate = try job(.duplicate)
+        let noURL = try job(.archived, url: nil)
+        XCTAssertTrue(AvailabilityChecker.checkableJobs(from: [expired, duplicate, noURL]).isEmpty)
+    }
+
+    /// A run over the Archived view says nothing about what the scheduled sweep watches, so it must
+    /// not reset that sweep's interval — otherwise looking at your archive silently skips a day of
+    /// checking the jobs you're actually pursuing.
+    func testArchiveOnlyRunDoesNotCountAsTheScheduledSweep() throws {
+        let archived = try job(.archived)
+        let pursuing = try job(.pursuing)
+        XCTAssertFalse(
+            AvailabilityChecker.coversScheduledSweep(checked: [archived], allJobs: [archived, pursuing])
+        )
+    }
+
+    /// A run that did cover every Interested/Applied job may reset it — that's the All Jobs case.
+    func testRunCoveringEveryPursuedJobCountsAsTheScheduledSweep() throws {
+        let archived = try job(.archived)
+        let pursuing = try job(.pursuing)
+        let applied = try job(.applied)
+        XCTAssertTrue(AvailabilityChecker.coversScheduledSweep(
+            checked: [archived, pursuing, applied], allJobs: [archived, pursuing, applied]
+        ))
+    }
+
+    /// With nothing to cover, there is no sweep to claim credit for — stamping then would suppress
+    /// the first real check after the user marks a job Interested.
+    func testNoPursuedJobsIsNotCoverage() throws {
+        let archived = try job(.archived)
+        XCTAssertFalse(AvailabilityChecker.coversScheduledSweep(checked: [archived], allJobs: [archived]))
+    }
+}

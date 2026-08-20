@@ -377,12 +377,17 @@ struct JobsView: View {
                 Button {
                     Task { await runAvailabilityCheck() }
                 } label: {
+                    // Name the scope and the size: this fires one request per job, and in the
+                    // Archived view that can be several hundred.
                     Label(
-                        isCheckingAvailability ? "Checking availability…" : "Check Job Description Availability",
+                        isCheckingAvailability
+                            ? "Checking availability…"
+                            : "Check Availability of \(availabilityCandidates.count) Shown",
                         systemImage: "checkmark.seal"
                     )
                 }
-                .disabled(isCheckingAvailability)
+                .disabled(isCheckingAvailability || availabilityCandidates.isEmpty)
+                .help("Check every posting currently listed for removal, then offer to mark the dead ones expired")
                 Button {
                     Task { await runDuplicateScan() }
                 } label: {
@@ -966,6 +971,14 @@ struct JobsView: View {
         cachedFilteredJobs
     }
 
+    /// The jobs an availability check would actually fetch — what's in view, minus the ones where the
+    /// answer is already known or unobtainable. Rule and rationale live in
+    /// `AvailabilityChecker.checkableJobs`, where they're unit-tested; counting them here is what
+    /// lets the menu say how many requests it is about to make.
+    private var availabilityCandidates: [Job] {
+        AvailabilityChecker.checkableJobs(from: filteredJobs)
+    }
+
     /// Cheap per-body change signal for `cachedFilteredJobs`. O(N) over one `updatedAt` read per job
     /// (no Capture fault, no description lowercasing) — far cheaper than the full filter, and it
     /// changes whenever any input to the filter/sort could change: the query, tokens, filters, the
@@ -1287,13 +1300,19 @@ struct JobsView: View {
         router.activeSavedSearchID = nil
     }
 
-    /// Check every Interested/Applied job's posting for removal, showing a modal progress dialog with a
+    /// Check the postings **currently in view** for removal, showing a modal progress dialog with a
     /// live count and a Cancel (TASK-640). On completion: nothing gone → a message; some gone → the
     /// expired-confirmation sheet. A native notification fires if the app was backgrounded meanwhile.
+    ///
+    /// Scoped to `filteredJobs` rather than the old hardcoded Interested/Applied set. Archived jobs
+    /// are never checked by anything else — `.archived` is terminal, so the background sweep skips it
+    /// — which left no way to find out which of a few hundred archived postings are actually dead
+    /// before deciding whether any are worth reconsidering. "Check what I'm looking at" gives the
+    /// Archived view that, without adding a background pass over jobs most users have finished with.
     private func runAvailabilityCheck() async {
-        let eligible = allJobs.filter { $0.status == .pursuing || $0.status == .applied }
+        let eligible = availabilityCandidates
         guard !eligible.isEmpty else {
-            appServices.toastStore.show("No Interested or Applied jobs to check")
+            appServices.toastStore.show("No jobs in view have a posting URL to check")
             return
         }
         isCheckingAvailability = true
@@ -1313,18 +1332,23 @@ struct JobsView: View {
         let found = sweep.gone
         guard !task.isCancelled else { progress = nil; return } // user cancelled — leave everything untouched
 
-        // Timestamp setting, never keychain-backed — cannot throw.
-        try? appServices.settings.set(
-            ISO8601DateFormatter().string(from: Date()),
-            forKey: SettingsKey.availabilityLastAutoCheckAt
-        )
+        // Only claim the scheduled check's work when this run actually covered it. A check over the
+        // Archived view says nothing about the Interested/Applied jobs the background sweep exists to
+        // watch, and stamping regardless would silence that sweep for the whole interval.
+        if AvailabilityChecker.coversScheduledSweep(checked: eligible, allJobs: allJobs) {
+            // Timestamp setting, never keychain-backed — cannot throw.
+            try? appServices.settings.set(
+                ISO8601DateFormatter().string(from: Date()),
+                forKey: SettingsKey.availabilityLastAutoCheckAt
+            )
+        }
         unverifiedJobs = sweep.unverified
         if found.isEmpty {
             // Show the result in the dialog itself (no transient toast) — the user dismisses it.
             // A blocked or deferred check proves nothing, so don't report those jobs as available.
             let verified = eligible.count - sweep.unverified.count
             var completion = sweep.unverified.isEmpty
-                ? "All \(eligible.count) Interested or Applied jobs are still available."
+                ? "All \(eligible.count) postings in view are still available."
                 : "No expired postings found — \(verified) of \(eligible.count) verified."
             if let summary = sweep.unverifiedSummary { completion += " \(summary)" }
             model.completion = completion

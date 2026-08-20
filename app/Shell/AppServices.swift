@@ -37,6 +37,14 @@ final class AppServices {
     weak var platformIntegration: PlatformIntegration?
     var serverRunning: Bool = false
     var serverError: String?
+
+    /// Postings a check couldn't answer for, and everything the follow-up passes have since found.
+    ///
+    /// A sweep leaves work behind on purpose — LinkedIn goes twelve per run, a throttled board yields
+    /// "don't know" — so without this a posting that closed weeks ago can stay unknown indefinitely,
+    /// which is exactly the wasted effort the check exists to prevent. Seeded by any run (the
+    /// scheduled sweep or an on-demand one from the Jobs list) and drained by `availabilityDrainTask`.
+    var availabilityBacklog = AvailabilityBacklog()
     /// Owns the long-lived runtime tasks' lifecycle: idempotent start, and a shutdown that cancels
     /// and AWAITS their exit before stopping the server (TASK-430/554/555/556). Extracted to
     /// JobhuntCore so the invariants are unit-tested (`RuntimeTaskControllerTests`).
@@ -155,6 +163,50 @@ final class AppServices {
         }
     }
 
+    /// Finishes the availability work a sweep deliberately left unfinished, then says so once.
+    ///
+    /// LinkedIn is checked twelve per run because it throttles bursts, and a throttled or unreachable
+    /// ATS board answers "don't know" rather than a verdict. Both are right, and both leave postings
+    /// in an unknown state — a check over a few hundred archived jobs can leave sixty. Draining them
+    /// by hand means re-running the check six times and reading six dialogs.
+    ///
+    /// So: small batches at a gentle pace, foreground-only (no fetching on behalf of an app nobody is
+    /// looking at), until nothing is left to ask. Then ONE notification with everything found, which
+    /// opens the same confirmation sheet a manual check does — nothing is ever expired silently.
+    private func availabilityDrainTask() -> Task<Void, Never> {
+        let drainStore = backgroundStore
+        return Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                // Longer than the checker's own pacing: this is the patient pass, and the postings it
+                // re-asks about are precisely the ones whose host objected to being asked quickly.
+                try? await Task.sleep(for: .seconds(300))
+                guard !Task.isCancelled, let self else { return }
+                guard settings.bool(forKey: SettingsKey.availabilityAutoCheckEnabled) else { continue }
+                guard NSApplication.shared.isActive else { continue }
+                guard !availabilityBacklog.isDrained else { continue }
+
+                let batch = availabilityBacklog.nextBatch(limit: AvailabilityBacklog.batchSize)
+                guard let jobs = try? await drainStore.jobs(withIDs: batch), !jobs.isEmpty else {
+                    // The rows are gone (deleted, or the store moved under us). Nothing to retry, and
+                    // spinning on them forever would keep the drain permanently unfinished.
+                    availabilityBacklog.absorb(AvailabilitySweep(gone: [], unverified: []))
+                    continue
+                }
+
+                let sweep = await AvailabilityChecker.findGoneJobsRotating(
+                    jobs, settings: settings, restrictToStatuses: nil
+                )
+                availabilityBacklog.absorb(sweep)
+
+                // Report only when the work is finished and there is something to say. A drain that
+                // found nothing stays silent; a partial drain waits until it can give a whole answer.
+                if availabilityBacklog.isDrained, availabilityBacklog.hasFindings {
+                    platformIntegration?.notifyBacklogDrained(count: availabilityBacklog.gone.count)
+                }
+            }
+        }
+    }
+
     /// TASK-589: follow-ups become due while the app is open; without this they only surface if the
     /// user happens to open Needs Action, which defeats the point of a due date.
     ///
@@ -246,6 +298,7 @@ final class AppServices {
             tasks.append(spotlightIndexTask())
             tasks.append(recapReminderTask())
             tasks.append(followUpNotifierTask())
+            tasks.append(availabilityDrainTask())
 
             // Persist the last-check timestamp through an explicit callback (TASK-428) rather than a
             // global notification observer: the checker hands us the completion time, we write the

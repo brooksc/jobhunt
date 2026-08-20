@@ -406,6 +406,22 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         }
     }
 
+    /// The background availability drain has finished everything a sweep left unanswered.
+    ///
+    /// Deliberately NOT rate-limited like `postJobsMaybeUnavailableNotification`: that one guards
+    /// against a long foreground session repeating the same daily nudge, whereas this fires once at
+    /// the end of a finite piece of work and reports findings the user has not seen. Suppressing it
+    /// would mean silently completing the work and never saying what it found.
+    public func notifyBacklogDrained(count: Int) {
+        let noun = count == 1 ? "posting" : "postings"
+        postNotification(
+            id: "availability-backlog-drained",
+            title: "\(count) more \(noun) may be gone",
+            body: "Finished checking the postings that couldn't be reached earlier. Review to confirm.",
+            userInfo: ["navigate": "availabilityReview"]
+        )
+    }
+
     private func postJobsMaybeUnavailableNotification(count: Int) {
         let noun = count == 1 ? "job" : "jobs"
         postNotification(

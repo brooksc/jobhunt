@@ -1428,6 +1428,17 @@ public actor BackgroundStore {
         )
     }
 
+    /// The jobs with these ids, for a caller that already knows exactly which rows it wants — the
+    /// availability drain, which re-asks about a specific batch it couldn't answer for earlier.
+    ///
+    /// Returns only the rows that still exist: a job deleted between the deferral and the retry is
+    /// simply absent, which the caller treats as answered rather than as a batch to keep retrying.
+    public func jobs(withIDs ids: [String]) throws -> sending [Job] {
+        guard !ids.isEmpty else { return [] }
+        let wanted = Set(ids)
+        return try modelContext.fetch(FetchDescriptor<Job>()).filter { wanted.contains($0.id) }
+    }
+
     /// Every job as a Spotlight entry (TASK-590). Jobs that can't be linked or named are dropped by
     /// `SpotlightEntry.make` rather than indexed as blanks.
     public func spotlightEntries() throws -> [SpotlightEntry] {

@@ -127,6 +127,18 @@ struct JobsView: View {
             // Clicking the background "jobs may be gone" macOS notification opens this review.
             .onReceive(NotificationCenter.default.publisher(for: .runAvailabilityReview)) { _ in
                 guard !isCheckingAvailability else { return }
+                // The background drain has already done the fetching and is reporting what it found;
+                // re-running the whole check here would throw that away and make the user wait again.
+                let drained = appServices.availabilityBacklog
+                if drained.hasFindings {
+                    goneJobs = drained.gone
+                    unverifiedJobs = []
+                    lastCheckedCount = drained.gone.count
+                    lastPlannedCount = drained.gone.count
+                    appServices.availabilityBacklog.clearFindings()
+                    showingExpiredConfirmation = true
+                    return
+                }
                 Task { await runAvailabilityCheck() }
             }
             .confirmationDialog(
@@ -1435,6 +1447,10 @@ struct JobsView: View {
         unverifiedJobs = sweep.unverified
         lastCheckedCount = sweep.checkedCount
         lastPlannedCount = planned.checking
+        // Hand what this run couldn't answer to the background drain, which keeps asking gently until
+        // there's nothing left and then reports once. Otherwise the deferred LinkedIn postings and the
+        // throttled boards would need the user to re-run the check by hand, repeatedly.
+        appServices.availabilityBacklog.absorb(sweep)
         if found.isEmpty {
             // Show the result in the dialog itself (no transient toast) — the user dismisses it.
             // A blocked or deferred check proves nothing, so don't report those jobs as available.

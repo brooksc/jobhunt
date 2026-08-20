@@ -691,3 +691,65 @@ final class JobFieldNormalizerTests: XCTestCase {
 }
 
 // swiftlint:enable line_length file_length
+
+/// The app crashed — SIGTRAP, whole process — on capturing a Netflix posting. Its board writes
+/// `?…&Teams=Engineering&Teams=Engineering%20Operations`, a legitimately repeated query parameter,
+/// and `Dictionary(uniqueKeysWithValues:)` traps on a duplicate key. The extraction died with the
+/// process and the job was left stuck in `running`, which read as "Netflix jobs don't parse".
+final class RemoteURLDuplicateParameterTests: XCTestCase {
+    /// The exact shape that crashed.
+    func testRepeatedQueryParameterDoesNotTrap() {
+        let netflix = "https://explore.jobs.netflix.net/careers?query=Technical%20Program%20Manager"
+            + "&location=any&pid=790316311096&Teams=Engineering&Teams=Engineering%20Operations"
+        XCTAssertFalse(RemoteTypeInferer.urlIndicatesRemote(netflix))
+    }
+
+    /// Repetition anywhere in the query must be survivable, not just on one board.
+    func testRepeatedParametersOnAnyHost() {
+        for url in [
+            "https://example.com/jobs?tag=a&tag=b",
+            "https://example.com/jobs?utm_source=x&utm_source=y&utm_source=z",
+            "https://www.linkedin.com/jobs/search?f_WT=1&f_WT=2&f_WT=3",
+            "https://www.indeed.com/jobs?l=Remote&l=Austin"
+        ] {
+            // The assertion is that this returns at all — each of these used to abort the process.
+            _ = RemoteTypeInferer.urlIndicatesRemote(url)
+        }
+    }
+
+    /// Every value counts, not just the last one: a board expresses "remote OR onsite" as a repeated
+    /// filter, and a last-one-wins dictionary would have reported whichever came last.
+    func testRemoteSignalIsFoundAmongRepeatedValues() {
+        XCTAssertTrue(
+            RemoteTypeInferer.urlIndicatesRemote("https://www.linkedin.com/jobs/search?f_WT=1&f_WT=2"),
+            "f_WT=2 means remote whether or not it is the last value"
+        )
+        XCTAssertTrue(
+            RemoteTypeInferer.urlIndicatesRemote("https://www.linkedin.com/jobs/search?f_WT=2&f_WT=1")
+        )
+        XCTAssertTrue(
+            RemoteTypeInferer.urlIndicatesRemote("https://www.indeed.com/jobs?l=Austin&l=Remote")
+        )
+        XCTAssertFalse(
+            RemoteTypeInferer.urlIndicatesRemote("https://www.linkedin.com/jobs/search?f_WT=1&f_WT=3")
+        )
+    }
+
+    /// levels.fyi packs several perks into one comma-separated value, and can repeat the parameter.
+    func testCommaSeparatedPerksAcrossRepeatedParameters() {
+        XCTAssertTrue(
+            RemoteTypeInferer.urlIndicatesRemote("https://www.levels.fyi/jobs?perkIds=12,58&perkIds=7")
+        )
+        XCTAssertTrue(
+            RemoteTypeInferer.urlIndicatesRemote("https://www.levels.fyi/jobs?perkIds=7&perkIds=58")
+        )
+        XCTAssertFalse(
+            RemoteTypeInferer.urlIndicatesRemote("https://www.levels.fyi/jobs?perkIds=7&perkIds=12")
+        )
+    }
+
+    /// A parameter with no value at all must not throw the parse off either.
+    func testValuelessParameters() {
+        XCTAssertFalse(RemoteTypeInferer.urlIndicatesRemote("https://example.com/jobs?flag&flag&x=1"))
+    }
+}

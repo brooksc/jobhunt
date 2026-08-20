@@ -482,26 +482,35 @@ public enum RemoteTypeInferer {
               let parsedURL = URL(string: urlStr),
               let components = URLComponents(url: parsedURL, resolvingAgainstBaseURL: false) else { return false }
         let host = parsedURL.host ?? ""
-        let params = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item -> (
-            String,
-            String
-        )? in
-            guard let value = item.value else { return nil }
-            return (item.name, value)
-        })
+        // A query parameter may legitimately repeat, and this crashed the app when one did.
+        // `Dictionary(uniqueKeysWithValues:)` traps on a duplicate key, and Netflix's board writes
+        // `?…&Teams=Engineering&Teams=Engineering%20Operations`, so capturing one of its postings
+        // killed the process mid-extraction and left the job stuck in `running`, never parsed.
+        //
+        // Collecting every value is also more correct than keeping one: a job board expresses "remote
+        // OR onsite" as a repeated filter (`f_WT=1&f_WT=2`), and a last-one-wins dictionary would
+        // report whichever happened to come last.
+        var params: [String: [String]] = [:]
+        for item in components.queryItems ?? [] {
+            guard let value = item.value else { continue }
+            params[item.name, default: []].append(value)
+        }
+        func has(_ name: String, _ value: String) -> Bool {
+            params[name]?.contains(value) ?? false
+        }
 
         if host.contains("levels.fyi") {
-            let perkIds = params["perkIds"]?.split(separator: ",").map(String.init) ?? []
+            let perkIds = (params["perkIds"] ?? []).flatMap { $0.split(separator: ",").map(String.init) }
             if perkIds.contains("58") { return true }
         }
         if host.contains("indeed.com") {
-            if params["remotejob"] == "1" || params["l"] == "Remote" { return true }
+            if has("remotejob", "1") || has("l", "Remote") { return true }
         }
         if host.contains("linkedin.com") {
-            if params["f_WT"] == "2" { return true }
+            if has("f_WT", "2") { return true }
         }
         if host.contains("glassdoor.com") {
-            if params["remoteWorkType"] == "1" { return true }
+            if has("remoteWorkType", "1") { return true }
         }
         return false
     }

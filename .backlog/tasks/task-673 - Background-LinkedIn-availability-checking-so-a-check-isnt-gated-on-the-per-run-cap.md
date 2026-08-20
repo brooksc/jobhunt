@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-08-20 20:39'
+updated_date: '2026-08-20 23:10'
 labels:
   - availability
   - linkedin
@@ -39,3 +40,21 @@ Not a bug: the current behaviour is correct and now self-explanatory. This is a 
 - [ ] #4 The behaviour is opt-in or clearly disclosed, since it makes ongoing requests to LinkedIn from the user's IP
 - [ ] #5 Drainage stops when the backlog is clear and resumes on a staleness interval rather than looping forever
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented in the session that filed it, scoped to what the user asked for: background drain of whatever a check couldn't answer, plus one macOS notification at the end.
+
+- AvailabilityBacklog (Core, 8 tests): retryable reasons are notCheckedThisRun / rateLimited / unreachable only — a bot-challenge page and a client-rendered shell answer identically twenty minutes later, and noURL can never be checked. Pending set is REPLACED per pass so the drain converges; findings accumulate deduplicated.
+- AppServices.availabilityDrainTask: every 5 min, foreground-only, 12 postings per pass (matched to the LinkedIn cap — these are the hosts that objected to being asked quickly). Gated on availability_auto_check_enabled, so the existing toggle turns it off.
+- Seeded by any run: the on-demand Jobs-list check hands its sweep to the backlog.
+- PlatformIntegration.notifyBacklogDrained: fires once when the backlog empties AND there is something to report. NOT rate-limited like the daily nudge — it reports the end of a finite piece of work.
+- Clicking the notification opens the confirmation sheet with the accumulated findings instead of re-running the whole check.
+
+Open AC #2 (must not reset the scheduled sweep's interval gate) holds: the drain calls findGoneJobsRotating directly and never writes availability_last_auto_check_at.
+
+not verified: (visual) — the notification firing and its click path need a live desktop and a drain that takes ~10+ minutes to complete.
+
+REMAINING, not done: survival across relaunch. The backlog is in-memory because nothing records per-job check history — that's TASK-674, which this depends on for a durable version.
+<!-- SECTION:NOTES:END -->

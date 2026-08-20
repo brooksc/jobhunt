@@ -54,19 +54,30 @@ public enum SeniorityNormalizer {
         text = text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
 
         // Anything that is only digits, ordinals or a years phrase carries no band.
-        if text.range(of: "^(i{1,3}|iv|v|[0-9]+)$", options: .regularExpression) != nil { return nil }
+        if text.range(of: "^(i{1,3}|iv|v|[0-9]+)$", options: .regularExpression) != nil {
+            return nil
+        }
         if text.contains("year") || text.range(of: "^[0-9]", options: .regularExpression) != nil {
             return nil
         }
 
-        // Longest-match first: "senior manager" must not be caught by the "senior" rule, and
-        // "mid senior" must not be caught by "senior".
+        // Longest-match first, and order IS the precedence: the first rule whose needle appears wins,
+        // so every compound has to sit above the single word it contains. "senior manager" must not
+        // be caught by "senior", "mid senior" must not be caught by "senior", and — the case this
+        // ordering originally got wrong — "associate director" must not be caught by "associate",
+        // which put a director-band role in `entry` and fed that to `experience_level` scoring.
         let rules: [(needles: [String], level: SeniorityLevel)] = [
             (["intern", "internship", "co op", "coop"], .intern),
-            (["new grad", "new graduate", "graduate", "entry", "junior", "jr", "associate"], .entry),
-            (["mid senior", "midsenior", "mid level", "midlevel", "mid", "intermediate", "experienced"], .mid),
+            // Compounds whose *modifier* would otherwise decide the band on its own.
+            (["associate director"], .director),
+            (["associate manager"], .manager),
+            (["associate vice president", "associate vp"], .executive),
+            (["senior staff", "sr staff"], .staff),
+            (["senior principal", "sr principal"], .principal),
             (["senior manager", "sr manager"], .manager),
             (["senior director", "sr director"], .director),
+            (["new grad", "new graduate", "graduate", "entry", "junior", "jr", "associate"], .entry),
+            (["mid senior", "midsenior", "mid level", "midlevel", "mid", "intermediate", "experienced"], .mid),
             (["senior", "sr"], .senior),
             (["tech lead", "team lead", "lead"], .lead),
             (["staff"], .staff),

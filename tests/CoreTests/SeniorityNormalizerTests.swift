@@ -157,3 +157,26 @@ final class SeniorityBackfillTests: XCTestCase {
         XCTAssertEqual(result.changed, 0)
     }
 }
+
+/// Rule ORDER decides the band, because the first matching needle wins. A compound title whose
+/// modifier also appears as a standalone rule was therefore decided by the modifier: "Associate
+/// Director" normalized to `entry`, which is what then reached `experience_level` in the scoring
+/// prompt.
+final class SeniorityCompoundTitleTests: XCTestCase {
+    func testAssociateCompoundsKeepTheirOwnBand() {
+        XCTAssertEqual(SeniorityNormalizer.normalize("Associate Director"), "director")
+        XCTAssertEqual(SeniorityNormalizer.normalize("associate manager"), "manager")
+        XCTAssertEqual(SeniorityNormalizer.normalize("Associate Vice President"), "executive")
+        // The bare word still means what it meant.
+        XCTAssertEqual(SeniorityNormalizer.normalize("Associate"), "entry")
+        XCTAssertEqual(SeniorityNormalizer.normalize("Associate Engineer"), "entry")
+    }
+
+    func testSeniorCompoundsDoNotCollapseToSenior() {
+        XCTAssertEqual(SeniorityNormalizer.normalize("Senior Staff Engineer"), "staff")
+        XCTAssertEqual(SeniorityNormalizer.normalize("Sr. Principal Engineer"), "principal")
+        XCTAssertEqual(SeniorityNormalizer.normalize("Senior Manager"), "manager")
+        XCTAssertEqual(SeniorityNormalizer.normalize("Senior Director"), "director")
+        XCTAssertEqual(SeniorityNormalizer.normalize("Senior Engineer"), "senior")
+    }
+}

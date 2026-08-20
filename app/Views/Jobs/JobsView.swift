@@ -59,6 +59,9 @@ struct JobsView: View {
     /// so these aren't a silent minute (TASK-640).
     @State private var progress: TaskProgressModel?
     @State private var jobIDsToDelete: [String] = []
+    /// Non-nil while the "score fit on everything shown" confirmation is up; carries the count so the
+    /// dialog title can state it.
+    @State private var pendingShownRescoreCount: Int?
     /// Jobs the user just archived/re-statused/deleted, so the filtered-set reconciliation below knows
     /// their drop from the current filter is an expected consequence of the command — not a surprise
     /// worth a "no longer match the filter" toast (TASK-617).
@@ -119,6 +122,39 @@ struct JobsView: View {
             .onReceive(NotificationCenter.default.publisher(for: .runAvailabilityReview)) { _ in
                 guard !isCheckingAvailability else { return }
                 Task { await runAvailabilityCheck() }
+            }
+            .confirmationDialog(
+                shownRescoreTitle,
+                isPresented: .init(
+                    get: { pendingShownRescoreCount != nil },
+                    set: { if !$0 { pendingShownRescoreCount = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Score Fit") {
+                    let ids = filteredJobs.map(\.id)
+                    let queue = appServices.queueActor
+                    let toast = appServices.toastStore
+                    pendingShownRescoreCount = nil
+                    Task {
+                        do {
+                            try await queue.enqueueFitForActiveResumes(jobIDs: ids)
+                            await queue.kick()
+                            toast.show("Queued fit scoring for \(ids.count) jobs")
+                        } catch {
+                            toast.show("Couldn't queue fit scoring: \(error.localizedDescription)", isError: true)
+                        }
+                    }
+                }
+                Button("Cancel", role: .cancel) { pendingShownRescoreCount = nil }
+            } message: {
+                // Say what it costs before it's spent: one request per job per active résumé, and the
+                // count here can be the whole archive.
+                Text(
+                    "This queues one scoring request per job for every active résumé, against your "
+                        + "current AI provider. Existing scores are replaced as each result arrives; "
+                        + "watch progress in the LLM Queue."
+                )
             }
             .confirmationDialog(
                 "Delete \(jobIDsToDelete.count == 1 ? "Job" : "\(jobIDsToDelete.count) Jobs")?",
@@ -373,6 +409,20 @@ struct JobsView: View {
                         Label("Open \(selectedJobIDs.count) Pages", systemImage: "safari")
                     }
                     Divider()
+                }
+                // Same "act on what's shown" scope as the availability check below, and for the same
+                // reason: re-scoring the archive after a prompt or model change shouldn't require
+                // hand-selecting several hundred rows. Confirmed first — unlike the availability
+                // check, this one spends money.
+                if selectedJobIDs.isEmpty, !filteredJobs.isEmpty {
+                    Button {
+                        pendingShownRescoreCount = filteredJobs.count
+                    } label: {
+                        Label(
+                            "Score Fit on \(filteredJobs.count) Shown…",
+                            systemImage: "person.crop.circle.badge.checkmark"
+                        )
+                    }
                 }
                 Button {
                     Task { await runAvailabilityCheck() }
@@ -969,6 +1019,11 @@ struct JobsView: View {
 
     private var filteredJobs: [Job] {
         cachedFilteredJobs
+    }
+
+    private var shownRescoreTitle: String {
+        let count = pendingShownRescoreCount ?? 0
+        return "Score fit on \(count) shown job\(count == 1 ? "" : "s")?"
     }
 
     /// The jobs an availability check would actually fetch — what's in view, minus the ones where the

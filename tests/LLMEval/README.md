@@ -22,6 +22,12 @@ byte-identical requests: `deepseek-v4-flash` changed 7 of 15 requirement verdict
 moved the score 10–16 points; `claude-haiku-4.5` changed none across eight runs; `ministral-14b`
 changed two. Provider pinning did not fix it.
 
+How unstable depends heavily on the model, and it tracks capability. Re-measured 2026-08-20 across
+5 identical runs: `gpt-5.6-sol` and `gemini-3.7-flash` changed **no** verdicts and held their scores
+inside a few points; `gpt-5.6-luna` and `gemini-3.1-flash-lite` flipped verdicts and swung 20–40
+points on the same input. Full numbers in
+[`docs/model-benchmark-2026-08.md`](../../docs/model-benchmark-2026-08.md).
+
 So a single pass measures a sample, not a model — which is how a public recommendation came to rest
 on one lucky run. Set repeats before drawing a conclusion:
 
@@ -109,13 +115,19 @@ fixtures in a single run** and prints a comparison:
 ```
 === Comparison ===
 model                                       checks   scores
-google:gemini-3.1-flash-lite                9/10 (90%)   62 61 86 74 99
-openrouter:deepseek/deepseek-v4-flash-0731  7/10 (70%)   88 91 92 80 95
+openrouter:deepseek/deepseek-v4-flash-0731  30/33 (90%)  42 24 60 65 68
+openrouter:anthropic/claude-haiku-4.5       4/26 (15%)  9 12 61 - -
 
 score columns, in order:
   1. #607 Akamai — GPU migration is not CUDA expertise
   ...
 ```
+
+That haiku row is a **worked example of a result you must not believe**: every call returned HTTP
+402 because the OpenRouter account was out of credit. A model that cannot answer scores 0 on every
+check and lands at the bottom looking like a bad judge. Always read the `misses` section below the
+table before ranking anything — transport failures and judgement failures are both just missed
+checks in the `checks` column.
 
 Running them together is the point: this scorer's run-to-run variance has been measured at **23
 points on identical input**, so a difference observed across separate runs of separate models means

@@ -182,10 +182,14 @@ hard constraint on any proposal amounting to "just tell the model about the user
 
 ## 5. Constraints — design inside these
 
-1. **The scoring model is settled: `deepseek/deepseek-v4-flash` via OpenRouter.** It was benchmarked
-   against `gemini-3.1-flash-lite` on the fit-judgement eval and passed 7/7 (gemini: 5/7), at lower
-   cost. Local models (LM Studio / Ollama) remain supported. **If you believe the problem needs a
-   frontier model, raise it with the user before designing around one** — don't assume it.
+1. **The scoring model is `google/gemini-3.7-flash` via OpenRouter** — re-benchmarked 2026-08-20,
+   see [`model-benchmark-2026-08.md`](model-benchmark-2026-08.md). It passed 25/25 judgement checks
+   with zero verdict flips across 5 identical runs, **tying `openai/gpt-5.6-sol` at 6× lower cost**.
+   Local models (LM Studio / Ollama) remain supported. **A frontier model is not the answer to a
+   judgement failure here — Sol was measured and had nothing left to fix.** Two prior recordings are
+   superseded and should not be cited: `deepseek/deepseek-v4-flash` "7/7 vs gemini 5/7" (a
+   single-run result, and the scorer's run-to-run variance is 23 points), and
+   `gemini-3.1-flash-lite` at 9/10 (it now fails the CUDA over-credit fixture 5 times out of 5).
 2. **Prompt budget is scarce and non-monotonic.** Adding instructions has measurably made scoring
    worse. Every prompt change must be justified against the eval set, not by argument.
 3. **One call per (job, résumé).** Per-requirement calls multiply cost and latency by 10–20×. Not

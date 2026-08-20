@@ -39,6 +39,14 @@ final class MockURLProtocol: URLProtocol {
 
     static func reset() {
         handlers = []
+        // The ATS response cache is process-wide, so without this a stubbed board answer would leak
+        // into the next test case and the failure would look like a bug in the checker.
+        let done = DispatchSemaphore(value: 0)
+        Task {
+            await ATSResponseCache.shared.reset()
+            done.signal()
+        }
+        done.wait()
     }
 
     static func makeSession() -> URLSession {

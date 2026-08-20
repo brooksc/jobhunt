@@ -132,9 +132,10 @@ public struct LeverProvider: ATSProvider {
         else { return [] }
         var request = URLRequest(url: url)
         request.timeoutInterval = 20
-        guard let (data, response) = try? await session.data(for: request),
-              let http = response as? HTTPURLResponse, http.statusCode == 200 else { return [] }
-        return (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] ?? []
+        // Cached + coalesced: every posting on a board asks for the same board (see ATSResponseCache).
+        guard let http = await ATSResponseCache.shared.response(for: request, session: session),
+              http.statusCode == 200 else { return [] }
+        return (try? JSONSerialization.jsonObject(with: http.body)) as? [[String: Any]] ?? []
     }
 
     func posting(from entry: [String: Any], company: String) -> ATSPosting? {
@@ -240,9 +241,10 @@ public struct AshbyProvider: ATSProvider {
         else { return [] }
         var request = URLRequest(url: url)
         request.timeoutInterval = 20
-        guard let (data, response) = try? await session.data(for: request),
-              let http = response as? HTTPURLResponse, http.statusCode == 200,
-              let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        // Cached + coalesced: every posting in an org asks for the same board (see ATSResponseCache).
+        guard let http = await ATSResponseCache.shared.response(for: request, session: session),
+              http.statusCode == 200,
+              let raw = try? JSONSerialization.jsonObject(with: http.body) as? [String: Any]
         else { return [] }
         return raw["jobs"] as? [[String: Any]] ?? []
     }

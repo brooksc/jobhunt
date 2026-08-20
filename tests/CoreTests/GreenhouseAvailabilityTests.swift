@@ -15,11 +15,11 @@ final class GreenhouseAvailabilityTests: XCTestCase {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockURLProtocol.self]
         session = URLSession(configuration: config)
-        MockURLProtocol.handlers = []
+        MockURLProtocol.reset()
     }
 
     override func tearDown() {
-        MockURLProtocol.handlers = []
+        MockURLProtocol.reset()
         super.tearDown()
     }
 

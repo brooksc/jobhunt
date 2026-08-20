@@ -1024,8 +1024,11 @@ public enum AvailabilityChecker {
             else { continue }
             var request = URLRequest(url: url)
             request.timeoutInterval = 8
-            guard let (_, response) = try? await session.data(for: request),
-                  let http = response as? HTTPURLResponse else { continue }
+            // Through the cache: the same board is asked about repeatedly within a sweep, and a
+            // throttled answer here doesn't merely fail — it demotes the job from "gone" to
+            // "couldn't verify", which is what made consecutive runs disagree.
+            guard let http = await ATSResponseCache.shared.response(for: request, session: session)
+            else { continue }
             if http.statusCode == 200 { return true }
             // Not 404 (rate limit, 5xx, network hiccup) tells us nothing — try the next candidate.
             guard http.statusCode == 404 else { continue }
@@ -1040,8 +1043,10 @@ public enum AvailabilityChecker {
         guard let url = URL(string: "https://boards-api.greenhouse.io/v1/boards/\(board)") else { return false }
         var request = URLRequest(url: url)
         request.timeoutInterval = 8
-        guard let (_, response) = try? await session.data(for: request),
-              let http = response as? HTTPURLResponse else { return false }
+        // Cached: this is asked once per JOB but answers a question about the BOARD, so a sweep over
+        // 73 Greenhouse postings across 59 boards repeated it needlessly.
+        guard let http = await ATSResponseCache.shared.response(for: request, session: session)
+        else { return false }
         return http.statusCode == 200
     }
 

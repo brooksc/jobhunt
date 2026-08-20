@@ -476,9 +476,6 @@ async function captureTabPayload(tabId, userNote = "") {
   return { payload, action };
 }
 
-/** Last `jobhunt://launch` attempt, so a burst of captures doesn't fire one prompt per capture. */
-let lastLaunchAttemptAt = 0;
-
 /**
  * TASK-489: start the app, then retry. Opt-in and off by default.
  *
@@ -489,7 +486,14 @@ async function tryLaunchAndFlush() {
   if (!(await jobhuntLaunch.isEnabled(chrome.storage.local))) return false;
 
   const result = await jobhuntLaunch.launchAndWait({
-    openURL: async (url) => { await chrome.tabs.create({ url, active: false }); },
+    openURL: async (url) => {
+      // A tab is the only way to hand a custom scheme to the OS from a service worker, and it is
+      // left sitting on about:blank afterwards — so close it once the handoff has happened.
+      const tab = await chrome.tabs.create({ url, active: false });
+      if (tab && tab.id !== undefined) {
+        setTimeout(() => chrome.tabs.remove(tab.id).catch(() => {}), 1000);
+      }
+    },
     isServerReady: async () => {
       try {
         await findServerPort();
@@ -500,10 +504,10 @@ async function tryLaunchAndFlush() {
     },
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     now: () => Date.now(),
-    lastAttemptAt: lastLaunchAttemptAt,
+    lastAttemptAt: await jobhuntLaunch.readLastAttempt(chrome.storage.local),
   });
 
-  if (result.launched) lastLaunchAttemptAt = Date.now();
+  if (result.launched) await jobhuntLaunch.recordAttempt(chrome.storage.local, Date.now());
   return result.ready === true;
 }
 

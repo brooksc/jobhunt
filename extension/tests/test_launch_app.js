@@ -122,3 +122,23 @@ test("the launch URL carries no capture data", () => {
   assert.equal(jobhuntLaunch.LAUNCH_URL, "jobhunt://launch");
   assert.ok(!jobhuntLaunch.LAUNCH_URL.includes("?"));
 });
+
+test("the cooldown timestamp survives a service-worker restart", async () => {
+  // MV3 tears the worker down after ~30s idle — the same order as the cooldown — so a module
+  // variable resets exactly when the cooldown was supposed to be holding.
+  const storage = fakeStorage();
+  assert.equal(await jobhuntLaunch.readLastAttempt(storage), null);
+
+  await jobhuntLaunch.recordAttempt(storage, 5000);
+  assert.equal(await jobhuntLaunch.readLastAttempt(storage), 5000);
+
+  // A fresh worker reads the stored value and still refuses to re-prompt.
+  const lastAttemptAt = await jobhuntLaunch.readLastAttempt(storage);
+  assert.equal(jobhuntLaunch.canAttempt(lastAttemptAt, 5000 + 1000), false);
+  assert.equal(jobhuntLaunch.canAttempt(lastAttemptAt, 5000 + jobhuntLaunch.RELAUNCH_COOLDOWN_MS), true);
+});
+
+test("a non-numeric stored timestamp reads as no attempt", async () => {
+  const storage = fakeStorage({ [jobhuntLaunch.LAST_ATTEMPT_KEY]: "recently" });
+  assert.equal(await jobhuntLaunch.readLastAttempt(storage), null);
+});

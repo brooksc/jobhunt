@@ -33,6 +33,26 @@
 
   const LAUNCH_URL = "jobhunt://launch";
 
+  /**
+   * Where the last attempt's timestamp lives.
+   *
+   * In storage, not in a module variable: this is an MV3 service worker, and Chrome tears it down
+   * after ~30s idle — the same order as the cooldown itself. A variable therefore resets to 0
+   * exactly when the cooldown was supposed to be holding, and capturing three jobs in a row against
+   * a closed app would fire three external-protocol prompts after all.
+   */
+  const LAST_ATTEMPT_KEY = "jobhunt.autoLaunchLastAttemptAt";
+
+  async function readLastAttempt(storageArea) {
+    const stored = await storageArea.get(LAST_ATTEMPT_KEY);
+    const value = stored[LAST_ATTEMPT_KEY];
+    return typeof value === "number" ? value : null;
+  }
+
+  async function recordAttempt(storageArea, when) {
+    await storageArea.set({ [LAST_ATTEMPT_KEY]: when });
+  }
+
   async function isEnabled(storageArea) {
     const stored = await storageArea.get(ENABLED_KEY);
     return stored[ENABLED_KEY] === true;
@@ -89,6 +109,9 @@
 
   return {
     ENABLED_KEY,
+    LAST_ATTEMPT_KEY,
+    readLastAttempt,
+    recordAttempt,
     LAUNCH_URL,
     READY_TIMEOUT_MS,
     POLL_INTERVAL_MS,

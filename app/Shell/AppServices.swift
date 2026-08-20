@@ -107,29 +107,44 @@ final class AppServices {
     /// TASK-623 #11: the optional end-of-day recap reminder.
     ///
     /// Re-reads the setting each cycle rather than capturing it, so toggling it off takes effect
-    /// without a relaunch. Checks every 15 minutes and fires once per local day — the schedule
-    /// itself is computed by `RecapReminderSchedule`, which is pure so the day-boundary behaviour is
+    /// without a relaunch. Checks every 15 minutes; the target instant comes from
+    /// `RecapReminderSchedule`, which is pure so the day-boundary, DST and timezone behaviour (#8) is
     /// testable without waiting a day.
+    ///
+    /// This loop used to compute the target itself as `hour >= reminderHour`, which left the tested
+    /// scheduler unused and fired on the first tick after *every* launch that happened to be past the
+    /// hour — quitting and reopening at 20:00 three times meant three "Today's progress"
+    /// notifications. A scheduled instant fires once and then moves to tomorrow.
     private func recapReminderTask() -> Task<Void, Never> {
         let recapStore = backgroundStore
         return Task { @MainActor [weak self] in
-            var lastFiredDay: Date?
+            guard let self else { return }
+            var scheduledHour = settings.dailyRecapReminderHour
+            var nextFire = RecapReminderSchedule.nextFireDate(after: Date(), hour: scheduledHour)
+
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(15 * 60))
-                guard !Task.isCancelled, let self else { return }
-                guard settings.dailyRecapReminderEnabled else { continue }
+                guard !Task.isCancelled else { return }
 
-                let now = Date()
-                let calendar = Calendar.current
-                let today = calendar.startOfDay(for: now)
-                if let lastFiredDay, calendar.isDate(lastFiredDay, inSameDayAs: today) { continue }
-                // Fire once the hour has arrived, not before.
-                let hour = calendar.component(.hour, from: now)
-                guard hour >= settings.dailyRecapReminderHour else { continue }
+                let hour = settings.dailyRecapReminderHour
+                // The user moved the time; re-derive rather than firing against the old target.
+                if hour != scheduledHour {
+                    scheduledHour = hour
+                    nextFire = RecapReminderSchedule.nextFireDate(after: Date(), hour: hour)
+                }
+                // While it's off, keep the target rolling forward. Otherwise switching it back on in
+                // the evening would fire instantly against a target that expired days ago.
+                guard settings.dailyRecapReminderEnabled else {
+                    if let due = nextFire, Date() >= due {
+                        nextFire = RecapReminderSchedule.nextFireDate(after: Date(), hour: hour)
+                    }
+                    continue
+                }
+                guard let due = nextFire, Date() >= due else { continue }
 
                 guard let recap = try? await recapStore.todayRecap() else { continue }
                 platformIntegration?.notifyDailyRecap(recap)
-                lastFiredDay = today
+                nextFire = RecapReminderSchedule.nextFireDate(after: Date(), hour: hour)
             }
         }
     }

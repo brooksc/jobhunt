@@ -1513,3 +1513,108 @@ final class AvailabilityScopeEndToEndTests: XCTestCase {
         XCTAssertEqual(sweep.checkedCount, 1)
     }
 }
+
+/// One operation must report one number. The menu counted checkable jobs, the run counted what it
+/// would actually fetch, and the dialog reported a third — each correct, but LinkedIn's per-run cap
+/// made them disagree, which reads as a bug and costs trust in the result.
+final class AvailabilityRunPlanTests: XCTestCase {
+    private var container: ModelContainer!
+
+    override func setUp() async throws {
+        container = try ModelContainerFactory.inMemory()
+    }
+
+    override func tearDown() async throws {
+        container = nil
+    }
+
+    private func job(_ status: JobStatus, url: String) throws -> Job {
+        let context = ModelContext(container)
+        let job = Job(title: "T", status: status)
+        let capture = Capture(url: url, pageTitle: "T", rawHash: UUID().uuidString, capturedAt: Date())
+        job.capture = capture
+        context.insert(capture)
+        context.insert(job)
+        try context.save()
+        return job
+    }
+
+    /// The planner's own accounting: everything checkable is either checked now or deferred.
+    func testPlanAccountsForEveryCheckableJob() throws {
+        var jobs: [Job] = []
+        for i in 0 ..< 20 {
+            try jobs.append(job(.archived, url: "https://www.linkedin.com/jobs/view/\(i)"))
+        }
+        for i in 0 ..< 5 {
+            try jobs.append(job(.archived, url: "https://boards.greenhouse.io/acme/jobs/\(i)"))
+        }
+
+        let plan = AvailabilityChecker.plan(for: jobs, restrictToStatuses: nil, linkedInOffset: 0)
+        XCTAssertEqual(plan.checkCount, 5 + AvailabilityChecker.maxLinkedInPerRun)
+        XCTAssertEqual(plan.deferredLinkedInCount, 20 - AvailabilityChecker.maxLinkedInPerRun)
+        XCTAssertEqual(
+            plan.checkCount + plan.deferredLinkedInCount + plan.uncheckable.count, jobs.count,
+            "every job must be either checked this run, deferred, or reported uncheckable"
+        )
+    }
+
+    /// Under the cap there is nothing to defer, so the stated number is simply the whole set — the
+    /// common case, and the one where an unexplained shortfall would be most alarming.
+    func testNothingIsDeferredBelowTheCap() throws {
+        let jobs = try [
+            job(.archived, url: "https://www.linkedin.com/jobs/view/1"),
+            job(.archived, url: "https://boards.greenhouse.io/acme/jobs/1")
+        ]
+        let plan = AvailabilityChecker.plan(for: jobs, restrictToStatuses: nil, linkedInOffset: 0)
+        XCTAssertEqual(plan.checkCount, 2)
+        XCTAssertEqual(plan.deferredLinkedInCount, 0)
+    }
+
+    /// A job with no URL is neither checked nor silently dropped — it is reported.
+    func testJobWithNoURLIsReportedNotDropped() throws {
+        let context = ModelContext(container)
+        let orphan = Job(title: "No URL", status: .archived)
+        context.insert(orphan)
+        try context.save()
+
+        let plan = AvailabilityChecker.plan(for: [orphan], restrictToStatuses: nil, linkedInOffset: 0)
+        XCTAssertEqual(plan.checkCount, 0)
+        XCTAssertEqual(plan.uncheckable.map(\.reason), [.noURL])
+    }
+
+    /// The number the menu states must be the number the run reports — that identity is the fix.
+    func testPlannedCountMatchesWhatTheRunReports() async throws {
+        var jobs: [Job] = []
+        for i in 0 ..< 15 {
+            try jobs.append(job(.archived, url: "https://www.linkedin.com/jobs/view/\(i)"))
+        }
+        try jobs.append(job(.archived, url: "https://boards.greenhouse.io/acme/jobs/1"))
+
+        let plan = AvailabilityChecker.plan(for: jobs, restrictToStatuses: nil, linkedInOffset: 0)
+        MockURLProtocol.reset()
+        let session = MockURLProtocol.makeSession()
+
+        var reportedTotal = 0
+        _ = await AvailabilityChecker.findGoneJobs(
+            jobs, restrictToStatuses: nil, session: session, linkedInOffset: 0
+        ) { _, total in
+            reportedTotal = total
+        }
+        XCTAssertEqual(reportedTotal, plan.checkCount, "the dialog's total must equal the menu's number")
+    }
+
+    /// Deferred LinkedIn postings come back as unverified, so they are visible rather than merely
+    /// absent from the total.
+    func testDeferredLinkedInPostingsAreReportedAsUnverified() async throws {
+        var jobs: [Job] = []
+        for i in 0 ..< 15 {
+            try jobs.append(job(.archived, url: "https://www.linkedin.com/jobs/view/\(i)"))
+        }
+        MockURLProtocol.reset()
+        let sweep = await AvailabilityChecker.findGoneJobs(
+            jobs, restrictToStatuses: nil, session: MockURLProtocol.makeSession(), linkedInOffset: 0
+        )
+        let deferred = sweep.unverified.filter { $0.reason == .notCheckedThisRun }
+        XCTAssertEqual(deferred.count, 15 - AvailabilityChecker.maxLinkedInPerRun)
+    }
+}

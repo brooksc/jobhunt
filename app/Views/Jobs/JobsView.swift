@@ -427,17 +427,17 @@ struct JobsView: View {
                 Button {
                     Task { await runAvailabilityCheck() }
                 } label: {
-                    // Name the scope and the size: this fires one request per job, and in the
-                    // Archived view that can be several hundred.
+                    // State the number the run will ACTUALLY check, from the same planner the run
+                    // uses. Showing the shown-count here and a smaller total in the progress dialog
+                    // made one operation report three different numbers, which reads as a bug even
+                    // though each was correct.
                     Label(
-                        isCheckingAvailability
-                            ? "Checking availability…"
-                            : "Check Availability of \(availabilityCandidates.count) Shown",
+                        isCheckingAvailability ? "Checking availability…" : availabilityMenuTitle,
                         systemImage: "checkmark.seal"
                     )
                 }
-                .disabled(isCheckingAvailability || availabilityCandidates.isEmpty)
-                .help("Check every posting currently listed for removal, then offer to mark the dead ones expired")
+                .disabled(isCheckingAvailability || availabilityRun.checking == 0)
+                .help(availabilityMenuHelp)
                 Button {
                     Task { await runDuplicateScan() }
                 } label: {
@@ -1034,6 +1034,25 @@ struct JobsView: View {
         AvailabilityChecker.checkableJobs(from: filteredJobs)
     }
 
+    /// What a run started right now would check, and what it would hold back — from the planner the
+    /// run itself uses, so the menu, the progress dialog and the summary can't disagree.
+    private var availabilityRun: (checking: Int, deferredLinkedIn: Int) {
+        AvailabilityChecker.plannedRun(for: availabilityCandidates, settings: appServices.settings)
+    }
+
+    private var availabilityMenuTitle: String {
+        "Check Availability of \(availabilityRun.checking) Shown"
+    }
+
+    private var availabilityMenuHelp: String {
+        let deferred = availabilityRun.deferredLinkedIn
+        let base = "Check every posting currently listed for removal, then offer to mark the dead ones expired"
+        guard deferred > 0 else { return base }
+        return base
+            + ". \(deferred) LinkedIn posting\(deferred == 1 ? "" : "s") are held for later runs — "
+            + "LinkedIn throttles rapid checks, and a throttled check reads as \"available\""
+    }
+
     /// Cheap per-body change signal for `cachedFilteredJobs`. O(N) over one `updatedAt` read per job
     /// (no Capture fault, no description lowercasing) — far cheaper than the full filter, and it
     /// changes whenever any input to the filter/sort could change: the query, tokens, filters, the
@@ -1373,29 +1392,22 @@ struct JobsView: View {
         isCheckingAvailability = true
         defer { isCheckingAvailability = false }
 
-        let model = TaskProgressModel(title: "Checking availability", total: eligible.count)
-        // What the menu offered, so the dialog can explain a smaller real total (see the note below).
-        let requested = eligible.count
+        // Same plan the menu label stated and the run will follow — so the dialog opens on the number
+        // the user just clicked, rather than correcting itself on the first tick.
+        let planned = availabilityRun
+        let model = TaskProgressModel(title: "Checking availability", total: planned.checking)
+        if planned.deferredLinkedIn > 0 {
+            let deferred = planned.deferredLinkedIn
+            model.note = "\(deferred) LinkedIn posting\(deferred == 1 ? "" : "s") are checked on later "
+                + "runs — LinkedIn throttles rapid checks, so they go a few at a time."
+        }
         let task = Task {
             // nil: the scope is `availabilityCandidates` — what the user is looking at. The default
             // would re-narrow to Interested/Applied and silently drop everything else.
             await AvailabilityChecker.findGoneJobsRotating(
                 eligible, settings: appServices.settings, restrictToStatuses: nil
             ) { checked, total in
-                await MainActor.run {
-                    model.current = checked
-                    model.total = total
-                    // The run's real total is smaller than what the menu offered whenever LinkedIn
-                    // postings fall outside this run's rotation window (capped per run so a burst of
-                    // guest requests can't get us throttled — a throttled check reads as "available"
-                    // and would expire live jobs). Say so here rather than leaving the shortfall to
-                    // be discovered in the summary at the end.
-                    let deferred = requested - total
-                    model.note = deferred > 0
-                        ? "\(deferred) LinkedIn posting\(deferred == 1 ? "" : "s") are checked on later "
-                        + "runs — LinkedIn throttles rapid checks, so they go a few at a time."
-                        : nil
-                }
+                await MainActor.run { model.current = checked; model.total = total }
             }
         }
         model.onCancel = { task.cancel() }
@@ -1420,10 +1432,13 @@ struct JobsView: View {
             // A blocked or deferred check proves nothing, so don't report those jobs as available.
             // The checker reports what it actually reached; never infer it from the input count.
             // An all-clear is only claimable when every job handed in was genuinely checked.
+            // Denominator is what this run set out to check — the number stated in the menu and the
+            // progress dialog. The LinkedIn postings held for a later run are reported separately by
+            // `unverifiedSummary`, so they're accounted for without becoming a fourth number here.
             let verified = sweep.checkedCount
-            var completion = verified == eligible.count
-                ? "All \(eligible.count) postings in view are still available."
-                : "No expired postings found — \(verified) of \(eligible.count) verified."
+            var completion = verified == planned.checking
+                ? "All \(planned.checking) postings checked are still available."
+                : "No expired postings found — \(verified) of \(planned.checking) verified."
             if let summary = sweep.unverifiedSummary { completion += " \(summary)" }
             model.completion = completion
             model.onDone = { progress = nil }
@@ -1437,7 +1452,7 @@ struct JobsView: View {
         notifyIfBackgrounded(
             title: "Availability check complete",
             body: found.isEmpty
-                ? "\(sweep.checkedCount) of \(eligible.count) verified available"
+                ? "\(sweep.checkedCount) of \(planned.checking) verified available"
                 : "\(found.count) job(s) may be gone"
         )
     }

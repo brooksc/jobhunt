@@ -644,7 +644,9 @@ public enum AvailabilityChecker {
     /// WITHOUT modifying any job records. Call this to gather candidates, then show
     /// a confirmation UI before marking them expired.
     /// One job's availability-check inputs (Sendable so it crosses the task-group boundary).
-    private struct JobSpec {
+    /// Internal rather than private so `RunPlan` — which is what decides the numbers every surface
+    /// shows — can hold them and be unit-tested.
+    struct JobSpec {
         let id: String
         let jobNumber: Int?
         let company: String?
@@ -918,48 +920,14 @@ public enum AvailabilityChecker {
         linkedInOffset: Int = 0,
         onProgress: (@Sendable (_ checked: Int, _ total: Int) async -> Void)? = nil
     ) async -> AvailabilitySweep {
-        let eligible = restrictToStatuses.map { allowed in
-            jobs.filter { allowed.contains($0.status) }
-        } ?? jobs
-        guard !eligible.isEmpty else { return AvailabilitySweep(gone: []) }
+        let plan = plan(for: jobs, restrictToStatuses: restrictToStatuses, linkedInOffset: linkedInOffset)
+        guard !plan.isEmpty else { return AvailabilitySweep(gone: [], unverified: plan.uncheckable) }
 
-        // Jobs with no usable URL can't be checked at all — previously dropped silently.
-        var uncheckable: [UnverifiedJobResult] = []
-        let specs: [JobSpec] = eligible.compactMap { job in
-            let urlString = JobURLPolicy.availabilityCheckURL(job: job) ?? ""
-            guard !urlString.isEmpty, let url = URL(string: urlString) else {
-                uncheckable.append(UnverifiedJobResult(
-                    jobID: job.id, jobNumber: job.jobNumber, company: job.company,
-                    title: job.title ?? "", url: nil, reason: .noURL,
-                    detail: urlString.isEmpty ? "no URL recorded" : "unparseable URL"
-                ))
-                return nil
-            }
-            // The ATS id usually lives in the capture URL (a `?gh_jid=` the canonicalized
-            // applicationURL may have dropped), so scan all of the job's known URLs.
-            let atsID = ATSRegistry.resolve(
-                urls: [job.capture?.url, job.applicationURL, job.capture?.canonicalURL]
-            )?.atsID
-            return JobSpec(
-                id: job.id, jobNumber: job.jobNumber, company: job.company,
-                title: job.title ?? "", url: url, atsID: atsID
-            )
-        }
-        guard !specs.isEmpty else { return AvailabilitySweep(gone: [], unverified: uncheckable) }
-
-        /// LinkedIn aggressively rate-limits a burst of guest requests (999/blocked/redirect), which reads
-        /// as "available" and misses removed postings (job #212). We stay guest-only (no login → no
-        /// account-ban risk) and instead check LinkedIn GENTLY: capped + shuffled per run so a run can't
-        /// fire a bursty volume, paced one-at-a-time, run INTERLEAVED with the other (concurrent) checks
-        /// for wall-clock spread, and backed off the moment LinkedIn throttles. LinkedIn coverage is
-        /// therefore eventual across runs, not guaranteed in one (TASK-643).
-        func isLinkedIn(_ spec: JobSpec) -> Bool {
-            (spec.url.host?.lowercased() ?? "").hasSuffix("linkedin.com")
-        }
-        let concurrentSpecs = specs.filter { !isLinkedIn($0) }
-        let linkedInSpecs = specs.filter(isLinkedIn)
-        let linkedInThisRun = linkedInSlice(linkedInSpecs, offset: linkedInOffset, id: \.id)
-        let total = concurrentSpecs.count + linkedInThisRun.count
+        let concurrentSpecs = plan.concurrent
+        let linkedInSpecs = plan.linkedIn
+        let linkedInThisRun = plan.linkedInThisRun
+        let uncheckable = plan.uncheckable
+        let total = plan.checkCount
 
         let counter = CheckCounter()
         @Sendable func tick() async {
@@ -1190,6 +1158,105 @@ public enum AvailabilityChecker {
         }
 
         return (checked: checkedJobs.count, unavailable: unavailableCount, marked: markedCount, failed: failedCount)
+    }
+
+    // MARK: - Run planning
+
+    /// Exactly what a run will and won't check, decided once.
+    ///
+    /// The UI and the run used to work this out separately: the menu counted checkable jobs (400),
+    /// the run then counted what it would actually fetch (342), and the progress dialog reported a
+    /// third number. Every one was correct and the difference was legitimate — LinkedIn is checked
+    /// twelve per run by rotation — but three numbers for one operation reads as a bug, and a user
+    /// who can't reconcile them stops trusting the result. One planner, one set of numbers.
+    struct RunPlan {
+        /// Non-LinkedIn specs, checked concurrently.
+        let concurrent: [JobSpec]
+        /// Every LinkedIn spec, in or out of this run's window.
+        let linkedIn: [JobSpec]
+        /// The LinkedIn slice this run will actually check.
+        let linkedInThisRun: [JobSpec]
+        /// Jobs with no usable URL — reported, never silently dropped.
+        let uncheckable: [UnverifiedJobResult]
+
+        /// How many jobs this run will fetch. The number every surface should show.
+        var checkCount: Int {
+            concurrent.count + linkedInThisRun.count
+        }
+
+        /// LinkedIn postings held back for a later run.
+        var deferredLinkedInCount: Int {
+            linkedIn.count - linkedInThisRun.count
+        }
+
+        var isEmpty: Bool {
+            concurrent.isEmpty && linkedInThisRun.isEmpty
+        }
+    }
+
+    static func plan(
+        for jobs: [Job],
+        restrictToStatuses: Set<JobStatus>? = scheduledSweepStatuses,
+        linkedInOffset: Int
+    ) -> RunPlan {
+        let eligible = restrictToStatuses.map { allowed in
+            jobs.filter { allowed.contains($0.status) }
+        } ?? jobs
+
+        // Jobs with no usable URL can't be checked at all — previously dropped silently.
+        var uncheckable: [UnverifiedJobResult] = []
+        let specs: [JobSpec] = eligible.compactMap { job in
+            let urlString = JobURLPolicy.availabilityCheckURL(job: job) ?? ""
+            guard !urlString.isEmpty, let url = URL(string: urlString) else {
+                uncheckable.append(UnverifiedJobResult(
+                    jobID: job.id, jobNumber: job.jobNumber, company: job.company,
+                    title: job.title ?? "", url: nil, reason: .noURL,
+                    detail: urlString.isEmpty ? "no URL recorded" : "unparseable URL"
+                ))
+                return nil
+            }
+            // The ATS id usually lives in the capture URL (a `?gh_jid=` the canonicalized
+            // applicationURL may have dropped), so scan all of the job's known URLs.
+            let atsID = ATSRegistry.resolve(
+                urls: [job.capture?.url, job.applicationURL, job.capture?.canonicalURL]
+            )?.atsID
+            return JobSpec(
+                id: job.id, jobNumber: job.jobNumber, company: job.company,
+                title: job.title ?? "", url: url, atsID: atsID
+            )
+        }
+
+        /// LinkedIn aggressively rate-limits a burst of guest requests (999/blocked/redirect), which reads
+        /// as "available" and misses removed postings (job #212). We stay guest-only (no login → no
+        /// account-ban risk) and instead check LinkedIn GENTLY: capped + rotated per run so a run can't
+        /// fire a bursty volume, paced one-at-a-time, run INTERLEAVED with the other (concurrent) checks
+        /// for wall-clock spread, and backed off the moment LinkedIn throttles. LinkedIn coverage is
+        /// therefore eventual across runs, not guaranteed in one (TASK-643).
+        func isLinkedIn(_ spec: JobSpec) -> Bool {
+            (spec.url.host?.lowercased() ?? "").hasSuffix("linkedin.com")
+        }
+        let linkedInSpecs = specs.filter(isLinkedIn)
+        return RunPlan(
+            concurrent: specs.filter { !isLinkedIn($0) },
+            linkedIn: linkedInSpecs,
+            linkedInThisRun: linkedInSlice(linkedInSpecs, offset: linkedInOffset, id: \.id),
+            uncheckable: uncheckable
+        )
+    }
+
+    /// What the next on-demand run over `jobs` will check, for a caller that has to *state* it before
+    /// starting — the menu label. Reads the same rotation cursor the run will read, and returns the
+    /// same numbers, because it is the same planner.
+    public static func plannedRun(
+        for jobs: [Job],
+        settings: SettingsStore
+    ) -> (checking: Int, deferredLinkedIn: Int) {
+        let plan = plan(
+            for: jobs,
+            restrictToStatuses: nil,
+            linkedInOffset: settings.int(forKey: SettingsKey.linkedInRotationOffset)
+        )
+        return (plan.checkCount, plan.deferredLinkedInCount)
     }
 
     // MARK: - On-demand, view-scoped checking

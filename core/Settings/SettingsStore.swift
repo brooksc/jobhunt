@@ -34,6 +34,7 @@ private let settingsDefaults: [String: String] = [
     SettingsKey.customPromptTemplates: "[]",
     SettingsKey.dailyRecapReminderEnabled: "false",
     SettingsKey.dailyRecapReminderHour: "18",
+    SettingsKey.spotlightIndexingEnabled: "true",
     SettingsKey.llmQueuePaused: "false",
     SettingsKey.llmQueuePauseReason: QueuePauseReason.user.rawValue,
     SettingsKey.llmOpenRouterFreeRotate: "false",
@@ -194,6 +195,14 @@ public final class SettingsStore {
     public var dailyRecapReminderHour: Int {
         get { min(max(int(forKey: SettingsKey.dailyRecapReminderHour), 0), 23) }
         set { setInt(min(max(newValue, 0), 23), forKey: SettingsKey.dailyRecapReminderHour) }
+    }
+
+    /// Whether jobs are published to Spotlight (TASK-590). Defaults on — that was the behaviour when
+    /// indexing was unconditional — but turning it off must actually stick, which is why the launch
+    /// pass reads this rather than always running.
+    public var spotlightIndexingEnabled: Bool {
+        get { bool(forKey: SettingsKey.spotlightIndexingEnabled) }
+        set { setBool(newValue, forKey: SettingsKey.spotlightIndexingEnabled) }
     }
 
     /// User-authored prompt templates (TASK-627), ordered for the menu.
@@ -464,7 +473,9 @@ public final class SettingsStore {
 
     private func loadCache() {
         do {
-            if let loadFault { throw loadFault }
+            if let loadFault {
+                throw loadFault
+            }
             let all = try modelContext.fetch(FetchDescriptor<Setting>())
             cache.removeAll()
             for setting in all {

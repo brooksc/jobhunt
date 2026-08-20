@@ -23,7 +23,9 @@ struct DataSettingsTab: View {
             titleVisibility: .visible
         ) {
             Button("Restore and Relaunch", role: .destructive) {
-                if let url = pendingRestoreURL { performRestore(from: url) }
+                if let url = pendingRestoreURL {
+                    performRestore(from: url)
+                }
             }
             Button("Cancel", role: .cancel) { pendingRestoreURL = nil }
         } message: {
@@ -64,13 +66,26 @@ struct DataSettingsTab: View {
                 .foregroundStyle(.secondary)
 
             // TASK-590 #4. Scoped to this app's Spotlight domain, never a global index wipe.
+            Toggle("Publish jobs to Spotlight", isOn: Binding(
+                get: { appServices.settings.spotlightIndexingEnabled },
+                set: { enabled in
+                    appServices.settings.spotlightIndexingEnabled = enabled
+                    // Turning it off takes effect now, not at the next launch: leaving the existing
+                    // entries in place would make the switch look broken.
+                    if !enabled {
+                        SpotlightIndexer.clearAll()
+                    }
+                }
+            ))
             HStack {
                 Button {
                     SpotlightIndexer.clearAll { error in
                         Task { @MainActor in
                             appServices.toastStore.show(
                                 error == nil
-                                    ? "Spotlight index cleared — it rebuilds on the next launch"
+                                    ? (appServices.settings.spotlightIndexingEnabled
+                                        ? "Spotlight index cleared — it rebuilds on the next launch"
+                                        : "Spotlight index cleared")
                                     : "Couldn't clear the Spotlight index",
                                 isError: error != nil
                             )
@@ -79,10 +94,12 @@ struct DataSettingsTab: View {
                 } label: {
                     Label("Clear Spotlight Index", systemImage: "magnifyingglass")
                 }
+                .help("Remove JobHunt's jobs from the system Spotlight index")
                 Spacer()
             }
-            Text("JobHunt publishes your jobs to Spotlight so you can find them from anywhere on "
-                + "the Mac. Clearing removes them; they are re-added the next time the app starts.")
+            Text("When on, JobHunt publishes your jobs to Spotlight so you can find them from "
+                + "anywhere on the Mac — titles, companies and locations become system-wide search "
+                + "results. Turning it off clears them and stops the app republishing on launch.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

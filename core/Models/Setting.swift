@@ -84,6 +84,11 @@ public enum SettingsKey {
     public static let llmConsentGoogle = "llm_consent_google"
     public static let llmConsentOpenRouter = "llm_consent_openrouter"
     public static let llmConsentOpenAI = "llm_consent_openai"
+    /// Whether jobs are published to the system Spotlight index (TASK-590). On by default, matching
+    /// the behaviour when indexing was unconditional, but a job search is private enough that
+    /// "titles and companies appear in system-wide search" has to be refusable — and without this,
+    /// Clear Spotlight Index only held until the next launch rebuilt it.
+    public static let spotlightIndexingEnabled = "spotlight_indexing_enabled"
     /// Persisted last-viewed sidebar selection, so relaunch restores the same view (e.g. "Pursuing").
     public static let lastSidebarSelection = "last_sidebar_selection"
     /// Persisted Jobs-list sort, so it survives sidebar-selection changes and relaunch.

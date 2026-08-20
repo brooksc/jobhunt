@@ -96,11 +96,17 @@ final class AppServices {
     /// next launch is a far smaller problem than a change-observer firing on every extraction write.
     private func spotlightIndexTask() -> Task<Void, Never> {
         let spotlightStore = backgroundStore
-        return Task { @MainActor in
+        return Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(5))
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, let self else { return }
+            // Opt-out (TASK-590): a job search is private enough to be refusable, and without this
+            // check "Clear Spotlight Index" only held until the next launch rebuilt the index.
+            guard settings.spotlightIndexingEnabled else { return }
             guard let entries = try? await spotlightStore.spotlightEntries() else { return }
-            SpotlightIndexer.index(entries)
+            // Replace rather than add, so jobs deleted through a path that doesn't call
+            // `SpotlightIndexer.remove` (MCP, the migrator, bulk operations) don't linger as hits
+            // that open the app and land on nothing.
+            SpotlightIndexer.replaceAll(entries)
         }
     }
 

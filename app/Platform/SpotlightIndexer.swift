@@ -31,7 +31,24 @@ public enum SpotlightIndexer {
             )
         }
         CSSearchableIndex.default().indexSearchableItems(items) { error in
-            if let error { NSLog("SpotlightIndexer: index failed: \(error)") }
+            if let error {
+                NSLog("SpotlightIndexer: index failed: \(error)")
+            }
+        }
+    }
+
+    /// Replace the app's whole Spotlight domain with `entries`.
+    ///
+    /// `index` alone only ever *adds*: a job deleted through a path that doesn't call `remove`
+    /// (the MCP tools, the migrator, a bulk operation) kept its Spotlight hit indefinitely, and the
+    /// hit opens the app and lands on nothing. Clearing the domain first makes the launch pass
+    /// authoritative — whatever the store holds now is exactly what Spotlight holds.
+    ///
+    /// Clear-then-index, not a diff: the corpus is a few hundred rows, re-indexing is cheap, and a
+    /// diff would need its own record of what was published last time.
+    public static func replaceAll(_ entries: [SpotlightEntry]) {
+        clearAll { _ in
+            Task { @MainActor in index(entries) }
         }
     }
 
@@ -41,7 +58,9 @@ public enum SpotlightIndexer {
         guard !jobNumbers.isEmpty else { return }
         let ids = jobNumbers.map { SpotlightEntry.identifier(jobNumber: $0) }
         CSSearchableIndex.default().deleteSearchableItems(withIdentifiers: ids) { error in
-            if let error { NSLog("SpotlightIndexer: delete failed: \(error)") }
+            if let error {
+                NSLog("SpotlightIndexer: delete failed: \(error)")
+            }
         }
     }
 
@@ -49,7 +68,9 @@ public enum SpotlightIndexer {
     public static func clearAll(completion: (@Sendable (Error?) -> Void)? = nil) {
         CSSearchableIndex.default()
             .deleteSearchableItems(withDomainIdentifiers: [domainIdentifier]) { error in
-                if let error { NSLog("SpotlightIndexer: clear failed: \(error)") }
+                if let error {
+                    NSLog("SpotlightIndexer: clear failed: \(error)")
+                }
                 completion?(error)
             }
     }

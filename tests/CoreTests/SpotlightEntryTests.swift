@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import XCTest
 @testable import JobhuntCore
 
@@ -71,5 +72,28 @@ final class SpotlightEntryTests: XCTestCase {
     func testMissingFieldsDontLeaveDanglingSeparators() throws {
         let description = try XCTUnwrap(entry(location: nil, salary: nil)).contentDescription
         XCTAssertEqual(description, "Pursuing")
+    }
+}
+
+/// The indexing opt-out (TASK-590). Without it, "Clear Spotlight Index" only held until the next
+/// launch republished everything, so a user who didn't want their job search in system-wide search
+/// had no way to say so.
+final class SpotlightIndexingSettingTests: XCTestCase {
+    private func makeStore() throws -> SettingsStore {
+        let container = try ModelContainerFactory.inMemory()
+        return SettingsStore(modelContext: ModelContext(container))
+    }
+
+    /// Defaults on, matching the behaviour from when indexing was unconditional.
+    func testDefaultsOn() throws {
+        XCTAssertTrue(try makeStore().spotlightIndexingEnabled)
+    }
+
+    func testRoundTrips() throws {
+        let store = try makeStore()
+        store.spotlightIndexingEnabled = false
+        XCTAssertFalse(store.spotlightIndexingEnabled)
+        store.spotlightIndexingEnabled = true
+        XCTAssertTrue(store.spotlightIndexingEnabled)
     }
 }

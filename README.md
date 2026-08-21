@@ -78,24 +78,14 @@ Cloud providers require your consent before any data is sent, and you're billed 
 
 ### Which model?
 
-**`google/gemini-3.7-flash` via OpenRouter** — about **53¢ per 100 postings** to score.
+**`google/gemini-3.7-flash` via OpenRouter** — ~70¢ per 100 postings. It passed 25 of 25
+fit-judgement checks and gave the same verdicts on every run. GPT-5.6 Sol scored identically against
+the same tests for six times the price.
 
-It passed 25 of 25 fit-judgement checks and changed no requirement verdicts across five
-byte-identical runs. GPT-5.6 Sol, run against the same fixtures in the same session, scored
-*identically* — for six times the price. When the expensive model can't beat the cheap one, buy the
-cheap one.
+Avoid **Gemini 3.1 Flash Lite** — it credits résumé experience that isn't there, on 5 runs of 5.
 
-Two warnings from the same run: **Gemini 3.1 Flash Lite has regressed** (it credits résumé
-experience that isn't there on 5 runs of 5 — don't use it), and **DeepSeek V4 Flash** judges well but
-is ~5× slower and returned unparseable JSON once.
-
-Full numbers, method and caveats: [`docs/model-benchmark-2026-08.md`](docs/model-benchmark-2026-08.md).
-The user-facing version, including local-model trade-offs and what gets sent to a provider, is at
-[jobhunt-app.com/help/which-model](https://jobhunt-app.com/help/which-model).
-
-Prefer to pay nothing? Run LM Studio or Ollama locally. We haven't benchmarked local models, so we
-can't tell you what accuracy you give up — if privacy is the priority, that's the option; if accuracy
-is, it isn't.
+[Which model should I use?](https://jobhunt-app.com/help/which-model) has the full comparison and
+costs · [benchmark method and caveats](docs/model-benchmark-2026-08.md)
 
 ## MCP integration (DMG only)
 

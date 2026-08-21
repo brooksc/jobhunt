@@ -1238,7 +1238,7 @@ public enum AvailabilityChecker {
         /// for wall-clock spread, and backed off the moment LinkedIn throttles. LinkedIn coverage is
         /// therefore eventual across runs, not guaranteed in one (TASK-643).
         func isLinkedIn(_ spec: JobSpec) -> Bool {
-            (spec.url.host?.lowercased() ?? "").hasSuffix("linkedin.com")
+            isLinkedInHost(spec.url)
         }
         let linkedInSpecs = specs.filter(isLinkedIn)
         return RunPlan(
@@ -1249,19 +1249,45 @@ public enum AvailabilityChecker {
         )
     }
 
+    /// How many postings a run would check, and how many it would hold back.
+    public struct RunSummary: Sendable, Equatable {
+        public let checking: Int
+        public let deferredLinkedIn: Int
+
+        public init(checking: Int, deferredLinkedIn: Int) {
+            self.checking = checking
+            self.deferredLinkedIn = deferredLinkedIn
+        }
+    }
+
     /// What the next on-demand run over `jobs` will check, for a caller that has to *state* it before
-    /// starting — the menu label. Reads the same rotation cursor the run will read, and returns the
-    /// same numbers, because it is the same planner.
-    public static func plannedRun(
-        for jobs: [Job],
-        settings: SettingsStore
-    ) -> (checking: Int, deferredLinkedIn: Int) {
-        let plan = plan(
-            for: jobs,
-            restrictToStatuses: nil,
-            linkedInOffset: settings.int(forKey: SettingsKey.linkedInRotationOffset)
+    /// starting — the menu label.
+    ///
+    /// **Counts only.** `plan` builds a full `JobSpec` per job, and resolving each posting's ATS id
+    /// costs regex work over three URLs — 60ms for 400 jobs, which a menu label was paying on every
+    /// body evaluation, on the main thread. None of it is needed to answer "how many?": the LinkedIn
+    /// slice is always `min(count, cap)` long, so the two numbers follow from the URLs alone.
+    ///
+    /// The cap and the LinkedIn test are the same ones `plan` uses, and
+    /// `testSummaryAgreesWithTheFullPlan` pins the two together — a count that drifts from the run is
+    /// the bug this whole API exists to prevent.
+    public static func plannedRun(for jobs: [Job], settings _: SettingsStore) -> RunSummary {
+        var linkedIn = 0
+        var other = 0
+        for job in jobs {
+            guard let urlString = JobURLPolicy.availabilityCheckURL(job: job),
+                  let url = URL(string: urlString) else { continue }
+            if isLinkedInHost(url) { linkedIn += 1 } else { other += 1 }
+        }
+        return RunSummary(
+            checking: other + min(linkedIn, maxLinkedInPerRun),
+            deferredLinkedIn: max(0, linkedIn - maxLinkedInPerRun)
         )
-        return (plan.checkCount, plan.deferredLinkedInCount)
+    }
+
+    /// Shared by the planner and the counter so "is this LinkedIn?" can't be answered two ways.
+    static func isLinkedInHost(_ url: URL) -> Bool {
+        (url.host?.lowercased() ?? "").hasSuffix("linkedin.com")
     }
 
     // MARK: - On-demand, view-scoped checking

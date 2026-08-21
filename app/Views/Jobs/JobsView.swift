@@ -81,6 +81,13 @@ struct JobsView: View {
     /// `count + max(updatedAt)`, so in-place mutations (a status change) still refresh it — the exact
     /// staleness that made the previous author abandon caching.
     @State private var cachedFilteredJobs: [Job] = []
+    /// Cached alongside the filtered jobs, and for the same reason (TASK-610). The availability menu
+    /// label states how many postings a run would check, and computing that walked every filtered job
+    /// — on every body evaluation, on the main thread. Clicking a sidebar item re-evaluates the body
+    /// several times, so the view stalled before it redrew.
+    @State private var cachedAvailabilityRun = AvailabilityChecker.RunSummary(
+        checking: 0, deferredLinkedIn: 0
+    )
 
     var body: some View {
         jobListWithModifiers
@@ -503,11 +510,11 @@ struct JobsView: View {
                 localSidebarFilter = router.sidebarJobFilter
                 // #7: restore the persisted sort when no saved search is dictating one.
                 if router.activeSavedSearchID == nil { applyPersistedSort() }
-                cachedFilteredJobs = computeFilteredJobs()
+                refreshFilteredJobs()
             }
             // Recompute the filter/sort only when an input actually changes (TASK-610).
             .onChange(of: filterSignature) { _, _ in
-                cachedFilteredJobs = computeFilteredJobs()
+                refreshFilteredJobs()
             }
             .onChange(of: filterState.sortKey) { _, newKey in
                 appServices.settings.jobsSortKey = newKey.rawValue
@@ -1053,9 +1060,20 @@ struct JobsView: View {
     }
 
     /// What a run started right now would check, and what it would hold back — from the planner the
-    /// run itself uses, so the menu, the progress dialog and the summary can't disagree.
-    private var availabilityRun: (checking: Int, deferredLinkedIn: Int) {
-        AvailabilityChecker.plannedRun(for: availabilityCandidates, settings: appServices.settings)
+    /// run itself uses, so the menu, the progress dialog and the summary can't disagree. Read from
+    /// the cache: this is evaluated while building the toolbar menu, which happens on every body pass.
+    private var availabilityRun: AvailabilityChecker.RunSummary {
+        cachedAvailabilityRun
+    }
+
+    /// Recompute the filter/sort and everything derived from it, together — they share one input, so
+    /// letting them drift apart is how a stale count gets shown next to a fresh list.
+    private func refreshFilteredJobs() {
+        cachedFilteredJobs = computeFilteredJobs()
+        cachedAvailabilityRun = AvailabilityChecker.plannedRun(
+            for: AvailabilityChecker.checkableJobs(from: cachedFilteredJobs),
+            settings: appServices.settings
+        )
     }
 
     private var availabilityMenuTitle: String {

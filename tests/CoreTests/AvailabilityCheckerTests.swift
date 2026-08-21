@@ -1626,3 +1626,112 @@ final class AvailabilityRunPlanTests: XCTestCase {
         XCTAssertEqual(deferred.count, 15 - AvailabilityChecker.maxLinkedInPerRun)
     }
 }
+
+/// Performance guards for the availability planning the Jobs toolbar does on every body evaluation.
+///
+/// The menu label states how many postings a run would check. Answering that by building a full
+/// `JobSpec` per job — which resolves each posting's ATS id with regex work over three URLs — cost
+/// ~60ms for 400 jobs, paid on the main thread every time the body was evaluated, so clicking a
+/// sidebar item stalled before the list redrew. This is the third time a per-body walk over every job
+/// has caused that (TASK-610, TASK-611), hence a test rather than a comment.
+final class AvailabilityPlanningPerformanceTests: XCTestCase {
+    private var container: ModelContainer!
+
+    override func setUp() async throws {
+        container = try ModelContainerFactory.inMemory()
+    }
+
+    override func tearDown() async throws {
+        container = nil
+    }
+
+    /// A corpus the size of a real archive, mixing LinkedIn (rotated, capped) with ATS boards.
+    private func makeJobs(_ count: Int) throws -> [Job] {
+        let context = ModelContext(container)
+        var jobs: [Job] = []
+        for i in 0 ..< count {
+            let job = Job(title: "Role \(i)", status: .archived)
+            let url = i % 5 == 0
+                ? "https://www.linkedin.com/jobs/view/\(i)"
+                : "https://boards.greenhouse.io/acme\(i % 40)/jobs/\(i)?gh_jid=\(i)"
+            let capture = Capture(url: url, pageTitle: "Role \(i)", rawHash: "h\(i)", capturedAt: Date())
+            job.capture = capture
+            context.insert(capture)
+            context.insert(job)
+            jobs.append(job)
+        }
+        try context.save()
+        return jobs
+    }
+
+    private func settings() -> SettingsStore {
+        SettingsStore(modelContext: ModelContext(container))
+    }
+
+    /// The budget that matters: this runs while the toolbar menu is built, so it is on the path
+    /// between a click and a redraw. Generous enough not to be flaky on a loaded machine, tight
+    /// enough that reintroducing per-job spec building (~60ms at this size) fails.
+    func testCountingWhatARunWouldCheckIsCheap() throws {
+        let jobs = try makeJobs(400)
+        let store = settings()
+        let checkable = AvailabilityChecker.checkableJobs(from: jobs)
+
+        // Warm the SwiftData faults so the measurement is of our work, not of the first fetch.
+        _ = AvailabilityChecker.plannedRun(for: checkable, settings: store)
+
+        let start = ProcessInfo.processInfo.systemUptime
+        for _ in 0 ..< 10 {
+            _ = AvailabilityChecker.plannedRun(for: checkable, settings: store)
+        }
+        let perCall = (ProcessInfo.processInfo.systemUptime - start) * 1000 / 10
+        XCTAssertLessThan(
+            perCall, 15,
+            "counting a run's size took \(String(format: "%.1f", perCall))ms for 400 jobs — it is on "
+                + "the click-to-redraw path, so this must stay cheap"
+        )
+    }
+
+    /// The counting shortcut must agree with the planner exactly, or the menu goes back to promising
+    /// a number the run doesn't honour — the bug the shared planner was introduced to fix.
+    func testSummaryAgreesWithTheFullPlan() throws {
+        for count in [0, 1, 11, 12, 13, 60, 137] {
+            let jobs = try makeJobs(count)
+            let checkable = AvailabilityChecker.checkableJobs(from: jobs)
+            let summary = AvailabilityChecker.plannedRun(for: checkable, settings: settings())
+            let plan = AvailabilityChecker.plan(for: checkable, restrictToStatuses: nil, linkedInOffset: 0)
+
+            XCTAssertEqual(summary.checking, plan.checkCount, "checking count diverged at \(count) jobs")
+            XCTAssertEqual(
+                summary.deferredLinkedIn, plan.deferredLinkedInCount,
+                "deferred count diverged at \(count) jobs"
+            )
+            container = try ModelContainerFactory.inMemory()
+        }
+    }
+
+    /// Cost must stay linear. An accidental O(N²) — a `contains` inside the loop, say — is the shape
+    /// that turns a snappy list into a stall as the corpus grows.
+    func testCostGrowsLinearlyWithCorpusSize() throws {
+        func perCall(_ count: Int) throws -> Double {
+            container = try ModelContainerFactory.inMemory()
+            let jobs = try makeJobs(count)
+            let store = settings()
+            let checkable = AvailabilityChecker.checkableJobs(from: jobs)
+            _ = AvailabilityChecker.plannedRun(for: checkable, settings: store)
+            let start = ProcessInfo.processInfo.systemUptime
+            for _ in 0 ..< 20 {
+                _ = AvailabilityChecker.plannedRun(for: checkable, settings: store)
+            }
+            return (ProcessInfo.processInfo.systemUptime - start) / 20
+        }
+
+        let small = try perCall(200)
+        let large = try perCall(800)
+        // 4× the input for well under 16× the time. Deliberately loose: this catches a quadratic
+        // blow-up, not a 20% slowdown, so it doesn't fail on a busy CI machine.
+        XCTAssertLessThan(
+            large, max(small, 0.000_01) * 16,
+            "4× the jobs took more than 16× the time — the cost is no longer linear"
+        )
+    }
+}

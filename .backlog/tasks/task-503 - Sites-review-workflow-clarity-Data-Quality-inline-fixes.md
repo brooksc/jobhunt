@@ -4,7 +4,7 @@ title: Sites review workflow clarity + Data Quality inline fixes
 status: To Do
 assignee: []
 created_date: '2026-06-18 23:06'
-updated_date: '2026-07-21 22:59'
+updated_date: '2026-08-21 02:24'
 labels:
   - ux
   - sites
@@ -31,3 +31,19 @@ References: app/Views/Sites/SitesView.swift, app/Views/Sites/SiteDetailView.swif
 - [ ] #1 Sites: inline Mark-Reviewed + clearer cadence affordance + re-enable for excluded sites
 - [ ] #2 Data Quality: at least the common missing-field issues can be fixed inline (or via a clear manual-entry path)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## The design question is answered (user, 2026-08-20)
+
+The Sites screen is a **scan log with a reminder**, not a data-quality surface:
+
+> 'a way to bookmark what sites I should and have scanned. e.g. I was on Netflix today, went through all the relevant jobs and I wanted to mark it as done. The intent is it would give me a reminder after 30d to maybe check the site again.'
+
+So the object is a *site I periodically sweep*, and the two verbs are **mark swept** and **remind me when it's due again**. The existing siteReviewIntervalDays setting is already that interval; the screen should be built around due/not-due rather than around review workflow abstractions.
+
+Reported alongside: the user could not find the mark-reviewed action **in Brave**. The extension does implement it (markSiteReviewed, with a payload-contract test against the Swift server), so the question is where it is surfaced and whether it is reachable in a Chromium browser that isn't Chrome — worth confirming before redesigning the screen, since 'mark this site done from the browser I'm already in' is the core interaction of the feature as described.
+
+Data-quality inline fixes were bundled into this task's original scope; on the description above they are a separate concern and should be split rather than designed in.
+<!-- SECTION:NOTES:END -->

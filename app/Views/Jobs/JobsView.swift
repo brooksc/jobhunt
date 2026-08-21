@@ -81,6 +81,15 @@ struct JobsView: View {
     /// `count + max(updatedAt)`, so in-place mutations (a status change) still refresh it — the exact
     /// staleness that made the previous author abandon caching.
     @State private var cachedFilteredJobs: [Job] = []
+    /// Keyboard focus for the jobs List.
+    ///
+    /// `List(selection:)` already moves its selection with the up/down arrows — but only while it
+    /// holds keyboard focus, and nothing ever gave it any. In a NavigationSplitView that leaves focus
+    /// on the SIDEBAR, where the same arrow keys move between smart folders: pressing Up to reach the
+    /// next job silently switched the whole view instead. Triaging a sorted list by keyboard was
+    /// therefore impossible without clicking a row first, and any action that returned focus to the
+    /// sidebar broke it again mid-pass.
+    @FocusState private var listFocused: Bool
     /// Cached alongside the filtered jobs, and for the same reason (TASK-610). The availability menu
     /// label states how many postings a run would check, and computing that walked every filtered job
     /// — on every body evaluation, on the main thread. Clicking a sidebar item re-evaluates the body
@@ -511,6 +520,15 @@ struct JobsView: View {
                 // #7: restore the persisted sort when no saved search is dictating one.
                 if router.activeSavedSearchID == nil { applyPersistedSort() }
                 refreshFilteredJobs()
+                // Arrive with the list focused, so the arrow keys walk the jobs rather than the
+                // sidebar's smart folders. Without this, triaging by keyboard means clicking a row
+                // first — and one stray Up before that click changes the whole view.
+                listFocused = true
+            }
+            // Coming back from a status change, an archive or a sheet, focus can land back on the
+            // sidebar; re-claim it whenever this view is the one being looked at.
+            .onChange(of: router.selectedSection) { _, section in
+                if section == .jobs { listFocused = true }
             }
             // Recompute the filter/sort only when an input actually changes (TASK-610).
             .onChange(of: filterSignature) { _, _ in
@@ -565,6 +583,7 @@ struct JobsView: View {
                 .accessibilityIdentifier("job.row.\(job.id)")
             }
             .listStyle(.inset)
+            .focused($listFocused)
             // The Delete key on the focused/selected row(s) opens the same confirmation dialog as the
             // context-menu / Job-menu Delete (TASK-507). Archive is keyboard-reachable via ⌃⌘A.
             .onDeleteCommand {

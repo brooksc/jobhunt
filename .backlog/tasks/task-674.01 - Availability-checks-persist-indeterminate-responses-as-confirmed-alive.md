@@ -4,6 +4,7 @@ title: Availability checks persist indeterminate responses as confirmed alive
 status: To Do
 assignee: []
 created_date: '2026-08-21 20:26'
+updated_date: '2026-08-21 20:42'
 labels:
   - bug
   - availability
@@ -37,3 +38,13 @@ Regression found during the 2026-08-21 code review. Several outcomes that mean o
 - [ ] #4 Indeterminate outcomes do not increase the confirmed checked count or permit an all-clear message
 - [ ] #5 End-to-end tests assert persisted unverified verdicts for every indeterminate response class
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: Codex
+created: 2026-08-21 20:42
+---
+Mapped to the 2026-08-21 whole-codebase health review finding: availability vocabulary collapses unknown or indeterminate outcomes into confirmed alive state.
+---
+<!-- COMMENTS:END -->

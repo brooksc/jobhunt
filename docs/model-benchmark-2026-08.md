@@ -5,14 +5,14 @@ Run 2026-08-20 against `FitScoringEval` (prompt version 3), real résumé
 OpenRouter in a single run so the comparison is on identical input.
 
 The question was whether a frontier model — `openai/gpt-5.6-sol` — is worth its price on fit
-judgement. **It is not.** It ties with a model 6× cheaper.
+judgement. **It is not.** It ties with a model 5× cheaper at list prices.
 
 ## Result
 
 | Model | Checks | Verdict flips | $ / fit-score call |
 |---|---|---|---|
-| `openai/gpt-5.6-sol` | 25/25 (100%) | 0 of 4 | $0.0317 |
-| `google/gemini-3.7-flash` | 25/25 (100%) | 0 of 4 | $0.0053 |
+| `openai/gpt-5.6-sol` | 25/25 (100%) | 0 of 4 | $0.0317 (billed) / $0.0549 list |
+| `google/gemini-3.7-flash` | 25/25 (100%) | 0 of 4 | $0.0053 (promo) / $0.0107 list |
 | `openai/gpt-5.6-luna` | 23/25 (92%) | 1 of 4 | $0.0026 |
 | `google/gemini-3.1-flash-lite` | 18/25 (72%) | 1 of 4 | ~$0.0020 |
 | `deepseek/deepseek-v4-flash-0731` | 30/33 (90%) | 0 of 4 | ~$0.0013 |
@@ -33,7 +33,7 @@ Caveats, so the numbers aren't over-read:
 ## What the numbers say
 
 **Sol is not worth it.** 100% checks and perfect verdict stability, but `gemini-3.7-flash` matched it
-exactly on both, at **6× lower cost**. There is no fit-judgement headroom left for a frontier model
+exactly on both, at **5× lower cost** at list rates. There is no fit-judgement headroom left for a frontier model
 to recover on this fixture set — both are already at ceiling.
 
 **`gemini-3.1-flash-lite` has regressed and must not be used.** It marked the Akamai CUDA
@@ -66,7 +66,7 @@ problem from one that scores a requirement generously.
 ## Recommendation
 
 **`google/gemini-3.7-flash` for fit scoring.** Ceiling accuracy, stable verdicts, tight score
-spreads, fast, and $0.0053 per call — about **$2 to score a 300-job corpus end to end**. It is the
+spreads, fast, and $0.0107 per call at list — about **$4.30 to score a 300-job corpus end to end**. It is the
 only model measured that is both at the accuracy ceiling and cheap.
 
 Reach for `gpt-5.6-sol` only if a future fixture set shows judgement failures that `gemini-3.7-flash`
@@ -76,6 +76,24 @@ cannot clear. On this one there is nothing left for it to fix.
 
 Live from `GET https://openrouter.ai/api/v1/models`, $/1M tokens. Third-party pricing trackers were
 wrong on several of these by 2×, in both directions — query OpenRouter directly.
+
+> **These are the rates OpenRouter's default routing billed on the day, not list prices, and two of
+> them are temporary.** `GET /models/{id}/endpoints` shows every upstream tier, and the default is the
+> cheapest — which can be a promotion or a non-standard SKU:
+>
+> | Model | Billed here | Standard list | Why they differ |
+> |---|---|---|---|
+> | `google/gemini-3.7-flash` | 0.375 / 1.875 | **0.750 / 3.750** | OpenRouter 50%-off promo **ending 2026-08-27**; Google's own rate is itself introductory and doubles to 1.50 / 7.50 on 2027-01-01 |
+> | `openai/gpt-5.6-sol` | 2.500 / 15.000 | **5.000 / 30.000** | OpenAI list is confirmed by the Azure (5.00/30.00) and Bedrock (5.50/33.00) endpoints |
+> | `deepseek/deepseek-v4-flash-0731` | ~0.140 / 0.280 | varies | ~30 hosts spanning **0.065–0.440 in**, a 7× spread; DeepSeek's own API is the most expensive at 0.440 / 1.320 |
+> | `google/gemini-3.1-flash-lite` | 0.250 / 1.500 | 0.250 / 1.500 | genuine parity, no promo |
+>
+> **Cost figures published to users must use the standard column**, or the page is wrong the day a
+> promo lapses. The user-facing table in `marketing/help/which-model.html` does.
+>
+> **OpenRouter does not mark up per token** — its fee is 5.5% on credit top-ups — so "aggregator vs
+> direct" is roughly a wash at list. Any gap you observe is a promotion or a routing choice, not a
+> structural discount, and will not survive.
 
 | Model | Input | Output |
 |---|---|---|

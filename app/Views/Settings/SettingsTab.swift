@@ -450,6 +450,10 @@ struct JobsSettingsTab: View {
         let now = ISO8601DateFormatter().string(from: Date())
         try? settings.set(now, forKey: SettingsKey.availabilityLastAutoCheckAt)
 
+        let store = appServices.backgroundStore
+        let outcomes = sweep.outcomes
+        Task.detached { try? await store.recordAvailabilityOutcomes(outcomes) }
+
         unverifiedJobs = sweep.unverified
         lastCheckedCount = sweep.checkedCount
         lastPlannedCount = eligible.count

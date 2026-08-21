@@ -48,6 +48,24 @@ public final class Job {
     /// a lightweight in-place addition, not a SchemaV2 change). Surfaced as "Applied {date}".
     public var appliedAt: Date?
     public var unread: Bool
+
+    /// The last availability check's verdict on this posting, and when (TASK-674).
+    ///
+    /// Nothing was recorded before, so every run started from zero and no two runs could be
+    /// compared. That is why a check over an unchanged archive could report seven gone postings and
+    /// then four with nothing to explain the difference, and why the user had no way to ask "is this
+    /// new, or did I just not see it last time?" — neither did the app.
+    ///
+    /// Optional with a nil default, so this is a lightweight in-place addition rather than a
+    /// SchemaV2 change (see Schema.swift's policy). Nil means "never checked".
+    public var availabilityCheckedAt: Date?
+    /// `AvailabilityVerdict` raw value — alive, gone, or unverified. Stored as a string so a future
+    /// verdict can't break decoding of an existing store.
+    public var availabilityVerdict: String?
+    /// Why: the gone reason ("greenhouse posting gh:123 no longer listed") or the unverified reason
+    /// ("bot challenge"). Names the source implicitly, which is what makes a verdict judgeable.
+    public var availabilityDetail: String?
+
     public var createdAt: Date
     public var updatedAt: Date
     public var rawTextBytes: Int?
@@ -122,6 +140,9 @@ public final class Job {
         extractionConfidence: Double? = nil,
         meetsCriteria: Bool? = nil,
         lastOpenedAt: Date? = nil,
+        availabilityCheckedAt: Date? = nil,
+        availabilityVerdict: String? = nil,
+        availabilityDetail: String? = nil,
         appliedAt: Date? = nil,
         unread: Bool = false,
         createdAt: Date = Date(),
@@ -159,6 +180,9 @@ public final class Job {
         self.extractionConfidence = extractionConfidence
         self.meetsCriteria = meetsCriteria
         self.lastOpenedAt = lastOpenedAt
+        self.availabilityCheckedAt = availabilityCheckedAt
+        self.availabilityVerdict = availabilityVerdict
+        self.availabilityDetail = availabilityDetail
         self.appliedAt = appliedAt
         self.unread = unread
         self.createdAt = createdAt

@@ -197,6 +197,9 @@ final class AppServices {
                     jobs, settings: settings, restrictToStatuses: nil
                 )
                 availabilityBacklog.absorb(sweep)
+                // The drain reaches jobs the foreground run couldn't, so its conclusions are the
+                // freshest ones there are — record them like any other check (TASK-674).
+                try? await drainStore.recordAvailabilityOutcomes(sweep.outcomes)
 
                 // Report only when the work is finished and there is something to say. A drain that
                 // found nothing stays silent; a partial drain waits until it can give a whole answer.

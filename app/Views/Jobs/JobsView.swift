@@ -1481,6 +1481,12 @@ struct JobsView: View {
                 forKey: SettingsKey.availabilityLastAutoCheckAt
             )
         }
+        // Record what this run concluded about every job it reached, so the next run can be compared
+        // with it (TASK-674) — including the ones it couldn't verify.
+        let store = appServices.backgroundStore
+        let outcomes = sweep.outcomes
+        Task.detached { try? await store.recordAvailabilityOutcomes(outcomes) }
+
         unverifiedJobs = sweep.unverified
         lastCheckedCount = sweep.checkedCount
         lastPlannedCount = planned.checking

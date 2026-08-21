@@ -114,6 +114,11 @@ public struct UnverifiedJobResult: Sendable {
 public struct AvailabilitySweep: Sendable {
     public let gone: [GoneJobResult]
     public let unverified: [UnverifiedJobResult]
+    /// Job ids this run confirmed are still listed.
+    ///
+    /// A run has always reported what it FOUND wrong; recording what it confirmed is what makes two
+    /// runs comparable, and what lets a row say when it was last checked (TASK-674).
+    public let alive: [String]
     /// How many jobs this run actually reached the network for.
     ///
     /// The UI used to derive this as `handedIn - unverified.count`, which assumes the checker looked
@@ -126,11 +131,26 @@ public struct AvailabilitySweep: Sendable {
     public init(
         gone: [GoneJobResult],
         unverified: [UnverifiedJobResult] = [],
-        checkedCount: Int = 0
+        checkedCount: Int = 0,
+        alive: [String] = []
     ) {
         self.gone = gone
         self.unverified = unverified
         self.checkedCount = checkedCount
+        self.alive = alive
+    }
+
+    /// Every job this run reached a conclusion about, ready to persist (TASK-674).
+    ///
+    /// Includes the unverified ones deliberately: "we couldn't check this" is itself worth recording,
+    /// so a posting that has been unreachable for weeks is visible as such rather than looking like
+    /// one that was simply never due.
+    public var outcomes: [AvailabilityOutcome] {
+        gone.map { AvailabilityOutcome(jobID: $0.jobID, verdict: .gone, detail: $0.reason) }
+            + alive.map { AvailabilityOutcome(jobID: $0, verdict: .alive, detail: nil) }
+            + unverified.map {
+                AvailabilityOutcome(jobID: $0.jobID, verdict: .unverified, detail: $0.reason.summary)
+            }
     }
 
     /// Counts per reason, most common first — what the "unable to check" line is built from.
@@ -691,10 +711,15 @@ public enum AvailabilityChecker {
 
     /// Outcome of a LinkedIn guest-API check. `.throttled` (rate-limit / block / network error) means we
     /// can't confirm removal — the caller stops checking LinkedIn for the rest of the run (backoff).
-    private enum LinkedInOutcome { case gone(GoneJobResult), live, throttled }
+    /// `.live` carries the job id for the same reason `SpecOutcome.live` does — a confirmed-listed
+    /// posting is a result to record, not a non-event (TASK-674).
+    private enum LinkedInOutcome { case gone(GoneJobResult), live(String), throttled }
 
     /// One spec's contribution to the sweep: gone, verified-live, or verified-nothing.
-    private enum SpecOutcome { case gone(GoneJobResult), live, unverified(UnverifiedJobResult) }
+    /// `.live` carries the job id because a still-listed posting is a RESULT worth recording, not
+    /// merely the absence of a problem — without it, a run could say what it found but never what it
+    /// confirmed, and no two runs could be compared (TASK-674).
+    private enum SpecOutcome { case gone(GoneJobResult), live(String), unverified(UnverifiedJobResult) }
 
     private static func unverified(
         _ spec: JobSpec, _ reason: UnverifiedReason, _ detail: String
@@ -723,7 +748,7 @@ public enum AvailabilityChecker {
                     reason: "\(provider.name.lowercased()) posting \(atsID) no longer listed"
                 ))
             }
-            return .live
+            return .live(spec.id)
         }
         let result = await checkURL(spec.url, title: spec.title, session: session)
         let reason: String
@@ -731,7 +756,7 @@ public enum AvailabilityChecker {
         case let .gone(goneReason):
             reason = goneReason
         case .available:
-            return .live
+            return .live(spec.id)
         case let .unverifiable(detail):
             // The distinction the user sees: a challenge page vs a page we can't trust.
             let why: UnverifiedReason = detail.hasPrefix("bot challenge")
@@ -772,7 +797,7 @@ public enum AvailabilityChecker {
     private static func linkedInOutcome(for spec: JobSpec, session: URLSession) async -> LinkedInOutcome {
         guard let jobID = linkedInJobID(from: spec.url),
               let apiURL = URL(string: "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/\(jobID)") else {
-            return .live // not a resolvable LinkedIn posting id — nothing to confirm gone
+            return .live(spec.id) // not a resolvable LinkedIn posting id — nothing to confirm gone
         }
         var request = URLRequest(url: apiURL, timeoutInterval: timeoutSeconds)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
@@ -791,15 +816,15 @@ public enum AvailabilityChecker {
             return gone("linkedin posting \(jobID) removed (guest API \(http.statusCode))")
         case 200:
             let body = String(data: data, encoding: .utf8)?.lowercased() ?? ""
-            guard !body.isEmpty else { return .live }
+            guard !body.isEmpty else { return .live(spec.id) }
             if isLinkedInClosedJob(finalURLString: apiURL.absoluteString, body: body) || bodyGoneReason(body) != nil {
                 return gone("linkedin posting \(jobID) no longer accepting applications")
             }
-            return .live
+            return .live(spec.id)
         case 429, 999:
             return .throttled // rate-limited / blocked
         default:
-            return .live // unknown status — don't flag
+            return .live(spec.id) // unknown status — don't flag
         }
     }
 
@@ -809,11 +834,12 @@ public enum AvailabilityChecker {
     ) async -> AvailabilitySweep {
         var gone: [GoneJobResult] = []
         var blocked: [UnverifiedJobResult] = []
+        var alive: [String] = []
         func record(_ outcome: SpecOutcome) {
             switch outcome {
             case let .gone(result): gone.append(result)
             case let .unverified(result): blocked.append(result)
-            case .live: break
+            case let .live(jobID): alive.append(jobID)
             }
         }
         await withTaskGroup(of: SpecOutcome.self) { group in
@@ -835,7 +861,7 @@ public enum AvailabilityChecker {
             }
         }
         return AvailabilitySweep(
-            gone: gone, unverified: blocked, checkedCount: specs.count - blocked.count
+            gone: gone, unverified: blocked, checkedCount: specs.count - blocked.count, alive: alive
         )
     }
 
@@ -846,6 +872,7 @@ public enum AvailabilityChecker {
     ) async -> AvailabilitySweep {
         var gone: [GoneJobResult] = []
         var skipped: [UnverifiedJobResult] = []
+        var alive: [String] = []
         for (index, spec) in specs.enumerated() {
             if Task.isCancelled {
                 // Report the untouched remainder rather than letting a cancelled run look complete.
@@ -854,6 +881,7 @@ public enum AvailabilityChecker {
             }
             let outcome = await linkedInOutcome(for: spec, session: session)
             if case let .gone(result) = outcome { gone.append(result) }
+            if case let .live(jobID) = outcome { alive.append(jobID) }
             await tick()
             if case .throttled = outcome {
                 // LinkedIn is rate-limiting — stop; the rest are picked up on a future run. Advance the
@@ -867,7 +895,7 @@ public enum AvailabilityChecker {
             try? await Task.sleep(for: linkedInPaceDelay)
         }
         return AvailabilitySweep(
-            gone: gone, unverified: skipped, checkedCount: specs.count - skipped.count
+            gone: gone, unverified: skipped, checkedCount: specs.count - skipped.count, alive: alive
         )
     }
 
@@ -954,7 +982,8 @@ public enum AvailabilityChecker {
         return AvailabilitySweep(
             gone: concurrent.gone + linkedIn.gone,
             unverified: uncheckable + concurrent.unverified + linkedIn.unverified + deferred,
-            checkedCount: concurrent.checkedCount + linkedIn.checkedCount
+            checkedCount: concurrent.checkedCount + linkedIn.checkedCount,
+            alive: concurrent.alive + linkedIn.alive
         )
     }
 

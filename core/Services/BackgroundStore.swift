@@ -1438,6 +1438,35 @@ public actor BackgroundStore {
         )
     }
 
+    /// Record what a check concluded about each job (TASK-674).
+    ///
+    /// Nothing was stored before, so every run started from zero: two runs over an unchanged archive
+    /// could report seven gone postings and then four, and neither the user nor the app could say
+    /// which of those were new. Recording the verdict — including "couldn't be checked", which is not
+    /// the same as "fine" — is what makes runs comparable.
+    ///
+    /// Deliberately does NOT touch `updatedAt`: a check is something that happened TO the posting
+    /// elsewhere, not an edit the user made, and bumping it would reorder every recently-checked job
+    /// in a list sorted by last change.
+    @discardableResult
+    public func recordAvailabilityOutcomes(
+        _ outcomes: [AvailabilityOutcome], checkedAt: Date = Date()
+    ) throws -> Int {
+        guard !outcomes.isEmpty else { return 0 }
+        let byID = Dictionary(outcomes.map { ($0.jobID, $0) }, uniquingKeysWith: { _, latest in latest })
+        let ids = Set(byID.keys)
+        var written = 0
+        for job in try modelContext.fetch(FetchDescriptor<Job>()) where ids.contains(job.id) {
+            guard let outcome = byID[job.id] else { continue }
+            job.availabilityCheckedAt = checkedAt
+            job.availabilityVerdict = outcome.verdict.rawValue
+            job.availabilityDetail = outcome.detail
+            written += 1
+        }
+        try modelContext.save()
+        return written
+    }
+
     /// The jobs with these ids, for a caller that already knows exactly which rows it wants — the
     /// availability drain, which re-asks about a specific batch it couldn't answer for earlier.
     ///

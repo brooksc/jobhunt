@@ -9,12 +9,26 @@ Pages Git integration — a commit to `main` changes nothing that users can see 
 command below.
 
 ```bash
-wrangler login                                              # only when the token has expired
-wrangler pages deploy marketing --project-name=jobhunt-app
+wrangler login                                    # only when the token has expired
+wrangler pages deploy marketing \
+  --project-name jobhunt-app \
+  --branch main \
+  --commit-dirty=true
 ```
+
+**`--branch main` is not optional.** Pages treats any other branch as a *preview* deployment: it
+succeeds, prints a URL, and leaves jobhunt-app.com untouched. Omitting the flag lets wrangler infer
+the branch, so a deploy from a worktree or a detached HEAD can silently land on a preview alias while
+looking like it worked. `--commit-dirty=true` just suppresses the prompt when the tree isn't clean.
 
 The project name and account id are cached in `.wrangler/cache/pages.json` (gitignored), so from a
 clean checkout pass `--project-name` explicitly as above.
+
+To see what has actually been deployed and when:
+
+```bash
+wrangler pages deployment list --project-name jobhunt-app
+```
 
 ## This has already gone wrong once — check before you assume
 
@@ -33,7 +47,8 @@ consistency and real costs"* (`ModelRecommendation.helpURL`) pointed at a page t
 deployed, so it silently served the landing page instead. The app shipped a link to a 404-in-effect
 for six weeks.
 
-**So: after any deploy, verify a page that changed** rather than trusting the command's exit code.
+**So: after any deploy, verify a page that changed** rather than trusting the command's exit code —
+a preview deployment and a production one both exit 0.
 
 ```bash
 # Should print the page's own title, not "JobHunt — Local-first job tracker"

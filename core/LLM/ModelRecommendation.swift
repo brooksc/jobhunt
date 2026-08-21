@@ -29,6 +29,6 @@ public enum ModelRecommendation {
     /// in `marketing/help/which-model.html` — keep the two in step if either is re-run.
     public static var summary: String {
         "\(modelLabel) via \(providerLabel) — passed every fit-judgement check with steady verdicts, "
-            + "at about $0.70 per 100 jobs. GPT-5.6 Sol scored identically for roughly 6× the cost."
+            + "at about $1.40 per 100 jobs. GPT-5.6 Sol scored identically for roughly 5× the cost."
     }
 }

@@ -78,14 +78,14 @@ Cloud providers require your consent before any data is sent, and you're billed 
 
 ### Which model?
 
-**`google/gemini-3.7-flash` via OpenRouter** — ~70¢ per 100 postings. It passed 25 of 25
+**`google/gemini-3.7-flash` via OpenRouter** — ~$1.40 per 100 postings. It passed 25 of 25
 fit-judgement checks and gave the same verdicts on every run. GPT-5.6 Sol scored identically against
-the same tests for six times the price.
+the same tests for five times the price.
 
 Avoid **Gemini 3.1 Flash Lite** — it credits résumé experience that isn't there, on 5 runs of 5.
 
 OpenRouter isn't required — you can use a Google, OpenAI, Anthropic or DeepSeek key directly. Going
-direct means one fewer company handling your résumé; it doesn't currently make this model cheaper.
+direct means one fewer company handling your résumé; on price the two are a wash at list rates.
 
 [Which model should I use?](https://jobhunt-app.com/help/which-model) has the full comparison and
 costs · [benchmark method and caveats](docs/model-benchmark-2026-08.md)

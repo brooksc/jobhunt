@@ -24,7 +24,7 @@ public enum SalaryNormalizer {
             let filteredSrc = salaryTextForCurrency(src, currency: currency)
             var out = extracted
             out["salary_currency"] = currency as Any?
-            if let band = selectSalaryBand(
+            if let band = resolveSalaryBand(
                 salaryBands(filteredSrc),
                 preferredLocations: preferredLocations,
                 note: filteredSrc
@@ -61,7 +61,7 @@ public enum SalaryNormalizer {
             let specificTerms = specificPreferredTerms(preferredLocations)
             if !specificTerms.isEmpty {
                 let sourceSalaryText = salaryTextForCurrency(src, currency: currency)
-                if let band = selectSalaryBand(
+                if let band = resolveSalaryBand(
                     salaryBands(sourceSalaryText),
                     preferredLocations: preferredLocations,
                     note: sourceSalaryText
@@ -76,7 +76,7 @@ public enum SalaryNormalizer {
         }
 
         // Salary note band selection
-        if let band = selectSalaryBand(
+        if let band = resolveSalaryBand(
             salaryBands(salaryText),
             preferredLocations: preferredLocations,
             note: salaryText
@@ -146,12 +146,12 @@ public enum SalaryNormalizer {
         let rangePatterns: [(String, Int)] = [
             // currency-prefix range: "USD $133,400 - $226,600" or "USD 133,400 - 226,600"
             (
-                #"(?:USD|CAD|EUR|GBP)\s*\$?\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\s*\$?\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?"#,
+                #"(?:USD|CAD|EUR|GBP)\s*\$?\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\#(upperBoundLeadIn)(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?"#,
                 4
             ),
             // symbol prefix range: "$133,400 - $226,600"
             (
-                #"[$€£]\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\s*(?:[$€£]\s*)?(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?"#,
+                #"[$€£]\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\#(upperBoundLeadIn)(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?"#,
                 4
             ),
             // currency-suffix range: "133,400 - 226,600 USD"
@@ -302,12 +302,21 @@ public enum SalaryNormalizer {
         return (min: Swift.min(low, high), max: Swift.max(low, high))
     }
 
+    /// What may sit between a range's dash and its upper amount.
+    ///
+    /// Every range pattern below used to allow only an optional `$` there, which silently failed on
+    /// the common style of repeating the currency code on BOTH sides — GitHub's board writes
+    /// `USD $140,400.00 - USD $372,300.00 /Yr.`. No range matched, so the values only came through as
+    /// loose single amounts, and the whole-page fallback then took the smallest money on the page:
+    /// a $5,000 signing bonus became the salary floor.
+    static let upperBoundLeadIn = #"\s*(?:USD|CAD|EUR|GBP)?\s*[$€£]?\s*"#
+
     static func lineRange(_ line: String) -> (min: Double, max: Double)? {
         let patterns = [
             // currency-prefix range
-            #"(?:USD|CAD|EUR|GBP)\s*\$?\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\s*\$?\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?"#,
+            #"(?:USD|CAD|EUR|GBP)\s*\$?\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\#(upperBoundLeadIn)(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?"#,
             // symbol-prefix range
-            #"[$€£]\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\s*(?:[$€£]\s*)?(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?"#,
+            #"[$€£]\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\#(upperBoundLeadIn)(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?"#,
             // currency-suffix range
             #"\b(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*(?:USD|CAD|EUR|GBP)\b"#
         ]
@@ -359,7 +368,7 @@ public enum SalaryNormalizer {
         }
 
         // Also catch inline ranges not caught by line-by-line
-        let rangeRe = #"(?:USD|CAD|EUR|GBP)?\s*\$?\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\s*\$?\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*(?:per year|annually|annual|USD|CAD|EUR|GBP)?"#
+        let rangeRe = #"(?:USD|CAD|EUR|GBP)?\s*\$?\s*(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*[-–—]\#(upperBoundLeadIn)(\d+(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*([kK])?\s*(?:per year|annually|annual|USD|CAD|EUR|GBP)?"#
         if let regex = try? NSRegularExpression(pattern: rangeRe, options: .caseInsensitive) {
             let nsText = text as NSString
             for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
@@ -383,6 +392,25 @@ public enum SalaryNormalizer {
             let lower = term.lowercased().trimmingCharacters(in: .whitespaces)
             return !["remote", "united states", "usa", "us", "u.s.", "u.s.a."].contains(lower)
         }
+    }
+
+    /// The band to use, given everything parsed out of a piece of text.
+    ///
+    /// `selectSalaryBand` answers a narrower question — which of SEVERAL location-specific bands
+    /// applies — and returns nil when there is only one. The callers then fell through to "min and max
+    /// of every money amount in the text", which on a real posting is a worse answer rather than a
+    /// safer one: GitHub's page carries a $5,000 signing bonus beside the range, so the loose scan made
+    /// $5,000 the salary floor.
+    ///
+    /// A single parsed band is better evidence than the smallest number on the page — it already
+    /// required a currency marker and both ends over $1,000 (`salaryRangeValue`).
+    static func resolveSalaryBand(
+        _ bands: [SalaryRange], preferredLocations: String?, note: String
+    ) -> SalaryRange? {
+        if let chosen = selectSalaryBand(bands, preferredLocations: preferredLocations, note: note) {
+            return chosen
+        }
+        return bands.count == 1 ? bands[0] : nil
     }
 
     static func selectSalaryBand(_ bands: [SalaryRange], preferredLocations: String?, note: String) -> SalaryRange? {
@@ -723,72 +751,6 @@ public struct JobFieldNormalizer {
         result = RemoteTypeInferer.normalize(extracted: result, description: sourceText, url: url)
         return result
     }
-}
-
-// MARK: - Shared location helpers
-
-private let stateAbbrevToName: [String: String] = [
-    "al": "alabama", "ak": "alaska", "az": "arizona", "ar": "arkansas", "ca": "california",
-    "co": "colorado", "ct": "connecticut", "de": "delaware", "dc": "district of columbia",
-    "fl": "florida", "ga": "georgia", "hi": "hawaii", "id": "idaho", "il": "illinois",
-    "in": "indiana", "ia": "iowa", "ks": "kansas", "ky": "kentucky", "la": "louisiana",
-    "me": "maine", "md": "maryland", "ma": "massachusetts", "mi": "michigan", "mn": "minnesota",
-    "ms": "mississippi", "mo": "missouri", "mt": "montana", "ne": "nebraska", "nv": "nevada",
-    "nh": "new hampshire", "nj": "new jersey", "nm": "new mexico", "ny": "new york",
-    "nc": "north carolina", "nd": "north dakota", "oh": "ohio", "ok": "oklahoma", "or": "oregon",
-    "pa": "pennsylvania", "ri": "rhode island", "sc": "south carolina", "sd": "south dakota",
-    "tn": "tennessee", "tx": "texas", "ut": "utah", "vt": "vermont", "va": "virginia",
-    "wa": "washington", "wv": "west virginia", "wi": "wisconsin", "wy": "wyoming"
-]
-/// Internal (not file-private) so `RemoteGeography` can build its US-token set from the same table.
-let stateNameToAbbrev: [String: String] = Dictionary(uniqueKeysWithValues: stateAbbrevToName.map { abbr, name in
-    (
-        name,
-        abbr
-    )
-})
-
-func parsePreferredLocations(_ preferredLocations: String?) -> [String] {
-    guard let pref = preferredLocations, !pref.isEmpty else { return [] }
-    var terms: [String] = []
-    var seen = Set<String>()
-    for raw in pref.split(separator: ",") {
-        let token = raw.trimmingCharacters(in: .whitespaces)
-        if token.isEmpty { continue }
-        let base = token.lowercased()
-        if seen.contains(base) { continue }
-        terms.append(token)
-        seen.insert(base)
-        // Expand abbreviation → full name
-        if let full = stateAbbrevToName[base], !seen.contains(full) {
-            let capitalized = full.prefix(1).uppercased() + full.dropFirst()
-            terms.append(capitalized)
-            seen.insert(full)
-        }
-        // Expand full name → abbreviation
-        if let abbr = stateNameToAbbrev[base], !seen.contains(abbr) {
-            terms.append(abbr.uppercased())
-            seen.insert(abbr)
-        }
-    }
-    return terms
-}
-
-func normalizeForMatch(_ value: String) -> String {
-    value.lowercased().replacingOccurrences(of: #"[^a-z0-9]+"#, with: " ", options: .regularExpression)
-        .trimmingCharacters(in: .whitespaces)
-}
-
-func termMatches(_ location: String, term: String) -> Bool {
-    let haystack = normalizeForMatch(location)
-    let needle = normalizeForMatch(term)
-    guard !needle.isEmpty else { return false }
-    if needle.count == 2 {
-        // State abbreviation — word-boundary match
-        let pattern = "\\b\(NSRegularExpression.escapedPattern(for: needle))\\b"
-        return haystack.range(of: pattern, options: .regularExpression) != nil
-    }
-    return haystack.contains(needle)
 }
 
 // swiftlint:enable line_length function_body_length

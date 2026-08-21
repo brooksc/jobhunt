@@ -753,3 +753,69 @@ final class RemoteURLDuplicateParameterTests: XCTestCase {
         XCTAssertFalse(RemoteTypeInferer.urlIndicatesRemote("https://example.com/jobs?flag&flag&x=1"))
     }
 }
+
+/// GitHub's board writes "USD $140,400.00 - USD $372,300.00 /Yr." — the currency code repeats on both
+/// sides of the dash. No range pattern allowed that, so the range never parsed as a range; the values
+/// only survived as loose single amounts, and the whole-page fallback then took the smallest money on
+/// the page. A posting with a signing bonus came out as "$5,000 - $372,300".
+final class CurrencyRepeatedOnBothSidesTests: XCTestCase {
+    /// The sentence exactly as github.careers publishes it, with the surrounding page money that made
+    /// the old fallback wrong.
+    private let githubPage = """
+    Compensation Range
+    The base salary range for this job is USD $140,400.00 - USD $372,300.00 /Yr.
+    These pay ranges are intended to cover roles based across the United States.
+    Employees are eligible for a $5,000 signing bonus. 401k with employer match.
+    """
+
+    func testRangeParsesAsARange() {
+        let bands = SalaryNormalizer.salaryBands(githubPage)
+        XCTAssertEqual(bands.count, 1)
+        XCTAssertEqual(bands.first?.min, 140_400)
+        XCTAssertEqual(bands.first?.max, 372_300)
+    }
+
+    /// The bug as the user would see it: no salary_note from the model, so the source text decides.
+    func testSigningBonusDoesNotBecomeTheSalaryFloor() {
+        let out = SalaryNormalizer.normalize(extracted: ["salary_note": ""], sourceText: githubPage)
+        XCTAssertEqual(out["salary_min"] as? Int, 140_400, "the $5,000 bonus must not be read as the floor")
+        XCTAssertEqual(out["salary_max"] as? Int, 372_300)
+    }
+
+    /// The same when the model does return the note.
+    func testParsesFromTheSalaryNote() {
+        let out = SalaryNormalizer.normalize(
+            extracted: ["salary_note": "USD $140,400.00 - USD $372,300.00 /Yr."]
+        )
+        XCTAssertEqual(out["salary_min"] as? Int, 140_400)
+        XCTAssertEqual(out["salary_max"] as? Int, 372_300)
+    }
+
+    /// Every way a board writes a repeated currency code, including en/em dashes and k-notation.
+    func testRepeatedCurrencyVariants() {
+        let cases: [(String, Int, Int)] = [
+            ("USD $140,400.00 - USD $372,300.00", 140_400, 372_300),
+            ("USD $140,400.00 – USD $372,300.00", 140_400, 372_300),
+            ("USD $140,400.00 — USD $372,300.00", 140_400, 372_300),
+            ("USD 140,400 - USD 372,300", 140_400, 372_300),
+            ("$140K - USD $372K", 140_000, 372_000),
+            ("EUR €90,000 - EUR €120,000", 90000, 120_000)
+        ]
+        for (note, low, high) in cases {
+            let out = SalaryNormalizer.normalize(extracted: ["salary_note": note])
+            XCTAssertEqual(out["salary_min"] as? Int, low, "min wrong for \(note)")
+            XCTAssertEqual(out["salary_max"] as? Int, high, "max wrong for \(note)")
+        }
+    }
+
+    /// A single parsed band is now preferred over the loose whole-text scan, but a range still has to
+    /// look like money: "3 - 5 years of experience" must not become a salary.
+    func testExperienceRangesAreStillNotSalaries() {
+        let out = SalaryNormalizer.normalize(
+            extracted: ["salary_note": ""],
+            sourceText: "We want 3 - 5 years of experience and 2 - 4 years managing teams."
+        )
+        XCTAssertNil(out["salary_min"] as? Int)
+        XCTAssertNil(out["salary_max"] as? Int)
+    }
+}

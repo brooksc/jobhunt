@@ -64,7 +64,9 @@ Install **JobHunt Capture** from the [Chrome Web Store](https://chromewebstore.g
 
 ## AI / LLM
 
-Configure your AI provider in **Settings → AI Provider**. Everything can run **locally** — LM Studio on `http://127.0.0.1:1234` is recommended, so no job data ever leaves your Mac.
+Configure your AI provider in **Settings → AI Provider**. Everything can run **locally** — point
+JobHunt at LM Studio on `http://127.0.0.1:1234` and no job data ever leaves your Mac. For a cloud
+model, see [Which model?](#which-model) below.
 
 Supported providers:
 
@@ -73,6 +75,27 @@ Supported providers:
 - Apple Foundation Models (macOS 26+, DMG only)
 
 Cloud providers require your consent before any data is sent, and you're billed by that provider directly.
+
+### Which model?
+
+**`google/gemini-3.7-flash` via OpenRouter** — about **53¢ per 100 postings** to score.
+
+It passed 25 of 25 fit-judgement checks and changed no requirement verdicts across five
+byte-identical runs. GPT-5.6 Sol, run against the same fixtures in the same session, scored
+*identically* — for six times the price. When the expensive model can't beat the cheap one, buy the
+cheap one.
+
+Two warnings from the same run: **Gemini 3.1 Flash Lite has regressed** (it credits résumé
+experience that isn't there on 5 runs of 5 — don't use it), and **DeepSeek V4 Flash** judges well but
+is ~5× slower and returned unparseable JSON once.
+
+Full numbers, method and caveats: [`docs/model-benchmark-2026-08.md`](docs/model-benchmark-2026-08.md).
+The user-facing version, including local-model trade-offs and what gets sent to a provider, is at
+[jobhunt-app.com/help/which-model](https://jobhunt-app.com/help/which-model).
+
+Prefer to pay nothing? Run LM Studio or Ollama locally. We haven't benchmarked local models, so we
+can't tell you what accuracy you give up — if privacy is the priority, that's the option; if accuracy
+is, it isn't.
 
 ## MCP integration (DMG only)
 

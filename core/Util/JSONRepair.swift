@@ -33,16 +33,26 @@ public func extractJSON(_ input: String) -> String {
 ///
 /// Returns repaired JSON string. Throws if the result still can't be parsed.
 public func repairJSON(_ input: String) throws -> String {
-    var text = extractJSON(input)
-    text = removeFencedMarkdown(text)
-    text = convertSingleQuotes(text)
-    text = quoteUnquotedKeys(text)
-    text = removeTrailingCommas(text)
+    let extracted = extractJSON(input)
 
-    // Validate it parses
-    if let data = text.data(using: .utf8),
-       (try? JSONSerialization.jsonObject(with: data)) != nil {
-        return text
+    // Never "repair" something that is already correct.
+    //
+    // Every step below ran unconditionally, and only then was the result validated — so a VALID
+    // response could be mangled into an invalid one and reported as the model's fault. Job #861
+    // failed ten times across two captures on this:
+    //
+    //     {"note": "CA, NY: $189,000—$199,500 USD; WA: $181,000"}
+    //
+    // Instacart's multi-state pay table. `quoteUnquotedKeys` sees `CA, NY:` INSIDE the string and
+    // helpfully quotes it as if it were an object key. The response was perfect; the repair broke it.
+    if parsesAsJSON(extracted) { return extracted }
+
+    // Apply the repairs cumulatively, but stop at the first version that parses — so a step can only
+    // ever run on text that is still broken, and can't undo what an earlier one already fixed.
+    var text = extracted
+    for step in [removeFencedMarkdown, convertSingleQuotes, quoteUnquotedKeys, removeTrailingCommas] {
+        text = step(text)
+        if parsesAsJSON(text) { return text }
     }
 
     // Last resort: scan for the first { or [ and last } or ] and extract that substring.
@@ -56,6 +66,13 @@ public func repairJSON(_ input: String) throws -> String {
     }
 
     throw JSONRepairError.unparseable(text)
+}
+
+/// Whether `text` is already valid JSON — the check that decides whether repairing is warranted
+/// at all.
+private func parsesAsJSON(_ text: String) -> Bool {
+    guard let data = text.data(using: .utf8) else { return false }
+    return (try? JSONSerialization.jsonObject(with: data)) != nil
 }
 
 public enum JSONRepairError: Error, LocalizedError {

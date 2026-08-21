@@ -148,3 +148,56 @@ final class JSONRepairTests: XCTestCase {
         XCTAssertFalse(error.localizedDescription.isEmpty)
     }
 }
+
+/// The repair pass ran unconditionally and validated only afterwards, so it could turn a VALID model
+/// response into an invalid one and report it as the model's fault. Job #861 failed ten times across
+/// two captures because of it — Instacart's multi-state pay table contains `CA, NY:` inside a string,
+/// and `quoteUnquotedKeys` treats that as an unquoted object key.
+final class JSONRepairDoesNotBreakValidJSONTests: XCTestCase {
+    private func parses(_ text: String) -> Bool {
+        (try? JSONSerialization.jsonObject(with: Data(text.utf8))) != nil
+    }
+
+    /// The exact shape that broke job #861.
+    func testMultiStatePayTableSurvives() throws {
+        let raw = #"{"note": "CA, NY: $189,000—$199,500 USD; WA: $181,000"}"#
+        XCTAssertTrue(parses(raw), "precondition: this is valid JSON")
+        XCTAssertEqual(try repairJSON(raw), raw, "valid JSON must be returned untouched")
+    }
+
+    /// The general rule, not just that one string: anything already valid comes back byte-identical.
+    func testValidJSONIsReturnedUnchanged() throws {
+        let cases = [
+            #"{"a": "colon: inside", "b": 1}"#,
+            #"{"a": "it's an apostrophe"}"#,
+            #"{"a": "trailing comma, inside a string,"}"#,
+            #"{"a": "braces { } and brackets [ ] inside"}"#,
+            #"{"a": "quote \" inside"}"#,
+            #"{"list": ["x: 1", "y: 2"]}"#,
+            #"{"a": "single 'quoted' words"}"#
+        ]
+        for raw in cases {
+            XCTAssertTrue(parses(raw), "precondition failed for \(raw)")
+            XCTAssertEqual(try repairJSON(raw), raw, "repair altered valid JSON: \(raw)")
+        }
+    }
+
+    /// Fenced-but-valid JSON is unwrapped, and the JSON inside is still not otherwise touched.
+    func testFencedValidJSONIsUnwrappedbutNotRewritten() throws {
+        let inner = #"{"note": "CA, NY: $189,000"}"#
+        XCTAssertEqual(try repairJSON("```json\n" + inner + "\n```"), inner)
+    }
+
+    /// The repairs still repair — this is not a regression of the feature.
+    func testGenuinelyBrokenJSONIsStillFixed() throws {
+        XCTAssertTrue(try parses(repairJSON(#"{"a": 1,}"#)), "trailing comma")
+        XCTAssertTrue(try parses(repairJSON(#"{a: 1}"#)), "unquoted key")
+        XCTAssertTrue(try parses(repairJSON(#"{'a': 'b'}"#)), "single quotes")
+        XCTAssertTrue(try parses(repairJSON("Here you go:\n{\"a\": 1}\nHope that helps!")), "prose around it")
+    }
+
+    /// Something truly unparseable must still throw rather than return junk.
+    func testHopelessInputStillThrows() {
+        XCTAssertThrowsError(try repairJSON("I could not find a job posting on this page."))
+    }
+}

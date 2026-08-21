@@ -73,7 +73,7 @@ public actor QueueActor {
         guard case let ExtractionEngineError.invalidJSON(raw) = error else { return (nil, nil) }
         let preview = raw.isEmpty
             ? "(empty model response)"
-            : String(raw.prefix(LLMConstants.maxResponsePreviewChars))
+            : LLMResponsePreview.forUnparseableJSON(raw)
         return (preview, raw.count)
     }
 

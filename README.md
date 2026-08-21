@@ -84,6 +84,9 @@ the same tests for six times the price.
 
 Avoid **Gemini 3.1 Flash Lite** — it credits résumé experience that isn't there, on 5 runs of 5.
 
+OpenRouter isn't required — you can use a Google, OpenAI, Anthropic or DeepSeek key directly. Going
+direct means one fewer company handling your résumé; it doesn't currently make this model cheaper.
+
 [Which model should I use?](https://jobhunt-app.com/help/which-model) has the full comparison and
 costs · [benchmark method and caveats](docs/model-benchmark-2026-08.md)
 

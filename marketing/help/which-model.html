@@ -70,6 +70,23 @@
     </ol>
     <p>You can change this later at any time, and changing it doesn't rescore the jobs you already have unless you ask it to. It's a low-stakes decision.</p>
 
+    <h2 id="direct">Direct, or through OpenRouter?</h2>
+    <p>You don't need OpenRouter. JobHunt talks to <strong>Google, OpenAI, Anthropic and DeepSeek
+    directly</strong> — pick the provider in <strong>Settings → AI</strong> and paste that company's own
+    API key. For the recommended model that means a key from
+    <a href="https://aistudio.google.com" target="_blank" rel="noopener">aistudio.google.com</a>.</p>
+    <p><strong>Go direct if you'd rather one fewer company saw your résumé.</strong> OpenRouter sits
+    between you and the model, so your employment history passes through it on the way. Going straight
+    to Google removes that hop, and you're billed by Google rather than pre-buying credits.</p>
+    <p><strong>Use OpenRouter if you want to try models.</strong> One key reaches all of them, so
+    changing your mind is a dropdown rather than a signup — and JobHunt's live spend estimate reads
+    OpenRouter's pricing feed, so it can only show you a running cost there.</p>
+    <p class="note">Going direct won't save you money on this model, and we checked rather than assumed:
+    the same scoring call billed <strong>$0.0053</strong> through OpenRouter, which routes Gemini 3.7
+    Flash via Google Cloud at $0.375/$1.875 per million tokens. Google AI Studio's own published rate is
+    $0.75/$3.75 — <strong>twice as much</strong>, and that's before AI Studio's introductory pricing
+    ends on 31 December 2026. Prices move constantly; check both before assuming either way.</p>
+
     <h2 id="tested">What we tested</h2>
     <p>Two things. <strong>Judgement</strong>: does it credit experience your résumé doesn't actually
     support, or penalise a requirement nobody could fail? <strong>Consistency</strong>: does the same

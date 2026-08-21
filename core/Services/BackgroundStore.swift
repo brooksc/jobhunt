@@ -1213,7 +1213,17 @@ public actor BackgroundStore {
         job.extractionStatus = .succeeded
         job.extractionError = nil
         job.extractedAt = metadata.finishedAt
-        job.unread = true
+        // "Unread" means the USER hasn't seen this job — not that the extractor ran.
+        //
+        // This was set unconditionally, so re-extracting a job you had already opened marked it new
+        // again. Re-running the failed extractions lit up sixteen rows the user had demonstrably
+        // read, one of them last opened three weeks earlier. It matters more than the noise suggests:
+        // a bulk re-extraction after a prompt change would flag hundreds of already-triaged jobs.
+        //
+        // A job that has never been opened stays unread — the first extraction is genuinely news.
+        if job.lastOpenedAt == nil {
+            job.unread = true
+        }
         job.updatedAt = metadata.finishedAt
 
         try insertAttempt(

@@ -239,6 +239,81 @@
     return descriptions.join('\n');
   }
 
+
+  /**
+   * The salary range shown in the preflight.
+   *
+   * Built from parts rather than written as one alternation, because boards disagree about where the
+   * currency goes and the old pattern demanded a `$` immediately before BOTH amounts. Two real
+   * postings it silently reported as "(missing)":
+   *
+   *   Amgen (Workday):  "Salary Range 162,048.25USD -219,241.75 USD"   — no $, code glued to the digits
+   *   GitHub:           "USD $140,400.00 - USD $372,300.00 /Yr."       — code repeated BEFORE each $
+   *
+   * A missing salary here reads as a failed capture even though the app's own extraction gets it
+   * right, so it is worth matching what boards actually publish.
+   */
+  const SALARY_AMOUNT = String.raw`\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?\s*[kK]\b|\d{4,}(?:\.\d+)?`;
+  const SALARY_CURRENCY = String.raw`(?:USD|CAD|EUR|GBP|[$\u20ac\u00a3])`;
+  // Either side may carry the currency before it, after it, both, or neither.
+  // `{0,2}`, not `?`: "USD $140,400.00" carries TWO currency tokens before the digits, which is
+  // exactly the case the previous pattern couldn't express.
+  const SALARY_SIDE =
+    String.raw`(?:${SALARY_CURRENCY}\s*){0,2}(?:${SALARY_AMOUNT})(?:\s*${SALARY_CURRENCY}){0,2}` +
+    String.raw`(?:\s*\/\s*(?:yr|year|hr|hour))?`;
+  const SALARY_RANGE = new RegExp(
+    String.raw`${SALARY_SIDE}\s*(?:[-\u2013\u2014]|to)\s*${SALARY_SIDE}`,
+    "i"
+  );
+  const SALARY_SINGLE = new RegExp(String.raw`${SALARY_CURRENCY}\s*(?:${SALARY_AMOUNT})`, "i");
+  const HAS_CURRENCY = /USD|CAD|EUR|GBP|[$\u20ac\u00a3]/i;
+  const K_NOTATION = /\d\s*[kK]\b/;
+
+  /**
+   * The salary from schema.org `baseSalary`, when the page's prose doesn't state one.
+   *
+   * Ashby (and Greenhouse, and Lever via enrichment) publish pay ONLY in JSON-LD: job #906's capture
+   * carries `baseSalary {minValue: 200000, maxValue: 225000, unitText: "YEAR"}` and its visible text
+   * contains no figure at all. The app's own extraction reads structured data and got that right,
+   * while this preflight — which scanned the text only — reported "(missing)". Nothing was being
+   * stripped; the preflight was looking in the wrong place, and disagreeing with the app about the
+   * same capture is exactly what makes a working capture look broken.
+   *
+   * A page may carry several JobPosting blocks and only one of them the pay (906 has two), so take
+   * the first that actually names an amount.
+   */
+  function structuredSalary(structuredData) {
+    for (const entry of structuredData || []) {
+      const posting = entry && entry["@type"] === "JobPosting" ? entry : null;
+      const base = posting && posting.baseSalary;
+      if (!base) continue;
+      const currency = base.currency || base.currencyCode || "";
+      const value = base.value;
+      const min = value && (value.minValue ?? value.value);
+      const max = value && (value.maxValue ?? value.value);
+      const amounts = [min, max].filter((n) => typeof n === "number" && isFinite(n) && n > 0);
+      if (!amounts.length) continue;
+
+      const unit = value && typeof value.unitText === "string" ? value.unitText.toLowerCase() : "";
+      const per = unit === "hour" ? "/hr" : unit === "year" ? "/yr" : "";
+      const shown = [...new Set(amounts)].map((n) => n.toLocaleString("en-US"));
+      return `${currency ? currency + " " : ""}${shown.join(" – ")}${per}`.trim();
+    }
+    return null;
+  }
+
+  function matchSalary(text) {
+    const range = text.match(SALARY_RANGE);
+    // Require the match to name money. Without this the amount pattern alone would read "2026 - 2027"
+    // or a requisition number as pay; k-notation ("120k - 150k") is self-evidently money and is the
+    // one exception.
+    if (range && (HAS_CURRENCY.test(range[0]) || K_NOTATION.test(range[0]))) {
+      return range[0].trim();
+    }
+    const single = text.match(SALARY_SINGLE);
+    return single ? single[0].trim() : null;
+  }
+
   function capturePreflight(payload) {
     const visibleText = payload.visible_text || "";
     const selectedText = payload.selected_text || "";
@@ -272,10 +347,8 @@
     const locMatch = cityMatch || workModeMatch;
     const locationVal = locMatch ? locMatch[1].trim() : null;
 
-    const salaryMatch = text.match(
-      /\$[\d,]+(?:\.?\d+)?[kK]?(?:\/(?:yr|year))?\s*(?:[-–—]|to)\s*\$[\d,]+(?:\.?\d+)?[kK]?(?:\/(?:yr|year))?(?:\s*(?:USD|annually))?|\$[\d,]+[kK]|\b\d{2,3}[kK]\s*[-–—]\s*\d{2,3}[kK]\b|\b\d{2,3},\d{3}\s*[-–—]\s*\d{2,3},\d{3}\s*USD/i
-    );
-    const salaryVal = salaryMatch ? salaryMatch[0].trim() : null;
+    // Text first, then the page's structured data — see `structuredSalary`.
+    const salaryVal = matchSalary(text) || structuredSalary(structuredData);
 
     let remoteVal = null;
     if (/\b(fully\s+remote|work\s+from\s+home|WFH|telecommute|hiring\s+remotely|0\s+days?\s*\/\s*week)\b/i.test(text)) remoteVal = "Remote";

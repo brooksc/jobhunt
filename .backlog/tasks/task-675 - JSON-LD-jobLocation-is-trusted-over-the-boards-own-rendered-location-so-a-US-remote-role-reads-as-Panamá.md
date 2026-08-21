@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-08-21 00:05'
+updated_date: '2026-08-21 00:10'
 labels:
   - extraction
   - normalization
@@ -62,3 +63,27 @@ Only 2 jobs currently carry this specific string, but the class is general: any 
 - [ ] #4 Reddit #7944159's case still works: JSON-LD remains the location source when it is the only one
 - [ ] #5 Tests cover disagreeing sources, an ambiguous two-letter country code, and a JSON-LD-only posting
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## The standalone canonical page does not help (checked 2026-08-20)
+
+https://explore.jobs.netflix.net/careers/job/790316311096?microsite=netflix.com carries the SAME wrong JSON-LD (Panamá / addressCountry 'PA'), and the same correct embedded payload ('location': 'USA - Remote', 5 occurrences). So capturing the canonical job URL instead of the search URL fixes nothing — both pages carry both sources, and they disagree on both.
+
+## The decisive finding: the capture was already right
+
+Job #961's stored visibleText contains 'USA - Remote' FOUR times and never mentions Panamá. The only occurrence of Panamá anywhere in the capture is the line structuredLocationLines injected.
+
+So this is not a capture problem and not a 'find a better source' problem. One injected line, labelled as plain 'Location:', outweighed four occurrences of the truth in the page's own text.
+
+## Recommended fix (narrowest thing that works)
+
+Make the JSON-LD location a FALLBACK rather than an override — which is exactly the intent it was written with. Reddit #7944159 needed it because the description carried no location at all; inject it only when that is still true:
+
+- if the visible text already yields a location or a remote signal, don't inject the structured line at all
+- when it is injected, label it as page metadata rather than as a bare authoritative 'Location:'
+- optionally reject an addressCountry that is a bare two-letter code colliding with a US state abbreviation ('PA'), which is the specific artifact here
+
+That keeps the Reddit case working, needs no vendor-specific scraping of Netflix's embedded JSON, and removes the only mechanism by which a wrong structured location can beat a correct page.
+<!-- SECTION:NOTES:END -->

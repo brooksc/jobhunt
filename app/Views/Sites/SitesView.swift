@@ -45,6 +45,12 @@ struct SitesView: View {
         sites(in: .excluded)
     }
 
+    /// The reminder cadence, for the overdue explainer. Per-site intervals exist, but the sentence is
+    /// about the section, so it quotes the default the sites were created with.
+    private var intervalDays: Int {
+        appServices.settings.siteReviewIntervalDays
+    }
+
     var body: some View {
         List(selection: Binding(
             get: { router.selectedSiteID },
@@ -58,18 +64,31 @@ struct SitesView: View {
                 )
             } else {
                 if !overdueSites.isEmpty {
-                    Section("Overdue") {
+                    Section {
                         ForEach(overdueSites) { site in
-                            SiteRowView(site: site)
+                            SiteRowView(site: site, siteService: siteService)
                                 .tag(site.id)
                         }
+                    } header: {
+                        Text("Overdue")
+                    } footer: {
+                        // What "overdue" means and what to do about it. The screen is a scan log: you
+                        // sweep a careers page, mark it swept, and get reminded when it's worth another
+                        // look. Nothing said so, so a red "Overdue 6d" read as an error rather than a
+                        // nudge (TASK-503 #1).
+                        Text(
+                            "You last swept these more than \(intervalDays) days ago. "
+                                + "Marking one reviewed starts the clock again."
+                        )
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                     }
                 }
 
                 if !dueSoonSites.isEmpty {
                     Section("Due Soon") {
                         ForEach(dueSoonSites) { site in
-                            SiteRowView(site: site)
+                            SiteRowView(site: site, siteService: siteService)
                                 .tag(site.id)
                         }
                     }
@@ -78,7 +97,7 @@ struct SitesView: View {
                 if !reviewedSites.isEmpty {
                     Section("Reviewed") {
                         ForEach(reviewedSites) { site in
-                            SiteRowView(site: site)
+                            SiteRowView(site: site, siteService: siteService)
                                 .tag(site.id)
                         }
                     }
@@ -87,7 +106,7 @@ struct SitesView: View {
                 if !notYetReviewedSites.isEmpty {
                     Section("Not Yet Reviewed") {
                         ForEach(notYetReviewedSites) { site in
-                            SiteRowView(site: site)
+                            SiteRowView(site: site, siteService: siteService)
                                 .tag(site.id)
                         }
                     }
@@ -96,7 +115,7 @@ struct SitesView: View {
                 if !excludedSites.isEmpty {
                     Section("Excluded") {
                         ForEach(excludedSites) { site in
-                            SiteRowView(site: site)
+                            SiteRowView(site: site, siteService: siteService)
                                 .tag(site.id)
                         }
                     }
@@ -126,6 +145,9 @@ struct SitesView: View {
 
 private struct SiteRowView: View {
     let site: Site
+    let siteService: SiteService
+
+    @State private var isWorking = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -146,8 +168,49 @@ private struct SiteRowView: View {
             // Review status, right-justified so the column lines up down the list.
             statusBadge
                 .fixedSize()
+
+            // Inline, because opening the detail pane to say "yes, I looked at this" is most of the
+            // work of the interaction it's recording (TASK-503 #1).
+            inlineAction
         }
         .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private var inlineAction: some View {
+        if site.state == .exclude {
+            // Excluding was a one-way door: nothing in the UI could undo it.
+            Button {
+                perform { try await siteService.setSiteState(siteID: site.id, state: .notReviewed) }
+            } label: {
+                Label("Re-enable", systemImage: "arrow.uturn.backward")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.borderless)
+            .disabled(isWorking)
+            .help("Start tracking this site again")
+        } else {
+            Button {
+                perform { try await siteService.markReviewed(siteID: site.id) }
+            } label: {
+                Label("Mark Reviewed", systemImage: "checkmark.circle")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.borderless)
+            .disabled(isWorking)
+            .help("Mark swept — the next reminder is scheduled from now")
+        }
+    }
+
+    /// Guards against a double-click enqueueing the work twice; failures are left to the row's own
+    /// state, which simply doesn't change.
+    private func perform(_ work: @escaping () async throws -> Void) {
+        guard !isWorking else { return }
+        isWorking = true
+        Task {
+            try? await work()
+            isWorking = false
+        }
     }
 
     @ViewBuilder

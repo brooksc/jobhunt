@@ -3,10 +3,10 @@ id: TASK-570
 title: >-
   Wire remaining static-analysis gates into CI (Periphery, warnings, analyze,
   ShellCheck, a11y)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-20 04:24'
-updated_date: '2026-08-22 22:46'
+updated_date: '2026-08-22 23:02'
 labels:
   - ci
   - static-analysis
@@ -48,7 +48,7 @@ Gitleaks + Dependabot are already wired. None of these is a release blocker.
 - [x] #1 ShellCheck runs in CI over scripts/*.sh
 - [x] #2 A compiler-warning gate prevents new warnings accruing
 - [x] #3 Periphery dead-code scan runs in CI
-- [ ] #4 swiftlint analyze runs in CI
+- [x] #4 swiftlint analyze runs in CI
 - [x] #5 AppUITests runs performAccessibilityAudit
 <!-- AC:END -->
 
@@ -83,3 +83,29 @@ Remaining: #3 Periphery and #4 `swiftlint analyze`, both still parked for the re
 
 Only #4 (`swiftlint analyze`) remains, still parked: a full compiler log per run for a rule set that overlaps `--strict`.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+All five gates are wired.
+
+| Gate | Where | Shape |
+|---|---|---|
+| ShellCheck | `shellcheck.yml`, per push | `--severity=warning`, clean |
+| Compiler warnings | `swift-build.yml`, per push | ratchet on `.warning-baseline` (58) |
+| Periphery | `static-analysis.yml`, weekly + dispatch | ratchet on `.periphery-baseline`, now **0** |
+| `swiftlint analyze` | `static-analysis.yml`, weekly + dispatch | `--strict`, 0 violations across 224 files |
+| Accessibility audit | `AppUITests/AccessibilityAuditTests` | per-screen ceilings, debt is TASK-689 |
+
+**Two of the three parking reasons turned out to be wrong on inspection.**
+
+*Periphery* was parked as unfixable noise. The noise was two analyses, not the tool: redundant-public (framework API that is public deliberately and reached from tests via `@testable`) and assign-only (every `@State`/`@Environment`, which SwiftUI reads on our behalf). Both off in `.periphery.yml` with the reasoning; 431 raw findings → 47 genuine ones → 0 after TASK-690 cleared them. It also found a real bug on its first run: `testRawHashDoesNotTrapOnHugeJSONLDNumber` was written inside a `private extension JobSnapshot` rather than the XCTestCase, so it had never run — it covers a crash on capture from attacker-controlled JSON-LD.
+
+*`swiftlint analyze`* was parked because it doubles build time. That was true of the per-push job; in the weekly workflow, which already builds fully for Periphery, the marginal cost is a `tee` and an analyze pass.
+
+*The accessibility audit* was parked for needing a graphical session — which this session had. It found ~190 issues, so it ratchets rather than gating clean, and each screen's findings attach to the test result.
+
+Both new gates live in `static-analysis.yml` (weekly + manual dispatch) rather than `swift-build.yml`, deliberately: each needs a full build of its own, and the per-push macOS job is the expensive one.
+
+Verified: AppUITests 37/37 on a graphical session; `check-periphery.sh` clean at 0; `swiftlint analyze --strict` 0 violations; full local gate green.
+<!-- SECTION:FINAL_SUMMARY:END -->

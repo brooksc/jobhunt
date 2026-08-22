@@ -4,7 +4,7 @@ title: Sites review workflow clarity + Data Quality inline fixes
 status: To Do
 assignee: []
 created_date: '2026-06-18 23:06'
-updated_date: '2026-08-21 02:24'
+updated_date: '2026-08-22 22:49'
 labels:
   - ux
   - sites
@@ -28,7 +28,7 @@ References: app/Views/Sites/SitesView.swift, app/Views/Sites/SiteDetailView.swif
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Sites: inline Mark-Reviewed + clearer cadence affordance + re-enable for excluded sites
+- [x] #1 Sites: inline Mark-Reviewed + clearer cadence affordance + re-enable for excluded sites
 - [ ] #2 Data Quality: at least the common missing-field issues can be fixed inline (or via a clear manual-entry path)
 <!-- AC:END -->
 
@@ -46,4 +46,18 @@ So the object is a *site I periodically sweep*, and the two verbs are **mark swe
 Reported alongside: the user could not find the mark-reviewed action **in Brave**. The extension does implement it (markSiteReviewed, with a payload-contract test against the Swift server), so the question is where it is surfaced and whether it is reachable in a Chromium browser that isn't Chrome — worth confirming before redesigning the screen, since 'mark this site done from the browser I'm already in' is the core interaction of the feature as described.
 
 Data-quality inline fixes were bundled into this task's original scope; on the description above they are a separate concern and should be split rather than designed in.
+
+**2026-08-22 — AC #1 done.** The Sites row now carries the actions rather than the detail pane:
+
+- **Mark Reviewed** inline on every row. Opening the detail pane to record "yes, I swept this" was most of the work of the interaction being recorded.
+- **An explainer under the Overdue section** — what overdue means and that reviewing restarts the clock. A red "Overdue 6d" with no context reads as an error rather than the nudge it is.
+- **Re-enable** on an excluded row. Exclude was a one-way door: nothing in the UI could undo it.
+
+All three use `SiteService` methods that already existed (`markReviewed`, `setSiteState`) — this was purely a missing affordance, not missing capability. A double-click can't enqueue the work twice.
+
+Not done, and deliberately: the wider redesign of the screen around due/not-due that the design note contemplates. These are the three concrete affordances the acceptance criterion actually lists.
+
+not verified: (visual) — the row layout with the new button, and the footer wording in place, have not been seen rendered.
+
+**#2 (Data Quality inline fixes) remains open** and, per the design note, is a separate concern that should be split out rather than designed here.
 <!-- SECTION:NOTES:END -->

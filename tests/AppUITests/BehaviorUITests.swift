@@ -79,12 +79,16 @@ final class BehaviorUITests: XCTestCase {
             "Dashboard navigation should remove Jobs content from view"
         )
 
-        // Switch to Data Quality — verify by extractionPending filter chip (always present with seeded data).
+        // Switch to Data Quality — verified by any issue filter chip, which only DataQualityView has.
+        // Naming `extractionPending` made this depend on the FIXTURE seeder while the UI tests launch
+        // with demo data, whose jobs are all .succeeded — so the chip never rendered.
         navigate(app, label: "Data Quality")
         XCTAssertTrue(
-            app.descendants(matching: .any).matching(identifier: "chip.kind.extractionPending").firstMatch
+            app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier BEGINSWITH %@", "chip.kind."))
+                .firstMatch
                 .waitForExistence(timeout: 10),
-            "DataQualityView filter chips should appear after navigation (seeded data guarantees extractionPending)"
+            "DataQualityView filter chips should appear after navigation"
         )
     }
 
@@ -197,16 +201,21 @@ final class BehaviorUITests: XCTestCase {
         // Wait for the Data Quality filter chips to appear (guaranteed with seeded data).
         // This also serves as the navigation confirmation — chips only exist in DataQualityView.
 
-        // Two seeded jobs (Amazon job_009 and Salesforce job_010) always have extractionStatus .pending,
-        // so the extractionPending chip is guaranteed to appear for active jobs.
-        // We use accessibilityIdentifier for reliable lookup (label-based queries are fragile for plain-style buttons).
-        let chip = app.descendants(matching: .any).matching(identifier: "chip.kind.extractionPending").firstMatch
+        // ANY issue chip, not a named one. This asked for `chip.kind.extractionPending`, citing two
+        // seeded jobs that are .pending — but those live in the FIXTURE seeder, and the UI tests
+        // launch with --seed-demo-data, whose fourteen jobs are all .succeeded. The chip only renders
+        // when its count is non-zero, so it could never appear and this test could never pass.
+        // Demo data does produce shortRawText, shortCleanedText and staleExtraction; naming any one of
+        // them would re-couple the test to the seeder, so match the identifier prefix instead.
+        let chip = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "chip.kind."))
+            .firstMatch
         XCTAssertTrue(
             chip.waitForExistence(timeout: 10),
-            "Data Quality 'Extraction pending' filter chip not found — chip is missing or view did not load"
+            "No Data Quality filter chip found — the view did not load, or seeded data produced no issues"
         )
 
-        XCTAssertEqual(chip.value as? String, "off", "Extraction pending chip should start as 'off'")
+        XCTAssertEqual(chip.value as? String, "off", "an issue chip should start unselected")
 
         chip.click()
         XCTAssertTrue(

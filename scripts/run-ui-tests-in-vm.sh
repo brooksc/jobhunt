@@ -145,6 +145,20 @@ if [ "$BUILD_ON_HOST" = true ]; then
         CODE_SIGN_ENTITLEMENTS="" \
         2>&1 | grep -E "(error:|warning:.*error|BUILD SUCCEEDED|BUILD FAILED|Test Build Succeeded|Test Build Failed)" || true
 
+    # Ad-hoc sign the runner and the app, or they will not launch.
+    #
+    # CODE_SIGNING_ALLOWED=NO produces a linker-signed binary that macOS 27 refuses outright —
+    # the user sees "AppUITests-Runner is damaged and can't be opened", and the run fails before a
+    # single assertion executes. `codesign -f -s -` is the same workaround CLAUDE.md records for
+    # running a local Debug build out of /Applications.
+    step "Ad-hoc signing test artifacts"
+    for _bundle in "${HOST_PRODUCTS}/Build/Products/${CONFIG}/"*.app; do
+        [ -d "$_bundle" ] || continue
+        codesign -f -s - --deep "$_bundle" >/dev/null 2>&1 \
+            && log "signed $(basename "$_bundle")" \
+            || log "WARNING: could not sign $(basename "$_bundle") — the runner may refuse to launch"
+    done
+
     # Verify the xctestrun file was produced
     XCTESTRUN_HOST="$(ls "${HOST_PRODUCTS}/Build/Products/"*.xctestrun 2>/dev/null | head -1)"
     [ -n "$XCTESTRUN_HOST" ] || fail "Build succeeded but no .xctestrun found in ${HOST_PRODUCTS}/Build/Products/"

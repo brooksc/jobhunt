@@ -75,12 +75,35 @@ private func parsesAsJSON(_ text: String) -> Bool {
     return (try? JSONSerialization.jsonObject(with: data)) != nil
 }
 
+/// What `JSONSerialization` says is wrong with `raw`, position included.
+///
+/// Deliberately only the parser's diagnostic — never the model's text — so a description that reaches
+/// a log or the UI can't leak the posting's contents. Lives here, beside the parsing, so the two
+/// error types that report a failed parse can say the same thing (TASK-676 #4).
+public func jsonParserComplaint(_ raw: String) -> String {
+    guard let data = raw.data(using: .utf8) else { return "response was not valid UTF-8" }
+    do {
+        _ = try JSONSerialization.jsonObject(with: data)
+        return "the repair pass changed it in a way that still didn't parse"
+    } catch let error as NSError {
+        let detail = error.userInfo["NSDebugDescription"] as? String
+        return (detail ?? error.localizedDescription).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// The one sentence both parse failures report, so a user comparing two failed jobs isn't left
+/// wondering whether "Model response could not be parsed as valid JSON" and "LLM response could not
+/// be parsed as JSON" were different problems. They never were (TASK-676 #4).
+public func jsonParseFailureMessage(_ raw: String) -> String {
+    "LLM response could not be parsed as JSON — \(jsonParserComplaint(raw))"
+}
+
 public enum JSONRepairError: Error, LocalizedError {
     case unparseable(String)
 
     public var errorDescription: String? {
         switch self {
-        case .unparseable: "Model response could not be parsed as valid JSON"
+        case let .unparseable(text): jsonParseFailureMessage(text)
         }
     }
 }

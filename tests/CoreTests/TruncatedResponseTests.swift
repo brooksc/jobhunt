@@ -57,7 +57,7 @@ final class TruncatedResponseTests: XCTestCase {
     func testParserComplaintNamesWhatIsWrong() {
         // An unescaped control character inside a string — valid-looking at both ends.
         let raw = "{\"a\": \"one\u{01}two\"}"
-        let complaint = ExtractionEngineError.parserComplaint(raw)
+        let complaint = jsonParserComplaint(raw)
         XCTAssertFalse(complaint.isEmpty)
         XCTAssertTrue(
             complaint.lowercased().contains("character") || complaint.lowercased().contains("line"),
@@ -67,7 +67,7 @@ final class TruncatedResponseTests: XCTestCase {
 
     /// The complaint is the parser's, never the model's text.
     func testParserComplaintDoesNotEchoTheResponse() {
-        let complaint = ExtractionEngineError.parserComplaint(#"{"company": "VerySpecificCompanyName"#)
+        let complaint = jsonParserComplaint(#"{"company": "VerySpecificCompanyName"#)
         XCTAssertFalse(complaint.contains("VerySpecificCompanyName"), complaint)
     }
 

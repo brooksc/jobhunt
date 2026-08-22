@@ -357,4 +357,28 @@ final class QualityCheckerTests: XCTestCase {
         let kinds = QualityChecker.issues(for: job)
         XCTAssertFalse(kinds.contains(.staleExtraction))
     }
+
+    // MARK: - Permanently failed extractions (TASK-676 #3)
+
+    /// A job whose extraction failed has no company, title, location or salary, so in the Jobs list it
+    /// is a near-blank row with no indication that anything went wrong. It must be findable somewhere,
+    /// and Data Quality is that somewhere: a high-severity issue with its own filter chip.
+    func testAFailedExtractionIsFlaggedRatherThanLeftBlank() {
+        let job = Job(company: "", title: "", location: "", extractionStatus: .failed)
+
+        let kinds = QualityChecker.issues(for: job)
+        XCTAssertTrue(kinds.contains(.extractionFailed), "\(kinds)")
+        XCTAssertTrue(QualityIssueKind.extractionFailed.isHighSeverity, "a blank row is not a minor gap")
+        XCTAssertTrue(DataQualityScope.isIncluded(status: .new, hasReview: false, showReviewed: false))
+    }
+
+    /// Pending is not failed. While extraction is still queued the missing fields are expected, and
+    /// calling that a failure would flag every fresh capture (TASK-459).
+    func testAPendingExtractionIsNotReportedAsFailed() {
+        let job = Job(company: "", title: "", location: "", extractionStatus: .pending)
+
+        let kinds = QualityChecker.issues(for: job)
+        XCTAssertFalse(kinds.contains(.extractionFailed))
+        XCTAssertTrue(kinds.contains(.extractionPending))
+    }
 }

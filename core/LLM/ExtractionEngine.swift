@@ -458,22 +458,6 @@ public enum ExtractionEngineError: Error, LocalizedError {
     /// A field in the provider response had an incompatible shape for the extraction schema (TASK-456).
     case malformedField(field: String, reason: String)
 
-    /// What `JSONSerialization` says is wrong with `raw`, position included.
-    ///
-    /// Deliberately only the parser's diagnostic — never the model's text — so a description that
-    /// reaches a log or the UI can't leak the posting's contents.
-    static func parserComplaint(_ raw: String) -> String {
-        guard let data = raw.data(using: .utf8) else { return "response was not valid UTF-8" }
-        do {
-            _ = try JSONSerialization.jsonObject(with: data)
-            return "the repair pass changed it in a way that still didn't parse"
-        } catch let error as NSError {
-            let detail = error.userInfo["NSDebugDescription"] as? String
-            return (detail ?? error.localizedDescription)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-    }
-
     public var errorDescription: String? {
         switch self {
         case .noCaptureText:
@@ -491,7 +475,7 @@ public enum ExtractionEngineError: Error, LocalizedError {
                 // either end — the fault was somewhere in the middle, and nothing recorded said
                 // where. JSONSerialization already knows ("Unescaped control character around line
                 // 12, column 5"); it was simply being discarded.
-                : "LLM response could not be parsed as JSON — \(ExtractionEngineError.parserComplaint(raw))"
+                : jsonParseFailureMessage(raw)
         case .noModelSelected:
             "No model selected — choose a model in Settings → AI"
         case let .malformedField(field, reason):

@@ -200,4 +200,18 @@ final class JSONRepairDoesNotBreakValidJSONTests: XCTestCase {
     func testHopelessInputStillThrows() {
         XCTAssertThrowsError(try repairJSON("I could not find a job posting on this page."))
     }
+
+    /// Both parse failures now say the same thing (TASK-676 #4).
+    ///
+    /// A user comparing two failed jobs saw "Model response could not be parsed as valid JSON" on one
+    /// and "LLM response could not be parsed as JSON — …" on the other, and had no way to know those
+    /// were the same fault reported from two call sites.
+    func testTheRepairFailureCarriesTheSharedWordingAndTheParserComplaint() {
+        let message = JSONRepairError.unparseable("{\"a\": ").errorDescription ?? ""
+        XCTAssertTrue(message.hasPrefix("LLM response could not be parsed as JSON — "), message)
+        XCTAssertFalse(
+            message.hasSuffix("— "),
+            "the parser's account of what's wrong is the whole point of the suffix"
+        )
+    }
 }

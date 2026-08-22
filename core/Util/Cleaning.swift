@@ -590,6 +590,36 @@ func normalizeWhitespace(_ rawValue: String) -> String {
 
 /// Location statements taken from schema.org `JobPosting` fields.
 ///
+/// "City, REGION" where REGION is a 2-letter code or a spelled-out country.
+///
+/// The region half has to be constrained or ordinary prose passes as a place: with a bare
+/// `[A-Z][a-z]+` on the right, job #961's body matched "Design Platform, Engineering", which made the
+/// cleaner think the posting stated its location and suppressed both the metadata line AND the page's
+/// own — leaving the job with no location at all. `JobsView` had already learned this for its own
+/// city match; this is the same strictness, applied where the decision is made.
+let cityRegionPattern: String = {
+    // Spelled-out US states come from the shared table so this can't drift from the geography code
+    // that uses the same names; "Los Gatos, California" is as real a place as "Austin, TX".
+    let states = stateNameToAbbrev.keys
+        .map { name in
+            name.split(separator: " ")
+                .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+                .joined(separator: " ")
+        }
+        .sorted()
+    let countries = [
+        "United States", "USA", "Canada", "United Kingdom", "Ireland", "Germany", "France",
+        "Netherlands", "Spain", "Portugal", "Poland", "Australia", "India", "Singapore", "Japan",
+        "Brazil", "Mexico", "Panamá", "Panama"
+    ]
+    // Longest first so "New York" wins over a bare "New" prefix inside the alternation.
+    let regions = (states + countries)
+        .sorted { $0.count > $1.count }
+        .map { NSRegularExpression.escapedPattern(for: $0) }
+        .joined(separator: "|")
+    return #"\b[A-Z][a-zA-Z.'-]+(?:[ ][A-Z][a-zA-Z.'-]+){0,2},\s*(?:[A-Z]{2}\b|"# + regions + ")"
+}()
+
 /// The location the posting's own page states, if any (TASK-675).
 ///
 /// Deliberately returns the matched PHRASE rather than a yes/no, because the caller needs something
@@ -610,10 +640,7 @@ func pageLocationPhrase(_ text: String) -> String? {
         ),
         // "Los Gatos, California", "Austin, TX", "London, United Kingdom" — capitalisation is the
         // signal, so this one is case-SENSITIVE.
-        (
-            #"\b[A-Z][a-zA-Z.'-]+(?:[ ][A-Z][a-zA-Z.'-]+){0,2},\s*(?:[A-Z]{2}\b|[A-Z][a-z]+)"#,
-            [.regularExpression]
-        ),
+        (cityRegionPattern, [.regularExpression]),
         // Last resort: the bare word, which at least distinguishes remote from on-site.
         (#"\b(?:fully\s+remote|work\s+from\s+home|remote)\b"#, [.regularExpression, .caseInsensitive])
     ]
@@ -642,9 +669,9 @@ func textNamesALocation(_ text: String) -> Bool {
     if text.range(of: #"\bremote\b"#, options: [.regularExpression, .caseInsensitive]) != nil {
         return true
     }
-    // "Los Gatos, California", "Austin, TX", "London, United Kingdom".
-    let cityRegion = #"\b[A-Z][a-zA-Z.'-]+(?:[ ][A-Z][a-zA-Z.'-]+){0,2},\s*(?:[A-Z]{2}\b|[A-Z][a-z]+)"#
-    return text.range(of: cityRegion, options: .regularExpression) != nil
+    // "Los Gatos, California", "Austin, TX", "London, United Kingdom" — see `cityRegionPattern`
+    // for why the region half is constrained rather than any capitalised word.
+    return text.range(of: cityRegionPattern, options: .regularExpression) != nil
 }
 
 /// `extractJsonLdDescription` already surfaces `jobLocationType` (TELECOMMUTE) and the pay band, but

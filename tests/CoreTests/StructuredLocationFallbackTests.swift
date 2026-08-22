@@ -143,6 +143,28 @@ final class StructuredLocationFallbackTests: XCTestCase {
 
     // MARK: - The discriminator
 
+    /// Ordinary prose must not read as a place. Job #961's body contains "Design Platform,
+    /// Engineering", which a bare `Word, Capitalised` pattern matched — so the cleaner believed the
+    /// posting stated its location, suppressed both the metadata line and the page's own, and left
+    /// the job with no location at all. Two "fixes" passed their tests with this still broken.
+    func testProseWithACommaIsNotALocation() {
+        for prose in [
+            "Design Platform, Engineering",
+            "You will partner with Analytics, Engineering and Design",
+            "Hawkins, Netflix's design system"
+        ] {
+            XCTAssertFalse(textNamesALocation(prose), "must not read as a place: \(prose)")
+            XCTAssertNil(pageLocationPhrase(prose), "must not yield a phrase: \(prose)")
+        }
+    }
+
+    /// Real places still match — the region half is a code or a spelled-out country.
+    func testRealCityRegionPairsStillMatch() {
+        for place in ["Los Gatos, CA", "Austin, TX", "London, United Kingdom", "Toronto, Canada"] {
+            XCTAssertTrue(textNamesALocation(place), "must read as a place: \(place)")
+        }
+    }
+
     func testTextNamesALocation() {
         XCTAssertTrue(textNamesALocation("USA - Remote"))
         XCTAssertTrue(textNamesALocation("This role is fully remote."))

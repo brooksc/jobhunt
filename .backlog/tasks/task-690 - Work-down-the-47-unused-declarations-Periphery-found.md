@@ -1,10 +1,10 @@
 ---
 id: TASK-690
 title: Work down the 47 unused declarations Periphery found
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-22 22:42'
-updated_date: '2026-08-22 22:42'
+updated_date: '2026-08-22 23:00'
 labels:
   - tech-debt
   - static-analysis
@@ -40,8 +40,28 @@ Lower `.periphery-baseline` with each pass — that number is what stops the deb
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Every clearly-dead declaration is deleted, along with anything its removal orphans
-- [ ] #2 The reported-unused test method is explained: either it genuinely doesn't run (and is fixed) or Periphery is retaining it wrongly (and the config says so)
-- [ ] #3 Anything Periphery is wrong about carries an explicit retain rule with a reason, not a raised baseline
-- [ ] #4 .periphery-baseline is lowered to the new count and the scan passes
+- [x] #1 Every clearly-dead declaration is deleted, along with anything its removal orphans
+- [x] #2 The reported-unused test method is explained: either it genuinely doesn't run (and is fixed) or Periphery is retaining it wrongly (and the config says so)
+- [x] #3 Anything Periphery is wrong about carries an explicit retain rule with a reason, not a raised baseline
+- [x] #4 .periphery-baseline is lowered to the new count and the scan passes
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+46 → 0. `.periphery-baseline` is now 0, so the next unused declaration fails the scan outright rather than being absorbed.
+
+**Deleted (#1).** Most were superseded rather than mistaken, which is what made them safe:
+- `FitPillView`, `CompanyCell`, `StarRating`, `JobDetailPlaceholder` — nothing has rendered them since the Jobs list moved to `FitRingView`.
+- `CostEstimator`'s live OpenRouter pricing and its three supporting types — a port of the old Node server's `/api/llm-pricing` that no Swift caller ever made.
+- `BackgroundStore.deleteFitScores(forResumeID:)` — both paths it existed for are gone: editing a résumé now marks scores stale rather than deleting them (deliberate, so the user decides whether to re-spend), and resume deletion cascades through the model relationship.
+- `DuplicateDetector.titleGroupKey` — replaced by `titleTokens`/`titlesAreSimilar` in TASK-620.
+- `updateDockBadge`, `JobService.enqueueLLM`, `QualityIssue.severity`, `ReferralSummary.needsAction`, `recipientKey`, `requirementShare`, `JobFilterRules.label`, `Exclusions.none`, `JobhuntServerError`, `structuredDataJSONField`, `JobsFilterState.init(from:)`, `QueueActor.activeCounts`, Router's three display helpers, nine stranded `@State`/`@Environment` properties, and two unused UI-test helpers.
+- A stale doc comment in `FitBand` referring to the deleted pill was corrected rather than left lying.
+
+**#2 — the reported-unused test was real.** `testRawHashDoesNotTrapOnHugeJSONLDNumber` sat inside a `private extension JobSnapshot` at the foot of DuplicateDetectorTests, not the XCTestCase, so XCTest never ran it. It covers a trap on an integer-valued Double outside Int range from attacker-controlled JSON-LD — a crash on capture. Moved into the class in the TASK-570 commit; runs and passes.
+
+**#3 — kept, with reasons in the code.** `KeychainStore.delete` and `MCPTokenManager.delete` carry `// periphery:ignore`: nothing calls either today, but a credential store that can only ever add is the wrong shape, and the protocol requirement must exist for a test double to conform. Tuist's `Derived/` is excluded from the report — generated asset accessors are the generator's business, and the file isn't ours to edit.
+
+**#4** Scan clean at 0. Full gate green: CoreTests/ServerTests/MCPTests pass, coverage above floor, 141 extension tests, SwiftLint/SwiftFormat clean.
+<!-- SECTION:FINAL_SUMMARY:END -->

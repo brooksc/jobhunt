@@ -63,13 +63,22 @@ public func cleanDescription(
     // #961 does: its page says "USA - Remote" five times, its JSON-LD body never mentions location,
     // and checking only the assembled body therefore still injected the bogus Panamá line. The
     // question is whether the POSTING says where it is, not whether this particular assembly kept it.
-    let bodyHasLocation = textNamesALocation(bodySoFar) || textNamesALocation(visible)
+    let visibleLocation = pageLocationPhrase(visible)
+    let bodyHasLocation = textNamesALocation(bodySoFar)
+
+    // Carry the page's own answer across, rather than merely suppressing the metadata's wrong one.
+    // Suppression alone left #961 with NO location at all — which `LocationCriteria` reads as
+    // on-site, so the job still failed the user's criteria. Removing a false answer is only half the
+    // job; the true one was on the page the whole time.
+    if !bodyHasLocation, let visibleLocation {
+        parts.append("Location (from page text): \(visibleLocation)")
+    }
     for entry in structuredLocationLines(structuredData) {
         // The deferral applies to `jobLocation` — the "where is this job" CLAIM, which can simply be
         // wrong — and never to `applicantLocationRequirements`, which says who may take the role.
         // That one only ever narrows: "remote, but only from Portugal" is not contradicted by a page
         // that says "remote", it is qualified by it, and nothing else in the capture states it.
-        if entry.isPlacementClaim, bodyHasLocation { continue }
+        if entry.isPlacementClaim, bodyHasLocation || visibleLocation != nil { continue }
         // Judge duplication on the VALUE, not the label we add: the body states "Remote - United
         // States" as prose, never "Location: Remote - United States", so matching the labelled form
         // never fires and the line is appended a second time.
@@ -581,6 +590,41 @@ func normalizeWhitespace(_ rawValue: String) -> String {
 
 /// Location statements taken from schema.org `JobPosting` fields.
 ///
+/// The location the posting's own page states, if any (TASK-675).
+///
+/// Deliberately returns the matched PHRASE rather than a yes/no, because the caller needs something
+/// to put in the text: a JSON-LD body promoted over the page text takes the location with it, and the
+/// model then has nothing to go on. Ordered most-specific first — "USA - Remote" says more than a
+/// bare "Remote", and a city/region pair says more than either.
+func pageLocationPhrase(_ text: String) -> String? {
+    guard !text.isEmpty else { return nil }
+    // Each pattern carries its own options, because the city form DEPENDS on capitalisation: with
+    // `.caseInsensitive` its `[A-Z]` matches lowercase too, and "Based in Los Gatos, California"
+    // matched from "in" rather than from the city.
+    let patterns: [(pattern: String, options: NSString.CompareOptions)] = [
+        // "USA - Remote", "US — Remote", "Remote - United States", "Remote — Europe".
+        // The left side is ONE token (no spaces) so "Title USA - Remote" can't match from "Title".
+        (
+            #"\b(?:remote\s*[-–—]\s*[A-Za-z][A-Za-z .]{1,30}|[A-Za-z.]{2,20}\s*[-–—]\s*remote)\b"#,
+            [.regularExpression, .caseInsensitive]
+        ),
+        // "Los Gatos, California", "Austin, TX", "London, United Kingdom" — capitalisation is the
+        // signal, so this one is case-SENSITIVE.
+        (
+            #"\b[A-Z][a-zA-Z.'-]+(?:[ ][A-Z][a-zA-Z.'-]+){0,2},\s*(?:[A-Z]{2}\b|[A-Z][a-z]+)"#,
+            [.regularExpression]
+        ),
+        // Last resort: the bare word, which at least distinguishes remote from on-site.
+        (#"\b(?:fully\s+remote|work\s+from\s+home|remote)\b"#, [.regularExpression, .caseInsensitive])
+    ]
+    for (pattern, options) in patterns {
+        guard let range = text.range(of: pattern, options: options) else { continue }
+        let phrase = text[range].trimmingCharacters(in: .whitespacesAndNewlines)
+        if !phrase.isEmpty { return phrase }
+    }
+    return nil
+}
+
 /// Whether the posting's own text already says where the job is.
 ///
 /// The discriminator for whether structured-data location should speak at all (TASK-675). Cheap and

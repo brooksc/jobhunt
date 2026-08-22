@@ -69,6 +69,41 @@ final class StructuredLocationFallbackTests: XCTestCase {
         )
     }
 
+    /// Suppressing the metadata is only half the job. #961's JSON-LD body is promoted over the page
+    /// text, so with the bogus Panamá line merely removed the posting had NO location at all — which
+    /// LocationCriteria reads as on-site, and the job still failed the user's criteria. The page said
+    /// "USA - Remote" the whole time.
+    func testThePagesOwnLocationSurvivesAPromotedJSONLDBody() {
+        let longBody = String(repeating: "We are hiring a program manager to drive programs. ", count: 40)
+        let cleaned = cleanDescription(
+            visibleText: "Technical Program Manager - Hawkins Design System USA - Remote Engineering Operations",
+            structuredData: [[
+                "@type": "JobPosting",
+                "description": longBody,
+                "jobLocation": [
+                    "@type": "Place",
+                    "address": ["@type": "PostalAddress", "addressLocality": "Panamá"] as [String: Any]
+                ] as [String: Any]
+            ]]
+        )
+        XCTAssertFalse(cleaned.localizedCaseInsensitiveContains("Panam"), cleaned)
+        XCTAssertTrue(
+            cleaned.localizedCaseInsensitiveContains("USA - Remote"),
+            "the page's own location must reach the model, not just be absent:\n\(cleaned)"
+        )
+    }
+
+    // MARK: - The phrase extractor
+
+    func testPageLocationPhrasePrefersTheMostSpecificForm() {
+        XCTAssertEqual(pageLocationPhrase("Title USA - Remote Engineering"), "USA - Remote")
+        XCTAssertEqual(pageLocationPhrase("Remote - United States, full time"), "Remote - United States")
+        XCTAssertEqual(pageLocationPhrase("Based in Los Gatos, California today"), "Los Gatos, California")
+        XCTAssertEqual(pageLocationPhrase("This role is fully remote."), "fully remote")
+        XCTAssertNil(pageLocationPhrase("We build systems and collaborate on delivery."))
+        XCTAssertNil(pageLocationPhrase(""))
+    }
+
     /// The case the injection was written for still works: Reddit #7944159's description named no
     /// location at all, and the JSON-LD was the only source.
     func testSilentPageStillGetsTheStructuredLocation() {

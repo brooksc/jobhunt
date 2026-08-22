@@ -250,6 +250,12 @@ struct DataQualityView: View {
                         .buttonStyle(.borderless)
                         .help("Open source posting")
                     }
+                    // Re-extraction is the only fix the screen used to offer, and on a posting whose
+                    // source URL is dead it re-fails every time — leaving Mark Reviewed, which just
+                    // hides the row. Typing the missing field in is the fix in those cases (TASK-503 #2).
+                    if !QuickFixField.fields(for: issue.kinds).isEmpty {
+                        QuickFixButton(job: job, kinds: issue.kinds)
+                    }
                     Button { rerun(job) } label: {
                         Image(systemName: "arrow.clockwise").font(.caption2)
                     }
@@ -380,6 +386,100 @@ struct DataQualityView: View {
 }
 
 // MARK: - FlowLayout (wrapping HStack for issue chips)
+
+// MARK: - Quick fix
+
+/// Fills in a missing company/title/location without leaving the screen (TASK-503 #2).
+///
+/// Re-extraction, the screen's only previous remedy, re-fails identically on a posting whose source
+/// URL has gone — which left Mark Reviewed, and that only hides the row. When re-extraction isn't
+/// viable the popover says so and shows what the extraction actually complained about, so the user
+/// isn't guessing why the button won't help.
+private struct QuickFixButton: View {
+    @Environment(AppServices.self) private var appServices
+
+    let job: Job
+    let kinds: [QualityIssueKind]
+
+    @State private var isPresented = false
+    @State private var values: [QuickFixField: String] = [:]
+    @State private var isSaving = false
+
+    private var fields: [QuickFixField] {
+        QuickFixField.fields(for: kinds)
+    }
+
+    /// True once at least one field has something worth saving — an all-whitespace entry isn't a fix.
+    private var hasEntry: Bool {
+        fields.contains { !(values[$0] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    var body: some View {
+        Button { isPresented = true } label: {
+            Image(systemName: "square.and.pencil").font(.caption2)
+        }
+        .buttonStyle(.borderless)
+        .help("Fill in the missing details by hand")
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Fill in what's missing")
+                    .font(.headline)
+
+                ForEach(fields, id: \.self) { field in
+                    TextField(field.label, text: Binding(
+                        get: { values[field] ?? "" },
+                        set: { values[field] = $0 }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 260)
+                }
+
+                if let error = job.extractionError, !error.isEmpty {
+                    // Why re-extraction isn't the answer here. This was invisible on this screen, so
+                    // "Re-run AI extraction" looked like an untried option when it had already failed.
+                    Text("Extraction failed: \(error)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 260, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                HStack {
+                    Spacer()
+                    Button("Cancel") { isPresented = false }
+                    Button("Save") { save() }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(!hasEntry || isSaving)
+                }
+            }
+            .padding(14)
+        }
+    }
+
+    private func save() {
+        guard !isSaving else { return }
+        isSaving = true
+        /// Only fields the user actually typed into: passing an empty string would overwrite a value
+        /// some other issue on the same row depends on.
+        func entry(_ field: QuickFixField) -> String?? {
+            guard fields.contains(field) else { return .none }
+            let trimmed = (values[field] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? .none : .some(trimmed)
+        }
+        let service = appServices.jobService
+        let jobID = job.id
+        let company = entry(.company)
+        let title = entry(.title)
+        let location = entry(.location)
+        Task {
+            try? await service.updateJobFields(
+                jobID: jobID, company: company, title: title, location: location
+            )
+            isSaving = false
+            isPresented = false
+        }
+    }
+}
 
 private struct FlowLayout: Layout {
     var spacing: CGFloat = 4

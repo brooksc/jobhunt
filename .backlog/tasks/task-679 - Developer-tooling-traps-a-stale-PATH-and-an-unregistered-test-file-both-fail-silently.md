@@ -3,9 +3,10 @@ id: TASK-679
 title: >-
   Developer-tooling traps: a stale PATH and an unregistered test file both fail
   silently
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-21 02:19'
+updated_date: '2026-08-22 18:48'
 labels:
   - tooling
   - tech-debt

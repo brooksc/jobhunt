@@ -1647,334 +1647,76 @@ public actor BackgroundStore {
         try modelContext.save()
     }
 
-    // MARK: - Referral outreach (TASK-630)
+    // MARK: - Application milestones (TASK-630/501)
 
-    /// The deterministic ids of the two timeline events a referral attempt can own. Deriving them from
-    /// the attempt id (rather than a random UUID) makes the milestone log idempotent — reverting a
-    /// status and advancing to it again can't re-count it — and lets `deleteReferralAttempt` take the
-    /// events with it (TASK-644 review).
-    private static func referralEventID(_ attemptID: String, _ milestone: String) -> String {
-        "referral-\(milestone)-\(attemptID)"
-    }
+    // Referrals, interviews and offers live in `MilestonePersistence` (TASK-686) — the rules pairing
+    // each record with its timeline event are subtle enough to be worth reading in one place, rather
+    // than interleaved with every other domain that writes through this store.
+    //
+    // These stay here as the entry points because the transaction does: the persistence functions run
+    // on this actor against this context, and the `save()` is this store's, so a milestone write is
+    // still one atomic unit with anything else in flight.
 
-    /// Record a new referral attempt or update an existing one (by `input.id`). Logs at most one
-    /// structured `referral` timeline event per milestone (AC #12) so the Dashboard counts each outreach
-    /// once (AC #17); the `not_pursuing` marker never emits one.
     @discardableResult
     public func recordReferralAttempt(_ input: ReferralAttemptInput) throws -> String {
-        func clean(_ value: String?) -> String? {
-            let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-            return (trimmed?.isEmpty ?? true) ? nil : trimmed
-        }
-        let isMarker = input.outcome == ReferralOutcome.notApplicable.rawValue
-        // A user-facing write against a job that's gone must surface, not silently persist an orphan
-        // attempt plus an unlinked timeline event (the TASK-578 `requireJob` convention).
-        let jid = input.jobID
-        guard let job = try modelContext.fetch(
-            FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid })
-        ).first else { throw BackgroundStoreError.notFound(input.jobID) }
-
-        /// Insert a milestone event unless it (or its pre-deterministic-id equivalent) already exists.
-        func logReferralEvent(milestone: String, note: String, occurredAt: Date) throws {
-            let eventID = Self.referralEventID(input.id ?? "", milestone)
-            let byID = try modelContext.fetch(FetchDescriptor<JobEvent>(predicate: #Predicate { $0.id == eventID }))
-            guard byID.isEmpty else { return }
-            // Attempts recorded before deterministic ids carry a random-id event; match those on their
-            // exact note text so an edit doesn't append a second copy.
-            let legacyNote = note
-            let legacy = try modelContext.fetch(
-                FetchDescriptor<JobEvent>(predicate: #Predicate { $0.note == legacyNote && $0.job?.id == jid })
-            )
-            guard legacy.isEmpty else { return }
-            let event = JobEvent(id: eventID, eventType: "referral", note: note, occurredAt: occurredAt)
-            event.job = job
-            modelContext.insert(event)
-        }
-        // "New" is decided by whether the row already exists, not by a nil id — so an editor that keeps
-        // a stable id and re-saves (e.g. after a transient failure, or a double Save) upserts one record
-        // instead of duplicating it (TASK-644 review #7).
-        var existing: ReferralAttempt?
-        if let id = input.id {
-            existing = try modelContext.fetch(
-                FetchDescriptor<ReferralAttempt>(predicate: #Predicate { $0.id == id })
-            ).first
-        }
-        let isNew = existing == nil
-        let attempt: ReferralAttempt
-        if let existing {
-            attempt = existing
-        } else {
-            attempt = ReferralAttempt(
-                id: input.id ?? UUID().uuidString,
-                jobID: input.jobID,
-                recipientName: input.recipientName,
-                outcome: input.outcome
-            )
-            modelContext.insert(attempt)
-        }
-        // Clamp the milestones into chronological order. The editor bounds its pickers, but the store is
-        // the layer any future MCP/server tool would hit, and an inverted timeline corrupts the follow-up
-        // staleness math and row sorting (TASK-644 review #1).
-        let requestedAt = input.requestedAt
-        let respondedAt = input.respondedAt.map { max($0, requestedAt) }
-        let reachedAt = respondedAt ?? requestedAt
-        attempt.jobID = input.jobID
-        attempt.recipientName = input.recipientName.trimmingCharacters(in: .whitespacesAndNewlines)
-        attempt.recipientIdentifier = clean(input.recipientIdentifier)
-        attempt.channel = clean(input.channel)
-        attempt.note = clean(input.note)
-        attempt.requestedAt = requestedAt
-        attempt.respondedAt = respondedAt
-        attempt.submittedAt = input.submittedAt.map { max($0, reachedAt) }
-        attempt.declinedAt = input.declinedAt.map { max($0, reachedAt) }
-        attempt.outcome = input.outcome
-        // Recording real outreach supersedes a job-level "N/A — no referral possible" marker; leaving it
-        // behind strands the toggle checked-and-disabled and silently drops the job from the outreach
-        // nudges once the real attempts are deleted (TASK-644 review #2).
-        if !isMarker { try clearReferralMarker(jobID: input.jobID) }
-
-        if !isMarker {
-            let isSubmitted = input.outcome == ReferralOutcome.submitted.rawValue
-            // One event per genuine milestone. A brand-new attempt recorded as *already* Submitted logs
-            // only the milestone — logging both "requested" and "submitted" counted a single outreach
-            // twice in Today's recap (TASK-644 review #3).
-            if isNew, !isSubmitted {
-                try logReferralEvent(
-                    milestone: "req", note: "Referral requested — \(attempt.recipientName)",
-                    occurredAt: attempt.requestedAt
-                )
-            }
-            if isSubmitted {
-                try logReferralEvent(
-                    milestone: "sub", note: "Referral submitted — \(attempt.recipientName)",
-                    occurredAt: attempt.submittedAt ?? Date()
-                )
-            }
-        }
+        let id = try MilestonePersistence.recordReferralAttempt(input, in: modelContext)
         try modelContext.save()
-        return attempt.id
+        return id
     }
 
-    /// Delete a referral attempt *and* the timeline events it owns — otherwise a mistaken outreach stays
-    /// in the job's Timeline and keeps counting toward the Referrals recap with no way to remove it
-    /// (TASK-644 review #4).
     public func deleteReferralAttempt(id: String) throws {
-        let attemptID = id
-        guard let existing = try modelContext.fetch(
-            FetchDescriptor<ReferralAttempt>(predicate: #Predicate { $0.id == attemptID })
-        ).first else { return }
-        let jid = existing.jobID
-        let notes = [
-            "Referral requested — \(existing.recipientName)",
-            "Referral submitted — \(existing.recipientName)"
-        ]
-        let ids = [Self.referralEventID(attemptID, "req"), Self.referralEventID(attemptID, "sub")]
-        let events = try modelContext.fetch(
-            FetchDescriptor<JobEvent>(predicate: #Predicate { $0.job?.id == jid })
-        )
-        for event in events where ids.contains(event.id) || (event.note.map { notes.contains($0) } ?? false) {
-            modelContext.delete(event)
-        }
-        modelContext.delete(existing)
+        guard try MilestonePersistence.deleteReferralAttempt(id: id, in: modelContext) else { return }
         try modelContext.save()
     }
 
-    /// Remove any job-level N/A markers for a job. Returns without saving — callers batch it into theirs.
-    private func clearReferralMarker(jobID: String) throws {
-        let jid = jobID
-        let marker = ReferralOutcome.notApplicable.rawValue
-        try modelContext.fetch(
-            FetchDescriptor<ReferralAttempt>(predicate: #Predicate { $0.jobID == jid && $0.outcome == marker })
-        ).forEach { modelContext.delete($0) }
-    }
-
-    /// Set (or clear) the recipient-less "N/A — no referral possible" marker for a job (AC #3, TASK-644).
-    /// Setting it is ignored when real outreach exists — the two states are mutually exclusive.
     public func setReferralNotApplicable(jobID: String, _ notApplicable: Bool) throws {
-        let jid = jobID
-        let marker = ReferralOutcome.notApplicable.rawValue
-        if notApplicable {
-            let all = try modelContext.fetch(
-                FetchDescriptor<ReferralAttempt>(predicate: #Predicate { $0.jobID == jid })
-            )
-            guard !all.contains(where: { $0.outcome != marker }) else { return } // real outreach wins
-            if !all.contains(where: { $0.outcome == marker }) {
-                modelContext.insert(ReferralAttempt(jobID: jid, recipientName: "", outcome: marker))
-            }
-        } else {
-            try clearReferralMarker(jobID: jid)
-        }
+        try MilestonePersistence.setReferralNotApplicable(jobID: jobID, notApplicable, in: modelContext)
         try modelContext.save()
     }
 
-    // MARK: - Interview & offer milestones (TASK-501)
-
-    /// Record or update an interview, logging one timeline event per interview so the Timeline shows the
-    /// round rather than a freeform note. Follows the referral conventions: the job must exist, the
-    /// event id is derived from the record so re-saving can't duplicate it, and delete takes it with it.
     @discardableResult
     public func recordInterview(_ input: InterviewInput) throws -> String {
-        let jid = input.jobID
-        guard let job = try modelContext.fetch(
-            FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid })
-        ).first else { throw BackgroundStoreError.notFound(input.jobID) }
-
-        let record: InterviewRecord
-        if let id = input.id, let existing = try modelContext.fetch(
-            FetchDescriptor<InterviewRecord>(predicate: #Predicate { $0.id == id })
-        ).first {
-            record = existing
-        } else {
-            record = InterviewRecord(id: input.id ?? UUID().uuidString, jobID: input.jobID)
-            modelContext.insert(record)
-        }
-        record.jobID = input.jobID
-        record.scheduledAt = input.scheduledAt
-        record.kind = input.kind
-        record.interviewer = Self.cleaned(input.interviewer)
-        record.location = Self.cleaned(input.location)
-        record.note = Self.cleaned(input.note)
-
-        let label = (InterviewKind(rawValue: input.kind) ?? .other).label
-        try upsertMilestoneEvent(
-            id: "interview-\(record.id)", eventType: "interview", job: job,
-            note: record.interviewer.map { "\(label) — \($0)" } ?? label,
-            occurredAt: record.scheduledAt
-        )
+        let id = try MilestonePersistence.recordInterview(input, in: modelContext)
         try modelContext.save()
-        return record.id
+        return id
     }
 
     public func deleteInterview(id: String) throws {
-        let rid = id
-        guard let existing = try modelContext.fetch(
-            FetchDescriptor<InterviewRecord>(predicate: #Predicate { $0.id == rid })
-        ).first else { return }
-        try deleteMilestoneEvent(id: "interview-\(rid)")
-        modelContext.delete(existing)
+        guard try MilestonePersistence.deleteInterview(id: id, in: modelContext) else { return }
         try modelContext.save()
     }
 
-    /// Record or update the job's offer (at most one per job — an existing offer is updated).
     @discardableResult
     public func recordOffer(_ input: OfferInput) throws -> String {
-        let jid = input.jobID
-        guard let job = try modelContext.fetch(
-            FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid })
-        ).first else { throw BackgroundStoreError.notFound(input.jobID) }
-
-        let existing = try modelContext.fetch(
-            FetchDescriptor<OfferRecord>(predicate: #Predicate { $0.jobID == jid })
-        ).first
-        let record: OfferRecord
-        if let existing {
-            record = existing
-        } else {
-            record = OfferRecord(id: input.id ?? UUID().uuidString, jobID: input.jobID)
-            modelContext.insert(record)
-        }
-        record.offeredAt = input.offeredAt
-        record.title = Self.cleaned(input.title)
-        record.baseSalary = input.baseSalary
-        record.additionalComp = Self.cleaned(input.additionalComp)
-        // A decision deadline before the offer date is nonsense — clamp rather than persist it.
-        record.decisionBy = input.decisionBy.map { max($0, input.offeredAt) }
-        record.note = Self.cleaned(input.note)
-
-        let summary = record.baseSalary.map { "Offer — \(record.title ?? "role"), \($0.formatted())" }
-            ?? "Offer — \(record.title ?? "role")"
-        try upsertMilestoneEvent(
-            id: "offer-\(record.id)", eventType: "offer", job: job, note: summary, occurredAt: record.offeredAt
-        )
+        let id = try MilestonePersistence.recordOffer(input, in: modelContext)
         try modelContext.save()
-        return record.id
+        return id
     }
 
     public func deleteOffer(id: String) throws {
-        let rid = id
-        guard let existing = try modelContext.fetch(
-            FetchDescriptor<OfferRecord>(predicate: #Predicate { $0.id == rid })
-        ).first else { return }
-        try deleteMilestoneEvent(id: "offer-\(rid)")
-        modelContext.delete(existing)
+        guard try MilestonePersistence.deleteOffer(id: id, in: modelContext) else { return }
         try modelContext.save()
-    }
-
-    private static func cleaned(_ value: String?) -> String? {
-        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return (trimmed?.isEmpty ?? true) ? nil : trimmed
-    }
-
-    /// Insert or update the single timeline event mirroring a milestone record, so editing the record
-    /// corrects the Timeline entry instead of appending a second one.
-    private func upsertMilestoneEvent(
-        id: String, eventType: String, job: Job, note: String, occurredAt: Date
-    ) throws {
-        let eid = id
-        if let event = try modelContext.fetch(
-            FetchDescriptor<JobEvent>(predicate: #Predicate { $0.id == eid })
-        ).first {
-            event.note = note
-            event.occurredAt = occurredAt
-            return
-        }
-        let event = JobEvent(id: id, eventType: eventType, note: note, occurredAt: occurredAt)
-        event.job = job
-        modelContext.insert(event)
-    }
-
-    private func deleteMilestoneEvent(id: String) throws {
-        let eid = id
-        try modelContext.fetch(FetchDescriptor<JobEvent>(predicate: #Predicate { $0.id == eid }))
-            .forEach { modelContext.delete($0) }
     }
 
     /// Delete every interview and offer belonging to a job — cascaded on job delete, since these are
     /// keyed by `jobID` with no relationship.
     public func deleteMilestones(jobID: String) throws {
-        let jid = jobID
-        let interviews = try modelContext.fetch(
-            FetchDescriptor<InterviewRecord>(predicate: #Predicate { $0.jobID == jid })
-        )
-        let offers = try modelContext.fetch(
-            FetchDescriptor<OfferRecord>(predicate: #Predicate { $0.jobID == jid })
-        )
-        guard !interviews.isEmpty || !offers.isEmpty else { return }
-        for interview in interviews {
-            try deleteMilestoneEvent(id: "interview-\(interview.id)")
-            modelContext.delete(interview)
-        }
-        for offer in offers {
-            try deleteMilestoneEvent(id: "offer-\(offer.id)")
-            modelContext.delete(offer)
-        }
+        guard try MilestonePersistence.deleteMilestones(jobID: jobID, in: modelContext) else { return }
         try modelContext.save()
     }
 
-    /// Delete every referral attempt (and N/A marker) belonging to a job — used when the job itself is
-    /// deleted, since `jobID` is a plain key with no cascading relationship.
+    /// Delete every referral attempt (and N/A marker) belonging to a job.
     public func deleteReferralAttempts(jobID: String) throws {
-        let jid = jobID
-        let attempts = try modelContext.fetch(
-            FetchDescriptor<ReferralAttempt>(predicate: #Predicate { $0.jobID == jid })
-        )
-        guard !attempts.isEmpty else { return }
-        attempts.forEach { modelContext.delete($0) }
+        guard try MilestonePersistence.deleteReferralAttempts(jobID: jobID, in: modelContext) else { return }
         try modelContext.save()
     }
 
-    /// Delete referral attempts whose job no longer exists. `ReferralAttempt` is keyed by `jobID` with no
-    /// SwiftData relationship, so deleting a job leaves its attempts (and N/A marker) behind (TASK-644
-    /// review). Returns the number removed.
+    /// Delete referral attempts whose job no longer exists. Returns the number removed.
     @discardableResult
     public func pruneOrphanReferralAttempts() throws -> Int {
-        let attempts = try modelContext.fetch(FetchDescriptor<ReferralAttempt>())
-        guard !attempts.isEmpty else { return 0 }
-        let liveIDs = try Set(modelContext.fetch(FetchDescriptor<Job>()).map(\.id))
-        let orphans = attempts.filter { !liveIDs.contains($0.jobID) }
-        orphans.forEach { modelContext.delete($0) }
-        if !orphans.isEmpty { try modelContext.save() }
-        return orphans.count
+        let removed = try MilestonePersistence.pruneOrphanReferralAttempts(in: modelContext)
+        if removed > 0 { try modelContext.save() }
+        return removed
     }
 
     public func upsertDataQualityReview(jobID: String, note: String) throws {

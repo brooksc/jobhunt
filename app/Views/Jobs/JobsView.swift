@@ -1489,31 +1489,19 @@ struct JobsView: View {
         let found = sweep.gone
         guard !task.isCancelled else { progress = nil; return } // user cancelled — leave everything untouched
 
-        // Only claim the scheduled check's work when this run actually covered it. A check over the
-        // Archived view says nothing about the Interested/Applied jobs the background sweep exists to
-        // watch, and stamping regardless would silence that sweep for the whole interval.
-        if AvailabilityChecker.coversScheduledSweep(checked: eligible, allJobs: allJobs) {
-            // Timestamp setting, never keychain-backed — cannot throw.
-            try? appServices.settings.set(
-                ISO8601DateFormatter().string(from: Date()),
-                forKey: SettingsKey.availabilityLastAutoCheckAt
+        // Every consequence of a sweep in one call (TASK-685): record what it concluded, hand its
+        // unfinished work to the drain, and reset the scheduled interval only if this run actually
+        // covered that sweep's jobs — a check over the Archived view proves nothing about them.
+        await appServices.applyAvailabilitySweep(
+            sweep,
+            covering: eligible.map(\.id),
+            didCoverScheduledSweep: AvailabilityChecker.coversScheduledSweep(
+                checked: eligible, allJobs: allJobs
             )
-        }
-        // Record what this run concluded about every job it reached, so the next run can be compared
-        // with it (TASK-674) — including the ones it couldn't verify.
-        // Awaited, not detached (TASK-681). A detached task outlives runtime shutdown, and
-        // RestoreCoordinator quiesces the runtime before swapping the store's SQLite/WAL/SHM files —
-        // so a stray write could land mid-swap, against the single-writer boundary the restore path
-        // exists to protect. This function is already async and already awaited the sweep.
-        try? await appServices.backgroundStore.recordAvailabilityOutcomes(sweep.outcomes)
-
+        )
         unverifiedJobs = sweep.unverified
         lastCheckedCount = sweep.checkedCount
         lastPlannedCount = planned.checking
-        // Hand what this run couldn't answer to the background drain, which keeps asking gently until
-        // there's nothing left and then reports once. Otherwise the deferred LinkedIn postings and the
-        // throttled boards would need the user to re-run the check by hand, repeatedly.
-        appServices.availabilityBacklog.absorb(sweep)
         if found.isEmpty {
             // Show the result in the dialog itself (no transient toast) — the user dismisses it.
             // A blocked or deferred check proves nothing, so don't report those jobs as available.

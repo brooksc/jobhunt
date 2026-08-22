@@ -447,14 +447,17 @@ struct JobsSettingsTab: View {
         availabilityCheckMessage = "Checking \(eligible.count) jobs…"
         let sweep = await AvailabilityChecker.findGoneJobsRotating(eligible, settings: settings)
 
-        let now = ISO8601DateFormatter().string(from: Date())
-        try? settings.set(now, forKey: SettingsKey.availabilityLastAutoCheckAt)
+        // TASK-685: one call for every consequence. This path checked Interested/Applied — exactly the
+        // scheduled sweep's population — so it does reset that interval. It previously never seeded
+        // the retry backlog at all, so a deferral discovered here was simply lost.
+        await appServices.applyAvailabilitySweep(
+            sweep, covering: eligible.map(\.id), didCoverScheduledSweep: true
+        )
 
         // Awaited, not detached (TASK-681). A detached task outlives runtime shutdown, and
         // RestoreCoordinator quiesces the runtime before swapping the store's SQLite/WAL/SHM files —
         // so a stray write could land mid-swap, against the single-writer boundary the restore path
         // exists to protect. This function is already async and already awaited the sweep.
-        try? await appServices.backgroundStore.recordAvailabilityOutcomes(sweep.outcomes)
 
         unverifiedJobs = sweep.unverified
         lastCheckedCount = sweep.checkedCount

@@ -173,6 +173,43 @@ final class AppServices {
         }
     }
 
+    /// Everything that must happen after ANY availability sweep, in one place (TASK-685).
+    ///
+    /// Four entry points ran sweeps — the Jobs list, Settings, the scheduled loop and the background
+    /// drain — and each applied a different subset of the consequences. The scheduled path recorded
+    /// no history and never handed its deferred work to the drain (TASK-674.02); Settings still
+    /// didn't seed the backlog at all, so a deferral discovered there was simply lost. That is not a
+    /// bug four times over, it is one missing abstraction four times over: a sweep's side effects are
+    /// a property of sweeping, not of which button started it.
+    ///
+    /// Presentation stays with the caller. This does the recording, the retry bookkeeping and the
+    /// scheduling stamp, and nothing else.
+    ///
+    /// - Parameters:
+    ///   - covering: the jobs handed to the sweep. Only these may leave the retry backlog — a batched
+    ///     drain checks twelve of them and must not discard the rest (TASK-673.01).
+    ///   - didCoverScheduledSweep: whether this run also did the scheduled sweep's job, and may
+    ///     therefore reset its interval. A run over the Archived view proves nothing about the
+    ///     Interested/Applied jobs that sweep watches.
+    func applyAvailabilitySweep(
+        _ sweep: AvailabilitySweep,
+        covering: [String],
+        didCoverScheduledSweep: Bool
+    ) async {
+        // What the run concluded about every job it reached, including the ones it couldn't verify.
+        try? await backgroundStore.recordAvailabilityOutcomes(sweep.outcomes)
+        // What it couldn't finish, so the drain can.
+        availabilityBacklog.absorb(sweep, covering: covering)
+
+        if didCoverScheduledSweep {
+            // Timestamp setting, never keychain-backed — cannot throw.
+            try? settings.set(
+                ISO8601DateFormatter().string(from: Date()),
+                forKey: SettingsKey.availabilityLastAutoCheckAt
+            )
+        }
+    }
+
     /// Finishes the availability work a sweep deliberately left unfinished, then says so once.
     ///
     /// LinkedIn is checked twelve per run because it throttles bursts, and a throttled or unreachable
@@ -207,12 +244,9 @@ final class AppServices {
                 let sweep = await AvailabilityChecker.findGoneJobsRotating(
                     jobs, settings: settings, restrictToStatuses: nil
                 )
-                // `covering: batch` is load-bearing: this pass was given twelve of the pending
-                // jobs, so only those twelve may leave the backlog (TASK-673.01).
-                availabilityBacklog.absorb(sweep, covering: batch)
-                // The drain reaches jobs the foreground run couldn't, so its conclusions are the
-                // freshest ones there are — record them like any other check (TASK-674).
-                try? await drainStore.recordAvailabilityOutcomes(sweep.outcomes)
+                // The drain never resets the scheduled sweep's interval: it works the retry
+                // backlog, which says nothing about the Interested/Applied jobs that sweep watches.
+                await applyAvailabilitySweep(sweep, covering: batch, didCoverScheduledSweep: false)
 
                 // Report only when the work is finished and there is something to say. A drain that
                 // found nothing stays silent; a partial drain waits until it can give a whole answer.
@@ -374,13 +408,22 @@ final class AppServices {
                             }
                         }
                         if let candidates {
-                            // The scheduled sweep is the path most runs take, and it recorded
-                            // nothing: no per-job history, and its deferred/transient failures were
-                            // never handed to the drain (TASK-674.02). So the automatic check left
-                            // history stale and quietly never finished what it started.
-                            try? await store.recordAvailabilityOutcomes(candidates.outcomes)
+                            // The scheduled sweep is the path most runs take, and it applied none of
+                            // the consequences: no per-job history, and its deferred work never
+                            // reached the drain (TASK-674.02).
+                            //
+                            // didCoverScheduledSweep: false because maybeFindStaleGoneJobs already
+                            // stamped the interval through its own onChecked callback — stamping here
+                            // too would be harmless but duplicated, and the duplicate is what future
+                            // readers would have to reason about.
                             await MainActor.run { [weak self] in
-                                self?.availabilityBacklog.absorb(candidates)
+                                Task { @MainActor in
+                                    await self?.applyAvailabilitySweep(
+                                        candidates,
+                                        covering: candidates.outcomes.map(\.jobID),
+                                        didCoverScheduledSweep: false
+                                    )
+                                }
                             }
                             if !candidates.gone.isEmpty {
                                 await MainActor.run {

@@ -1,10 +1,10 @@
 ---
 id: TASK-674.01
 title: Availability checks persist indeterminate responses as confirmed alive
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-21 20:26'
-updated_date: '2026-08-21 20:42'
+updated_date: '2026-08-22 03:37'
 labels:
   - bug
   - availability

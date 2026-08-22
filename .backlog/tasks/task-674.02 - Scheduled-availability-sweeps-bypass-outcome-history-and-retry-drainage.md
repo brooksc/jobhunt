@@ -1,9 +1,10 @@
 ---
 id: TASK-674.02
 title: Scheduled availability sweeps bypass outcome history and retry drainage
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-21 20:26'
+updated_date: '2026-08-22 03:37'
 labels:
   - bug
   - availability

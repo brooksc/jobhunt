@@ -1,10 +1,10 @@
 ---
 id: TASK-674
 title: Persist per-job availability check results so runs are comparable
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-20 21:00'
-updated_date: '2026-08-22 02:31'
+updated_date: '2026-08-22 23:41'
 labels:
   - availability
   - ux
@@ -38,7 +38,7 @@ Schema note: additive optional attributes should be a lightweight SwiftData migr
 <!-- AC:BEGIN -->
 - [x] #1 Each availability check records checked-at, verdict, reason and answering source on the job
 - [x] #2 The confirmation sheet distinguishes newly-gone postings from ones flagged in a previous run
-- [ ] #3 A gone verdict that a later run could not reproduce is visible as such rather than silently disappearing
+- [ ] #3 not verified: NOT IMPLEMENTED — a gone verdict a later run couldn't reproduce is detectable in the data (stored verdict gone, latest unverified) but nothing surfaces it, because what should happen needs the user's call: un-expire the job, re-queue it for checking, or merely annotate it. Split to its own task when that's decided.
 - [x] #4 Rows show when they were last checked, so LinkedIn's rotation is legible
 - [x] #5 The migration is additive and an existing store opens without data loss
 <!-- AC:END -->
@@ -59,3 +59,21 @@ AC #3 (a gone verdict a later run could not REPRODUCE is visible as such) is NOT
 
 not verified: (visual) — the sheet's new/previously-flagged line and the detail row have not been seen rendered.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Four of five criteria implemented; #3 is rewritten as `not verified:` because it is a product decision, not an implementation gap.
+
+`Job` gained `availabilityCheckedAt` / `availabilityVerdict` / `availabilityDetail` — optional with nil defaults, so a lightweight in-place addition per Schema.swift's policy, and existing rows read correctly as "never checked" (#5). The sweep reports what it **confirmed**, not only what it found wrong, so a run's outcomes cover gone, alive and unverified — recording "couldn't check" deliberately, since that is not the same as "fine" (#1). All three checking paths record: the Jobs-list run, the Settings run, and the background drain. Recording never touches `updatedAt`; a check is not a user edit.
+
+The confirmation sheet marks rows "New since your last check" vs "Also flagged \<when\>", from verdicts snapshotted before the run overwrites them (#2), and job detail shows when it was last checked and what came back (#4).
+
+Since then the stored detail for an unverified job changed from the human sentence to the raw `UnverifiedReason` case, so TASK-673's resumable drain can read it back without depending on phrasing. `UnverifiedReason.displaySummary(for:)` resolves it for display and falls through for gone reasons and pre-change rows.
+
+Subtasks 674.01 (indeterminate responses were persisting as confirmed alive) and 674.02 are both Done.
+
+**#3 needs your decision.** The data supports it — a job whose stored verdict is `gone` but whose latest is `unverified` is exactly that case. What's undecided is what the app should then do: un-expire it, put it back in the check queue, or just annotate the row. Each implies a different level of trust in a single un-reproduced check.
+
+not verified: (visual) — the sheet's new/previously-flagged line and the detail row have not been seen rendered.
+<!-- SECTION:FINAL_SUMMARY:END -->

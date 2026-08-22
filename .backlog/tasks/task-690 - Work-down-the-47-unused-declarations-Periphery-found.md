@@ -4,8 +4,13 @@ title: Work down the 47 unused declarations Periphery found
 status: To Do
 assignee: []
 created_date: '2026-08-22 22:42'
-labels: []
+updated_date: '2026-08-22 22:42'
+labels:
+  - tech-debt
+  - static-analysis
 dependencies: []
+priority: low
+type: chore
 ordinal: 64000
 ---
 
@@ -32,3 +37,11 @@ Needing judgement rather than deletion:
 
 Lower `.periphery-baseline` with each pass — that number is what stops the debt growing back. Anything Periphery is wrong about should get an explicit retain rule in `.periphery.yml` with a reason, rather than a raised baseline.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 Every clearly-dead declaration is deleted, along with anything its removal orphans
+- [ ] #2 The reported-unused test method is explained: either it genuinely doesn't run (and is fixed) or Periphery is retaining it wrongly (and the config says so)
+- [ ] #3 Anything Periphery is wrong about carries an explicit retain rule with a reason, not a raised baseline
+- [ ] #4 .periphery-baseline is lowered to the new count and the scan passes
+<!-- AC:END -->

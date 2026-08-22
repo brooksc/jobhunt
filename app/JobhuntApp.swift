@@ -292,9 +292,11 @@ struct JobhuntApp: App {
                             integration.stop()
                             await services.shutdown()
                             // Remove the transient MCP token now that the server (which accepts it) is
-                            // stopped — only if this launch generated one (TASK-530).
+                            // stopped — only if this launch generated one (TASK-530) AND the file is
+                            // still ours (TASK-688). A newer instance may have replaced it, and
+                            // deleting that leaves a live app serving a token nothing can read.
                             if services.mcpTokenWasGenerated {
-                                MCPTokenManager.delete()
+                                MCPTokenManager.deleteIfOurs(services.mcpToken)
                             }
                         }
                     }

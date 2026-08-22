@@ -27,6 +27,10 @@ final class AppServices {
     let server: JobhuntServer
     let backgroundStore: BackgroundStore
     let toastStore = ToastStore()
+    /// This launch's MCP token, so shutdown can delete the file only if it is still ours — a second
+    /// instance may have overwritten it, and deleting that one leaves a LIVE app serving a token no
+    /// client can read (TASK-688). Empty when no token was generated.
+    let mcpToken: String
     /// True when this launch generated and wrote an MCP token file, so normal shutdown should delete
     /// it (TASK-530). False when no token was generated (fixture/MAS modes, or a failed write).
     let mcpTokenWasGenerated: Bool
@@ -96,6 +100,7 @@ final class AppServices {
         server = localServer
         backgroundStore = store
         // A non-empty token means generateAndWrite() succeeded this launch and a file exists on disk.
+        self.mcpToken = mcpToken
         mcpTokenWasGenerated = !mcpToken.isEmpty
     }
 

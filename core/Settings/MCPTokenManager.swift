@@ -63,4 +63,21 @@ public enum MCPTokenManager {
     public static func delete(at url: URL) {
         try? FileManager.default.removeItem(at: url)
     }
+
+    /// Remove the token file only if it still holds `token` — i.e. this launch's own token.
+    ///
+    /// Shutdown deleted unconditionally, which is wrong whenever two instances overlap: a second
+    /// launch overwrites the file with its own token, the first instance then quits and deletes it,
+    /// and the LIVE instance is left serving a token no client can read. Observed exactly that way —
+    /// two Jobhunt processes during a rebuild, then a running app with no token file and an MCP
+    /// bridge that answered nothing. A stale token is harmless; a deleted live one silently breaks
+    /// every third-party AI client (TASK-688).
+    ///
+    /// - Returns: true if the file was ours and was removed.
+    @discardableResult
+    public static func deleteIfOurs(_ token: String, at url: URL = tokenURL) -> Bool {
+        guard !token.isEmpty, read(at: url) == token else { return false }
+        delete(at: url)
+        return true
+    }
 }

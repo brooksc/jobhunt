@@ -73,11 +73,14 @@ struct DebugTab: View {
                 okText: "Running · port \(serverPort)",
                 badText: appServices.serverError ?? "Stopped"
             )
+            // Whether MCP actually WORKS right now, not merely whether a file exists (TASK-688).
+            // File-existence alone reports "Present" for a stale token left by another instance —
+            // precisely the case where the bridge is broken — and "Missing" says nothing about why.
             statusRow(
-                "MCP token",
-                ok: FileManager.default.fileExists(atPath: MCPTokenManager.tokenURL.path),
-                okText: "Present",
-                badText: "Missing"
+                "MCP bridge",
+                ok: mcpAvailable,
+                okText: "Available",
+                badText: mcpUnavailableReason
             )
             LabeledContent("Queue") {
                 mono("\(queued) queued · \(running) running · \(failed) failed" +
@@ -108,6 +111,24 @@ struct DebugTab: View {
                 .font(.caption)
                 .foregroundStyle(color)
         }
+    }
+
+    /// True when a third-party AI client could actually call the bridge: this launch generated a
+    /// token, and the file on disk is still that token.
+    private var mcpAvailable: Bool {
+        appServices.mcpTokenWasGenerated && MCPTokenManager.read() == appServices.mcpToken
+    }
+
+    /// Says which way it is broken, because the two need different responses: a token that was never
+    /// generated means MCP is off for this launch, while one replaced by another instance means a
+    /// second copy of the app is running.
+    private var mcpUnavailableReason: String {
+        guard appServices.mcpTokenWasGenerated else {
+            return "Not started this launch — MCP routes are disabled"
+        }
+        return MCPTokenManager.read() == nil
+            ? "Token file missing — restart the app to regenerate it"
+            : "Token replaced by another running copy of Jobhunt"
     }
 
     private func statusRow(_ label: String, ok: Bool, okText: String, badText: String) -> some View {

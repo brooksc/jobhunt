@@ -505,6 +505,13 @@ struct ExpiredConfirmationSheet: View {
     /// view, which it never is.
     let checkedCount: Int
     let plannedCount: Int
+    /// Jobs an EARLIER check had already flagged gone, and when each job was last checked (TASK-674).
+    ///
+    /// Without this the list answers "what is gone" but not "what is new", which is the question a
+    /// user re-running a check actually has — and the reason two runs over an unchanged archive
+    /// reporting different counts felt like a bug rather than a rotation.
+    var previouslyFlagged: Set<String> = []
+    var lastCheckedByJob: [String: Date] = [:]
     let onConfirm: ([GoneJobResult]) -> Void
     let onDismiss: () -> Void
 
@@ -516,6 +523,8 @@ struct ExpiredConfirmationSheet: View {
         unverifiedJobs: [UnverifiedJobResult] = [],
         checkedCount: Int = 0,
         plannedCount: Int = 0,
+        previouslyFlagged: Set<String> = [],
+        lastCheckedByJob: [String: Date] = [:],
         onConfirm: @escaping ([GoneJobResult]) -> Void,
         onDismiss: @escaping () -> Void
     ) {
@@ -523,6 +532,8 @@ struct ExpiredConfirmationSheet: View {
         self.unverifiedJobs = unverifiedJobs
         self.checkedCount = checkedCount
         self.plannedCount = plannedCount
+        self.previouslyFlagged = previouslyFlagged
+        self.lastCheckedByJob = lastCheckedByJob
         self.onConfirm = onConfirm
         self.onDismiss = onDismiss
         _selected = State(initialValue: Set(goneJobs.map(\.jobID)))
@@ -647,6 +658,12 @@ struct ExpiredConfirmationSheet: View {
                             Text(friendlyReason(job.reason))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                            // "Is this new?" is the question a re-run actually has (TASK-674).
+                            Text(historyNote(job))
+                                .font(.caption2)
+                                .foregroundStyle(
+                                    previouslyFlagged.contains(job.jobID) ? Color.secondary : Color.blue
+                                )
                             Link(job.url.absoluteString, destination: job.url)
                                 .font(.caption2)
                                 .foregroundStyle(.blue)
@@ -711,6 +728,15 @@ struct ExpiredConfirmationSheet: View {
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
+    }
+
+    /// Whether this posting is a new finding or one an earlier check already flagged.
+    private func historyNote(_ job: GoneJobResult) -> String {
+        guard previouslyFlagged.contains(job.jobID) else { return "New since your last check" }
+        guard let checked = lastCheckedByJob[job.jobID] else { return "Also flagged by an earlier check" }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return "Also flagged \(formatter.localizedString(for: checked, relativeTo: Date()))"
     }
 
     private func jobLabel(_ job: GoneJobResult) -> String {

@@ -2664,6 +2664,19 @@ struct RawTabView: View {
     let job: Job
     var onClose: () -> Void = {}
 
+    /// The last availability check, in one line: when, and what it concluded.
+    ///
+    /// "Couldn't be checked" is stated as its own outcome rather than folded into silence — a posting
+    /// that has been unreachable for weeks looks identical to one nobody has got to yet, and the two
+    /// call for different responses.
+    private var availabilityCheckSummary: String {
+        guard let checkedAt = job.availabilityCheckedAt else { return "Not checked yet" }
+        let when = checkedAt.formatted(date: .abbreviated, time: .shortened)
+        let verdict = AvailabilityVerdict(rawValue: job.availabilityVerdict ?? "")?.label ?? "Checked"
+        guard let detail = job.availabilityDetail, !detail.isEmpty else { return "\(verdict) · \(when)" }
+        return "\(verdict) · \(when) — \(detail)"
+    }
+
     @Environment(\.jobService) private var jobService
 
     @State private var showDeleteConfirm = false
@@ -2775,6 +2788,11 @@ struct RawTabView: View {
                             rawRow("Extracted", value: extractedAt.formatted(date: .abbreviated, time: .shortened))
                             Divider()
                         }
+                        // When the posting was last checked for removal, and what came back
+                        // (TASK-674). Makes LinkedIn's rotation legible: a posting the sweep hasn't
+                        // reached yet reads as "not checked yet" rather than looking overlooked.
+                        rawRow("Availability", value: availabilityCheckSummary)
+                        Divider()
                         hashRow("Content hash", value: capture.rawHash)
                         if let cleanedHash = capture.cleanedHash {
                             Divider()

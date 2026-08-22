@@ -57,6 +57,10 @@ struct JobsView: View {
     /// a subset OF rather than presenting itself as a verdict on the whole view.
     @State private var lastCheckedCount = 0
     @State private var lastPlannedCount = 0
+    /// What we knew BEFORE this run overwrote it — captured up front, because the run records its own
+    /// verdicts and would otherwise make every row look previously-flagged (TASK-674).
+    @State private var previouslyFlagged: Set<String> = []
+    @State private var lastCheckedByJob: [String: Date] = [:]
     @State private var isCheckingAvailability = false
     @State private var isScanningDuplicates = false
     /// Progress for a running long task (availability check / duplicate scan), shown as a modal dialog
@@ -133,6 +137,8 @@ struct JobsView: View {
                     unverifiedJobs: unverifiedJobs,
                     checkedCount: lastCheckedCount,
                     plannedCount: lastPlannedCount,
+                    previouslyFlagged: previouslyFlagged,
+                    lastCheckedByJob: lastCheckedByJob,
                     onConfirm: { markExpired($0) },
                     onDismiss: { showingExpiredConfirmation = false }
                 )
@@ -1446,6 +1452,18 @@ struct JobsView: View {
         }
         isCheckingAvailability = true
         defer { isCheckingAvailability = false }
+
+        // Snapshot the PRIOR verdicts before the run writes its own, so the sheet can say which
+        // findings are new (TASK-674).
+        previouslyFlagged = Set(
+            allJobs
+                .filter { $0.availabilityVerdict == AvailabilityVerdict.gone.rawValue }
+                .map(\.id)
+        )
+        lastCheckedByJob = Dictionary(
+            allJobs.compactMap { job in job.availabilityCheckedAt.map { (job.id, $0) } },
+            uniquingKeysWith: { _, latest in latest }
+        )
 
         // Same plan the menu label stated and the run will follow — so the dialog opens on the number
         // the user just clicked, rather than correcting itself on the first tick.

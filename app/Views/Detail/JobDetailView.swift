@@ -2674,7 +2674,7 @@ struct RawTabView: View {
         let when = checkedAt.formatted(date: .abbreviated, time: .shortened)
         let verdict = AvailabilityVerdict(rawValue: job.availabilityVerdict ?? "")?.label ?? "Checked"
         guard let detail = job.availabilityDetail, !detail.isEmpty else { return "\(verdict) · \(when)" }
-        return "\(verdict) · \(when) — \(detail)"
+        return "\(verdict) · \(when) — \(UnverifiedReason.displaySummary(for: detail))"
     }
 
     @Environment(\.jobService) private var jobService

@@ -223,6 +223,10 @@ final class AppServices {
     private func availabilityDrainTask() -> Task<Void, Never> {
         let drainStore = backgroundStore
         return Task { @MainActor [weak self] in
+            // When the store was last asked what's still owed an answer. A drain that empties is
+            // finished, not restarted: without this the loop would re-seed the same permanently
+            // rate-limited postings every five minutes and never stop asking (TASK-673 #5).
+            var lastSeededAt: Date?
             while !Task.isCancelled {
                 // Longer than the checker's own pacing: this is the patient pass, and the postings it
                 // re-asks about are precisely the ones whose host objected to being asked quickly.
@@ -230,6 +234,17 @@ final class AppServices {
                 guard !Task.isCancelled, let self else { return }
                 guard settings.bool(forKey: SettingsKey.availabilityAutoCheckEnabled) else { continue }
                 guard NSApplication.shared.isActive else { continue }
+
+                // Pick up where the last session left off. A drain over sixty deferred postings runs
+                // for hours; quitting used to throw away everything it hadn't reached, which is the
+                // opposite of catching every expiry. Re-seeded on a staleness interval afterwards, so
+                // postings that stay unanswerable are re-asked daily rather than every five minutes.
+                let seedIsStale = lastSeededAt.map { Date().timeIntervalSince($0) > 24 * 3600 } ?? true
+                if availabilityBacklog.isDrained, seedIsStale,
+                   let owed = try? await drainStore.jobsAwaitingAvailabilityAnswer() {
+                    lastSeededAt = Date()
+                    availabilityBacklog.seed(with: owed)
+                }
                 guard !availabilityBacklog.isDrained else { continue }
 
                 let batch = availabilityBacklog.nextBatch(limit: AvailabilityBacklog.batchSize)

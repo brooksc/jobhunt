@@ -164,4 +164,23 @@ final class AvailabilityBacklogTests: XCTestCase {
         backlog.clearFindings()
         XCTAssertFalse(backlog.hasFindings)
     }
+
+    /// Seeding is what makes a drain survive a relaunch: the store's own unverified verdicts are the
+    /// pending set, so an interrupted drain resumes instead of discarding hours of remaining work.
+    func testSeedingAdoptsJobsTheStoreSaysAreStillOwedAnAnswer() {
+        var backlog = AvailabilityBacklog()
+        backlog.seed(with: ["a", "b", "c"])
+        XCTAssertEqual(backlog.pendingJobIDs, ["a", "b", "c"])
+        XCTAssertFalse(backlog.isDrained)
+    }
+
+    /// A seed arriving mid-drain must not reorder or double the work already in flight.
+    func testSeedingIsAdditiveAndDoesNotDuplicate() {
+        var backlog = AvailabilityBacklog()
+        backlog.absorb(AvailabilitySweep(
+            gone: [], unverified: [unverified("a", .notCheckedThisRun), unverified("b", .rateLimited)]
+        ))
+        backlog.seed(with: ["b", "c"])
+        XCTAssertEqual(backlog.pendingJobIDs, ["a", "b", "c"])
+    }
 }

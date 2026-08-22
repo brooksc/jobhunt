@@ -12,10 +12,11 @@ import Foundation
 /// and when there is nothing left to ask the user is told once, with everything that turned out to
 /// be gone.
 ///
-/// **Session-scoped.** Nothing here is persisted: the app records no per-job check history at all
-/// (TASK-674), so a relaunch starts over. That's honest rather than ideal — a drain that survived
-/// relaunch would need to know which jobs are still owed an answer, which is exactly what isn't
-/// stored yet.
+/// **Survives a relaunch, indirectly.** The queue itself is in memory, but it doesn't need to be
+/// written: a job persisted as `.unverified` for a retryable reason IS a job still owed an answer, so
+/// `seed(with:)` rebuilds the pending set from the store's own verdicts (TASK-674 supplied them).
+/// Findings don't survive — a drain interrupted halfway has nothing whole to report, and the postings
+/// it hadn't reached are exactly what the next drain re-asks about.
 public struct AvailabilityBacklog: Sendable {
     /// Jobs still owed an answer, in the order they were deferred.
     public private(set) var pendingJobIDs: [String] = []
@@ -80,6 +81,22 @@ public struct AvailabilityBacklog: Sendable {
         let known = Set(next)
         next.append(contentsOf: stillPending.filter { !known.contains($0) })
         pendingJobIDs = next
+    }
+
+    /// Adopt jobs the store says are still owed an answer, without disturbing what's already queued.
+    ///
+    /// A drain over sixty deferred postings takes hours at twelve per five minutes, and quitting in
+    /// the middle used to discard every one of them — the user's actual complaint was wanting to catch
+    /// *all* the expirations, not most of them. Seeding from the persisted verdicts resumes exactly
+    /// where the last session stopped.
+    ///
+    /// Additive and de-duplicating: anything already pending keeps its place in the queue, so a seed
+    /// arriving mid-drain can't reorder or double the work in flight.
+    public mutating func seed(with jobIDs: [String]) {
+        var known = Set(pendingJobIDs)
+        for id in jobIDs where known.insert(id).inserted {
+            pendingJobIDs.append(id)
+        }
     }
 
     /// The next slice to check. Batches are small on purpose: the point is to be gentler than a sweep,

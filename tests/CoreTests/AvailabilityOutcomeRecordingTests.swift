@@ -108,4 +108,75 @@ final class AvailabilityOutcomeRecordingTests: XCTestCase {
         XCTAssertNil(fetched.availabilityCheckedAt)
         XCTAssertNil(fetched.availabilityVerdict)
     }
+
+    // MARK: - Resuming a drain after relaunch (TASK-673)
+
+    /// The stored detail for an unverified job is the raw case, so a resumed drain can tell
+    /// "LinkedIn hasn't got to it yet" from "the page can't be read" without parsing a sentence that
+    /// could be reworded at any time.
+    func testAnUnverifiedOutcomeStoresTheReasonItself() {
+        let sweep = AvailabilitySweep(gone: [], unverified: [unverified("a", .notCheckedThisRun)])
+        XCTAssertEqual(sweep.outcomes.first?.detail, UnverifiedReason.notCheckedThisRun.rawValue)
+        XCTAssertEqual(UnverifiedReason.stored(sweep.outcomes.first?.detail), .notCheckedThisRun)
+        XCTAssertEqual(
+            UnverifiedReason.displaySummary(for: "notCheckedThisRun"), "not due for checking this run",
+            "the UI still shows the sentence"
+        )
+    }
+
+    /// A gone reason is free text, and rows written before the change hold the sentence — both must
+    /// display as written rather than being blanked by a failed lookup.
+    func testAnUnrecognisedDetailDisplaysAsWritten() {
+        XCTAssertEqual(
+            UnverifiedReason.displaySummary(for: "greenhouse posting gh:1 no longer listed"),
+            "greenhouse posting gh:1 no longer listed"
+        )
+        XCTAssertNil(UnverifiedReason.stored("page can't be read reliably"))
+    }
+
+    /// The store already knows what a drain still owes an answer for — this is what lets the drain
+    /// resume instead of discarding hours of remaining work when the app quits.
+    func testTheStoreCanListJobsStillOwedAnAnswer() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        let deferred = Job(jobNumber: 1, title: "Deferred")
+        let blocked = Job(jobNumber: 2, title: "Blocked")
+        let answered = Job(jobNumber: 3, title: "Answered")
+        let never = Job(jobNumber: 4, title: "Never checked")
+        for job in [deferred, blocked, answered, never] {
+            try await store.insert(job)
+        }
+
+        try await store.recordAvailabilityOutcomes([
+            AvailabilityOutcome(jobID: deferred.id, verdict: .unverified, detail: "notCheckedThisRun"),
+            AvailabilityOutcome(jobID: blocked.id, verdict: .unverified, detail: "botChallenge"),
+            AvailabilityOutcome(jobID: answered.id, verdict: .alive, detail: nil)
+        ])
+
+        let owed = try await store.jobsAwaitingAvailabilityAnswer()
+        XCTAssertEqual(owed, [deferred.id], "a bot challenge answers the same way in five minutes")
+    }
+
+    /// Oldest first, so a resumed drain works on what has waited longest rather than re-asking about
+    /// postings a run just deferred.
+    func testJobsOwedAnAnswerComeBackOldestFirst() async throws {
+        let container = try ModelContainerFactory.inMemory()
+        let store = BackgroundStore(modelContainer: container)
+        let recent = Job(jobNumber: 1, title: "Recent")
+        let old = Job(jobNumber: 2, title: "Old")
+        try await store.insert(recent)
+        try await store.insert(old)
+
+        try await store.recordAvailabilityOutcomes(
+            [AvailabilityOutcome(jobID: old.id, verdict: .unverified, detail: "rateLimited")],
+            checkedAt: Date(timeIntervalSince1970: 1_000_000)
+        )
+        try await store.recordAvailabilityOutcomes(
+            [AvailabilityOutcome(jobID: recent.id, verdict: .unverified, detail: "rateLimited")],
+            checkedAt: Date(timeIntervalSince1970: 2_000_000)
+        )
+
+        let owed: [String] = try await store.jobsAwaitingAvailabilityAnswer()
+        XCTAssertEqual(owed, [old.id, recent.id])
+    }
 }

@@ -1493,6 +1493,30 @@ public actor BackgroundStore {
         return written
     }
 
+    /// Jobs whose last check couldn't answer, and could answer if asked again (TASK-673).
+    ///
+    /// What makes a resumed drain possible: the backlog itself is in memory, so quitting mid-drain
+    /// used to throw away everything still owed an answer. The store already knows — `.unverified`
+    /// with a retryable reason IS the pending set — it simply was never read back.
+    ///
+    /// Ordered oldest-checked first, so a resumed drain works on what has been waiting longest rather
+    /// than re-asking about postings a run just deferred.
+    public func jobsAwaitingAvailabilityAnswer(limit: Int = 500) throws -> [String] {
+        // Hoisted: #Predicate can't reach through an enum case.
+        let unverified = AvailabilityVerdict.unverified.rawValue
+        var descriptor = FetchDescriptor<Job>(
+            predicate: #Predicate { $0.availabilityVerdict == unverified },
+            sortBy: [SortDescriptor(\.availabilityCheckedAt, order: .forward)]
+        )
+        descriptor.fetchLimit = limit
+        return try modelContext.fetch(descriptor)
+            .filter {
+                guard let reason = UnverifiedReason.stored($0.availabilityDetail) else { return false }
+                return AvailabilityBacklog.retryableReasons.contains(reason)
+            }
+            .map(\.id)
+    }
+
     /// Sites whose next review date has passed (TASK-503).
     ///
     /// Excluded sites are skipped: the user has said they're done with them, and a reminder about a

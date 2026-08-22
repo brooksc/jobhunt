@@ -81,6 +81,22 @@ public enum UnverifiedReason: String, Sendable, CaseIterable {
         case .noURL: "no URL to check"
         }
     }
+
+    /// Reads back what `AvailabilitySweep.outcomes` persisted for an unverified job.
+    ///
+    /// The stored detail is the raw case, not the sentence, so a drain that resumes after a relaunch
+    /// can tell "LinkedIn hasn't got to it yet" from "the page can't be read" — a decision that must
+    /// not hinge on user-facing phrasing that could be reworded at any time. Rows written before that
+    /// change hold the sentence itself, hence the nil.
+    public static func stored(_ detail: String?) -> UnverifiedReason? {
+        detail.flatMap { UnverifiedReason(rawValue: $0) }
+    }
+
+    /// What to show for a stored detail: the sentence for a known case, otherwise the string as
+    /// written — which covers both a gone reason (free text) and a row from before the change.
+    public static func displaySummary(for detail: String) -> String {
+        UnverifiedReason(rawValue: detail)?.summary ?? detail
+    }
 }
 
 /// A job whose availability the sweep could not determine either way.
@@ -148,8 +164,11 @@ public struct AvailabilitySweep: Sendable {
     public var outcomes: [AvailabilityOutcome] {
         gone.map { AvailabilityOutcome(jobID: $0.jobID, verdict: .gone, detail: $0.reason) }
             + alive.map { AvailabilityOutcome(jobID: $0, verdict: .alive, detail: nil) }
+            // The raw case, not its sentence: this is the record a resumed drain reads to decide
+            // whether the job is still worth re-asking about (TASK-673). The UI resolves it back
+            // through `UnverifiedReason.displaySummary(for:)`.
             + unverified.map {
-                AvailabilityOutcome(jobID: $0.jobID, verdict: .unverified, detail: $0.reason.summary)
+                AvailabilityOutcome(jobID: $0.jobID, verdict: .unverified, detail: $0.reason.rawValue)
             }
     }
 

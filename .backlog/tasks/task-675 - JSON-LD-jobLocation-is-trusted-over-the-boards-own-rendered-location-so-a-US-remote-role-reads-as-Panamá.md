@@ -3,7 +3,7 @@ id: TASK-675
 title: >-
   JSON-LD jobLocation is trusted over the board's own rendered location, so a
   US-remote role reads as Panamá
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-21 00:05'
 updated_date: '2026-08-22 19:22'

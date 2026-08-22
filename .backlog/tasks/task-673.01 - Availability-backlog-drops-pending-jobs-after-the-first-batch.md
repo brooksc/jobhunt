@@ -1,9 +1,10 @@
 ---
 id: TASK-673.01
 title: Availability backlog drops pending jobs after the first batch
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-21 20:25'
+updated_date: '2026-08-22 03:37'
 labels:
   - bug
   - availability

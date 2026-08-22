@@ -107,25 +107,10 @@ describe('ATS enrichment: Lever salary mapping', () => {
 });
 
 describe('ATS enrichment: wiring', () => {
-  test('runs on every capture, after Greenhouse', () => {
-    assert.ok(source.includes('await enrichWithATS('), 'enrichWithATS must be called during capture');
-    assert.ok(
-      source.indexOf('enrichWithGreenhouse({') < source.indexOf('await enrichWithATS('),
-      'Greenhouse keeps its richer path and runs first'
-    );
-  });
-
-  test('is best-effort — a failed lookup returns the payload unchanged', () => {
-    const fn = extract('enrichWithATS');
-    assert.ok(fn.includes('return payload'), 'a capture must never fail because enrichment did');
-  });
-
-  test('bounds the request so a stalled API cannot block capture', () => {
-    const fn = extract('fetchJSON');
-    assert.ok(fn.includes('new AbortController()'));
-    assert.ok(fn.includes('signal: controller.signal'));
-    assert.ok(fn.includes('ATS_TIMEOUT_MS'));
-  });
+  // The behavioural equivalents of the checks that used to live here — "is enrichWithATS called",
+  // "is it best-effort", "does it bound the request" — are in test_ats_enrichment_behavior.js, which
+  // loads the worker and drives it with a stubbed fetch. Reading the source and matching strings
+  // passed whether or not the code was reachable and broke on safe renames (TASK-687).
 
   test('declares the API hosts, without which the fetch is blocked by CORS', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '../manifest.json'), 'utf8'));

@@ -20,24 +20,11 @@ const fnEnd = source.indexOf('\nasync function enrichWithGreenhouse(', fnStart);
 const fnBody = source.slice(fnStart, fnEnd);
 
 describe('service_worker.js: Greenhouse enrichment timeout', () => {
-  test('defines a GREENHOUSE_TIMEOUT_MS constant', () => {
-    assert.ok(source.includes('GREENHOUSE_TIMEOUT_MS'), 'GREENHOUSE_TIMEOUT_MS constant must be defined');
-  });
-
-  test('creates an AbortController before fetching', () => {
-    assert.ok(fnBody.includes('new AbortController()'), 'must create an AbortController');
-  });
-
-  test('passes signal to fetch', () => {
-    assert.ok(fnBody.includes('signal: controller.signal'), 'fetch must receive controller.signal');
-  });
-
-  test('sets a timer with GREENHOUSE_TIMEOUT_MS', () => {
-    assert.ok(
-      fnBody.includes('GREENHOUSE_TIMEOUT_MS') && fnBody.includes('controller.abort()'),
-      'must schedule controller.abort() after GREENHOUSE_TIMEOUT_MS'
-    );
-  });
+  // The four checks that were here asserted on the SOURCE of fetchGreenhouseJobData — that it
+  // mentions AbortController, passes controller.signal, and schedules an abort. All four pass on
+  // unreachable code and fail on a rename. test_ats_enrichment_behavior.js now proves the thing they
+  // were reaching for: a stalled Greenhouse request is abandoned and the capture completes
+  // (TASK-687).
 
   test('clears the timer after a successful response', () => {
     // clearTimeout must be called in the success path, not only in the catch.

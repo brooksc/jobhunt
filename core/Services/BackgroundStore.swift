@@ -1467,6 +1467,27 @@ public actor BackgroundStore {
         return written
     }
 
+    /// Sites whose next review date has passed (TASK-503).
+    ///
+    /// Excluded sites are skipped: the user has said they're done with them, and a reminder about a
+    /// site you deliberately shelved is worse than no reminder at all.
+    public func dueSiteReviews(now: Date = Date()) throws -> [DueSiteReviews.Item] {
+        try modelContext.fetch(FetchDescriptor<Site>())
+            .filter { $0.state != .exclude && DueSiteReviews.isDue(nextReviewAt: $0.nextReviewAt, now: now) }
+            .map { site in
+                DueSiteReviews.Item(
+                    id: site.id,
+                    name: site.companyName?.isEmpty == false
+                        ? (site.companyName ?? site.origin)
+                        : (site.pageTitle.isEmpty ? site.origin : site.pageTitle),
+                    daysOverdue: site.nextReviewAt.map {
+                        DueSiteReviews.daysOverdue(nextReviewAt: $0, now: now)
+                    } ?? 0
+                )
+            }
+            .sorted { $0.daysOverdue > $1.daysOverdue }
+    }
+
     /// The jobs with these ids, for a caller that already knows exactly which rows it wants — the
     /// availability drain, which re-asks about a specific batch it couldn't answer for earlier.
     ///

@@ -218,6 +218,34 @@ final class AppServices {
         }
     }
 
+    /// TASK-503: a site becomes due for another sweep while the app is open.
+    ///
+    /// The Sites screen is a scan log — bookmark a careers page, work through it, mark it done, and
+    /// be told when it's worth another look. The marking and the interval already existed; nothing
+    /// ever told you. A due date that only surfaces if you happen to open the screen is not a
+    /// reminder, which is the same gap the follow-up notifier closed.
+    ///
+    /// Notified ids are in memory, not persisted, for the same reason as follow-ups: re-reminding
+    /// once per launch is reasonable, and a stored flag needs a migration plus a rule for clearing it.
+    private func siteReviewNotifierTask() -> Task<Void, Never> {
+        let siteStore = backgroundStore
+        return Task { @MainActor [weak self] in
+            var notified: Set<String> = []
+            while !Task.isCancelled {
+                // A long first delay: a site being a day overdue is not worth interrupting a launch
+                // for, and the user has just opened the app anyway.
+                try? await Task.sleep(for: .seconds(180))
+                guard !Task.isCancelled, let self else { return }
+                guard let due = try? await siteStore.dueSiteReviews() else { continue }
+                if let notification = DueSiteReviews.notification(for: due, alreadyNotified: notified) {
+                    platformIntegration?.notifySiteReviewsDue(notification)
+                    notified.formUnion(notification.coveredIDs)
+                }
+                try? await Task.sleep(for: .seconds(6 * 3600))
+            }
+        }
+    }
+
     /// TASK-589: follow-ups become due while the app is open; without this they only surface if the
     /// user happens to open Needs Action, which defeats the point of a due date.
     ///
@@ -309,6 +337,7 @@ final class AppServices {
             tasks.append(spotlightIndexTask())
             tasks.append(recapReminderTask())
             tasks.append(followUpNotifierTask())
+            tasks.append(siteReviewNotifierTask())
             tasks.append(availabilityDrainTask())
 
             // Persist the last-check timestamp through an explicit callback (TASK-428) rather than a

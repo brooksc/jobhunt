@@ -116,6 +116,20 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         )
     }
 
+    /// A tracked site is due for another sweep (TASK-503).
+    ///
+    /// Opens the Sites screen rather than any one site: the user's next move is to pick which to work
+    /// through, and landing them on an arbitrary one of four would be worse than landing them on the
+    /// list.
+    public func notifySiteReviewsDue(_ notification: DueSiteReviews.Notification) {
+        postNotification(
+            id: notification.notificationID,
+            title: notification.title,
+            body: notification.body,
+            userInfo: ["navigate": "sites"]
+        )
+    }
+
     /// The optional end-of-day recap notification (TASK-623 #11).
     ///
     /// Carries the day's own sentence, so the notification says what was accomplished rather than
@@ -492,6 +506,8 @@ extension PlatformIntegration: UNUserNotificationCenterDelegate {
             } else if let navigate = userInfo["navigate"] as? String, navigate == "settings" {
                 // Settings is the standard preferences window now, not an in-window section.
                 NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            } else if let navigate = userInfo["navigate"] as? String, navigate == "sites" {
+                router.navigateToSection(.sites)
             } else if let navigate = userInfo["navigate"] as? String, navigate == "dashboard" {
                 router.navigateToSection(.dashboard)
             } else if let navigate = userInfo["navigate"] as? String, navigate == "needsAction" {

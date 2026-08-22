@@ -1,9 +1,10 @@
 ---
 id: TASK-681
 title: Availability outcome writes can overlap SQLite restore
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-21 20:26'
+updated_date: '2026-08-22 03:37'
 labels:
   - bug
   - restore

@@ -43,6 +43,32 @@ final class StructuredLocationFallbackTests: XCTestCase {
         XCTAssertTrue(cleaned.localizedCaseInsensitiveContains("USA - Remote"))
     }
 
+    /// Job #961's real shape: a JSON-LD description long enough to be PROMOTED over the page text,
+    /// which is where the "USA - Remote" actually is. Checking only the assembled body missed it and
+    /// still injected Panamá — the first fix passed its own tests and left the real job broken.
+    func testPageTextCountsEvenWhenTheJSONLDBodyIsPromoted() {
+        let longBody = String(repeating: "We are hiring a program manager to drive programs. ", count: 40)
+        let cleaned = cleanDescription(
+            visibleText: "Technical Program Manager - Hawkins Design System\nUSA - Remote\n" + longBody,
+            structuredData: [[
+                "@type": "JobPosting",
+                "description": longBody,
+                "jobLocation": [
+                    "@type": "Place",
+                    "address": [
+                        "@type": "PostalAddress",
+                        "addressCountry": ["@type": "Country", "name": "PA"],
+                        "addressLocality": "Panamá"
+                    ] as [String: Any]
+                ] as [String: Any]
+            ]]
+        )
+        XCTAssertFalse(
+            cleaned.localizedCaseInsensitiveContains("Panam"),
+            "the page says USA - Remote; promoting the JSON-LD body must not lose that:\n\(cleaned)"
+        )
+    }
+
     /// The case the injection was written for still works: Reddit #7944159's description named no
     /// location at all, and the JSON-LD was the only source.
     func testSilentPageStillGetsTheStructuredLocation() {

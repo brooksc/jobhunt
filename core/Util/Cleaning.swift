@@ -58,7 +58,12 @@ public func cleanDescription(
     // So it only speaks when the text is silent, which is the case it was written for: Reddit
     // #7944159's description named no location at all.
     let bodySoFar = parts.joined(separator: "\n")
-    let bodyHasLocation = textNamesALocation(bodySoFar)
+    // The VISIBLE text counts even when it isn't part of the assembled body. A substantial JSON-LD
+    // description is promoted to primary and the page text is dropped — which is exactly what job
+    // #961 does: its page says "USA - Remote" five times, its JSON-LD body never mentions location,
+    // and checking only the assembled body therefore still injected the bogus Panamá line. The
+    // question is whether the POSTING says where it is, not whether this particular assembly kept it.
+    let bodyHasLocation = textNamesALocation(bodySoFar) || textNamesALocation(visible)
     for entry in structuredLocationLines(structuredData) {
         // The deferral applies to `jobLocation` — the "where is this job" CLAIM, which can simply be
         // wrong — and never to `applicantLocationRequirements`, which says who may take the role.

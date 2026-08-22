@@ -4,8 +4,14 @@ title: Work down the accessibility debt the audit recorded (~190 issues)
 status: To Do
 assignee: []
 created_date: '2026-08-22 22:37'
-labels: []
+updated_date: '2026-08-22 22:37'
+labels:
+  - accessibility
+  - ui
+  - tech-debt
 dependencies: []
+priority: low
+type: enhancement
 ordinal: 63000
 ---
 
@@ -31,9 +37,13 @@ Also present in smaller numbers: "Parent/Child mismatch" and "Action is missing"
 
 Do this screen by screen, lowering the ceiling in `AccessibilityAuditTests` with each pass — that file is where the current numbers live, and a lowered ceiling is what stops the debt coming back. Ceilings carry headroom on purpose (the audit walks whatever the demo seed produced), so expect the real counts to sit below them.
 
-Verification needs a graphical session: `xcodebuild test -only-testing:AppUITests/AccessibilityAuditTests`, or the Tart VM runner. The attachment on each test activity lists the individual findings.</description>
-<labels>["accessibility", "ui", "tech-debt"]</labels>
-<priority>Low</priority>
-<type>enhancement</type>
-<acceptanceCriteria>["Each \"element has no description\" finding is either given a label or deliberately hidden from the AX tree", "The Data Quality contrast findings are traced to their source and either fixed or recorded as a system-colour limitation with evidence", "Every ceiling in AccessibilityAuditTests is lowered to the new count", "The audit still passes on all five screens"]</acceptanceCriteria>
+Verification needs a graphical session: `xcodebuild test -only-testing:AppUITests/AccessibilityAuditTests`, or the Tart VM runner. The attachment on each test activity lists the individual findings.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 Each 'element has no description' finding is either given a label or deliberately hidden from the AX tree
+- [ ] #2 The Data Quality contrast findings are traced to their source and either fixed or recorded as a system-colour limitation with evidence
+- [ ] #3 Every ceiling in AccessibilityAuditTests is lowered to the new count
+- [ ] #4 The audit still passes on all five screens
+<!-- AC:END -->

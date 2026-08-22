@@ -1,0 +1,61 @@
+name: Deep static analysis
+
+# The two gates that need a full build of their own, kept off the per-push job for that reason:
+# Periphery drives its own xcodebuild, and `swiftlint analyze` needs a complete compiler log. Adding
+# either to swift-build would roughly double the only macOS job that runs on every push, for classes
+# of problem that accrue over weeks rather than within a single PR. Manual dispatch is there for when
+# a large deletion or refactor wants checking immediately.
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: macos-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      # actions/checkout@v4.2.2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      - name: Install mise
+        run: |
+          curl -fsSL -o /tmp/mise-install.sh https://github.com/jdx/mise/releases/download/v2026.5.3/install.sh
+          echo "76168cc525fc3b209638e88b4c6b707420438a6b7cc428bd468ae08afad432c1  /tmp/mise-install.sh" | shasum -a 256 -c -
+          MISE_VERSION=v2026.5.3 sh /tmp/mise-install.sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
+
+      - name: Install pinned tools (Tuist, SwiftLint, SwiftFormat)
+        run: mise install && mise reshim
+
+      - name: Generate Xcode project
+        run: tuist generate --no-open
+
+      - name: Install Periphery
+        run: brew install peripheryapp/periphery/periphery
+
+      # A ratchet, not a zero-findings gate — see the script header and .periphery.yml. (The
+      # baseline is 0 today, so in practice it is a clean gate until something new appears.)
+      - name: Dead-code ratchet
+        run: ./scripts/check-periphery.sh --list
+
+      # Compiler-backed rules (TASK-570 #4). These need a real build log, which is why they live
+      # here rather than beside `swiftlint lint` in swift-build. --strict from the start: the rule
+      # set reports 0 violations today, so there is no debt to ratchet against.
+      - name: Build for analysis
+        run: |
+          set -o pipefail
+          xcodebuild clean build \
+            -project Jobhunt.xcodeproj \
+            -scheme Jobhunt-DMG \
+            -configuration Debug-DMG \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO | tee /tmp/jobhunt-build.log
+
+      - name: SwiftLint analyze
+        run: swiftlint analyze --compiler-log-path /tmp/jobhunt-build.log --strict

@@ -1,9 +1,10 @@
 ---
 id: TASK-687
 title: Replace extension ATS source-text assertions with behavior tests
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-21 20:42'
+updated_date: '2026-08-22 20:26'
 labels:
   - extension
   - tests

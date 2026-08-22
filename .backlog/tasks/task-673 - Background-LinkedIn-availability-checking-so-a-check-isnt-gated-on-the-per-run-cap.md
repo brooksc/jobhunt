@@ -3,10 +3,10 @@ id: TASK-673
 title: >-
   Background LinkedIn availability checking so a check isn't gated on the
   per-run cap
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-20 20:39'
-updated_date: '2026-08-20 23:10'
+updated_date: '2026-08-22 20:41'
 labels:
   - availability
   - linkedin
@@ -34,11 +34,11 @@ Not a bug: the current behaviour is correct and now self-explanatory. This is a 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The foreground check keeps the per-run LinkedIn cap and its pacing/backoff
-- [ ] #2 LinkedIn postings outside a run's window are drained in the background without resetting the scheduled sweep's interval gate
-- [ ] #3 A background 'gone' finding for an archived job surfaces somewhere the user will see it, without one notification per posting
-- [ ] #4 The behaviour is opt-in or clearly disclosed, since it makes ongoing requests to LinkedIn from the user's IP
-- [ ] #5 Drainage stops when the backlog is clear and resumes on a staleness interval rather than looping forever
+- [x] #1 The foreground check keeps the per-run LinkedIn cap and its pacing/backoff
+- [x] #2 LinkedIn postings outside a run's window are drained in the background without resetting the scheduled sweep's interval gate
+- [x] #3 A background 'gone' finding for an archived job surfaces somewhere the user will see it, without one notification per posting
+- [x] #4 The behaviour is opt-in or clearly disclosed, since it makes ongoing requests to LinkedIn from the user's IP
+- [x] #5 Drainage stops when the backlog is clear and resumes on a staleness interval rather than looping forever
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -58,3 +58,19 @@ not verified: (visual) — the notification firing and its click path need a liv
 
 REMAINING, not done: survival across relaunch. The backlog is in-memory because nothing records per-job check history — that's TASK-674, which this depends on for a durable version.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Complete. The remaining piece from the first pass — surviving a relaunch — landed once TASK-674 gave the store per-job verdicts to read back.
+
+**Durability without a new table.** A job persisted as `.unverified` for a retryable reason *is* a job still owed an answer, so `BackgroundStore.jobsAwaitingAvailabilityAnswer()` reconstructs the pending set from the verdicts already being written. `AvailabilityBacklog.seed(with:)` adopts them additively and de-duplicated, so a seed arriving mid-drain can't reorder or double work in flight. Oldest-checked first, so a resumed drain works on what has waited longest.
+
+To make that decision robust, the stored detail for an unverified job is now the raw `UnverifiedReason` case rather than its sentence — resuming must not hinge on phrasing that could be reworded. `UnverifiedReason.displaySummary(for:)` resolves it back for the UI, and falls through for a gone reason (free text) or a row written before the change.
+
+**#5** Re-seeding is gated on a 24h staleness interval held in the drain task. Without it a permanently unanswerable posting would be re-asked every five minutes forever; with it, drainage stops when clear and resumes daily. A relaunch is itself a fresh seed.
+
+**#2** still holds — the drain calls `findGoneJobsRotating` directly and never writes `availability_last_auto_check_at`.
+
+not verified: (visual) — the end-of-drain notification and its click-through to the confirmation sheet still need a live desktop and a drain long enough to complete; unchanged from the first pass.
+<!-- SECTION:FINAL_SUMMARY:END -->

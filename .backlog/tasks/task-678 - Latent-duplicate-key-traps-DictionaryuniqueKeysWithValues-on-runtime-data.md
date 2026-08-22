@@ -1,9 +1,10 @@
 ---
 id: TASK-678
 title: 'Latent duplicate-key traps: Dictionary(uniqueKeysWithValues:) on runtime data'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-21 02:19'
+updated_date: '2026-08-22 20:29'
 labels:
   - bug
   - crash

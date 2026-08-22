@@ -1,7 +1,7 @@
 ---
 id: TASK-688
 title: 'MCP silently unavailable after relaunch — no token written, bridge dead'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-22 04:03'
 updated_date: '2026-08-22 18:54'

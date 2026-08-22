@@ -13,6 +13,9 @@
 #   --rebuild    Run `tuist generate --no-open` before building (required after
 #                any Project.swift change or after a clean checkout)
 #
+# -jobs 6 throughout: fanless 8-core MacBook Air. An uncapped build saturates every core,
+# thermally throttles within minutes, and finishes slower than a capped one while making the
+# GUI unusable. Leave two cores for the machine's owner.
 set -euo pipefail
 
 # ── Configuration ────────────────────────────────────────────────────────────
@@ -77,6 +80,7 @@ fi
 step "Building Jobhunt app"
 
 nice xcodebuild build \
+        -jobs 6 \
     -project "$PROJECT" \
     -scheme "$SCHEME" \
     -configuration "$CONFIG" \
@@ -87,6 +91,7 @@ nice xcodebuild build \
     CODE_SIGN_ENTITLEMENTS="" \
     | xcbeautify 2>/dev/null \
     || nice xcodebuild build \
+        -jobs 6 \
         -project "$PROJECT" \
         -scheme "$SCHEME" \
         -configuration "$CONFIG" \
@@ -157,6 +162,7 @@ log "size: $SIZE_HUMAN"
 # build if the fixture is unreadable or its contents drifted from FixtureSeeder expectations.
 step "Validating fixture (CoreTests/FixtureTests)"
 nice xcodebuild test \
+        -jobs 6 \
     -project "$PROJECT" \
     -scheme "$SCHEME" \
     -configuration "$CONFIG" \

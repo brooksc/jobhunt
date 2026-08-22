@@ -57,13 +57,23 @@ final class WorkflowUITests: XCTestCase {
         archiveItem.click()
 
         // Verify: the job's status changed to Archived. Seeded data has no pre-archived jobs, so an
-        // "Archived" StatusChip appearing confirms the archive succeeded ("All Jobs" keeps archived
-        // jobs visible — the row stays, its chip flips to "Archived"). Archiving is async (a detached
-        // Task + SwiftUI re-render), so WAIT for the chip rather than checking .exists immediately.
-        let archivedChip = app.staticTexts["Archived"].firstMatch
+        // "Archived" row appearing confirms the archive succeeded ("All Jobs" keeps archived jobs
+        // visible — the row stays, its chip flips to "Archived"). Archiving is async (a detached
+        // Task + SwiftUI re-render), so WAIT rather than checking .exists immediately.
+        //
+        // Assert on the ROW's accessibility label, not on a standalone "Archived" static text.
+        // TASK-506 made each row a single accessibility element (`children: .ignore`) so VoiceOver
+        // reads it as one sentence instead of walking seven fragments — which also removed the chip's
+        // own text from the tree. `app.staticTexts["Archived"]` has been unfindable ever since, and
+        // this suite has been red every week without the app being broken at all. The composed label
+        // ends with the status (`JobRowAccessibility.label`), so the row itself carries the evidence.
+        let archivedRow = jobsOutline.cells
+            .matching(NSPredicate(format: "label CONTAINS[c] %@", "Archived"))
+            .firstMatch
         XCTAssertTrue(
-            archivedChip.waitForExistence(timeout: 5),
-            "Job's StatusChip should show 'Archived' after archiving — seeded data has no pre-archived jobs"
+            archivedRow.waitForExistence(timeout: 5),
+            "A job row's accessibility label should contain 'Archived' after archiving — "
+                + "seeded data has no pre-archived jobs"
         )
     }
 

@@ -11,6 +11,9 @@
 #
 #   ./scripts/check-warnings.sh            # build and compare against the baseline
 #   ./scripts/check-warnings.sh --update   # rebuild and write the current count as the new baseline
+# -jobs 6 throughout: fanless 8-core MacBook Air. An uncapped build saturates every core,
+# thermally throttles within minutes, and finishes slower than a capped one while making the
+# GUI unusable. Leave two cores for the machine's owner.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -22,6 +25,7 @@ export DEVELOPER_DIR
 # warning slip in on a file that happened to be cached.
 warnings=$(
     xcodebuild clean build \
+        -jobs 6 \
         -project Jobhunt.xcodeproj \
         -scheme Jobhunt-DMG \
         -configuration Debug-DMG \

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Build Jobhunt without running it.
 # Usage: ./scripts/build.sh
+# -jobs 6 throughout: fanless 8-core MacBook Air. An uncapped build saturates every core,
+# thermally throttles within minutes, and finishes slower than a capped one while making the
+# GUI unusable. Leave two cores for the machine's owner.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -15,6 +18,7 @@ cd "$REPO_ROOT"
 
 echo "→ Building $SCHEME ($CONFIG)..."
 nice xcodebuild build \
+        -jobs 6 \
     -project Jobhunt.xcodeproj \
     -scheme "$SCHEME" \
     -configuration "$CONFIG" \
@@ -22,6 +26,7 @@ nice xcodebuild build \
     -derivedDataPath "$DERIVED_DATA" \
     CODE_SIGNING_ALLOWED=NO \
     | xcbeautify 2>/dev/null || xcodebuild build \
+        -jobs 6 \
         -project Jobhunt.xcodeproj \
         -scheme "$SCHEME" \
         -configuration "$CONFIG" \

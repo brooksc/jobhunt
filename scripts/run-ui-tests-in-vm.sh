@@ -130,11 +130,15 @@ log "scheme:  $SCHEME"
 if [ "$BUILD_ON_HOST" = true ]; then
     step "Building for testing on host"
     log "Output: ${HOST_PRODUCTS}/"
+    # -jobs 6: this is a fanless 8-core MacBook Air. An uncapped build saturates every core,
+    # thermally throttles within minutes, and finishes SLOWER than a capped one while making the
+    # GUI unusable — and this script exists precisely so a test run doesn't disrupt the machine.
     nice xcodebuild build-for-testing \
         -project "$PROJECT" \
         -scheme "$SCHEME" \
         -configuration "$CONFIG" \
         -destination 'platform=macOS' \
+        -jobs 6 \
         -derivedDataPath "$HOST_PRODUCTS" \
         CODE_SIGNING_ALLOWED=NO \
         CODE_SIGNING_IDENTITY="" \

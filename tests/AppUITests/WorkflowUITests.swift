@@ -67,13 +67,23 @@ final class WorkflowUITests: XCTestCase {
         // own text from the tree. `app.staticTexts["Archived"]` has been unfindable ever since, and
         // this suite has been red every week without the app being broken at all. The composed label
         // ends with the status (`JobRowAccessibility.label`), so the row itself carries the evidence.
-        let archivedRow = jobsOutline.cells
+        // DESCENDANTS, not `.cells`: the row's composed label lives on the SwiftUI element inside the
+        // cell, and the cell itself reports an empty label. Querying cells found four rows with no
+        // labels at all, which is why the previous form couldn't see the status either.
+        let archivedRow = jobsOutline.descendants(matching: .any)
             .matching(NSPredicate(format: "label CONTAINS[c] %@", "Archived"))
             .firstMatch
+        let found = archivedRow.waitForExistence(timeout: 5)
+        // Report what the tree actually held. A bare "expected Archived" tells the next reader
+        // nothing about WHY — this suite was red for six weeks on exactly that kind of message.
+        let visibleLabels = jobsOutline.descendants(matching: .any).allElementsBoundByIndex
+            .map(\.label)
+            .filter { !$0.isEmpty }
+            .prefix(4)
         XCTAssertTrue(
-            archivedRow.waitForExistence(timeout: 5),
-            "A job row's accessibility label should contain 'Archived' after archiving — "
-                + "seeded data has no pre-archived jobs"
+            found,
+            "No job row's accessibility label contains 'Archived' after archiving. "
+                + "First rows seen: \(visibleLabels)"
         )
     }
 

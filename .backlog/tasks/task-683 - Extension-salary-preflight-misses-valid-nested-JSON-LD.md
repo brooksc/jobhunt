@@ -1,9 +1,10 @@
 ---
 id: TASK-683
 title: Extension salary preflight misses valid nested JSON-LD
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-21 20:26'
+updated_date: '2026-08-22 03:43'
 labels:
   - bug
   - extension

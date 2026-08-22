@@ -52,11 +52,6 @@ public enum ReferralSummary: String, Sendable, CaseIterable {
         case .notApplicable: "N/A"
         }
     }
-
-    /// Whether this summary represents an outstanding action (drives the "needs outreach" filter/count).
-    public var needsAction: Bool {
-        self == .needsOutreach
-    }
 }
 
 public enum ReferralTracking {
@@ -229,13 +224,6 @@ public enum ReferralTracking {
             .components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
-    }
-
-    /// A normalized key for a recipient: the identifier when present, else the name. Empty when neither
-    /// is usable. Kept for callers that need a single key; matching uses `recipientKeys`.
-    public static func recipientKey(name: String?, identifier: String?) -> String {
-        let id = normalizedIdentifier(identifier)
-        return id.isEmpty ? normalizedName(name) : id
     }
 
     /// *Every* key that identifies a recipient. Two records match when their key sets intersect, so a

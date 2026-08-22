@@ -721,7 +721,3 @@ enum ServerError: Error {
     case listenerWaiting
     case listenerTimeout
 }
-
-enum JobhuntServerError: Error {
-    case invalidPort(UInt16)
-}

@@ -307,7 +307,6 @@ public enum FitScorer {
         public static let nonDiscriminating = Exclusions(rawValue: 1 << 0)
         public static let fragments = Exclusions(rawValue: 1 << 1)
         public static let all: Exclusions = [.nonDiscriminating, .fragments]
-        public static let none: Exclusions = []
     }
 
     public static func isExcludedFromScoring(

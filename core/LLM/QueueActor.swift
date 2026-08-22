@@ -142,8 +142,6 @@ public actor QueueActor {
     /// work is enqueued (`onWorkEnqueued`, TASK-597), so actively queuing a job while unconfigured
     /// re-surfaces the notice/banner instead of it sitting silently behind the debounce.
     private var didEmitNotConfigured = false
-    /// Active in-flight request count per provider id.
-    private var activeCounts: [String: Int] = [:]
     /// Runtime concurrency that backs off on 429 and recovers on success (TASK-463). Re-seeded when
     /// the provider's static ceiling changes; resets each session (no persistence).
     private var adaptive: AdaptiveConcurrency?

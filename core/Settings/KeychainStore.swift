@@ -27,6 +27,10 @@ public protocol KeychainAccess: Sendable {
     func read(_ key: String) throws -> String?
     /// Convenience that collapses any read failure to `nil` (for low-risk callers that don't care why).
     func get(_ key: String) -> String?
+    // periphery:ignore - No caller today: nothing in the UI removes a stored API key, it only
+    // overwrites one. Kept because the ability to delete a secret is the counterpart to storing it —
+    // a store that can only ever add is the wrong shape for credentials, and a test double
+    // conforming to this protocol needs the requirement to exist.
     func delete(_ key: String) throws
 }
 

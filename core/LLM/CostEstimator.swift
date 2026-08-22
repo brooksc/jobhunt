@@ -16,25 +16,6 @@ public struct CostEstimate: Sendable {
     }
 }
 
-// MARK: - OpenRouterModelPrice
-
-public struct OpenRouterModelPrice: Sendable, Codable {
-    public let id: String
-    public let name: String
-    public let promptPricePer1M: Double
-    public let completionPricePer1M: Double
-
-    public init(id: String, name: String, promptPricePer1M: Double, completionPricePer1M: Double) {
-        self.id = id
-        self.name = name
-        self.promptPricePer1M = promptPricePer1M
-        self.completionPricePer1M = completionPricePer1M
-    }
-}
-
-// MARK: - CostEstimator
-
-/// Mirrors /api/llm-cost logic from server/api.js.
 public enum CostEstimator {
     // MARK: - Token estimation
 
@@ -94,54 +75,5 @@ public enum CostEstimator {
             totalTokens: totalTokens,
             estimatedCostUSD: estimatedCostUSD
         )
-    }
-
-    // MARK: - Live OpenRouter pricing
-
-    /// Fetch live model pricing from OpenRouter.
-    /// Mirrors GET /api/llm-pricing from server/api.js.
-    public static func fetchOpenRouterPricing(
-        session: URLSession = .shared
-    ) async throws -> [OpenRouterModelPrice] {
-        var request = URLRequest(url: URL(string: "https://openrouter.ai/api/v1/models")!)
-        request.timeoutInterval = 10
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
-            throw CostEstimatorError.httpError
-        }
-        let decoded = try JSONDecoder().decode(OpenRouterModelsResponse.self, from: data)
-        return (decoded.data ?? []).map { model in
-            let promptPrice = Double(model.pricing?.prompt ?? "0") ?? 0
-            let completionPrice = Double(model.pricing?.completion ?? "0") ?? 0
-            return OpenRouterModelPrice(
-                id: model.id,
-                name: model.name ?? model.id,
-                promptPricePer1M: promptPrice * 1_000_000,
-                completionPricePer1M: completionPrice * 1_000_000
-            )
-        }
-    }
-}
-
-// MARK: - CostEstimatorError
-
-public enum CostEstimatorError: Error {
-    case httpError
-}
-
-// MARK: - Private Codable types
-
-private struct OpenRouterModelsResponse: Decodable {
-    let data: [OpenRouterModelEntry]?
-}
-
-private struct OpenRouterModelEntry: Decodable {
-    let id: String
-    let name: String?
-    let pricing: Pricing?
-
-    struct Pricing: Decodable {
-        let prompt: String?
-        let completion: String?
     }
 }

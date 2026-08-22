@@ -327,7 +327,6 @@ struct JobInspectorView: View {
     @Binding var selectedJobIDs: Set<String>
     @Query(sort: \Job.createdAt, order: .reverse) private var allJobs: [Job]
     @Environment(\.jobService) private var jobService
-    @Environment(\.queueActor) private var queueActor
     @Environment(AppServices.self) private var appServices
 
     private var selectedJob: Job? {

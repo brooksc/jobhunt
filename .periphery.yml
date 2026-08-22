@@ -3,6 +3,12 @@ schemes:
   - Jobhunt-DMG
 quiet: true
 
+# Tuist writes Derived/ on every `tuist generate`. Its asset accessors are generated for whatever the
+# asset catalogue holds, used or not — that's the generator's business, and the file isn't ours to
+# edit.
+report_exclude:
+  - 'Derived/**'
+
 # Two of Periphery's analyses are switched off because, in this project, they report design rather
 # than dead code — and a scan that is 90% noise gets ignored, then disabled.
 #

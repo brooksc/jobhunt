@@ -24,7 +24,6 @@ struct ResumesTab: View {
     }
 
     @State private var showingDeleteAlert = false
-    @State private var saveError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

@@ -736,7 +736,6 @@ private struct FooterCell: View {
 private struct QualitySummarySection: View {
     let issueCount: Int
     @Environment(Router.self) private var router
-    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {

@@ -75,13 +75,6 @@ public enum JobFilterRules {
         /// Only jobs carrying a high-severity issue (missing company/title/location, or a failed
         /// extraction) — the ones actually worth re-sourcing from the company's own posting.
         case highSeverity
-
-        public var label: String {
-            switch self {
-            case .hasIssues: "Any issue"
-            case .highSeverity: "High severity"
-            }
-        }
     }
 
     /// Whether a job's capture host is in the selected set (`selected == nil` means "any source").

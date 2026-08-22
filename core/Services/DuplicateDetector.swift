@@ -315,16 +315,6 @@ public struct DuplicateDetector {
     /// distinguish the role. Kept deliberately tiny to avoid over-merging genuinely different titles.
     static let titleQualifierStopWords: Set<String> = ["remote", "hybrid", "onsite"]
 
-    /// Group key for the domain-heuristic path: the normalized title with work-arrangement qualifiers
-    /// removed, so "Principal TPM" and "Principal TPM (Remote)" land in the same title group and can be
-    /// compared as a cross-source duplicate (TASK-605 — jobs #163/#193). The company clustering,
-    /// two-distinct-hostname requirement, and evidence scoring still guard against false pairs.
-    static func titleGroupKey(_ title: String) -> String {
-        normalizeDuplicateText(title).split(separator: " ").map(String.init)
-            .filter { !titleQualifierStopWords.contains($0) }
-            .joined(separator: " ")
-    }
-
     /// Common title-word abbreviations normalized so variants match (TASK-620).
     static let titleSynonyms: [String: String] = ["sr": "senior", "jr": "junior", "pgm": "program", "mgr": "manager"]
 

@@ -454,12 +454,6 @@ public actor JobService {
         try await store.clearDataQualityReview(jobID: jobID)
     }
 
-    // MARK: - Bulk LLM ops
-
-    public func enqueueLLM(jobIDs: [String], mode: LLMRequestType) async throws {
-        try await queue.enqueue(jobIDs: jobIDs, mode: mode)
-    }
-
     public func resetExtraction(jobID: String) async throws {
         let id = jobID
         try await store.update(Job.self, predicate: #Predicate { $0.id == id }) { job in

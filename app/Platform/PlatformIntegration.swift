@@ -144,11 +144,6 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         )
     }
 
-    /// Update dock badge to unread job count.
-    public func updateDockBadge(count: Int) {
-        NSApp.dockTile.badgeLabel = count > 0 ? "\(count)" : ""
-    }
-
     /// Handle `jobhunt://` deep links: `jobhunt://jobs/N` and `jobhunt://launch`.
     public func handleDeepLink(_ url: URL) {
         guard url.scheme == "jobhunt" else { return }

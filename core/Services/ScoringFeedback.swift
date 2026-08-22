@@ -249,11 +249,6 @@ public struct FeedbackMatchPreview: Sendable, Equatable {
         self.totalJobs = totalJobs
     }
 
-    /// Share of all scored requirements this would touch.
-    public var requirementShare: Double {
-        totalRequirements > 0 ? Double(matchingRequirements) / Double(totalRequirements) : 0
-    }
-
     /// Share of scored jobs whose score would move.
     public var jobShare: Double {
         totalJobs > 0 ? Double(matchingJobs) / Double(totalJobs) : 0

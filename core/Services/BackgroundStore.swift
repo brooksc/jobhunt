@@ -880,27 +880,6 @@ public actor BackgroundStore {
             .compactMap { $0.job?.id }
     }
 
-    /// Called when resume text changes so stale scores are not shown as current.
-    /// Returns how many fit scores were deleted (so callers can tell the user what was cleared).
-    @discardableResult
-    public func deleteFitScores(forResumeID resumeID: String) throws -> Int {
-        let allScores = try modelContext.fetch(FetchDescriptor<JobFitScore>())
-        let toDelete = allScores.filter { $0.resume?.id == resumeID }
-        guard !toDelete.isEmpty else { return 0 }
-
-        let affectedJobs = toDelete.compactMap(\.job)
-        for score in toDelete {
-            modelContext.delete(score)
-        }
-        try modelContext.save()
-
-        for job in affectedJobs {
-            recomputeJobFitSummary(job)
-        }
-        try modelContext.save()
-        return toDelete.count
-    }
-
     /// Create or update a JobFitScore record with fitStatus = .pending.
     public func markFitScorePending(jobID: String, resumeID: String) throws {
         let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jobID }))

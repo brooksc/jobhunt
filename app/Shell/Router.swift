@@ -11,34 +11,6 @@ public enum SidebarSection: String, CaseIterable, Hashable {
     case sites
     case duplicates
     case applicationHistory
-
-    var title: String {
-        switch self {
-        case .dashboard: "Dashboard"
-        case .jobs: "Jobs"
-        case .resumes: "Resumes"
-        case .dataQuality: "Data Quality"
-        case .needsAction: "Needs Action"
-        case .llmQueue: "LLM Queue"
-        case .sites: "Sites"
-        case .duplicates: "Duplicates"
-        case .applicationHistory: "Application History"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .dashboard: "chart.bar"
-        case .jobs: "briefcase"
-        case .resumes: "doc.text"
-        case .dataQuality: "checkmark.shield"
-        case .needsAction: "bell"
-        case .llmQueue: "cpu"
-        case .sites: "globe"
-        case .duplicates: "doc.on.doc"
-        case .applicationHistory: "list.bullet.rectangle"
-        }
-    }
 }
 
 /// Typed selection value for the sidebar List. Maps to router state.
@@ -54,23 +26,6 @@ public enum SidebarItem: Hashable, Sendable {
     case dataQuality
     case applicationHistory
     case savedSearch(String)
-
-    /// The display label shown in the sidebar row (matches NSTextField text for AppKit selection).
-    var sidebarLabel: String? {
-        switch self {
-        case .dashboard: return "Dashboard"
-        case .needsAction: return "Needs Action"
-        case .jobsAll: return "All Jobs"
-        case let .jobs(status): return status.displayName
-        case .resumes: return "Resumes"
-        case .sites: return "Sites"
-        case .duplicates: return "Duplicates"
-        case .llmQueue: return "LLM Queue"
-        case .dataQuality: return "Data Quality"
-        case .applicationHistory: return "Application History"
-        case .savedSearch: return nil // dynamic name — caller handles
-        }
-    }
 
     /// Stable, persistable token for the last-viewed view (round-trips via `init?(persistedID:)`).
     /// Used to restore the sidebar selection on relaunch.

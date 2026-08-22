@@ -118,11 +118,6 @@ extension XCTestCase {
         return app
     }
 
-    /// Assert an element exists or fail immediately with a descriptive message.
-    func requireElement(_ element: XCUIElement, _ description: String, timeout: TimeInterval = 5) {
-        XCTAssert(element.waitForExistence(timeout: timeout), "Required UI element missing: \(description)")
-    }
-
     // MARK: - Sidebar navigation
 
     /// Map from display label → accessibilityIdentifier set in Sidebar.swift.
@@ -296,12 +291,6 @@ extension XCTestCase {
     func snap(_ app: XCUIApplication, _ name: String) {
         let window = app.windows.firstMatch
         let shot = window.exists ? window.screenshot() : app.screenshot()
-        writeToDisk(shot, name: name)
-    }
-
-    /// Capture a specific element (e.g. the Settings window).
-    func snapElement(_ element: XCUIElement, _ name: String) {
-        let shot = element.screenshot()
         writeToDisk(shot, name: name)
     }
 

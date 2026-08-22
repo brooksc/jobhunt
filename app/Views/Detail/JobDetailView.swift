@@ -14,9 +14,6 @@ struct JobDetailView: View {
 
     @Environment(Router.self) private var router
     @Environment(AppServices.self) private var appServices
-    @Environment(\.jobService) private var jobService
-    @Environment(\.queueActor) private var queueActor
-    @Environment(\.modelContext) private var modelContext
 
     @State private var selectedTab: DetailTab = .overview
     /// Identifies this detail instance's ⌃Tab cycling hook so a per-job re-mount doesn't clear the
@@ -157,9 +154,6 @@ private struct DetailHeader: View {
     let onClose: () -> Void
     @Environment(\.jobService) private var jobService
     @Environment(AppServices.self) private var appServices
-    @State private var showNoteSheet = false
-    @State private var quickNoteText = ""
-    @State private var showApplyConfirmation = false
     @State private var isEnqueuing = false
     @State private var isRefreshingSource = false
     @State private var showOpenRoles = false
@@ -470,8 +464,6 @@ private struct DetailHeader: View {
         }
     }
 
-    @Environment(Router.self) private var router
-
     private var overdueActionCount: Int {
         let now = Date()
         return job.actions.count(where: { $0.completedAt == nil && $0.dueDate < now })
@@ -542,13 +534,6 @@ private struct DetailHeader: View {
     private func metaChip(_ text: String) -> some View {
         Text(text).foregroundStyle(.secondary)
     }
-}
-
-// MARK: - Navigation notifications
-
-extension Notification.Name {
-    static let navigatePreviousJob = Notification.Name("JobDetail.navigatePreviousJob")
-    static let navigateNextJob = Notification.Name("JobDetail.navigateNextJob")
 }
 
 // MARK: - Status picker button
@@ -631,7 +616,6 @@ private struct StatusPickerButton: View {
 private struct DetailFooter: View {
     let job: Job
     @Environment(\.jobService) private var jobService
-    @Environment(Router.self) private var router
     @Environment(AppServices.self) private var appServices
     @State private var showApplyConfirmation = false
 
@@ -847,7 +831,6 @@ struct OverviewTabView: View {
     @State private var skills: [String] = []
     @State private var newSkillText = ""
     @State private var showAddSkill = false
-    @State private var showDeleteConfirm = false
     @State private var errorMessage: String?
     @State private var editingField: String?
     @State private var editText: String = ""

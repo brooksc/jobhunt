@@ -45,10 +45,6 @@ public struct QualityIssue: Identifiable, Sendable {
     public let id: UUID
     public let jobID: String
     public let kinds: [QualityIssueKind]
-    public var severity: Int {
-        kinds.count
-    }
-
     /// True when any of this job's issue kinds is itself high-severity (TASK-458) — distinct from
     /// "has many issues". Use this for high-severity reporting, not a raw issue count.
     public var isHighSeverity: Bool {

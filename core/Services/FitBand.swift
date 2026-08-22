@@ -3,9 +3,9 @@ import Foundation
 /// The qualitative band a fit score falls into (TASK-506).
 ///
 /// One definition, because the colour and the spoken label have to agree. They were duplicated
-/// across `FitRingView.color`, `FitPillView.color` and `FitPillView.label` — three copies of the
-/// same thresholds, so a sighted user could see "green" while VoiceOver said "partial fit" as soon
-/// as one copy moved.
+/// across the fit ring and the fit pill — three copies of the same thresholds, so a sighted user
+/// could see "green" while VoiceOver said "partial fit" as soon as one copy moved. (The pill has
+/// since gone; the reason for keeping one definition hasn't.)
 public enum FitBand: String, CaseIterable, Sendable {
     case strong
     case good

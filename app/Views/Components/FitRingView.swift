@@ -50,42 +50,6 @@ struct FitRingView: View {
     }
 }
 
-// MARK: - FitPillView
-
-/// Compact inline pill: score + label e.g. "88 · Strong fit"
-struct FitPillView: View {
-    let score: Int
-
-    private var color: Color {
-        FitBand.band(for: score).color
-    }
-
-    private var label: String {
-        FitBand.band(for: score).label
-    }
-
-    var body: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "target")
-                .font(.system(size: 11, weight: .medium))
-            Text("\(score)")
-                .font(.caption.weight(.bold))
-                .monospacedDigit()
-        }
-        .foregroundStyle(color)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(color.opacity(0.12))
-        .overlay(Capsule().stroke(color.opacity(0.28), lineWidth: 0.5))
-        .clipShape(Capsule())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(FitBand.accessibilityLabel(score: score))
-        // The pill shows only the number; the band is the part a sighted user infers from colour,
-        // so it has to be spoken.
-        .help(label)
-    }
-}
-
 // MARK: - CompanyMarkView
 
 /// Letter-badge for a company name (2 initials).

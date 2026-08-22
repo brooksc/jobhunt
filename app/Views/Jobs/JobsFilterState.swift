@@ -79,22 +79,6 @@ struct JobsFilterState: Equatable, Hashable {
 
     init() {}
 
-    init(from search: SavedSearch) {
-        if !search.statusFilterRaw.isEmpty {
-            statusFilter = Set(search.statusFilterRaw.compactMap { JobStatus(rawValue: $0) })
-        }
-        if !search.remoteFilterRaw.isEmpty {
-            remoteFilter = Set(search.remoteFilterRaw.compactMap { RemoteType(rawValue: $0) })
-        }
-        searchText = search.searchText
-        sortKey = JobsSortKey(rawValue: search.sortKeyRaw) ?? .capturedAt
-        sortAscending = search.sortAscending
-        minFitScore = search.minFitScore
-        minRating = search.minRating
-        minSalary = search.minSalary
-        recentDays = search.recentDays
-    }
-
     func toSavedSearch(name: String, sortOrder: Int = 0) -> SavedSearch {
         SavedSearch(
             name: name,

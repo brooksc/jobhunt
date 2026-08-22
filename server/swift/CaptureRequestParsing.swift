@@ -11,7 +11,6 @@ import Foundation
 /// When neither is present, or the array can't be re-serialized, this returns `nil` and the caller
 /// still ingests visible/selected text — structured data degrades safely, it is never required.
 enum CaptureRequestParsing {
-    static let structuredDataJSONField = "structured_data_json"
     static let structuredDataArrayField = "structured_data"
 
     static func resolveStructuredDataJSON(typed: String?, rawBody: Data?) -> String? {

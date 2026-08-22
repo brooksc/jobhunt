@@ -24,6 +24,10 @@ public enum MCPTokenManager {
     }
 
     /// Remove the token file (on normal shutdown, logout, or uninstall).
+    // periphery:ignore - Shutdown deletes the token through `deleteIfOurs`, which is the safe
+    // variant (TASK-688: a quitting instance must not delete a live instance's token). This
+    // unconditional one is kept for a deliberate reset, and removing it would leave no way to clear
+    // the token at all.
     public static func delete() {
         delete(at: tokenURL)
     }

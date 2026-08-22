@@ -3,7 +3,7 @@ id: TASK-685
 title: >-
   Centralize availability-run orchestration across manual and scheduled entry
   points
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-21 20:41'
 updated_date: '2026-08-22 20:20'

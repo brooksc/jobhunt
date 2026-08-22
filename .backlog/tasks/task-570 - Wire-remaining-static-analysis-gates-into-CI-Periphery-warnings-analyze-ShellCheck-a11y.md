@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-06-20 04:24'
-updated_date: '2026-08-10 00:10'
+updated_date: '2026-08-22 22:38'
 labels:
   - ci
   - static-analysis
@@ -49,7 +49,7 @@ Gitleaks + Dependabot are already wired. None of these is a release blocker.
 - [x] #2 A compiler-warning gate prevents new warnings accruing
 - [ ] #3 Periphery dead-code scan runs in CI
 - [ ] #4 swiftlint analyze runs in CI
-- [ ] #5 AppUITests runs performAccessibilityAudit
+- [x] #5 AppUITests runs performAccessibilityAudit
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -66,4 +66,12 @@ Gitleaks + Dependabot are already wired. None of these is a release blocker.
 **`swiftlint analyze` (parked).** Requires a full compiler log per run, roughly doubling CI build time, and the compiler-backed rule set overlaps heavily with what `--strict` already enforces. Not worth the wall-clock until there's a specific rule we want from it.
 
 **Accessibility audit (parked).** `performAccessibilityAudit` lives in AppUITests, which needs a graphical session. That's the same constraint that parks the other UI-verification work in this sweep.
+
+**2026-08-22 — AC #5 landed.** `AppUITests/AccessibilityAuditTests` audits Dashboard, All Jobs, Needs Action, Sites and Data Quality. Verified on a graphical session: AppUITests 37/37.
+
+It is a **ratchet, not a pass/fail gate**, for the reason Periphery is parked: the first run found ~190 issues (Dashboard 28, All Jobs 30, Needs Action 13, Sites 21, Data Quality 100 — mostly contrast on system-tinted chips and undescribed elements), and a gate that fails on all of them gets disabled rather than fixed. Each screen has a recorded ceiling with headroom, the individual findings attach to the test result, and the debt is TASK-689, which lowers the ceilings as it goes.
+
+The headroom is deliberate: the audit walks whatever the demo seed produced, so an exact-count assertion would go red on unrelated changes.
+
+Remaining: #3 Periphery and #4 `swiftlint analyze`, both still parked for the reasons recorded above — Periphery needs a curated baseline of its own, and `analyze` roughly doubles CI build time for a rule set that overlaps `--strict`.
 <!-- SECTION:NOTES:END -->

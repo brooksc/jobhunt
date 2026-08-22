@@ -1,10 +1,10 @@
 ---
 id: TASK-503
 title: Sites review workflow clarity + Data Quality inline fixes
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-06-18 23:06'
-updated_date: '2026-08-22 22:49'
+updated_date: '2026-08-22 23:41'
 labels:
   - ux
   - sites
@@ -29,7 +29,7 @@ References: app/Views/Sites/SitesView.swift, app/Views/Sites/SiteDetailView.swif
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Sites: inline Mark-Reviewed + clearer cadence affordance + re-enable for excluded sites
-- [ ] #2 Data Quality: at least the common missing-field issues can be fixed inline (or via a clear manual-entry path)
+- [x] #2 Data Quality: at least the common missing-field issues can be fixed inline (or via a clear manual-entry path)
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -61,3 +61,19 @@ not verified: (visual) — the row layout with the new button, and the footer wo
 
 **#2 (Data Quality inline fixes) remains open** and, per the design note, is a separate concern that should be split out rather than designed here.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Both criteria met.
+
+**#1 — Sites.** The row now carries the actions instead of the detail pane: **Mark Reviewed** inline, an **explainer** under the Overdue section saying what overdue means and that reviewing restarts the clock, and **Re-enable** on excluded rows (Exclude had been a one-way door). All three drive `SiteService` methods that already existed — this was a missing affordance, not a missing capability.
+
+**#2 — Data Quality.** The screen listed problems it gave no way to solve: "Missing company" offered re-extraction, which re-fails identically on a posting whose source URL has gone, and Mark Reviewed, which only hides the row. A row missing company/title/location now carries a quick-fix popover for exactly those fields, and shows the extraction error alongside so it's clear why re-running wouldn't help rather than looking like an untried option.
+
+Scope was deliberate: only fields where free text *is* the value. Work mode is a picker and salary is a structured range — a text box accepting "120k-ish" would leave the data worse than the gap it filled. Empty entries are dropped rather than written, so saving one field can't blank another the same row still needs. `QuickFixField` lives in Core with 5 tests covering the mapping, ordering, and both exclusions.
+
+Not done, deliberately: the wider redesign of the Sites screen around due/not-due that the design note contemplates, and the Brave question (whether the extension's mark-reviewed action is reachable in a non-Chrome Chromium). Neither is in the acceptance criteria; the second needs the user's browser to answer.
+
+not verified: (visual) — the Sites row with its new button, the Overdue footer, and the quick-fix popover have not been seen rendered. The app is running the build that contains them.
+<!-- SECTION:FINAL_SUMMARY:END -->

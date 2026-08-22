@@ -8,10 +8,16 @@ import SwiftData
 public enum BackgroundStoreError: Error, LocalizedError, Sendable {
     case notFound(String)
     case multipleMatches(count: Int)
+    /// Two rows share an id the caller asked to change — the store is corrupt, and which row was
+    /// meant is unknowable (TASK-678).
+    case duplicateJobIDs([String])
     public var errorDescription: String? {
         switch self {
         case let .notFound(id): return "Record not found: \(id)"
         case let .multipleMatches(count): return "Expected exactly one match but found \(count)"
+        case let .duplicateJobIDs(ids):
+            return "The store holds more than one job with the same id (\(ids.joined(separator: ", "))). "
+                + "Refusing to change an ambiguous row — back up the store and repair the duplicates."
         }
     }
 }
@@ -129,7 +135,27 @@ public actor BackgroundStore {
         guard !uniqueIDs.isEmpty else { return }
 
         let allJobs = try modelContext.fetch(FetchDescriptor<Job>())
-        let jobsByID = Dictionary(uniqueKeysWithValues: allJobs.map { ($0.id, $0) })
+        // Built by hand rather than with `Dictionary(uniqueKeysWithValues:)`, which TRAPS on a
+        // duplicate key — taking the process down on an ordinary status change, with no diagnosis
+        // (TASK-678). A repeated URL query parameter killed the app this way once already; this is
+        // the same construct applied to runtime data.
+        //
+        // A duplicate elsewhere in the store doesn't block unrelated work — but a duplicate among the
+        // jobs being CHANGED does, because which row was meant is unknowable and picking one silently
+        // would corrupt the answer rather than report the corruption.
+        var jobsByID: [String: Job] = [:]
+        var duplicated: Set<String> = []
+        for job in allJobs where jobsByID.updateValue(job, forKey: job.id) != nil {
+            duplicated.insert(job.id)
+        }
+        let ambiguous = duplicated.intersection(uniqueIDs)
+        if !ambiguous.isEmpty {
+            throw BackgroundStoreError.duplicateJobIDs(ambiguous.sorted())
+        }
+        if !duplicated.isEmpty {
+            // Not fatal here, but not silent either: the store needs repairing.
+            NSLog("BackgroundStore: duplicate job ids present: \(duplicated.sorted())")
+        }
         for id in uniqueIDs where jobsByID[id] == nil {
             throw BackgroundStoreError.notFound(id)
         }

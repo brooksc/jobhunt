@@ -1,9 +1,10 @@
 ---
 id: TASK-676
 title: 17 jobs are stuck in failed extraction and nothing re-drives them
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-21 02:18'
+updated_date: '2026-08-22 20:36'
 labels:
   - bug
   - extraction
@@ -29,8 +30,24 @@ Two things to decide: whether a failed extraction should be retried automaticall
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The root cause of the unparseable-JSON class is identified from the recorded parser complaint
-- [ ] #2 The 5 'never ran' jobs are re-driven and extract successfully
-- [ ] #3 A job whose extraction failed permanently is visible/filterable rather than a blank row
-- [ ] #4 The two different 'could not be parsed' messages are unified
+- [x] #1 The root cause of the unparseable-JSON class is identified from the recorded parser complaint
+- [x] #2 The 5 'never ran' jobs are re-driven and extract successfully
+- [x] #3 A job whose extraction failed permanently is visible/filterable rather than a blank row
+- [x] #4 The two different 'could not be parsed' messages are unified
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+17 failed → 1, and that one is genuinely unrecoverable (job #94, archived, "Job has no capture text to extract from" — it needs a re-capture, not a re-run). Live store now: 982 succeeded, 1 failed.
+
+**#1 root cause.** `repairJSON` applied every transform and only then validated. Responses that were already valid JSON got rewritten by the repair steps into something that no longer parsed — job #861 failed three times against a response that was complete and well-formed at both ends. Fixed by parsing first (returning the input untouched when it's already valid), then applying steps cumulatively and stopping at the first that parses.
+
+**#2** The 5 "never ran" jobs, and the unparseable class, were re-driven and extracted successfully.
+
+**#3** Already satisfied by `QualityIssueKind.extractionFailed` — high severity, with its own Data Quality filter chip — but nothing tested it, so nothing stopped it regressing. Now covered, including that `.pending` must not trip it (TASK-459). Archived failures stay out of Data Quality by `DataQualityScope.isEligible`, which is deliberate.
+
+**#4** `jsonParserComplaint` / `jsonParseFailureMessage` moved into JSONRepair, beside the parsing, so both call sites report the same sentence and both carry the parser's positional complaint. The complaint remains the parser's, never the model's text — these strings reach logs and the UI.
+
+Not done, deliberately: nothing retries a failed extraction automatically. Given the failure class turned out to be a bug in our own repair pass rather than a flaky model, an automatic retry loop would have been papering over it. Worth revisiting only if failures reappear at volume.
+<!-- SECTION:FINAL_SUMMARY:END -->

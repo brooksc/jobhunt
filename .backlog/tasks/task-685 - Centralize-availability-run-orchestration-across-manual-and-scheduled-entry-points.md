@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-08-21 20:41'
+updated_date: '2026-08-22 20:20'
 labels:
   - architecture
   - availability
@@ -40,3 +41,15 @@ Availability checks currently produce different persistence, retry-backlog, time
 - [ ] #5 User-visible all-clear reporting occurs only when every planned job was conclusively checked
 - [ ] #6 Automated tests cover parity across all three entry points, cancellation, partial runs, and skipped runs
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented as AppServices.applyAvailabilitySweep(_:covering:didCoverScheduledSweep:). All four entry points (Jobs list, Settings, scheduled loop, background drain) now route their side effects through it; presentation stays in each caller, which is the part that genuinely differs.
+
+Found while doing it: Settings never seeded the retry backlog, so any deferred or transient failure discovered from that screen was lost — the same class as TASK-674.02, which is what this task existed to prevent recurring.
+
+The two parameters are the only things that vary between callers: which jobs the sweep was given (only those may leave the backlog — TASK-673.01), and whether the run covered the scheduled sweep's population and may reset its interval.
+
+not verified: (visual) — no UI change; behaviour is covered by the existing availability tests.
+<!-- SECTION:NOTES:END -->

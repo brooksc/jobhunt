@@ -114,7 +114,12 @@ final class AppServices {
             // Replace rather than add, so jobs deleted through a path that doesn't call
             // `SpotlightIndexer.remove` (MCP, the migrator, bulk operations) don't linger as hits
             // that open the app and land on nothing.
-            SpotlightIndexer.replaceAll(entries)
+            // The closure re-reads the setting when the publish actually happens; the check above
+            // only covers the moment the pass started (TASK-680).
+            let settingsStore = settings
+            SpotlightIndexer.replaceAll(entries) {
+                MainActor.assumeIsolated { settingsStore.spotlightIndexingEnabled }
+            }
         }
     }
 

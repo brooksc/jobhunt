@@ -10,6 +10,25 @@ struct ContentView: View {
     /// `RawRepresentable`, so a token is stored and mapped — `@SceneStorage` needs a plain value.
     @SceneStorage("jobs.columnVisibility") private var columnVisibilityToken = ""
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    /// Current window content width, so the job list can be sized as a share of it rather than a
+    /// constant. At a fixed `min: 300` the column sat near 300pt in a 1900pt window, truncating
+    /// nearly every title and wrapping company names to two lines while the detail pane held an
+    /// empty state.
+    @State private var windowWidth: CGFloat = 0
+
+    /// Job-list column bounds, as a share of the window.
+    ///
+    /// Clamped at both ends: a share alone would make the column unusable on a small window and
+    /// absurd on an ultrawide one. The floor is what fixes the reported symptom — the column can no
+    /// longer be squeezed to 300pt just because the window is large enough to make that look silly.
+    private var jobsColumnWidth: (min: CGFloat, ideal: CGFloat) {
+        guard windowWidth > 0 else { return (300, 400) }
+        return (
+            min: Swift.min(Swift.max(windowWidth * 0.22, 300), 460),
+            ideal: Swift.min(Swift.max(windowWidth * 0.28, 360), 560)
+        )
+    }
+
     @State private var selectedJobIDs: Set<String> = []
     @State private var showNotifications = false
 
@@ -26,6 +45,16 @@ struct ContentView: View {
                 QueueAlertBanner(alert: alert, router: router) { router.queueAlert = nil }
             }
             splitView
+                .background(
+                    // Measures the window's content width so the job-list column can scale with it.
+                    // A GeometryReader in the background participates in no layout of its own, so it
+                    // reports the size without influencing it.
+                    GeometryReader { proxy in
+                        Color.clear
+                            .onAppear { windowWidth = proxy.size.width }
+                            .onChange(of: proxy.size.width) { _, width in windowWidth = width }
+                    }
+                )
         }
         .onAppear {
             columnVisibility = SplitVisibilityToken.visibility(for: columnVisibilityToken)
@@ -137,7 +166,9 @@ struct ContentView: View {
         switch router.selectedSection {
         case .jobs:
             JobsView(selectedJobIDs: $selectedJobIDs)
-                .navigationSplitViewColumnWidth(min: 300, ideal: 400)
+                .navigationSplitViewColumnWidth(
+                    min: jobsColumnWidth.min, ideal: jobsColumnWidth.ideal, max: 720
+                )
         case .dashboard:
             DashboardView()
                 .navigationSplitViewColumnWidth(min: 600, ideal: 900)

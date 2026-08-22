@@ -485,6 +485,15 @@ async function captureTabPayload(tabId, userNote = "") {
 async function tryLaunchAndFlush() {
   if (!(await jobhuntLaunch.isEnabled(chrome.storage.local))) return false;
 
+  // Claim the attempt BEFORE opening anything (TASK-682). Two captures arriving together both read
+  // an empty cooldown, both launched, and Chrome showed its external-protocol prompt twice — the
+  // exact thing the cooldown exists to prevent. Recording first makes the loser of the race see a
+  // fresh timestamp. A launch that then fails costs one skipped retry, which is cheaper than a
+  // duplicate prompt.
+  const lastAttemptAt = await jobhuntLaunch.readLastAttempt(chrome.storage.local);
+  if (!jobhuntLaunch.canAttempt(lastAttemptAt, Date.now())) return false;
+  await jobhuntLaunch.recordAttempt(chrome.storage.local, Date.now());
+
   const result = await jobhuntLaunch.launchAndWait({
     openURL: async (url) => {
       // A tab is the only way to hand a custom scheme to the OS from a service worker, and it is
@@ -504,10 +513,10 @@ async function tryLaunchAndFlush() {
     },
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     now: () => Date.now(),
-    lastAttemptAt: await jobhuntLaunch.readLastAttempt(chrome.storage.local),
+    // Already claimed above; launchAndWait's own cooldown check must not re-reject it.
+    lastAttemptAt: null,
   });
 
-  if (result.launched) await jobhuntLaunch.recordAttempt(chrome.storage.local, Date.now());
   return result.ready === true;
 }
 

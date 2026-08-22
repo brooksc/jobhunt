@@ -78,6 +78,10 @@ public final class PlatformIntegration: NSObject, ObservableObject {
         windowPolicy.stop()
         NotificationCenter.default.removeObserver(self, name: focusNotificationName, object: nil)
         NotificationCenter.default.removeObserver(self, name: .jobUnavailable, object: nil)
+        // `observeAvailabilityExpiry` registers TWO observers; stop() removed only the first, so this
+        // one survived a stop and was added again by the next start — one event, two handler calls
+        // (TASK-684).
+        NotificationCenter.default.removeObserver(self, name: .jobsMaybeUnavailable, object: nil)
         if UNUserNotificationCenter.current().delegate === self {
             UNUserNotificationCenter.current().delegate = nil
         }

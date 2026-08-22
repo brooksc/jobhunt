@@ -282,10 +282,35 @@
    * A page may carry several JobPosting blocks and only one of them the pay (906 has two), so take
    * the first that actually names an amount.
    */
+  /**
+   * Every JobPosting in a structured-data payload, however it is nested (TASK-683).
+   *
+   * Matching only a top-level object whose `@type` is exactly the string "JobPosting" misses three
+   * shapes real boards publish: an `@graph` wrapper, an array at the root, and an array-valued
+   * `@type` (`["JobPosting", "Thing"]`). Those payloads are captured and the app's own extraction
+   * reads them, so the preflight reporting "(missing)" made a working capture look broken.
+   */
+  function jobPostingsIn(structuredData) {
+    const found = [];
+    const visit = (node, depth) => {
+      if (!node || depth > 6) return;
+      if (Array.isArray(node)) {
+        node.forEach((child) => visit(child, depth + 1));
+        return;
+      }
+      if (typeof node !== "object") return;
+      const type = node["@type"];
+      const isPosting = Array.isArray(type) ? type.includes("JobPosting") : type === "JobPosting";
+      if (isPosting) found.push(node);
+      if (node["@graph"]) visit(node["@graph"], depth + 1);
+    };
+    visit(structuredData || [], 0);
+    return found;
+  }
+
   function structuredSalary(structuredData) {
-    for (const entry of structuredData || []) {
-      const posting = entry && entry["@type"] === "JobPosting" ? entry : null;
-      const base = posting && posting.baseSalary;
+    for (const posting of jobPostingsIn(structuredData)) {
+      const base = posting.baseSalary;
       if (!base) continue;
       const currency = base.currency || base.currencyCode || "";
       const value = base.value;

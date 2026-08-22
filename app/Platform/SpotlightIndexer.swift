@@ -46,9 +46,16 @@ public enum SpotlightIndexer {
     ///
     /// Clear-then-index, not a diff: the corpus is a few hundred rows, re-indexing is cheap, and a
     /// diff would need its own record of what was published last time.
-    public static func replaceAll(_ entries: [SpotlightEntry]) {
+    /// - Parameter stillEnabled: re-read at the moment of publishing, not only before the awaits that
+    ///   precede it. The launch pass checks the setting, then sleeps, then fetches, then clears, then
+    ///   indexes — and a user who turns Spotlight off during any of those gaps had their own clear
+    ///   complete and this republish land afterwards, putting the jobs back (TASK-680).
+    public static func replaceAll(_ entries: [SpotlightEntry], stillEnabled: @escaping @Sendable () -> Bool) {
         clearAll { _ in
-            Task { @MainActor in index(entries) }
+            Task { @MainActor in
+                guard stillEnabled() else { return }
+                index(entries)
+            }
         }
     }
 

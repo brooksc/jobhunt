@@ -141,3 +141,54 @@ describe('capture.js: preflight Salary from structured data', () => {
         assert.equal(salaryFrom([]), null);
     });
 });
+
+describe('capture.js: preflight Salary in nested structured data', () => {
+    function salaryFrom(structured) {
+        return capturePreflight({
+            page_title: 'Some Role',
+            visible_text: 'A great role on a great team.',
+            selected_text: '',
+            structured_data: structured,
+        }).salaryVal;
+    }
+
+    const baseSalary = {
+        currency: 'USD',
+        value: { minValue: 200000, maxValue: 225000, unitText: 'YEAR' },
+    };
+
+    // Real boards publish all three of these shapes; matching only a top-level string @type reported
+    // "(missing)" while the app's own extraction read them fine (TASK-683).
+    it('finds a posting inside @graph', () => {
+        assert.equal(
+            salaryFrom([{ '@context': 'https://schema.org', '@graph': [{ '@type': 'JobPosting', baseSalary }] }]),
+            'USD 200,000 – 225,000/yr'
+        );
+    });
+
+    it('finds a posting with an array-valued @type', () => {
+        assert.equal(
+            salaryFrom([{ '@type': ['JobPosting', 'Thing'], baseSalary }]),
+            'USD 200,000 – 225,000/yr'
+        );
+    });
+
+    it('finds a posting nested in an array', () => {
+        assert.equal(
+            salaryFrom([[{ '@type': 'JobPosting', baseSalary }]]),
+            'USD 200,000 – 225,000/yr'
+        );
+    });
+
+    it('still ignores payloads with no JobPosting', () => {
+        assert.equal(salaryFrom([{ '@graph': [{ '@type': 'Organization', name: 'Acme' }] }]), null);
+    });
+
+    // Bounded, not unbounded: structured data comes from parsed JSON so it can't contain a cycle,
+    // but it can be arbitrarily deep, and the scan should give up rather than walk it forever.
+    it('gives up on absurdly deep nesting instead of walking it', () => {
+        let node = { '@type': 'JobPosting', baseSalary };
+        for (let i = 0; i < 20; i += 1) node = { '@graph': [node] };
+        assert.equal(salaryFrom([node]), null);
+    });
+});

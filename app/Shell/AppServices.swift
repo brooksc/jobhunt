@@ -189,14 +189,17 @@ final class AppServices {
                 guard let jobs = try? await drainStore.jobs(withIDs: batch), !jobs.isEmpty else {
                     // The rows are gone (deleted, or the store moved under us). Nothing to retry, and
                     // spinning on them forever would keep the drain permanently unfinished.
-                    availabilityBacklog.absorb(AvailabilitySweep(gone: [], unverified: []))
+                    // Nothing to retry for these — drop just them, not the rest of the backlog.
+                    availabilityBacklog.absorb(AvailabilitySweep(gone: [], unverified: []), covering: batch)
                     continue
                 }
 
                 let sweep = await AvailabilityChecker.findGoneJobsRotating(
                     jobs, settings: settings, restrictToStatuses: nil
                 )
-                availabilityBacklog.absorb(sweep)
+                // `covering: batch` is load-bearing: this pass was given twelve of the pending
+                // jobs, so only those twelve may leave the backlog (TASK-673.01).
+                availabilityBacklog.absorb(sweep, covering: batch)
                 // The drain reaches jobs the foreground run couldn't, so its conclusions are the
                 // freshest ones there are — record them like any other check (TASK-674).
                 try? await drainStore.recordAvailabilityOutcomes(sweep.outcomes)
@@ -331,9 +334,21 @@ final class AppServices {
                                 )
                             }
                         }
-                        if let candidates, !candidates.gone.isEmpty {
-                            await MainActor.run {
-                                Self.notifyJobsMaybeUnavailable(count: candidates.gone.count, settings: settingsStore)
+                        if let candidates {
+                            // The scheduled sweep is the path most runs take, and it recorded
+                            // nothing: no per-job history, and its deferred/transient failures were
+                            // never handed to the drain (TASK-674.02). So the automatic check left
+                            // history stale and quietly never finished what it started.
+                            try? await store.recordAvailabilityOutcomes(candidates.outcomes)
+                            await MainActor.run { [weak self] in
+                                self?.availabilityBacklog.absorb(candidates)
+                            }
+                            if !candidates.gone.isEmpty {
+                                await MainActor.run {
+                                    Self.notifyJobsMaybeUnavailable(
+                                        count: candidates.gone.count, settings: settingsStore
+                                    )
+                                }
                             }
                         }
                     }

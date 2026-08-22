@@ -713,7 +713,15 @@ public enum AvailabilityChecker {
     /// can't confirm removal — the caller stops checking LinkedIn for the rest of the run (backoff).
     /// `.live` carries the job id for the same reason `SpecOutcome.live` does — a confirmed-listed
     /// posting is a result to record, not a non-event (TASK-674).
-    private enum LinkedInOutcome { case gone(GoneJobResult), live(String), throttled }
+    ///
+    /// `.indeterminate` exists because "couldn't prove gone" is NOT "confirmed alive" (TASK-674.01).
+    /// While a sweep only reported problems, collapsing the two was harmless; now that a verdict is
+    /// persisted and shown as "Still listed", it would be a claim the check never earned — the same
+    /// false confidence that let a run which checked nothing report an all-clear. Distinct from
+    /// `.throttled`, which additionally means "stop the LinkedIn pass".
+    private enum LinkedInOutcome {
+        case gone(GoneJobResult), live(String), indeterminate(String), throttled
+    }
 
     /// One spec's contribution to the sweep: gone, verified-live, or verified-nothing.
     /// `.live` carries the job id because a still-listed posting is a RESULT worth recording, not
@@ -797,7 +805,9 @@ public enum AvailabilityChecker {
     private static func linkedInOutcome(for spec: JobSpec, session: URLSession) async -> LinkedInOutcome {
         guard let jobID = linkedInJobID(from: spec.url),
               let apiURL = URL(string: "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/\(jobID)") else {
-            return .live(spec.id) // not a resolvable LinkedIn posting id — nothing to confirm gone
+            // Nothing to ask about: no posting id could be parsed from the URL. That is not
+            // evidence the posting is live.
+            return .indeterminate("no LinkedIn posting id in the URL")
         }
         var request = URLRequest(url: apiURL, timeoutInterval: timeoutSeconds)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
@@ -816,7 +826,8 @@ public enum AvailabilityChecker {
             return gone("linkedin posting \(jobID) removed (guest API \(http.statusCode))")
         case 200:
             let body = String(data: data, encoding: .utf8)?.lowercased() ?? ""
-            guard !body.isEmpty else { return .live(spec.id) }
+            // A 200 with an empty body tells us nothing either way.
+            guard !body.isEmpty else { return .indeterminate("empty response from LinkedIn") }
             if isLinkedInClosedJob(finalURLString: apiURL.absoluteString, body: body) || bodyGoneReason(body) != nil {
                 return gone("linkedin posting \(jobID) no longer accepting applications")
             }
@@ -824,7 +835,8 @@ public enum AvailabilityChecker {
         case 429, 999:
             return .throttled // rate-limited / blocked
         default:
-            return .live(spec.id) // unknown status — don't flag
+            // An unexpected status is not an answer; don't flag it gone, and don't claim it live.
+            return .indeterminate("unexpected HTTP \(http.statusCode) from LinkedIn")
         }
     }
 
@@ -882,6 +894,9 @@ public enum AvailabilityChecker {
             let outcome = await linkedInOutcome(for: spec, session: session)
             if case let .gone(result) = outcome { gone.append(result) }
             if case let .live(jobID) = outcome { alive.append(jobID) }
+            if case let .indeterminate(why) = outcome {
+                skipped.append(unverified(spec, .unreadablePage, why))
+            }
             await tick()
             if case .throttled = outcome {
                 // LinkedIn is rate-limiting — stop; the rest are picked up on a future run. Advance the

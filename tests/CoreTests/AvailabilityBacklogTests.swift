@@ -59,6 +59,45 @@ final class AvailabilityBacklogTests: XCTestCase {
         XCTAssertTrue(backlog.isDrained, "nothing here gets a different answer by asking again")
     }
 
+    /// A pass that was given only SOME of the pending jobs must not discard the rest (TASK-673.01).
+    ///
+    /// The drain deliberately takes twelve at a time, so replacing the pending set outright meant a
+    /// backlog of 58 lost 46 untouched postings on the first pass and then reported itself finished.
+    func testABatchedPassOnlyRemovesTheJobsItCovered() {
+        var backlog = AvailabilityBacklog()
+        let pending = (0 ..< 30).map { unverified("j\($0)", .notCheckedThisRun) }
+        backlog.absorb(AvailabilitySweep(gone: [], unverified: pending))
+        XCTAssertEqual(backlog.pendingJobIDs.count, 30)
+
+        // A drain pass over the first three: one gone, one still deferred, one confirmed alive.
+        let batch = ["j0", "j1", "j2"]
+        backlog.absorb(
+            AvailabilitySweep(
+                gone: [gone("j0")],
+                unverified: [unverified("j1", .rateLimited)],
+                alive: ["j2"]
+            ),
+            covering: batch
+        )
+
+        XCTAssertFalse(backlog.isDrained, "27 untouched jobs remain")
+        XCTAssertEqual(backlog.pendingJobIDs.count, 28, "26 untouched + j1, still deferred")
+        XCTAssertFalse(backlog.pendingJobIDs.contains("j0"), "answered gone")
+        XCTAssertTrue(backlog.pendingJobIDs.contains("j1"), "deferred again")
+        XCTAssertFalse(backlog.pendingJobIDs.contains("j2"), "confirmed alive")
+        XCTAssertTrue(backlog.pendingJobIDs.contains("j29"), "never touched — must not be dropped")
+    }
+
+    /// Order is stable, so the drain works front-to-back instead of re-rolling which twelve it sees.
+    func testUntouchedJobsKeepTheirOrder() {
+        var backlog = AvailabilityBacklog()
+        backlog.absorb(AvailabilitySweep(
+            gone: [], unverified: (0 ..< 5).map { unverified("j\($0)", .notCheckedThisRun) }
+        ))
+        backlog.absorb(AvailabilitySweep(gone: [gone("j0")], unverified: []), covering: ["j0"])
+        XCTAssertEqual(backlog.pendingJobIDs, ["j1", "j2", "j3", "j4"])
+    }
+
     /// The pending set is replaced, not appended to — otherwise every pass grows it and the drain
     /// never finishes.
     func testPendingSetIsReplacedByEachPass() {
@@ -92,9 +131,19 @@ final class AvailabilityBacklogTests: XCTestCase {
     func testDrainWithNoFindingsHasNothingToReport() {
         var backlog = AvailabilityBacklog()
         backlog.absorb(AvailabilitySweep(gone: [], unverified: [unverified("b", .notCheckedThisRun)]))
-        backlog.absorb(AvailabilitySweep(gone: [], unverified: []))
+        // The follow-up pass reaches b and finds it still listed.
+        backlog.absorb(AvailabilitySweep(gone: [], unverified: [], alive: ["b"]))
         XCTAssertTrue(backlog.isDrained)
         XCTAssertFalse(backlog.hasFindings)
+    }
+
+    /// A sweep that concluded nothing must not empty the backlog. An empty result is what a cancelled
+    /// or failed pass produces, and treating it as "all done" is how work disappears silently.
+    func testASweepThatConcludedNothingClearsNothing() {
+        var backlog = AvailabilityBacklog()
+        backlog.absorb(AvailabilitySweep(gone: [], unverified: [unverified("b", .notCheckedThisRun)]))
+        backlog.absorb(AvailabilitySweep(gone: [], unverified: []))
+        XCTAssertEqual(backlog.pendingJobIDs, ["b"], "an empty sweep proves nothing about b")
     }
 
     /// Batches are small on purpose: the point is to be gentler than the sweep that got throttled.

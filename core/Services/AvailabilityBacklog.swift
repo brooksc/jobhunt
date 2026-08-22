@@ -50,20 +50,36 @@ public struct AvailabilityBacklog: Sendable {
         .notCheckedThisRun, .rateLimited, .unreachable
     ]
 
-    /// Fold a sweep's outcome in: its findings accumulate, and whatever it still couldn't answer
-    /// becomes the new pending set.
+    /// Fold a sweep's outcome in: its findings accumulate, and the jobs it covered leave the pending
+    /// set unless it still couldn't answer for them.
     ///
-    /// The pending set is REPLACED rather than appended to, because a pass re-asks about the jobs it
-    /// was given: anything it answered has left the list, and anything it deferred again is in the
-    /// new one. Appending would make the backlog grow with every pass and never drain.
-    public mutating func absorb(_ sweep: AvailabilitySweep) {
+    /// - Parameter covering: the jobs this sweep was actually given. Defaults to everything it reached
+    ///   a conclusion about.
+    ///
+    /// This used to REPLACE the pending set outright, on the reasoning that a pass re-asks about the
+    /// jobs it was given. That holds only when the pass is given ALL of them — and the background
+    /// drain deliberately isn't: it takes a batch of twelve, because the postings in the backlog are
+    /// exactly the ones whose hosts objected to being asked quickly. So a drain over 58 deferred
+    /// postings checked twelve, discarded the other 46 untouched, and reported itself finished. Only
+    /// the covered jobs may leave.
+    public mutating func absorb(_ sweep: AvailabilitySweep, covering: [String]? = nil) {
         var seen = Set(gone.map(\.jobID))
         for result in sweep.gone where seen.insert(result.jobID).inserted {
             gone.append(result)
         }
-        pendingJobIDs = sweep.unverified
+
+        let covered = Set(covering ?? sweep.outcomes.map(\.jobID))
+        let stillPending = sweep.unverified
             .filter { Self.retryableReasons.contains($0.reason) }
             .map(\.jobID)
+        let stillPendingSet = Set(stillPending)
+
+        // Keep the order stable so the drain works through the backlog front-to-back rather than
+        // re-rolling which twelve it looks at.
+        var next = pendingJobIDs.filter { !covered.contains($0) || stillPendingSet.contains($0) }
+        let known = Set(next)
+        next.append(contentsOf: stillPending.filter { !known.contains($0) })
+        pendingJobIDs = next
     }
 
     /// The next slice to check. Batches are small on purpose: the point is to be gentler than a sweep,

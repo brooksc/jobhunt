@@ -450,9 +450,11 @@ struct JobsSettingsTab: View {
         let now = ISO8601DateFormatter().string(from: Date())
         try? settings.set(now, forKey: SettingsKey.availabilityLastAutoCheckAt)
 
-        let store = appServices.backgroundStore
-        let outcomes = sweep.outcomes
-        Task.detached { try? await store.recordAvailabilityOutcomes(outcomes) }
+        // Awaited, not detached (TASK-681). A detached task outlives runtime shutdown, and
+        // RestoreCoordinator quiesces the runtime before swapping the store's SQLite/WAL/SHM files —
+        // so a stray write could land mid-swap, against the single-writer boundary the restore path
+        // exists to protect. This function is already async and already awaited the sweep.
+        try? await appServices.backgroundStore.recordAvailabilityOutcomes(sweep.outcomes)
 
         unverifiedJobs = sweep.unverified
         lastCheckedCount = sweep.checkedCount

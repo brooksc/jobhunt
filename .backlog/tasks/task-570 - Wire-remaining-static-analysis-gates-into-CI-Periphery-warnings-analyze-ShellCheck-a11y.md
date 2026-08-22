@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-06-20 04:24'
-updated_date: '2026-08-22 22:38'
+updated_date: '2026-08-22 22:46'
 labels:
   - ci
   - static-analysis
@@ -47,7 +47,7 @@ Gitleaks + Dependabot are already wired. None of these is a release blocker.
 <!-- AC:BEGIN -->
 - [x] #1 ShellCheck runs in CI over scripts/*.sh
 - [x] #2 A compiler-warning gate prevents new warnings accruing
-- [ ] #3 Periphery dead-code scan runs in CI
+- [x] #3 Periphery dead-code scan runs in CI
 - [ ] #4 swiftlint analyze runs in CI
 - [x] #5 AppUITests runs performAccessibilityAudit
 <!-- AC:END -->
@@ -74,4 +74,12 @@ It is a **ratchet, not a pass/fail gate**, for the reason Periphery is parked: t
 The headroom is deliberate: the audit walks whatever the demo seed produced, so an exact-count assertion would go red on unrelated changes.
 
 Remaining: #3 Periphery and #4 `swiftlint analyze`, both still parked for the reasons recorded above — Periphery needs a curated baseline of its own, and `analyze` roughly doubles CI build time for a rule set that overlaps `--strict`.
+
+**2026-08-22 — AC #3 landed; the earlier parking reason turned out to be fixable.** The ~274-findings-of-noise problem was two analyses, not the tool: `disable_redundant_public_analysis` (framework API that is public deliberately and reached from tests via `@testable`) and `retain_assign_only_properties` (every `@State`/`@Environment`, which SwiftUI reads on our behalf). Both are off in `.periphery.yml` with the reasoning. 431 raw findings → 47 genuine ones — small enough to gate.
+
+`scripts/check-periphery.sh` ratchets against `.periphery-baseline`, same shape as the warnings gate. `.github/workflows/periphery.yml` runs it weekly plus manual dispatch, deliberately NOT in `swift-build`: Periphery drives its own full xcodebuild and would double the only macOS job on every push, for debt that accrues over weeks. Remaining findings are TASK-690.
+
+**It found a real bug on the first run.** `testRawHashDoesNotTrapOnHugeJSONLDNumber` was written inside a `private extension JobSnapshot` at the foot of DuplicateDetectorTests instead of the XCTestCase — XCTest only runs methods on a test class, so it had never executed. It covers a trap on an integer-valued Double outside Int range from attacker-controlled JSON-LD (a crash on capture, CWE-190). Moved into the class; runs and passes. Baseline now 46.
+
+Only #4 (`swiftlint analyze`) remains, still parked: a full compiler log per run for a rule set that overlaps `--strict`.
 <!-- SECTION:NOTES:END -->

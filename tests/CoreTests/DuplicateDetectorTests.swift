@@ -993,6 +993,20 @@ final class DuplicateDetectorTests: XCTestCase {
         )
         XCTAssertNil(pair, "a resolved hash must not re-flag the candidate")
     }
+
+    // MARK: - Trapping-conversion hardening (F2)
+
+    /// Lived in a `private extension JobSnapshot` at the bottom of this file until Periphery reported
+    /// it as unused (TASK-570) — XCTest only runs methods on an XCTestCase, so it had never run.
+    func testRawHashDoesNotTrapOnHugeJSONLDNumber() {
+        // sortedJSON's Int(Double) used to trap on an integer-valued Double outside Int range coming
+        // from attacker-controlled JSON-LD (e.g. 1e19) — crashing the whole app on capture (CWE-190).
+        let hash = DuplicateDetector.rawHash(
+            url: "https://example.com/job", canonicalURL: nil, selectedText: nil, visibleText: nil,
+            structuredData: [["@type": "JobPosting", "salary": 1e19]]
+        )
+        XCTAssertFalse(hash.isEmpty)
+    }
 }
 
 // MARK: - Test helpers
@@ -1051,18 +1065,6 @@ private extension JobSnapshot {
         )
         job.capture = cap
         return JobSnapshot(job: job, capture: cap)
-    }
-
-    // MARK: - Trapping-conversion hardening (F2)
-
-    func testRawHashDoesNotTrapOnHugeJSONLDNumber() {
-        // sortedJSON's Int(Double) used to trap on an integer-valued Double outside Int range coming
-        // from attacker-controlled JSON-LD (e.g. 1e19) — crashing the whole app on capture (CWE-190).
-        let hash = DuplicateDetector.rawHash(
-            url: "https://example.com/job", canonicalURL: nil, selectedText: nil, visibleText: nil,
-            structuredData: [["@type": "JobPosting", "salary": 1e19]]
-        )
-        XCTAssertFalse(hash.isEmpty)
     }
 }
 

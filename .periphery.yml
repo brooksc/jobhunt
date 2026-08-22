@@ -1,0 +1,19 @@
+project: Jobhunt.xcodeproj
+schemes:
+  - Jobhunt-DMG
+quiet: true
+
+# Two of Periphery's analyses are switched off because, in this project, they report design rather
+# than dead code — and a scan that is 90% noise gets ignored, then disabled.
+#
+# Redundant public accessibility (~200 findings): JobhuntCore and JobhuntServer are frameworks whose
+# API is deliberately public at the module boundary, and the tests reach it via `@testable`, which
+# doesn't count as a use. "Make this internal" is not an improvement here.
+#
+# Assign-only properties (~170 findings): SwiftUI's own idiom. `@State`, `@Environment` and
+# `@FocusState` are written and read by the framework, not by our code, so the analysis sees a
+# write with no read and reports every one of them.
+#
+# What's left is genuine: unused types, functions and stored properties. 431 findings become 47.
+disable_redundant_public_analysis: true
+retain_assign_only_properties: true

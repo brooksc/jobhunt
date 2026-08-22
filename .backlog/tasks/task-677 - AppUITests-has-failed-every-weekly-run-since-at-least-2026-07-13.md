@@ -1,7 +1,7 @@
 ---
 id: TASK-677
 title: AppUITests has failed every weekly run since at least 2026-07-13
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-21 02:19'
 updated_date: '2026-08-22 20:15'

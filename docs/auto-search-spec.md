@@ -575,7 +575,8 @@ sweep into 15,000 extractions, and that is the scenario the circuit breaker is f
 Each is independently shippable and independently useful. (Renamed M1–M6 — the previous draft
 used "Stage" for both pipeline stages and shipping stages, which made "Stage 1" ambiguous.)
 
-> **Status as of 2026-08-22: M1–M5 are built and on `main`. M6 is not.**
+> **Status as of 2026-08-22: M1–M6 are built and on `main`.** M6 ships as *company discovery*
+> rather than as aggregator sources — the measurements below are why.
 >
 > End-to-end verification against GitLab's live Greenhouse board (204 open roles), with a
 > program/product-manager criteria set:
@@ -709,7 +710,7 @@ and were silently returning nothing for weeks; re-resolution recovered 8, one of
 
 **Done when:** an amber source can be repaired from the UI without editing anything by hand.
 
-### M6 — Market-wide sources *(not built — and should be redesigned before it is)*
+### M6 — Company discovery ✅ *shipped (redesigned — see below)*
 
 The original plan was to add aggregators (Remotli, HN Who-is-Hiring, The Muse, 4 Day Week) as
 `marketWide` sources alongside the per-company ones, justified by a 0.23% hit rate that argued for
@@ -789,10 +790,52 @@ This is better on every axis that matters:
 **Done when:** a user with no sources configured can go from a company name they've never heard of
 to a tracked board, without knowing what an ATS is.
 
-**Still measure before building.** The claim above rests on one day's fetch of five aggregators.
-Before committing, sample across a fortnight and check the employer-overlap rate — if most
-discovered companies are ones the user already tracks, the feature is redundant no matter how
-elegant the framing.
+#### The overlap check, and what it changed again
+
+Measured before building. Of 267 distinct companies on the five aggregators, **only 11 were already
+tracked — 4.1%**. Redundancy is not the risk; 256 were new.
+
+But checking *per source* corrected the 65% figure above: **only Remotli supplies ATS links (83% of
+its rows), and Remotli is a Swiss board.** RemoteOK, WeWorkRemotely, Remotive and Himalayas link to
+their own pages, 0% ATS. The aggregate was one source's property, not a general one.
+
+So the free-identification path only works for one Swiss aggregator, and the general path is
+name resolution. Probing 120 real company names off the four English-language boards resolved
+**23 (19%)** — but the ones that resolved are the point:
+
+```
+Databricks 821 roles · Coinbase 173 · Mixpanel 96 · JetBrains 84 · Hightouch 73
+Mercury 56 · LaunchDarkly 50 · Benchling 52 · Midjourney 17 · Brightwheel 19 …
+```
+
+One aggregator posting at Databricks becomes a source watching 821 roles, continuously.
+
+#### Why the aggregator feeder wasn't built
+
+RemoteOK's API terms require a followed backlink "from your site" and attribution. Jobhunt is a
+desktop app with no site, and using their index to route users straight to employers' own boards is
+precisely what that clause exists to prevent. Shipping it would risk the user's API access and
+breach terms jobhunt can't satisfy. Not built, deliberately.
+
+#### What shipped instead
+
+The same mechanism, pointed at a better and unencumbered source of employers: **the user's own
+jobs.** Someone who captured a posting at a company has demonstrated more interest in it than any
+market-wide feed could infer, and the captured URL usually *is* an ATS URL — so most suggestions
+cost **no network request at all**, and the rest fall back to the name resolver with a bounded probe
+budget.
+
+`CompanyDiscovery` lists companies with jobs in the library that no `SearchSource` watches, ranked
+by how many jobs the user has from each. Deliberately **not** filtered by the title criteria: a
+company hiring engineers today may post a program manager next month, and a source watches the whole
+board forever — filtering at discovery time would discard exactly the durable value, and is what
+made the original aggregator framing role-family-specific in the first place.
+
+**Done when:** a user with jobs in their library can turn them into watched boards without knowing
+what an ATS is. ✅
+
+**Left open:** an aggregator feeder for companies the user has *never encountered*. The mechanism is
+built and would accept one — it needs a source whose terms permit this use.
 
 ### Explicitly out of scope
 

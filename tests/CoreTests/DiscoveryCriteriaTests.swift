@@ -309,3 +309,59 @@ final class DiscoveryCriteriaTests: XCTestCase {
         XCTAssertNotEqual(urlKey, "gh:4567")
     }
 }
+
+/// The URL as a second statement of location (found by comparing against career-ops' real output).
+final class DiscoveryLocationHintTests: XCTestCase {
+    private func posting(title: String = "Program Manager", location: String?, url: String) -> DiscoveredPosting {
+        DiscoveredPosting(
+            dedupKey: "x", url: url, title: title, company: "Acme", locationRaw: location
+        )
+    }
+
+    /// The case that motivated this: a tenant reporting a city while its own URL says the role is
+    /// remote. Checking only the display string drops it, silently.
+    func testTheURLCanSupplyALocationTheDisplayStringOmits() {
+        let criteria = DiscoveryCriteria(locationAllow: ["remote"])
+        XCTAssertEqual(criteria.evaluate(posting(
+            location: "Indianapolis, IN",
+            url: "https://acme.wd1.myworkdayjobs.com/careers/job/US-TX-Remote/Program-Manager_R-1"
+        )), .pass)
+    }
+
+    /// A rollup count names no place, so the URL is the only thing left to judge on.
+    func testARollupFallsBackToTheURL() {
+        let criteria = DiscoveryCriteria(locationAllow: ["remote"])
+        XCTAssertEqual(criteria.evaluate(posting(
+            location: "46 Locations",
+            url: "https://acme.wd1.myworkdayjobs.com/careers/job/Remote---Texas/Program-Manager_R-1"
+        )), .pass)
+    }
+
+    /// The hint widens matching in *both* directions — a blocked country in the URL still blocks,
+    /// or a block list could be bypassed by a tenant that displays a friendly location.
+    func testTheURLCanAlsoTriggerABlock() {
+        let criteria = DiscoveryCriteria(locationBlock: ["india"], locationAllow: ["remote"])
+        XCTAssertEqual(criteria.evaluate(posting(
+            location: "Remote",
+            url: "https://acme.wd1.myworkdayjobs.com/careers/job/Hyderabad-India/Program-Manager_R-1"
+        )), .reject(.location))
+    }
+
+    /// Only the segment after `/job/` is read. A tenant whose *hostname* contains a blocked word
+    /// must not be rejected for it.
+    func testOnlyTheJobSegmentIsRead() {
+        let criteria = DiscoveryCriteria(locationBlock: ["india"], locationAllow: ["remote"])
+        XCTAssertEqual(criteria.evaluate(posting(
+            location: "Remote, United States",
+            url: "https://indiamart.wd1.myworkdayjobs.com/india-careers/job/Austin-TX/PM_R-1"
+        )), .pass)
+    }
+
+    /// Nothing to judge on either field still passes — absent data never rejects.
+    func testNoLocationAnywhereStillPasses() {
+        let criteria = DiscoveryCriteria(locationAllow: ["remote"])
+        XCTAssertEqual(
+            criteria.evaluate(posting(location: nil, url: "https://example.com/jobs/1")), .pass
+        )
+    }
+}

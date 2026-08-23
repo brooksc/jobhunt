@@ -141,21 +141,35 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
     /// else here, and it matters most for Workday, whose location is often a rollup count.
     func passesLocation(_ posting: DiscoveredPosting) -> Bool {
         let location = (posting.locationRaw ?? "").trimmingCharacters(in: .whitespaces).lowercased()
-        guard !location.isEmpty else { return true }
+        // The URL is a second, independent statement of where the role is, and the two disagree
+        // often enough to matter. A tenant can report "Indianapolis, IN" on a posting whose own URL
+        // says `/job/US-TX-Remote/`, or roll several offices up into "4 Locations" while the path
+        // still names the real one. Checking only the display string loses those silently, which is
+        // the failure direction this whole gate is built to avoid — so a keyword may match *either*.
+        //
+        // Found by comparing against career-ops' output on 139 real matches: 11 were rejected here
+        // that it accepted, every one of them on this difference.
+        let hint = Self.locationHint(fromURL: posting.url)
+        guard !location.isEmpty || !hint.isEmpty else { return true }
 
-        if Self.anyMatches(locationBlockHard, in: location, boundaryAlways: true) {
+        func matches(_ keywords: [String]) -> Bool {
+            (!location.isEmpty && Self.anyMatches(keywords, in: location, boundaryAlways: true))
+                || (!hint.isEmpty && Self.anyMatches(keywords, in: hint, boundaryAlways: true))
+        }
+
+        if matches(locationBlockHard) {
             return false
         }
-        if Self.anyMatches(locationAlwaysAllow, in: location, boundaryAlways: true) {
+        if matches(locationAlwaysAllow) {
             return true
         }
-        if Self.anyMatches(locationBlock, in: location, boundaryAlways: true) {
+        if matches(locationBlock) {
             return false
         }
         if locationAllow.isEmpty {
             return true
         }
-        if Self.anyMatches(locationAllow, in: location, boundaryAlways: true) {
+        if matches(locationAllow) {
             return true
         }
 
@@ -193,6 +207,16 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
     func passesAge(_ posting: DiscoveredPosting, now: Date) -> Bool {
         guard maxAgeDays > 0, let published = posting.firstPublished else { return true }
         return published >= now.addingTimeInterval(-Double(maxAgeDays) * 86400)
+    }
+
+    /// The location a posting URL encodes as `/job/{Location-Slug}/…`.
+    ///
+    /// **Only** the segment after `/job/` is read, never the whole URL. Scanning the whole thing
+    /// would match company slugs and ATS subdomains by accident — a tenant with "india" in its
+    /// hostname would look like an Indian posting to every block list that mentions it.
+    static func locationHint(fromURL urlString: String) -> String {
+        guard let url = URL(string: urlString) else { return "" }
+        return (WorkdayJobBoard.locationFromPath(url.path) ?? "").lowercased()
     }
 
     // MARK: - Keyword matching

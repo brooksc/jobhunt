@@ -68,6 +68,12 @@ private struct SettingsTabView: View {
                 .tabItem { Label("Data", systemImage: "externaldrive") }
                 .tag(3)
 
+            // Tagged 5, not 4, so Debug keeps its tag: the selected pane is persisted as an Int,
+            // and renumbering would land a returning user on a different tab than they left.
+            SearchSettingsTab(settings: settings)
+                .tabItem { Label("Search", systemImage: "magnifyingglass") }
+                .tag(5)
+
             if !settings.bool(forKey: SettingsKey.hideDebugTab) {
                 DebugTab()
                     .tabItem { Label("Debug", systemImage: "ant") }

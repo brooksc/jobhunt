@@ -76,6 +76,9 @@ public enum SettingsPane: Int {
     case llm = 2
     case data = 3
     case debug = 4
+    /// 5, not 4, so Debug keeps its raw value — the selected pane is persisted, and renumbering
+    /// would land a returning user on a different tab than the one they left.
+    case search = 5
 }
 
 /// An app-wide queue attention banner (TASK-542). `showsAISettings` adds a one-click jump to the

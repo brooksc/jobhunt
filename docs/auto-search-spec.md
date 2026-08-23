@@ -152,12 +152,22 @@ The cost is bounded by the ingest cap, not by board size: at most 50 hydration r
 sweep. It is also why the cap exists at the ledger boundary rather than after ingest.
 
 **Workday needs its own hydration path.** `WorkdayProvider.fetchPosting` returns `nil`
-(`ATSProviders.swift:308`). The CXS list gives `externalPath`; the per-posting body is expected
-at `GET /wday/cxs/{tenant}/{site}{externalPath}`, returning `jobPostingInfo.jobDescription` as
-HTML. **Not verified** — career-ops is zero-token by design and never fetches Workday bodies, so
-there is no reference implementation for this call. Confirm the endpoint and payload shape
-against a live tenant as the first task of M1; if it doesn't hold, Workday sweeps must be held
-back to M3+ or ingested through a different body source.
+(`ATSProviders.swift:308`). The CXS list gives `externalPath`; the per-posting body comes from
+`GET /wday/cxs/{tenant}/{site}{externalPath}`.
+
+**Verified 2026-08-22** against a live tenant (`23andme.wd5`), both calls, HTTP 200. The detail
+payload carries more than the list does, and two fields are worth having:
+
+| Field | Value seen |
+|---|---|
+| `jobPostingInfo.jobDescription` | full JD as HTML — this is the hydration body |
+| `jobPostingInfo.startDate` | `"2026-08-03"` — an **absolute** date, where the list has only `"Posted 19 Days Ago"` |
+| `jobPostingInfo.jobRequisitionLocation.country.alpha2Code` | `"US"` — structured country |
+| `jobPostingInfo.timeType`, `.jobReqId`, `.externalUrl` | full/part time, req id, canonical URL |
+
+`startDate` and `alpha2Code` exist **only on the detail endpoint**, so they are post-gate: they
+can enrich the ingested capture, but gate A still has to work off the relative `postedOn` label
+and `locationsText`/URL hint.
 
 ### New types
 
@@ -250,6 +260,35 @@ makes that criterion a **no-op for that vendor** — not a rejection.
 the difference between 6,000 extractions and 40. But it means the title filter is carrying most
 of the load, which is why its matching semantics (below) matter more than they look, and why the
 live preview is not optional.
+
+### Measured selectivity — the user's own 65 runs
+
+From `~/git/career-ops/data/scan-runs.tsv`, aggregated 2026-08-22 over every completed run
+(the config is 156 tracked companies, 6 positive title keywords, 27 negative, 1 `allow` /
+14 `always_allow` / 39 `block` location entries):
+
+| | Postings | Share of swept |
+|---|---|---|
+| Swept | 400,616 | — |
+| Rejected on **title** | 384,444 | **95.96%** |
+| Rejected on **location** | 15,073 | 3.76% |
+| Rejected on salary / age / content / tier | 0 | 0% — *not configured*, so untested |
+| Dropped as already-seen | 958 | 0.24% |
+| **Newly added** | **141** | **0.035%** |
+
+Four things follow, and they change the build order:
+
+1. **Title is the gate.** 96% of the reduction. Everything about its matching semantics — word
+   boundaries on `TPM`, the 27 negative keywords — is load-bearing, and everything else is a
+   rounding error by comparison.
+2. **Salary, age and content filters have never fired in production.** They are not proven
+   useless, they are unconfigured. Build them last, or not at all until asked.
+3. **`block_hard` is unused** (0 entries) — ship three location tiers, keep the fourth in the
+   model only if it's free.
+4. **The real yield is ~2 new postings a day** (141 over 65 runs). The proposed caps of 50 per
+   sweep / 200 per day are two orders of magnitude above observed reality. They are still worth
+   having as a runaway guard, but they should be understood as a circuit breaker, not a budget —
+   and the cost table below is a worst case that will not be approached.
 
 #### `DiscoveryCriteria` — gate A
 
@@ -524,6 +563,11 @@ At Haiku-class pricing that is cents a day; at a frontier model it is not. **The
 should be set from the user's configured extraction model, and the Search tab should show the
 estimate next to the cap steppers.** A cap the user cannot price is a cap they cannot choose.
 
+**But this is a worst case that measurement says won't happen.** The observed yield is ~2
+postings a day (see "Measured selectivity"), i.e. ~4 LLM calls — under a cent at any model.
+The caps exist for the misconfiguration case: an empty `titleIncludeAny` turns a 15,000-posting
+sweep into 15,000 extractions, and that is the scenario the circuit breaker is for.
+
 ---
 
 ## Milestones
@@ -584,6 +628,13 @@ Pure model and logic layer. No UI, no scheduler, no network beyond the four adap
   location passes, no date passes, `coo` doesn't match Coordinator, `india` doesn't match
   Indianapolis, `blockHard` beats `alwaysAllow`, a remote title rescues an `allow` miss but not
   a `block` hit, `non-remote` doesn't rescue, a band overlapping the floor passes.
+- **Scope by the measurement:** title + the three live location tiers are the milestone. Salary,
+  age and content have never fired in production (0 of 400,616) — model the fields, leave the
+  evaluation for later, and don't build UI for them in M4.
+- **Differential test against career-ops.** The strongest available correctness check: run the
+  Swift gate over a recorded board payload with the user's real `portals.yml` criteria and
+  assert it passes the same rows the `.mjs` filters do. A disagreement is either a port bug or
+  a deliberate divergence, and both are worth being forced to name.
 - Implement and persist `DiscoveryLedger`, including criteria-hash re-evaluation.
 - A debug-menu command that sweeps one configured board and prints found / passed / rejected
   counts by reason. No hydration, no ingest yet.

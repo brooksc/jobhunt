@@ -245,3 +245,26 @@ public extension BackgroundStore {
         try modelContext.save()
     }
 }
+
+public extension BackgroundStore {
+    /// Repoint a source at a different board, after re-resolution found one.
+    ///
+    /// Also clears the health counters: the old `consecutiveEmptyRuns` describes a board this source
+    /// no longer points at, and leaving it would keep the "may have moved" warning on a source that
+    /// was just repaired.
+    func updateSearchSourceConfig(
+        id: String, kind: String, config: SourceConfig, now: Date = Date()
+    ) throws {
+        let sources = try modelContext.fetch(FetchDescriptor<SearchSource>())
+        guard let source = sources.first(where: { $0.id == id }) else { return }
+        source.kind = kind
+        source.config = config
+        source.consecutiveEmptyRuns = 0
+        source.lastError = nil
+        source.lastStatusRaw = SearchSourceStatus.never.rawValue
+        // Due immediately, so the user sees whether the repair worked rather than waiting a cycle.
+        source.nextRunAt = now
+        source.updatedAt = now
+        try modelContext.save()
+    }
+}

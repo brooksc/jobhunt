@@ -151,6 +151,7 @@ struct SearchSettingsTab: View {
                     isRunning: runningSourceID == source.id,
                     onToggle: { setEnabled(source, $0) },
                     onRunNow: { runNow(source) },
+                    onReresolve: { reresolve(source) },
                     onDelete: { delete(source) }
                 )
             }
@@ -310,6 +311,50 @@ struct SearchSettingsTab: View {
         }
     }
 
+    /// Offer a replacement board for a source that has gone quiet.
+    ///
+    /// Only ever *offers*. Silently repointing a source at a board that merely shares a name is how
+    /// a user ends up tracking the wrong company without ever being told, so the toast reports what
+    /// was found and the config only changes when the vendor or slug actually differs.
+    private func reresolve(_ source: SearchSource) {
+        let id = source.id
+        let label = source.label
+        let kind = source.kind
+        let slug = source.config.slug
+        let company = source.config.company ?? source.label
+        Task {
+            let result = await SourceResolver.reresolve(
+                currentKind: kind, currentSlug: slug, companyName: company
+            )
+            switch result {
+            case let .resolved(board) where board.kind == kind && board.slug == slug:
+                // The board is fine — the company simply isn't posting. Saying so is the useful
+                // answer here; "repaired" would be a lie.
+                appServices.toastStore.show(
+                    "\(label): the board is still there with \(board.jobCount) open role"
+                        + "\(board.jobCount == 1 ? "" : "s"). It just had nothing matching."
+                )
+            case let .resolved(board):
+                try? await appServices.backgroundStore.updateSearchSourceConfig(
+                    id: id, kind: board.kind, config: SourceConfig(slug: board.slug, company: company)
+                )
+                appServices.toastStore.show(
+                    "\(label): moved to \(board.displayName) — \(board.jobCount) open roles"
+                )
+            case .failed(.noBoardFound):
+                appServices.toastStore.show(
+                    "\(label): no board found on any supported vendor.", isError: true
+                )
+            case .failed(.boardsFoundButEmpty):
+                appServices.toastStore.show("\(label): the board exists but lists nothing today.")
+            case let .failed(.inconclusive(detail)):
+                appServices.toastStore.show("\(label): couldn't check (\(detail))", isError: true)
+            case let .failed(.unusableName(detail)):
+                appServices.toastStore.show("\(label): \(detail)", isError: true)
+            }
+        }
+    }
+
     /// Says what happened in one line, including the truncation — a cap that goes unmentioned reads
     /// as "nothing more was found".
     private func summary(of result: SweepResult, label: String) -> String {
@@ -334,6 +379,7 @@ private struct SearchSourceRow: View {
     let isRunning: Bool
     let onToggle: (Bool) -> Void
     let onRunNow: () -> Void
+    let onReresolve: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
@@ -364,15 +410,19 @@ private struct SearchSourceRow: View {
             Text(detailLine).font(.caption).foregroundStyle(.secondary)
 
             // The signal a board migrated. It never errors — it just answers with nothing, forever —
-            // so this is the only place the user can find out.
+            // so this is the only place the user can find out, and the button is the only way to
+            // act on it without hand-editing anything.
             if source.looksMigrated {
-                Label(
-                    "Nothing found \(source.consecutiveEmptyRuns) times in a row — this board may "
-                        + "have moved.",
-                    systemImage: "exclamationmark.triangle"
-                )
+                HStack(spacing: 6) {
+                    Label(
+                        "Nothing found \(source.consecutiveEmptyRuns) times in a row — this board "
+                            + "may have moved.",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .foregroundStyle(.orange)
+                    Button("Re-resolve", action: onReresolve).buttonStyle(.link)
+                }
                 .font(.caption)
-                .foregroundStyle(.orange)
             }
             if let error = source.lastError {
                 Text(error).font(.caption).foregroundStyle(.red)
@@ -415,74 +465,141 @@ private struct SearchSourceRow: View {
 
 // MARK: - Add sheet
 
+/// Adds a board by **company name**, not by vendor and slug (TASK-694, M5).
+///
+/// The previous form asked which ATS the company used and what its board ID was. Both are things a
+/// user has no reason to know, and getting either wrong produced a source that silently found
+/// nothing — indistinguishable from a company that isn't hiring. So the form asks for the name,
+/// probes the vendors, and shows the live job count *before* anything is saved.
+///
+/// A pasted URL works too, which is the only route for Workday: no rule turns "Acme" into
+/// `acme.wd5`, so the address bar is the only place that information exists.
 private struct AddSearchSourceSheet: View {
     let onAdd: (_ kind: String, _ label: String, _ slug: String, _ intervalHours: Int) -> Void
     @Environment(\.dismiss) private var dismiss
 
-    @State private var kind = "greenhouse"
-    @State private var label = ""
-    @State private var slug = ""
+    @State private var query = ""
     @State private var intervalHours = 12
+    @State private var isSearching = false
+    @State private var found: ResolvedBoard?
+    @State private var emptyBoards: [ResolvedBoard] = []
+    @State private var failureMessage: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Add a job board").font(.headline)
 
             Form {
-                Picker("Vendor", selection: $kind) {
-                    ForEach(JobSources.all, id: \.id) { source in
-                        Text(source.displayName).tag(source.id)
-                    }
-                }
-                TextField("Company", text: $label, prompt: Text("Acme"))
-                TextField(fieldLabel, text: $slug, prompt: Text(hint))
+                TextField("Company or board address", text: $query, prompt: Text("Acme"))
+                    .onSubmit { search() }
                 Stepper("Check every \(intervalHours) hours", value: $intervalHours, in: 1 ... 168)
             }
             .formStyle(.grouped)
 
-            Text(hintDetail).font(.caption).foregroundStyle(.secondary)
+            resultView
 
             HStack {
+                Button(isSearching ? "Searching…" : "Find Board") { search() }
+                    .disabled(isSearching || query.trimmingCharacters(in: .whitespaces).isEmpty)
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button("Add") {
-                    onAdd(kind, label.isEmpty ? slug : label, slug, intervalHours)
-                    dismiss()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(slug.trimmingCharacters(in: .whitespaces).isEmpty)
+                Button("Add") { add() }
+                    .keyboardShortcut(.defaultAction)
+                    // Never save a board that resolved to nothing without the user choosing it
+                    // explicitly — that is exactly how a dead slug gets in and then looks, forever,
+                    // like a company that stopped hiring.
+                    .disabled(found == nil)
             }
         }
         .padding(20)
-        .frame(width: 460)
+        .frame(width: 480)
     }
 
-    private var configuration: SourceConfiguration? {
-        JobSources.source(id: kind)?.configuration
-    }
-
-    private var fieldLabel: String {
-        if case .boardURL = configuration {
-            return "Board URL"
+    @ViewBuilder
+    private var resultView: some View {
+        if isSearching {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Checking Greenhouse, Ashby and Lever…").foregroundStyle(.secondary)
+            }
+            .font(.callout)
+        } else if let found {
+            Label(
+                "\(found.displayName) — \(found.jobCount) open role\(found.jobCount == 1 ? "" : "s")",
+                systemImage: "checkmark.circle.fill"
+            )
+            .foregroundStyle(.green)
+            Text(found.boardURL).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+        } else if !emptyBoards.isEmpty {
+            // A real board with nothing on it today. Worth offering, but the user has to say so.
+            ForEach(emptyBoards, id: \.boardURL) { board in
+                VStack(alignment: .leading, spacing: 2) {
+                    Label(
+                        "Found a \(board.displayName) board, but it lists no jobs right now.",
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(.orange)
+                    Button("Add it anyway") {
+                        onAdd(board.kind, displayLabel, board.slug, intervalHours)
+                        dismiss()
+                    }
+                    .buttonStyle(.link)
+                }
+            }
+        } else if let failureMessage {
+            Label(failureMessage, systemImage: "xmark.circle").foregroundStyle(.secondary)
+        } else {
+            Text("Type a company name, or paste the address of their job board.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
-        return "Board ID"
     }
 
-    private var hint: String {
-        switch configuration {
-        case let .perCompany(slugHint): slugHint
-        case let .boardURL(hint): hint
-        case nil: ""
+    /// What the source is called. A pasted URL has no company name in it worth showing, so the
+    /// resolved slug stands in.
+    private var displayLabel: String {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        if trimmed.lowercased().hasPrefix("http") {
+            return found?.slug ?? trimmed
+        }
+        return trimmed
+    }
+
+    private func search() {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, !isSearching else { return }
+        isSearching = true
+        found = nil
+        emptyBoards = []
+        failureMessage = nil
+
+        Task {
+            defer { isSearching = false }
+            let result = trimmed.lowercased().hasPrefix("http")
+                ? await SourceResolver.resolve(boardURL: trimmed)
+                : await SourceResolver.resolve(companyName: trimmed)
+
+            switch result {
+            case let .resolved(board):
+                found = board
+            case let .failed(.boardsFoundButEmpty(boards)):
+                emptyBoards = boards
+            case .failed(.noBoardFound):
+                failureMessage = "No Greenhouse, Ashby or Lever board found for “\(trimmed)”. "
+                    + "If they use Workday, paste their careers page address instead."
+            case let .failed(.inconclusive(detail)):
+                // Never reported as "no board" — absence was not established, and a retry is the
+                // right suggestion for this one and the wrong one for a genuine absence.
+                failureMessage = "Couldn't check every board (\(detail)). Try again in a moment."
+            case let .failed(.unusableName(detail)):
+                failureMessage = detail
+            }
         }
     }
 
-    /// Workday genuinely cannot be resolved from a company name — there's no rule that turns "Acme"
-    /// into `acme.wd5` — so the form asks for the URL rather than pretending to guess.
-    private var hintDetail: String {
-        if case .boardURL = configuration {
-            return "Open the company's Workday careers page and paste the address from your browser."
-        }
-        return "The company's ID on the vendor's site — usually the last part of their job board's "
-            + "web address."
+    private func add() {
+        guard let found else { return }
+        onAdd(found.kind, displayLabel, found.slug, intervalHours)
+        dismiss()
     }
 }

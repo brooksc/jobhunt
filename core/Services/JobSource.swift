@@ -32,10 +32,18 @@ public struct SourceConfig: Sendable, Equatable, Codable {
     /// The employer name, for postings whose board payload doesn't carry one. Greenhouse's list
     /// endpoint doesn't.
     public var company: String?
+    /// How deep to paginate, for the vendors that paginate at all (only Workday does).
+    ///
+    /// Exists because the two callers want opposite things. A *watched company* wants the whole
+    /// board — the user asked for that employer specifically. A *market pass* re-reads 12,884
+    /// Workday tenants every day and only needs what's new, so paying for 2,000 postings per tenant
+    /// turns a daily sweep into a four-day one. Nil means the source's own default.
+    public var pageLimit: Int?
 
-    public init(slug: String, company: String? = nil) {
+    public init(slug: String, company: String? = nil, pageLimit: Int? = nil) {
         self.slug = slug
         self.company = company
+        self.pageLimit = pageLimit
     }
 }
 
@@ -238,7 +246,8 @@ public struct WorkdaySource: JobSource {
             throw SourceError.misconfigured("“\(config.slug)” isn't a Workday board URL")
         }
         let listing = await WorkdayJobBoard.listOpenRoles(
-            board: board, session: session, since: since, maxPages: Self.sweepMaxPages
+            board: board, session: session, since: since,
+            maxPages: config.pageLimit ?? Self.sweepMaxPages
         )
         if listing.roles.isEmpty, listing.truncated {
             throw SourceError.unreachable("\(board.tenant) didn't answer")

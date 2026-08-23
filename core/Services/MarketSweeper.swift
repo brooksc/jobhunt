@@ -1,36 +1,40 @@
 import Foundation
 import SwiftData
 
-/// How hard to lean on each vendor.
+/// How gently to walk each vendor's boards.
 ///
-/// **Patience is the design.** The user's brief was explicit: comprehensiveness beats speed,
-/// because the cost of missing the right job is far higher than the cost of a sweep taking all day.
-/// That inverts the usual tuning — every knob here is set to the polite end, and a vendor that
-/// pushes back is waited out rather than worked around.
+/// **Patience is the design.** The brief was explicit: comprehensiveness beats speed, because the
+/// cost of missing the right job is far higher than the cost of a sweep taking all day. So the
+/// sweep is *sequential* — one board at a time, with a pause between — rather than fanning out.
+///
+/// That is a deliberate choice, not an oversight. career-ops measured what fan-out does to the
+/// single-host vendors: at 20 concurrent, Lever's unreachable count went 2,436 → 4,100 and Ashby's
+/// 683 → 1,675 across two sweeps an hour apart, recovering afterwards with no change to the
+/// dataset. Those boards were never dead — they were refused, and every match on them was lost
+/// silently. Since a missed match is the one outcome this feature exists to prevent, and since
+/// nothing here is in a hurry, the safe setting wins.
+///
+/// **What that costs.** At roughly 185 ms per board (a 63 ms median fetch plus the pause),
+/// Greenhouse, Lever and Ashby's 15,862 boards take about 50 minutes of sweep time. Workday is the
+/// slow half: every tenant is a separate host needing a POST and pagination, so its 12,884 boards
+/// run to several hours. A full pass is therefore most of a day of app-open time, spread across
+/// slices — which is what `MarketSweepState`'s cursor exists to survive.
 public struct MarketPacing: Sendable, Equatable {
-    /// Boards in flight at once for this vendor.
-    public var concurrency: Int
     /// Pause after each board.
     public var delayMilliseconds: Int
 
-    public init(concurrency: Int, delayMilliseconds: Int) {
-        self.concurrency = concurrency
+    public init(delayMilliseconds: Int) {
         self.delayMilliseconds = delayMilliseconds
     }
 
-    /// Greenhouse, Lever and Ashby each serve their *entire* directory from a single hostname, so
-    /// concurrency here is sustained connections to one API across thousands of boards. career-ops
-    /// measured what happens at 20: Lever's unreachable count went 2,436 → 4,100 and Ashby's
-    /// 683 → 1,675 across two sweeps an hour apart, recovering afterwards with no change to the
-    /// dataset. Those boards were never dead — they were refused, and every match on them was
-    /// silently lost. That is the exact failure this feature exists to prevent, so the single-host
-    /// vendors get a deliberately timid setting.
-    public static let singleHost = MarketPacing(concurrency: 4, delayMilliseconds: 120)
+    /// Greenhouse, Lever and Ashby serve their *entire* directory from one hostname each, so every
+    /// request lands on the same server. See the note above on what happens when that is rushed.
+    public static let singleHost = MarketPacing(delayMilliseconds: 120)
 
-    /// Workday gives every tenant its own host, so concurrency here is spread across thousands of
-    /// different servers rather than aimed at one. The limiting factor is the resolver, not any
-    /// vendor — but each board is a POST plus pagination, so this is still the slow half by far.
-    public static let perTenantHost = MarketPacing(concurrency: 6, delayMilliseconds: 250)
+    /// Workday gives every tenant its own host, so successive requests hit different servers and the
+    /// limiting factor is the resolver rather than any one vendor. Still paced, because each board
+    /// is a POST plus pagination.
+    public static let perTenantHost = MarketPacing(delayMilliseconds: 250)
 
     public static func forKind(_ kind: String) -> MarketPacing {
         kind == "workday" ? .perTenantHost : .singleHost
@@ -50,6 +54,13 @@ public struct MarketSweepSlice: Sendable, Equatable {
 
 /// Sweeps the public directory of ~29,000 boards, a slice at a time (TASK-696).
 ///
+/// **A change detector, not an inventory.** It runs every day over the same boards, so it only has
+/// to notice what is *new* — and vendors list newest-first. That is what makes `marketPageLimit`
+/// affordable: reading the 100 newest postings from each Workday tenant daily costs eight hours a
+/// pass, while reading all 2,000 costs four days, and the extra 1,900 are postings that either were
+/// already seen yesterday or were rejected yesterday. Measured, not assumed: a 104-board test run
+/// averaged 13.2 s per board with no page cap, which extrapolates to 105 hours for a full pass.
+///
 /// **Why a slice and not a loop.** A full pass takes hours, and the app will be quit, slept and
 /// relaunched several times before it finishes. So this does a bounded amount of work per call and
 /// persists its cursor, which makes the sweep resumable rather than restartable. A run that never
@@ -63,6 +74,11 @@ public struct MarketSweeper: Sendable {
     let store: BackgroundStore
     let sweeper: DiscoverySweeper
     let session: URLSession
+
+    /// Pages per board for vendors that paginate. Five pages is the 100 newest postings, which is
+    /// far more than a day's worth of new listings on any real tenant. The first pass of a very
+    /// large tenant sees only its newest 100; every pass after that catches anything added since.
+    public static let marketPageLimit = 5
 
     public init(store: BackgroundStore, sweeper: DiscoverySweeper, session: URLSession = .shared) {
         self.store = store
@@ -104,7 +120,7 @@ public struct MarketSweeper: Sendable {
             guard let source = JobSources.source(id: board.kind) else { continue }
             let result = await sweeper.sweep(
                 source: source,
-                config: SourceConfig(slug: board.slug),
+                config: SourceConfig(slug: board.slug, pageLimit: Self.marketPageLimit),
                 criteria: criteria,
                 remainingDailyBudget: budget,
                 now: now

@@ -244,14 +244,62 @@ final class MarketSweeperTests: XCTestCase {
 
     // MARK: - Pacing
 
-    /// The single-host vendors get the timid setting. career-ops measured what 20 concurrent does to
-    /// Lever and Ashby: thousands of live boards recorded as unreachable, and every match on them
-    /// lost — which is the exact failure a market sweep exists to prevent.
-    func testSingleHostVendorsArePacedMoreGentlyThanPerTenantOnes() {
+    /// Each vendor gets the pacing its hosting shape calls for. Workday spreads across thousands of
+    /// hosts but pays a POST and pagination per board; the others all land on one server each, which
+    /// is the case career-ops measured going wrong under load.
+    func testEachVendorGetsItsOwnPacing() {
         XCTAssertEqual(MarketPacing.forKind("greenhouse"), .singleHost)
         XCTAssertEqual(MarketPacing.forKind("lever"), .singleHost)
         XCTAssertEqual(MarketPacing.forKind("ashby"), .singleHost)
         XCTAssertEqual(MarketPacing.forKind("workday"), .perTenantHost)
-        XCTAssertLessThan(MarketPacing.singleHost.concurrency, MarketPacing.perTenantHost.concurrency)
+        XCTAssertGreaterThan(
+            MarketPacing.perTenantHost.delayMilliseconds, MarketPacing.singleHost.delayMilliseconds
+        )
+    }
+}
+
+/// Pagination depth, which is the difference between a daily sweep and a four-day one (TASK-696).
+final class MarketPageLimitTests: XCTestCase {
+    /// A watched company wants its whole board — the user asked for that employer by name.
+    func testAWatchedCompanyGetsTheSourceDefault() {
+        XCTAssertNil(SourceConfig(slug: "acme").pageLimit)
+    }
+
+    /// A market pass re-reads 12,884 Workday tenants daily and only needs what's new. Measured: at
+    /// no page cap a 104-board run averaged 13.2s per board, which is 105 hours for a full pass.
+    func testAMarketPassCapsPagination() {
+        XCTAssertEqual(MarketSweeper.marketPageLimit, 5)
+        XCTAssertLessThan(
+            MarketSweeper.marketPageLimit, WorkdaySource.sweepMaxPages,
+            "a market pass must not read as deep as a board the user asked for by name"
+        )
+    }
+
+    /// The cap only binds where pagination exists. Greenhouse, Lever and Ashby each return their
+    /// whole board in one response, so nothing is lost there.
+    func testOnlyWorkdayPaginatesAtAll() async throws {
+        MockURLProtocol.reset()
+        defer { MockURLProtocol.reset() }
+        MockURLProtocol.handlers.append(("boards-api.greenhouse.io", { request in
+            let response = HTTPURLResponse(
+                url: request.url ?? URL(fileURLWithPath: "/"), statusCode: 200,
+                httpVersion: nil, headerFields: nil
+            )!
+            let jobs = (1 ... 40).map { index in
+                """
+                { "id": \(index), "title": "Program Manager \(index)",
+                  "absolute_url": "https://boards.greenhouse.io/acme/jobs/\(index)",
+                  "location": { "name": "Remote" } }
+                """
+            }.joined(separator: ",")
+            return (response, Data("{ \"jobs\": [\(jobs)] }".utf8))
+        }))
+
+        // A page limit that would truncate a paginating vendor leaves a single-response one intact.
+        let postings = try await GreenhouseSource().fetchRecent(
+            config: SourceConfig(slug: "acme", pageLimit: 1), since: nil,
+            session: MockURLProtocol.makeSession()
+        )
+        XCTAssertEqual(postings.count, 40)
     }
 }

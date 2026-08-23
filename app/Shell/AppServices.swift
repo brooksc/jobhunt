@@ -342,6 +342,8 @@ final class AppServices {
                 try? await Task.sleep(for: .seconds(600))
                 guard !Task.isCancelled, let self else { return }
                 guard settings.bool(forKey: SettingsKey.discoveryEnabled) else { continue }
+                // No title keywords means the gate would match everything — see canSweep.
+                guard DiscoverySettings.canSweep(settings) else { continue }
                 guard NSApplication.shared.isActive else { continue }
 
                 // Read every cycle rather than caching: the user may have edited the criteria or the
@@ -391,6 +393,10 @@ final class AppServices {
                 try? await Task.sleep(for: .seconds(180))
                 guard !Task.isCancelled, let self else { return }
                 guard settings.bool(forKey: SettingsKey.marketSweepEnabled) else { continue }
+                // No title keywords means the gate would match everything — see canSweep. This
+                // matters most here: without it a 29,000-board pass would spend the whole daily cap
+                // on the first few boards it happened to reach.
+                guard DiscoverySettings.canSweep(settings) else { continue }
 
                 let budget = DiscoverySettings.remainingDailyBudget(settings)
                 guard budget > 0 else { continue }

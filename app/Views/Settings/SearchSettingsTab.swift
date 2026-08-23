@@ -50,11 +50,14 @@ struct SearchSettingsTab: View {
                 get: { settings.bool(forKey: SettingsKey.discoveryEnabled) },
                 set: { settings.setBool($0, forKey: SettingsKey.discoveryEnabled) }
             ))
-            if settings.bool(forKey: SettingsKey.discoveryEnabled), noTitleKeywords {
+            if noTitleKeywords {
+                // Not advice — a statement of what is currently happening. The interlock is what
+                // makes it safe for this to be on by default, but a user staring at an enabled
+                // toggle that isn't doing anything deserves to be told why.
                 Label(
-                    "With no title keywords, every posting on every board matches. Add at least one "
-                        + "before leaving this on.",
-                    systemImage: "exclamationmark.triangle"
+                    "Paused: add at least one job title below. Without one, every posting on every "
+                        + "board would match.",
+                    systemImage: "exclamationmark.triangle.fill"
                 )
                 .font(.caption)
                 .foregroundStyle(.orange)

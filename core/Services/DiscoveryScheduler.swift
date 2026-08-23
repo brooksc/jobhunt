@@ -29,6 +29,19 @@ public enum DiscoverySettings {
         )
     }
 
+    /// Whether sweeping is allowed to happen at all.
+    ///
+    /// **The interlock that lets these features ship on by default.** An empty `titleIncludeAny`
+    /// matches every posting, so a sweep with no title keywords would push the daily cap's worth of
+    /// arbitrary jobs — and the cap's worth of LLM spend — at a user who never asked for any of it.
+    /// Onboarding asks for titles, so the ordinary path arrives configured; this is what holds if
+    /// someone skips that step or clears the field later.
+    ///
+    /// Checked here rather than at each call site so no future caller can forget it.
+    public static func canSweep(_ settings: SettingsStore) -> Bool {
+        !list(settings.string(forKey: SettingsKey.discoveryTitleInclude)).isEmpty
+    }
+
     public static func caps(from settings: SettingsStore) -> DiscoveryCaps {
         DiscoveryCaps(
             perSweep: max(0, settings.int(forKey: SettingsKey.discoveryMaxIngestsPerSweep)),
@@ -43,8 +56,9 @@ public enum DiscoverySettings {
     /// widening the search never re-badges existing jobs. The `seeded` flag means a user who
     /// deliberately empties a list doesn't get it refilled on the next launch.
     ///
-    /// Title keywords have no existing equivalent and are left empty — and since an empty include
-    /// list matches everything, that is precisely why automatic search ships off by default.
+    /// Title keywords have no existing equivalent and are left empty here — onboarding asks for
+    /// them instead, because an empty include list matches everything and `canSweep` therefore holds
+    /// the whole feature closed until at least one is set.
     @discardableResult
     public static func seedIfNeeded(_ settings: SettingsStore) -> Bool {
         guard !settings.bool(forKey: SettingsKey.discoveryCriteriaSeeded) else { return false }

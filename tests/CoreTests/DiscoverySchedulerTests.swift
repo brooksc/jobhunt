@@ -75,13 +75,14 @@ final class DiscoverySchedulerTests: XCTestCase {
         XCTAssertEqual(settings.string(forKey: SettingsKey.discoveryLocationAllow), "")
     }
 
-    /// Title keywords have no existing equivalent, and an empty include list matches everything —
-    /// which is exactly why automatic search ships off.
-    func testSearchIsOffByDefaultBecauseAnEmptyTitleListMatchesEverything() throws {
+    /// Seeding deliberately leaves title keywords empty — there is nothing in the existing settings
+    /// to derive them from. Onboarding asks for them instead, and `canSweep` holds the feature
+    /// closed until it has an answer (see DiscoveryInterlockTests).
+    func testSeedingLeavesTitleKeywordsForOnboardingToAsk() throws {
         let settings = try makeSettings()
-        XCTAssertFalse(settings.bool(forKey: SettingsKey.discoveryEnabled))
         DiscoverySettings.seedIfNeeded(settings)
         XCTAssertTrue(DiscoverySettings.criteria(from: settings).titleIncludeAny.isEmpty)
+        XCTAssertFalse(DiscoverySettings.canSweep(settings))
     }
 
     // MARK: - Daily budget
@@ -243,5 +244,58 @@ private struct SchedulerNoOpProvider: LLMProvider {
     let concurrencyLimit: Int = 1
     func complete(_: ChatRequest) async throws -> ChatResponse {
         throw LLMProviderError.httpError(statusCode: 503, body: "no-op")
+    }
+}
+
+/// The interlock that lets automatic search and the market sweep ship enabled (TASK-697).
+///
+/// A key feature hidden behind a settings toggle is a feature most users never find, so both are on
+/// by default. What makes that safe is not a toggle but this check: an empty title list matches
+/// every posting on every board, so nothing sweeps until at least one title exists.
+final class DiscoveryInterlockTests: XCTestCase {
+    private func makeSettings() throws -> SettingsStore {
+        try SettingsStore(modelContext: ModelContext(ModelContainerFactory.inMemory()))
+    }
+
+    func testBothFeaturesAreOnByDefault() throws {
+        let settings = try makeSettings()
+        XCTAssertTrue(
+            settings.bool(forKey: SettingsKey.discoveryEnabled),
+            "a feature behind a settings toggle is one most users never find"
+        )
+        XCTAssertTrue(settings.bool(forKey: SettingsKey.marketSweepEnabled))
+    }
+
+    /// …and neither actually runs until the one question onboarding asks has an answer.
+    func testNothingSweepsWithoutATitleKeyword() throws {
+        let settings = try makeSettings()
+        XCTAssertTrue(DiscoverySettings.list(
+            settings.string(forKey: SettingsKey.discoveryTitleInclude)
+        ).isEmpty)
+        XCTAssertFalse(
+            DiscoverySettings.canSweep(settings),
+            "an empty include list matches everything — sweeping on it would spend the whole daily "
+                + "cap on arbitrary jobs"
+        )
+    }
+
+    func testOneTitleKeywordIsEnoughToStart() throws {
+        let settings = try makeSettings()
+        try settings.set("Product Manager", forKey: SettingsKey.discoveryTitleInclude)
+        XCTAssertTrue(DiscoverySettings.canSweep(settings))
+    }
+
+    /// Clearing the field later has to re-close the interlock, not leave a configured-once sweep
+    /// running unfiltered.
+    func testClearingTheTitlesStopsSweepingAgain() throws {
+        let settings = try makeSettings()
+        try settings.set("Product Manager", forKey: SettingsKey.discoveryTitleInclude)
+        XCTAssertTrue(DiscoverySettings.canSweep(settings))
+
+        try settings.set("  ,  ", forKey: SettingsKey.discoveryTitleInclude)
+        XCTAssertFalse(
+            DiscoverySettings.canSweep(settings),
+            "whitespace and stray commas are not keywords"
+        )
     }
 }

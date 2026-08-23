@@ -38,8 +38,11 @@ private let settingsDefaults: [String: String] = [
     SettingsKey.llmQueuePaused: "false",
     SettingsKey.llmQueuePauseReason: QueuePauseReason.user.rawValue,
     SettingsKey.llmOpenRouterFreeRotate: "false",
-    // Off until the user has seen and edited what a sweep would do (TASK-692).
-    SettingsKey.discoveryEnabled: "false",
+    // On by default (TASK-697). A key feature behind a settings toggle is a feature most users
+    // never find. What makes this safe is not the toggle but the interlock: no sweep runs until
+    // `discoveryTitleInclude` has something in it, because an empty include list matches every
+    // posting on every board. Onboarding asks for titles, so the ordinary path arrives configured.
+    SettingsKey.discoveryEnabled: "true",
     SettingsKey.discoveryTitleInclude: "",
     SettingsKey.discoveryTitleExclude: "Intern, Junior, Graduate, Apprentice",
     SettingsKey.discoveryLocationAllow: "",
@@ -53,8 +56,11 @@ private let settingsDefaults: [String: String] = [
     SettingsKey.discoveryMaxIngestsPerDay: "200",
     SettingsKey.discoveryIngestsToday: "0",
     SettingsKey.discoveryIngestsTodayDate: "",
-    // Off by default, like automatic search: a market pass is tens of thousands of requests.
-    SettingsKey.marketSweepEnabled: "false",
+    // On by default, under the same title-keyword interlock as automatic search. This is the
+    // feature that finds a job at a company the user has never heard of — measured against
+    // career-ops, 96% of real findings came from employers they weren't tracking — so hiding it
+    // behind a toggle would hide the point of the product.
+    SettingsKey.marketSweepEnabled: "true",
     SettingsKey.marketSweepIntervalHours: "24",
     SettingsKey.marketSweepBoardsPerSlice: "250",
     SettingsKey.availabilityAutoCheckEnabled: "true",

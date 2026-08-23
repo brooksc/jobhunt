@@ -11,7 +11,7 @@ struct OnboardingView: View {
     let modelContainer: ModelContainer
     let resumeService: ResumeService
 
-    private let totalSteps = 6
+    private let totalSteps = 7
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,8 +26,9 @@ struct OnboardingView: View {
                 case 1: ChromeExtensionStep()
                 case 2: AIProviderStep(settings: settings)
                 case 3: LocationStep(settings: settings)
-                case 4: ResumeStep(resumeService: resumeService)
-                case 5: FinishStep(settings: settings, onboardingManager: onboardingManager)
+                case 4: JobTitlesStep(settings: settings)
+                case 5: ResumeStep(resumeService: resumeService)
+                case 6: FinishStep(settings: settings, onboardingManager: onboardingManager)
                 default: EmptyView()
                 }
             }
@@ -432,7 +433,7 @@ private struct LocationStep: View {
     }
 }
 
-// MARK: - Step 5: Resume
+// MARK: - Step 6: Resume
 
 private struct ResumeStep: View {
     let resumeService: ResumeService
@@ -581,7 +582,7 @@ private struct ResumeStep: View {
     }
 }
 
-// MARK: - Step 6: Finish
+// MARK: - Step 7: Finish
 
 private struct FinishStep: View {
     let settings: SettingsStore

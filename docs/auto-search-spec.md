@@ -575,7 +575,25 @@ sweep into 15,000 extractions, and that is the scenario the circuit breaker is f
 Each is independently shippable and independently useful. (Renamed M1–M6 — the previous draft
 used "Stage" for both pipeline stages and shipping stages, which made "Stage 1" ambiguous.)
 
-### M1 — Workday listing and body fetch *(smallest, highest value, no new architecture)*
+> **Status as of 2026-08-22: M1–M4 are built and on `main`. M5 and M6 are not.**
+>
+> End-to-end verification against GitLab's live Greenhouse board (204 open roles), with a
+> program/product-manager criteria set:
+>
+> | | |
+> |---|---|
+> | Listed by the board | 204 |
+> | Rejected on title | 195 (95.6%) |
+> | Passed gate A | 9 |
+> | Hydrated and ingested | 9, bodies 6.0–11.7 KB |
+> | Hydration failures | 0 |
+> | **Second sweep, unchanged board** | **204 found, 0 ingested** |
+>
+> The 95.6% title rejection matches the 95.96% measured across career-ops' 65 historical runs,
+> which is the closest thing available to independent confirmation that the port behaves like the
+> scanner it replaces. Workday's two CXS endpoints were separately verified against a live tenant.
+
+### M1 — Workday listing and body fetch ✅ *shipped*
 
 `WorkdayProvider.listOpenRoles` returns `[]` and `fetchPosting` returns `nil`. Workday is the
 single largest source of real matches in the reference data (241 of 632 historical matches,
@@ -616,7 +634,7 @@ that posting's description; a tenant that 429s yields a retried, explicitly-trun
 rather than a silent short one; and `pageIsPastWindow`, `parsePostedOn` and the location
 fallback each have unit tests over recorded fixtures.
 
-### M2 — `JobSource`, `DiscoveredPosting`, `DiscoveryCriteria`, the ledger
+### M2 — `JobSource`, `DiscoveredPosting`, `DiscoveryCriteria`, the ledger ✅ *shipped*
 
 Pure model and logic layer. No UI, no scheduler, no network beyond the four adapters.
 
@@ -642,7 +660,7 @@ Pure model and logic layer. No UI, no scheduler, no network beyond the four adap
 **Done when:** the debug command reports plausible counts against a real board, and criteria
 tests cover every `DiscoveryRejectReason` plus all three absent-data cases.
 
-### M3 — Hydration, ingest, and the scheduler
+### M3 — Hydration, ingest, and the scheduler ✅ *shipped*
 
 - `SearchSource` model + `SearchSourceService` CRUD.
 - `DiscoveryScheduler` as a `RuntimeTaskController` task, following `AvailabilityBacklog`'s
@@ -659,7 +677,7 @@ tests cover every `DiscoveryRejectReason` plus all three absent-data cases.
 body, a second sweep ingests nothing new, a criteria change re-evaluates prior rejects, and
 disabling automatic search stops all activity within one cycle.
 
-### M4 — Settings UI
+### M4 — Settings UI ✅ *shipped*
 
 The Search tab as specified, including the live preview, the rejection histogram and the cost
 estimate. Until this ships, M3 is debug-only — **do not enable automatic search by default
@@ -668,7 +686,7 @@ before the user can see and edit what it will do.**
 **Done when:** a new user can add a source, set criteria, see the preview count, run a sweep
 manually, and read what happened.
 
-### M5 — Source resolution and health repair
+### M5 — Source resolution and health repair *(not built)*
 
 - A company→board resolver probing vendors in order — Greenhouse, Ashby, Lever first, then the
   long tail — accepting a board only when it exists **and** lists ≥1 job.
@@ -687,7 +705,7 @@ and were silently returning nothing for weeks; re-resolution recovered 8, one of
 
 **Done when:** an amber source can be repaired from the UI without editing anything by hand.
 
-### M6 — Market-wide sources *(optional; measure before building)*
+### M6 — Market-wide sources *(not built; optional, measure first)*
 
 `SourceConfiguration.marketWide` sources need no company: Remotli, HN Who-is-Hiring, The Muse,
 4 Day Week, a16z speedrun.

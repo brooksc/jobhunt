@@ -575,7 +575,7 @@ sweep into 15,000 extractions, and that is the scenario the circuit breaker is f
 Each is independently shippable and independently useful. (Renamed M1–M6 — the previous draft
 used "Stage" for both pipeline stages and shipping stages, which made "Stage 1" ambiguous.)
 
-> **Status as of 2026-08-22: M1–M4 are built and on `main`. M5 and M6 are not.**
+> **Status as of 2026-08-22: M1–M5 are built and on `main`. M6 is not.**
 >
 > End-to-end verification against GitLab's live Greenhouse board (204 open roles), with a
 > program/product-manager criteria set:
@@ -592,6 +592,10 @@ used "Stage" for both pipeline stages and shipping stages, which made "Stage 1" 
 > The 95.6% title rejection matches the 95.96% measured across career-ops' 65 historical runs,
 > which is the closest thing available to independent confirmation that the port behaves like the
 > scanner it replaces. Workday's two CXS endpoints were separately verified against a live tenant.
+>
+> Resolution (M5) verified live from company names alone: GitLab (204 roles), Anthropic (517) and
+> Stripe (575) resolve to Greenhouse; Ramp (136) and Notion (128) to Ashby. Netflix correctly
+> reports no board — it uses none of the three — as does a made-up company name.
 
 ### M1 — Workday listing and body fetch ✅ *shipped*
 
@@ -686,7 +690,7 @@ before the user can see and edit what it will do.**
 **Done when:** a new user can add a source, set criteria, see the preview count, run a sweep
 manually, and read what happened.
 
-### M5 — Source resolution and health repair *(not built)*
+### M5 — Source resolution and health repair ✅ *shipped*
 
 - A company→board resolver probing vendors in order — Greenhouse, Ashby, Lever first, then the
   long tail — accepting a board only when it exists **and** lists ≥1 job.

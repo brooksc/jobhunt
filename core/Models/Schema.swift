@@ -107,7 +107,8 @@ public enum SchemaV1: VersionedSchema {
             ReferralAttempt.self,
             InterviewRecord.self,
             OfferRecord.self,
-            DiscoveryLedgerEntry.self
+            DiscoveryLedgerEntry.self,
+            SearchSource.self
         ]
     }
 }

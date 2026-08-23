@@ -305,16 +305,46 @@ public struct WorkdayProvider: ATSProvider {
         atsID.hasPrefix("wd:")
     }
 
+    /// The CXS detail endpoint, reached through the posting's own path.
+    ///
+    /// Workday deep links carry the path we need (`/job/{Location}/{slug}_{req}`), so no board
+    /// guessing is involved — unlike Greenhouse, the URL names the tenant, the site and the
+    /// posting.
     public func fetchPosting(
-        atsID _: String, company _: String?, urlString _: String, session _: URLSession
+        atsID _: String, company _: String?, urlString: String, session: URLSession
     ) async -> ATSPosting? {
-        nil
+        guard let url = URL(string: urlString),
+              let board = WorkdayJobBoard.board(for: url),
+              let path = Self.externalPath(from: url, site: board.site) else { return nil }
+        return await WorkdayJobBoard.fetchPosting(
+            board: board, externalPath: path, session: session, urlString: urlString
+        )
     }
 
+    /// Capped well below a full-board sweep: this feeds the "other open roles" pane, which ranks
+    /// and shows a handful, and each extra page costs a request plus the inter-page pause. A
+    /// discovery sweep wanting the whole board calls `WorkdayJobBoard.listOpenRoles` directly with
+    /// its own cap.
+    static let paneMaxPages = 10
+
     public func listOpenRoles(
-        atsID _: String, company _: String?, urlString _: String, session _: URLSession
+        atsID _: String, company _: String?, urlString: String, session: URLSession
     ) async -> [GreenhouseJobBoard.OpenRole] {
-        []
+        guard let url = URL(string: urlString),
+              let board = WorkdayJobBoard.board(for: url) else { return [] }
+        return await WorkdayJobBoard.listOpenRoles(
+            board: board, session: session, maxPages: Self.paneMaxPages
+        ).roles
+    }
+
+    /// The posting path the CXS detail endpoint wants, which is the public URL's path minus the
+    /// optional locale and the site segment: `/en-US/23/job/HQ/Designer_123` → `/job/HQ/Designer_123`.
+    static func externalPath(from url: URL, site: String) -> String? {
+        let segments = url.path.split(separator: "/").map(String.init)
+        guard let siteIdx = segments.firstIndex(of: site), siteIdx + 1 < segments.count else {
+            return nil
+        }
+        return "/" + segments[(siteIdx + 1)...].joined(separator: "/")
     }
 
     public func isAlive(

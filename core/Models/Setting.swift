@@ -144,6 +144,17 @@ public enum SettingsKey {
     public static let discoveryIngestsToday = "discovery_ingests_today"
     public static let discoveryIngestsTodayDate = "discovery_ingests_today_date"
 
+    /// Sweep the whole public directory of ATS boards, not just the companies the user added.
+    ///
+    /// Separate from `discoveryEnabled` because it is a different bargain: watching named companies
+    /// is a handful of requests a day, while a market pass is tens of thousands over hours. A user
+    /// should be able to have one without the other.
+    public static let marketSweepEnabled = "market_sweep_enabled"
+    /// How long after a pass finishes before the next one starts.
+    public static let marketSweepIntervalHours = "market_sweep_interval_hours"
+    /// Boards per slice. The sweep is deliberately unhurried — see MarketPacing.
+    public static let marketSweepBoardsPerSlice = "market_sweep_boards_per_slice"
+
     /// API key settings that must live in Keychain, not SwiftData (App Store hygiene).
     public static let keychainKeys: Set<String> = [
         llmAPIKey, llmAPIKeyOpenAI, llmAPIKeyAnthropic,

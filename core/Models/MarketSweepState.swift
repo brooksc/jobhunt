@@ -1,0 +1,77 @@
+import Foundation
+import SwiftData
+
+/// Where a market sweep has got to (TASK-696).
+///
+/// A full sweep walks ~29,000 boards and takes hours, so it cannot be an in-memory loop: the app
+/// will be quit, slept and relaunched several times before it finishes. The cursor is persisted
+/// after every batch, which makes a sweep resumable rather than restartable — the difference
+/// between finishing in a day and never finishing at all.
+///
+/// One row, replaced each time a sweep starts. History lives in the ledger, which records what was
+/// actually found; this only answers "where was I".
+@Model
+public final class MarketSweepState {
+    public var id: String
+    /// Identifies one pass over the directory. A new sweep gets a new id, so a resumed run can tell
+    /// it is continuing its own work rather than someone else's.
+    public var sweepID: String
+    public var startedAt: Date
+    public var updatedAt: Date
+    public var finishedAt: Date?
+
+    /// How far through the board list this sweep has got. The list is regenerated from the cached
+    /// directory each time, so this is only meaningful alongside `boardCount`.
+    public var cursor: Int
+    public var boardCount: Int
+
+    /// Running totals, for the status the user checks on.
+    public var boardsSwept: Int
+    public var boardsUnreachable: Int
+    public var postingsSeen: Int
+    public var postingsPassed: Int
+    public var postingsIngested: Int
+
+    /// Set when the sweep stopped for a reason worth showing — a cap reached, the directory being
+    /// unavailable. Nil while running normally.
+    public var pauseReason: String?
+
+    public init(
+        id: String = "market-sweep",
+        sweepID: String = UUID().uuidString,
+        startedAt: Date = Date(),
+        boardCount: Int = 0
+    ) {
+        self.id = id
+        self.sweepID = sweepID
+        self.startedAt = startedAt
+        updatedAt = startedAt
+        finishedAt = nil
+        cursor = 0
+        self.boardCount = boardCount
+        boardsSwept = 0
+        boardsUnreachable = 0
+        postingsSeen = 0
+        postingsPassed = 0
+        postingsIngested = 0
+        pauseReason = nil
+    }
+
+    public var isFinished: Bool {
+        finishedAt != nil
+    }
+
+    /// 0–1. Reported against the board list rather than elapsed time, because a sweep's pace varies
+    /// by an order of magnitude between vendors and a time estimate would be a fiction.
+    public var progress: Double {
+        guard boardCount > 0 else { return 0 }
+        return min(1, Double(cursor) / Double(boardCount))
+    }
+
+    /// Whether a new sweep is due. A finished sweep waits out the interval; an unfinished one is
+    /// always due, because resuming it is the whole point.
+    public func isDue(interval: TimeInterval, now: Date = Date()) -> Bool {
+        guard let finishedAt else { return true }
+        return now.timeIntervalSince(finishedAt) >= interval
+    }
+}

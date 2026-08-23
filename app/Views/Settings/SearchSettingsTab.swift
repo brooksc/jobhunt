@@ -13,6 +13,7 @@ struct SearchSettingsTab: View {
     let settings: SettingsStore
     @Environment(AppServices.self) private var appServices
     @Query(sort: \SearchSource.label) private var sources: [SearchSource]
+    @Query private var marketState: [MarketSweepState]
 
     @State private var showingAddSource = false
     @State private var previewPassed: Int?
@@ -26,6 +27,7 @@ struct SearchSettingsTab: View {
             enabledSection
             criteriaSection
             sourcesSection
+            marketSection
             historySection
         }
         .formStyle(.grouped)
@@ -697,5 +699,80 @@ private struct SuggestedCompaniesSheet: View {
         let saved = suggestion.existingJobCount
         parts.append("\(saved) job\(saved == 1 ? "" : "s") saved")
         return parts.joined(separator: " · ")
+    }
+}
+
+// MARK: - Market sweep
+
+extension SearchSettingsTab {
+    /// The whole-market sweep and its progress (TASK-696).
+    ///
+    /// Its own section because it is a different bargain from watching named companies: tens of
+    /// thousands of requests over hours rather than a handful a day. And it needs a progress
+    /// readout for a reason the other loops don't — a pass takes long enough that, without one,
+    /// "running" and "stuck" look identical for most of a day.
+    var marketSection: some View {
+        Section("Search every company") {
+            Toggle("Sweep all public job boards", isOn: Binding(
+                get: { settings.bool(forKey: SettingsKey.marketSweepEnabled) },
+                set: { settings.setBool($0, forKey: SettingsKey.marketSweepEnabled) }
+            ))
+
+            Text(
+                "Walks the ~29,000 public Greenhouse, Lever, Ashby and Workday boards rather than "
+                    + "only the companies above. This is how you find a job at a company you've "
+                    + "never heard of. It runs slowly in the background over several hours, resumes "
+                    + "where it left off, and goes gently on any board that asks it to."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            if let state = marketState.first {
+                marketProgress(state)
+            } else if settings.bool(forKey: SettingsKey.marketSweepEnabled) {
+                Text("Waiting to start — the board list downloads on the first run.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func marketProgress(_ state: MarketSweepState) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if state.isFinished {
+                Label(
+                    "Finished \(state.finishedAt?.formatted(.relative(presentation: .named)) ?? "")",
+                    systemImage: "checkmark.circle.fill"
+                )
+                .foregroundStyle(.green)
+                .font(.callout)
+            } else {
+                ProgressView(value: state.progress) {
+                    Text("Sweeping — \(state.cursor.formatted()) of \(state.boardCount.formatted()) boards")
+                        .font(.callout)
+                }
+                // A percentage alone reads as stalled on a sweep this long; the board counts move
+                // visibly even when the percentage doesn't.
+                .progressViewStyle(.linear)
+            }
+
+            Text(
+                "\(state.postingsSeen.formatted()) postings seen · "
+                    + "\(state.postingsPassed.formatted()) matched · "
+                    + "\(state.postingsIngested.formatted()) added"
+                    + (state.boardsUnreachable > 0
+                        ? " · \(state.boardsUnreachable.formatted()) boards unreachable" : "")
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            // A pause is not a failure, but it has to be visible or the sweep looks stuck.
+            if let reason = state.pauseReason {
+                Label(reason, systemImage: "pause.circle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding(.vertical, 2)
     }
 }

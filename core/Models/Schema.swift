@@ -108,7 +108,8 @@ public enum SchemaV1: VersionedSchema {
             InterviewRecord.self,
             OfferRecord.self,
             DiscoveryLedgerEntry.self,
-            SearchSource.self
+            SearchSource.self,
+            MarketSweepState.self
         ]
     }
 }

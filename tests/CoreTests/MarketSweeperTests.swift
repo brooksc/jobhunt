@@ -1,0 +1,257 @@
+import Foundation
+import SwiftData
+import XCTest
+@testable import JobhuntCore
+
+/// Sweeping the whole directory, a resumable slice at a time (TASK-696).
+///
+/// The behaviour that matters is what happens when a sweep *doesn't* finish — which is the normal
+/// case, since a full pass takes hours and the app gets quit. A sweep that restarts from zero every
+/// launch never reaches the far end of the directory, and never reaching the end is
+/// indistinguishable from there being nothing there.
+final class MarketSweeperTests: XCTestCase {
+    private struct NoOp: LLMProvider {
+        let id: String = "noop"
+        let concurrencyLimit: Int = 1
+        func complete(_: ChatRequest) async throws -> ChatResponse {
+            throw LLMProviderError.httpError(statusCode: 503, body: "no-op")
+        }
+    }
+
+    private func makeStore() throws -> BackgroundStore {
+        try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+    }
+
+    private func makeSweeper(_ store: BackgroundStore, caps: DiscoveryCaps = .default) -> MarketSweeper {
+        let queue = QueueActor(
+            store: store, isPaused: { true }, onSetPaused: { _ in },
+            readExtractionSettings: { ExtractionSettings(
+                llmModel: "", preferredLocations: "", locationFilterEnabled: false,
+                locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true
+            ) },
+            providerFactory: { NoOp() }
+        )
+        return MarketSweeper(
+            store: store,
+            sweeper: DiscoverySweeper(
+                store: store, jobService: JobService(store: store, queue: queue),
+                session: MockURLProtocol.makeSession(), caps: caps, ledgerRejections: false
+            ),
+            session: MockURLProtocol.makeSession()
+        )
+    }
+
+    private func boards(_ count: Int) -> [MarketBoard] {
+        (1 ... count).map { MarketBoard(kind: "greenhouse", slug: "company-\($0)") }
+    }
+
+    private let criteria = DiscoveryCriteria(titleIncludeAny: ["program manager"])
+
+    override func setUp() {
+        super.setUp()
+        MockURLProtocol.reset()
+        // Every board answers with one matching posting, and its detail endpoint answers with a
+        // real body — otherwise hydration fails and nothing is ever ingested, which would make
+        // these tests measure the stub rather than the sweeper.
+        MockURLProtocol.handlers.append(("boards-api.greenhouse.io", { request in
+            let response = HTTPURLResponse(
+                url: request.url ?? URL(fileURLWithPath: "/"), statusCode: 200,
+                httpVersion: nil, headerFields: nil
+            )!
+            let path = request.url?.path ?? ""
+            let segments = path.split(separator: "/").map(String.init)
+            // /v1/boards/{slug}/jobs[/{id}] — the slug is at index 2.
+            let slug = segments.count > 2 ? segments[2] : "x"
+            let id = abs(slug.hashValue % 100_000)
+            // .../boards/{slug}/jobs        → the board listing
+            // .../boards/{slug}/jobs/{id}   → one posting, with a body
+            let isDetail = segments.last != "jobs"
+            let body = isDetail
+                ? """
+                { "id": \(id), "title": "Program Manager",
+                  "content": "A real job description with enough text to be usable.",
+                  "absolute_url": "https://boards.greenhouse.io/\(slug)/jobs/\(id)",
+                  "location": { "name": "Remote, United States" } }
+                """
+                : """
+                { "jobs": [ { "id": \(id), "title": "Program Manager",
+                  "absolute_url": "https://boards.greenhouse.io/\(slug)/jobs/\(id)",
+                  "location": { "name": "Remote, United States" } } ] }
+                """
+            return (response, Data(body.utf8))
+        }))
+    }
+
+    override func tearDown() {
+        MockURLProtocol.reset()
+        super.tearDown()
+    }
+
+    // MARK: - Slicing
+
+    func testASliceStopsAtItsBoardLimitAndReportsWhereItGotTo() async throws {
+        let store = try makeStore()
+        let sweeper = makeSweeper(store)
+        let (slice, next) = await sweeper.sweepSlice(
+            boards: boards(50), cursor: 0, boardLimit: 5, criteria: criteria,
+            remainingDailyBudget: 100
+        )
+        XCTAssertEqual(slice.boardsSwept, 5)
+        XCTAssertEqual(next, 5, "the cursor is where the next slice picks up")
+    }
+
+    /// The whole point of the cursor: a second slice continues rather than repeating.
+    func testTheNextSliceContinuesFromTheCursor() async throws {
+        let store = try makeStore()
+        let sweeper = makeSweeper(store)
+        let all = boards(20)
+        let (_, afterFirst) = await sweeper.sweepSlice(
+            boards: all, cursor: 0, boardLimit: 4, criteria: criteria, remainingDailyBudget: 100
+        )
+        let (second, afterSecond) = await sweeper.sweepSlice(
+            boards: all, cursor: afterFirst, boardLimit: 4, criteria: criteria,
+            remainingDailyBudget: 100
+        )
+        XCTAssertEqual(afterFirst, 4)
+        XCTAssertEqual(afterSecond, 8)
+        XCTAssertEqual(second.boardsSwept, 4)
+    }
+
+    func testASliceStopsAtTheEndOfTheDirectory() async throws {
+        let store = try makeStore()
+        let sweeper = makeSweeper(store)
+        let (slice, next) = await sweeper.sweepSlice(
+            boards: boards(3), cursor: 0, boardLimit: 100, criteria: criteria,
+            remainingDailyBudget: 100
+        )
+        XCTAssertEqual(slice.boardsSwept, 3)
+        XCTAssertEqual(next, 3)
+    }
+
+    // MARK: - Budget
+
+    /// The daily cap is shared with the per-company scheduler, so a market sweep must stop when it's
+    /// spent rather than keep finding postings it isn't allowed to act on.
+    func testTheSliceStopsWhenTheDailyBudgetIsSpent() async throws {
+        let store = try makeStore()
+        let sweeper = makeSweeper(store, caps: DiscoveryCaps(perSweep: 1, perDay: 100))
+        let (slice, next) = await sweeper.sweepSlice(
+            boards: boards(50), cursor: 0, boardLimit: 50, criteria: criteria,
+            remainingDailyBudget: 3
+        )
+        XCTAssertEqual(slice.postingsIngested, 3)
+        XCTAssertNotNil(slice.stopReason, "a cap that stops a sweep has to say so")
+        XCTAssertLessThan(next, 50, "the cursor stays put so tomorrow resumes here")
+    }
+
+    func testAnExhaustedBudgetSweepsNothingAtAll() async throws {
+        let store = try makeStore()
+        let sweeper = makeSweeper(store)
+        let (slice, next) = await sweeper.sweepSlice(
+            boards: boards(10), cursor: 0, boardLimit: 10, criteria: criteria,
+            remainingDailyBudget: 0
+        )
+        XCTAssertEqual(slice.boardsSwept, 0, "no point reading boards we can't act on")
+        XCTAssertEqual(next, 0)
+    }
+
+    // MARK: - Checkpointing
+
+    func testProgressSurvivesAcrossSlices() async throws {
+        let store = try makeStore()
+        let sweeper = makeSweeper(store)
+        try await store.startMarketSweep(boardCount: 20)
+
+        let (first, next) = await sweeper.sweepSlice(
+            boards: boards(20), cursor: 0, boardLimit: 4, criteria: criteria,
+            remainingDailyBudget: 100
+        )
+        try await store.recordMarketSweepSlice(first, nextCursor: next)
+
+        let loaded: MarketSweepState? = try await store.marketSweepState()
+        let state = try XCTUnwrap(loaded)
+        XCTAssertEqual(state.cursor, 4)
+        XCTAssertEqual(state.boardsSwept, 4)
+        XCTAssertEqual(state.progress, 0.2, accuracy: 0.001)
+        XCTAssertFalse(state.isFinished)
+    }
+
+    func testReachingTheEndFinishesTheSweep() async throws {
+        let store = try makeStore()
+        try await store.startMarketSweep(boardCount: 5)
+        try await store.recordMarketSweepSlice(MarketSweepSlice(), nextCursor: 5)
+
+        let loaded: MarketSweepState? = try await store.marketSweepState()
+        let state = try XCTUnwrap(loaded)
+        XCTAssertTrue(state.isFinished)
+        XCTAssertEqual(state.progress, 1)
+        XCTAssertNil(state.pauseReason, "a finished sweep isn't paused")
+    }
+
+    /// An unfinished sweep is always due — resuming it is the entire point. A finished one waits.
+    func testAnUnfinishedSweepIsAlwaysDue() {
+        let state = MarketSweepState(boardCount: 100)
+        XCTAssertTrue(state.isDue(interval: 24 * 3600))
+
+        state.finishedAt = Date()
+        XCTAssertFalse(state.isDue(interval: 24 * 3600))
+        XCTAssertTrue(state.isDue(
+            interval: 24 * 3600, now: Date().addingTimeInterval(25 * 3600)
+        ))
+    }
+
+    func testStartingASweepReplacesTheFinishedOne() async throws {
+        let store = try makeStore()
+        try await store.startMarketSweep(boardCount: 10)
+        try await store.recordMarketSweepSlice(MarketSweepSlice(), nextCursor: 10)
+        try await store.startMarketSweep(boardCount: 20)
+
+        let states: [MarketSweepState] = try await store.fetch(FetchDescriptor<MarketSweepState>())
+        XCTAssertEqual(states.count, 1, "position is one row; history lives in the ledger")
+        XCTAssertEqual(states.first?.boardCount, 20)
+        XCTAssertEqual(states.first?.cursor, 0)
+    }
+
+    // MARK: - Ledger volume
+
+    /// A market pass sees on the order of a million postings. Recording a row per rejection would
+    /// grow the ledger without bound to save re-running a filter that costs microseconds — so only
+    /// what jobhunt actually acted on is written down.
+    func testRejectionsAreNotLedgeredDuringAMarketSweep() async throws {
+        let store = try makeStore()
+        let sweeper = makeSweeper(store)
+        // Criteria nothing matches, so every posting is a rejection.
+        _ = await sweeper.sweepSlice(
+            boards: boards(10), cursor: 0, boardLimit: 10,
+            criteria: DiscoveryCriteria(titleIncludeAny: ["nothing matches this"]),
+            remainingDailyBudget: 100
+        )
+        let counts: [String: Int] = try await store.discoveryOutcomeCounts()
+        XCTAssertTrue(counts.isEmpty, "the ledger must not grow by one row per posting looked at")
+    }
+
+    /// …but an ingest still is, or the next pass would re-ingest the same job.
+    func testIngestsAreStillLedgered() async throws {
+        let store = try makeStore()
+        let sweeper = makeSweeper(store)
+        _ = await sweeper.sweepSlice(
+            boards: boards(3), cursor: 0, boardLimit: 3, criteria: criteria,
+            remainingDailyBudget: 100
+        )
+        let counts: [String: Int] = try await store.discoveryOutcomeCounts()
+        XCTAssertEqual(counts["ingested"], 3)
+    }
+
+    // MARK: - Pacing
+
+    /// The single-host vendors get the timid setting. career-ops measured what 20 concurrent does to
+    /// Lever and Ashby: thousands of live boards recorded as unreachable, and every match on them
+    /// lost — which is the exact failure a market sweep exists to prevent.
+    func testSingleHostVendorsArePacedMoreGentlyThanPerTenantOnes() {
+        XCTAssertEqual(MarketPacing.forKind("greenhouse"), .singleHost)
+        XCTAssertEqual(MarketPacing.forKind("lever"), .singleHost)
+        XCTAssertEqual(MarketPacing.forKind("ashby"), .singleHost)
+        XCTAssertEqual(MarketPacing.forKind("workday"), .perTenantHost)
+        XCTAssertLessThan(MarketPacing.singleHost.concurrency, MarketPacing.perTenantHost.concurrency)
+    }
+}

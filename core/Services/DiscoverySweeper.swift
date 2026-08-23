@@ -66,17 +66,26 @@ public struct DiscoverySweeper: Sendable {
     let jobService: JobService
     let session: URLSession
     let caps: DiscoveryCaps
+    let ledgerRejections: Bool
 
+    /// - Parameter ledgerRejections: whether a posting the gate turned down is written to the
+    ///   ledger. True for a watched company, where a board is a few hundred rows and recording the
+    ///   verdict makes the histogram possible. **False for a market sweep**, which sees on the order
+    ///   of a million postings per pass — a row each would grow the ledger without bound to save
+    ///   re-running a filter that costs microseconds and touches nothing. Passes and hydration
+    ///   failures are always recorded, because those are the ones that must not be repeated.
     public init(
         store: BackgroundStore,
         jobService: JobService,
         session: URLSession = .shared,
-        caps: DiscoveryCaps = .default
+        caps: DiscoveryCaps = .default,
+        ledgerRejections: Bool = true
     ) {
         self.store = store
         self.jobService = jobService
         self.session = session
         self.caps = caps
+        self.ledgerRejections = ledgerRejections
     }
 
     /// Sweep one source.
@@ -107,8 +116,12 @@ public struct DiscoverySweeper: Sendable {
 
         // Exactly one sweep's raw rows are retained per source, for the settings preview. Cleared
         // before recording rather than after, so a sweep that crashes leaves the older set rather
-        // than nothing.
-        try? await store.clearRetainedRawRows(sourceID: source.id)
+        // than nothing. Skipped for a market sweep, which shares one source id across thousands of
+        // boards — clearing per board would erase the previous board's rows, and keeping them all
+        // would retain the whole market.
+        if ledgerRejections {
+            try? await store.clearRetainedRawRows(sourceID: source.id)
+        }
 
         // 2. Gate A — free, and runs on everything.
         var rejections: [DiscoveryRejectReason: Int] = [:]
@@ -120,7 +133,9 @@ public struct DiscoverySweeper: Sendable {
                 survivors.append(posting)
             case let .reject(reason):
                 rejections[reason, default: 0] += 1
-                outcomes.append((posting, .rejected, reason))
+                if ledgerRejections {
+                    outcomes.append((posting, .rejected, reason))
+                }
             }
         }
 

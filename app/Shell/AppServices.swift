@@ -367,6 +367,73 @@ final class AppServices {
         }
     }
 
+    /// Walks the public directory of ~29,000 ATS boards, a slice at a time (TASK-696).
+    ///
+    /// **Not focus-gated, unlike the other loops.** They skip while the app is unfocused on the
+    /// principle that jobhunt shouldn't fetch for an app nobody is looking at. A pass over the whole
+    /// market takes hours, so that rule would mean it never finished — and an unfinished sweep finds
+    /// nothing, which is indistinguishable from there being nothing to find. It runs whenever the
+    /// app is open, gently, and picks up where it left off across relaunches.
+    ///
+    /// The pace is deliberately unhurried; see `MarketPacing`. Comprehensiveness is the goal, and a
+    /// vendor that pushes back is waited out rather than worked around, because a board wrongly
+    /// recorded as unreachable loses every match on it silently.
+    private func marketSweepTask() -> Task<Void, Never> {
+        let sweepStore = backgroundStore
+        let service = jobService
+        return Task { @MainActor [weak self] in
+            // Cached across slices: the board list is ~29,000 entries parsed from four files, and
+            // rebuilding it every few minutes would be the most expensive thing in the loop.
+            var boards: [MarketBoard] = []
+            var boardsLoadedAt: Date?
+
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(180))
+                guard !Task.isCancelled, let self else { return }
+                guard settings.bool(forKey: SettingsKey.marketSweepEnabled) else { continue }
+
+                let budget = DiscoverySettings.remainingDailyBudget(settings)
+                guard budget > 0 else { continue }
+
+                let directoryIsStale = boardsLoadedAt
+                    .map { Date().timeIntervalSince($0) > 6 * 3600 } ?? true
+                if boards.isEmpty || directoryIsStale {
+                    boards = await MarketDirectory.boards()
+                    boardsLoadedAt = Date()
+                }
+                guard !boards.isEmpty else { continue }
+
+                let interval = Double(max(1, settings.int(forKey: SettingsKey.marketSweepIntervalHours))) * 3600
+                let caps = DiscoverySettings.caps(from: settings)
+                let sweeper = MarketSweeper(
+                    store: sweepStore,
+                    // Rejections are not ledgered for a market pass — a row per posting looked at
+                    // would grow the ledger without bound. See DiscoverySweeper.
+                    sweeper: DiscoverySweeper(
+                        store: sweepStore, jobService: service, caps: caps, ledgerRejections: false
+                    )
+                )
+                guard let state = await sweeper.stateForRun(boards: boards, interval: interval) else {
+                    continue
+                }
+
+                let slice = await sweeper.sweepSlice(
+                    boards: boards,
+                    cursor: state.cursor,
+                    boardLimit: max(1, settings.int(forKey: SettingsKey.marketSweepBoardsPerSlice)),
+                    criteria: DiscoverySettings.criteria(from: settings),
+                    remainingDailyBudget: budget
+                )
+                try? await sweepStore.recordMarketSweepSlice(
+                    slice.slice, nextCursor: slice.nextCursor
+                )
+                if slice.slice.postingsIngested > 0 {
+                    DiscoverySettings.recordIngests(slice.slice.postingsIngested, settings: settings)
+                }
+            }
+        }
+    }
+
     /// Starts runtime services and launch-time side effects: the local HTTP server, LLM-queue crash
     /// recovery, the availability-check loop, and the availability-completion observer. Call once,
     /// from the launch owner, for interactive modes — fixture generation skips this so it never
@@ -436,6 +503,7 @@ final class AppServices {
             tasks.append(siteReviewNotifierTask())
             tasks.append(availabilityDrainTask())
             tasks.append(discoverySweepTask())
+            tasks.append(marketSweepTask())
 
             // Persist the last-check timestamp through an explicit callback (TASK-428) rather than a
             // global notification observer: the checker hands us the completion time, we write the

@@ -53,6 +53,10 @@ private let settingsDefaults: [String: String] = [
     SettingsKey.discoveryMaxIngestsPerDay: "200",
     SettingsKey.discoveryIngestsToday: "0",
     SettingsKey.discoveryIngestsTodayDate: "",
+    // Off by default, like automatic search: a market pass is tens of thousands of requests.
+    SettingsKey.marketSweepEnabled: "false",
+    SettingsKey.marketSweepIntervalHours: "24",
+    SettingsKey.marketSweepBoardsPerSlice: "250",
     SettingsKey.availabilityAutoCheckEnabled: "true",
     SettingsKey.availabilityAutoCheckIntervalDays: "1",
     SettingsKey.availabilityStaleDays: "21",

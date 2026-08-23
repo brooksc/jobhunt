@@ -108,6 +108,42 @@ public enum SettingsKey {
     /// Details (address, EEO answers, …) when copied (TASK-606). Gates the first such copy only.
     public static let autoApplyPersonalInfoAcknowledged = "auto_apply_personal_info_acknowledged"
 
+    // MARK: - Automatic search (TASK-692)
+
+    /// The master switch. Off by default: nothing sweeps until the user has seen and edited what it
+    /// will do.
+    public static let discoveryEnabled = "discovery_enabled"
+
+    /// Gate-A criteria, stored under their *own* keys rather than reusing `preferredLocations` and
+    /// friends.
+    ///
+    /// Those keys feed `JobRequirements`, which badges every job in the app. Aliasing would mean
+    /// that widening the search — a change made on a screen about *where to look* — silently
+    /// re-evaluated hundreds of existing jobs. So the discovery criteria are *seeded* from them on
+    /// first use and owned separately after that.
+    ///
+    /// All comma-separated, matching how `preferredLocations` already stores a list.
+    public static let discoveryTitleInclude = "discovery_title_include"
+    public static let discoveryTitleExclude = "discovery_title_exclude"
+    public static let discoveryLocationAllow = "discovery_location_allow"
+    public static let discoveryLocationAlwaysAllow = "discovery_location_always_allow"
+    public static let discoveryLocationBlock = "discovery_location_block"
+    public static let discoveryLocationBlockHard = "discovery_location_block_hard"
+    public static let discoveryMinSalary = "discovery_min_salary"
+    public static let discoveryMaxAgeDays = "discovery_max_age_days"
+
+    /// Set once the criteria have been seeded from the existing requirement settings, so a user who
+    /// deliberately empties a list doesn't get it refilled on the next launch.
+    public static let discoveryCriteriaSeeded = "discovery_criteria_seeded"
+
+    /// Ingest ceilings. A circuit breaker against a misconfiguration, not a working budget — see
+    /// `DiscoveryCaps`.
+    public static let discoveryMaxIngestsPerSweep = "discovery_max_ingests_per_sweep"
+    public static let discoveryMaxIngestsPerDay = "discovery_max_ingests_per_day"
+    /// The rolling day counter behind `discoveryMaxIngestsPerDay`.
+    public static let discoveryIngestsToday = "discovery_ingests_today"
+    public static let discoveryIngestsTodayDate = "discovery_ingests_today_date"
+
     /// API key settings that must live in Keychain, not SwiftData (App Store hygiene).
     public static let keychainKeys: Set<String> = [
         llmAPIKey, llmAPIKeyOpenAI, llmAPIKeyAnthropic,

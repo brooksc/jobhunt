@@ -167,3 +167,81 @@ public extension BackgroundStore {
         }
     }
 }
+
+// MARK: - Search sources
+
+public extension BackgroundStore {
+    /// Sources due for a sweep, longest-waiting first.
+    ///
+    /// The sort is what stops one source starving the others: without it, whichever row happened to
+    /// be inserted first would be swept every cycle while a source with the same interval never came
+    /// up. `nil` sorts first, which is right — a source that has never run has waited longest.
+    func dueSearchSources(now: Date = Date()) throws -> [SearchSource] {
+        try modelContext.fetch(
+            FetchDescriptor<SearchSource>(
+                sortBy: [SortDescriptor(\.nextRunAt, order: .forward)]
+            )
+        )
+        .filter { $0.isDue(now: now) }
+    }
+
+    func searchSources() throws -> [SearchSource] {
+        try modelContext.fetch(
+            FetchDescriptor<SearchSource>(sortBy: [SortDescriptor(\.label, order: .forward)])
+        )
+    }
+
+    /// Persist the outcome of a run. Also what moves `nextRunAt`, so a source that fails still waits
+    /// its interval rather than being retried on every cycle.
+    func recordSearchSourceRun(
+        id: String,
+        status: SearchSourceStatus,
+        found: Int = 0,
+        passed: Int = 0,
+        ingested: Int = 0,
+        error: String? = nil,
+        now: Date = Date()
+    ) throws {
+        let sources = try modelContext.fetch(FetchDescriptor<SearchSource>())
+        guard let source = sources.first(where: { $0.id == id }) else { return }
+        source.recordRun(
+            status: status, found: found, passed: passed, ingested: ingested, error: error, now: now
+        )
+        try modelContext.save()
+    }
+
+    @discardableResult
+    func addSearchSource(
+        kind: String, label: String, config: SourceConfig, intervalHours: Int = 12
+    ) throws -> String {
+        let source = SearchSource(
+            kind: kind, label: label, config: config, intervalHours: intervalHours
+        )
+        modelContext.insert(source)
+        try modelContext.save()
+        return source.id
+    }
+
+    func deleteSearchSource(id: String) throws {
+        let sources = try modelContext.fetch(FetchDescriptor<SearchSource>())
+        guard let source = sources.first(where: { $0.id == id }) else { return }
+        modelContext.delete(source)
+        try modelContext.save()
+    }
+
+    func setSearchSourceEnabled(id: String, enabled: Bool) throws {
+        let sources = try modelContext.fetch(FetchDescriptor<SearchSource>())
+        guard let source = sources.first(where: { $0.id == id }) else { return }
+        source.enabled = enabled
+        source.updatedAt = Date()
+        try modelContext.save()
+    }
+
+    /// Make a source due immediately — the "Run now" button.
+    func markSearchSourceDue(id: String, now: Date = Date()) throws {
+        let sources = try modelContext.fetch(FetchDescriptor<SearchSource>())
+        guard let source = sources.first(where: { $0.id == id }) else { return }
+        source.nextRunAt = now
+        try modelContext.save()
+    }
+}

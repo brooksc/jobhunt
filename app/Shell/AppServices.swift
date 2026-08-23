@@ -325,6 +325,48 @@ final class AppServices {
         }
     }
 
+    /// Sweeps one due search source at a time, on a slow loop (TASK-692, M3).
+    ///
+    /// One source per wake, not a drain: a loop that swept everything in one go would keep the app
+    /// busy for as long as the user's slowest board takes to answer, and the work is not urgent —
+    /// a board checked twelve hours ago will still be there in ten minutes.
+    ///
+    /// Foreground-only, like the availability loop, for the same reason: jobhunt should not be
+    /// fetching on behalf of an app nobody is looking at. It does mean a machine left at the login
+    /// screen sweeps nothing, which is the right trade for a desktop app with no background agent.
+    private func discoverySweepTask() -> Task<Void, Never> {
+        let sweepStore = backgroundStore
+        let service = jobService
+        return Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(600))
+                guard !Task.isCancelled, let self else { return }
+                guard settings.bool(forKey: SettingsKey.discoveryEnabled) else { continue }
+                guard NSApplication.shared.isActive else { continue }
+
+                // Read every cycle rather than caching: the user may have edited the criteria or the
+                // caps since the last sweep, and a stale copy would keep applying the old ones.
+                let criteria = DiscoverySettings.criteria(from: settings)
+                let caps = DiscoverySettings.caps(from: settings)
+                let budget = DiscoverySettings.remainingDailyBudget(settings)
+                guard budget > 0 else { continue }
+
+                let scheduler = DiscoveryScheduler(
+                    store: sweepStore,
+                    sweeper: DiscoverySweeper(store: sweepStore, jobService: service, caps: caps)
+                )
+                let result = await scheduler.runOneDueSweep(
+                    criteria: criteria, remainingDailyBudget: budget
+                )
+                // Counted here rather than inside the sweeper so the day's spend survives a source
+                // that fails midway: whatever reached ingest is spent, however the run ended.
+                if let result, result.ingested > 0 {
+                    DiscoverySettings.recordIngests(result.ingested, settings: settings)
+                }
+            }
+        }
+    }
+
     /// Starts runtime services and launch-time side effects: the local HTTP server, LLM-queue crash
     /// recovery, the availability-check loop, and the availability-completion observer. Call once,
     /// from the launch owner, for interactive modes — fixture generation skips this so it never
@@ -393,6 +435,7 @@ final class AppServices {
             tasks.append(followUpNotifierTask())
             tasks.append(siteReviewNotifierTask())
             tasks.append(availabilityDrainTask())
+            tasks.append(discoverySweepTask())
 
             // Persist the last-check timestamp through an explicit callback (TASK-428) rather than a
             // global notification observer: the checker hands us the completion time, we write the

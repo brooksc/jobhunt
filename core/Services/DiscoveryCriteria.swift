@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Why a swept posting didn't survive gate A. Surfaced as a histogram, because "0 new jobs" is
@@ -35,7 +36,7 @@ public enum DiscoveryVerdict: Sendable, Equatable {
 /// filter accounts for 96% of the reduction and location for the remaining 4%. Salary and content
 /// filtering have never rejected a posting, so salary is evaluated but unexercised and a content
 /// filter isn't built at all.
-public struct DiscoveryCriteria: Sendable, Hashable {
+public struct DiscoveryCriteria: Sendable, Hashable, Codable {
     /// At least one must appear in the title. Empty means no title requirement — which, given the
     /// numbers above, means effectively no filter at all.
     public var titleIncludeAny: [String]
@@ -76,6 +77,26 @@ public struct DiscoveryCriteria: Sendable, Hashable {
         self.minSalaryIfPublished = minSalaryIfPublished
         self.maxSalaryIfPublished = maxSalaryIfPublished
         self.maxAgeDays = maxAgeDays
+    }
+
+    // MARK: - Fingerprint
+
+    /// A hash that means the same thing tomorrow.
+    ///
+    /// The ledger stores this beside every verdict so that widening the criteria re-evaluates the
+    /// postings already rejected — without it, a user who adds a keyword would never see the
+    /// thousands of rows the old keywords threw away.
+    ///
+    /// **Not `hashValue`.** Swift seeds `Hashable` per process, so the same criteria hash to
+    /// different values on the next launch. Persisting that would invalidate the entire ledger at
+    /// every start: not incorrect, since re-evaluation is idempotent, but it would re-flood the
+    /// ingest cap daily and make the "already seen" count meaningless. `Hashable` conformance is
+    /// still there — it's fine for in-memory use, which is what it's for.
+    public var fingerprint: String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(self) else { return "unfingerprintable" }
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: - Evaluation

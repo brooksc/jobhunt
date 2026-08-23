@@ -159,7 +159,7 @@ private struct SiteRowView: View {
 
                 Text(site.origin)
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
 
@@ -230,21 +230,29 @@ private struct SiteRowView: View {
         return site.origin
     }
 
+    /// Colour on the icon, not the words.
+    ///
+    /// The whole label used to be red or orange at caption2 size — orange on the list background is
+    /// about 2:1, which the accessibility audit flagged on every scheduled row (TASK-689). The icon
+    /// still carries the urgency at a glance; the text has to be readable.
+    private func statusLabel(_ text: String, systemImage: String, tint: Color) -> some View {
+        Label {
+            Text(text).foregroundStyle(.primary)
+        } icon: {
+            Image(systemName: systemImage).foregroundStyle(tint)
+        }
+        .font(.caption2)
+    }
+
     @ViewBuilder
     private func nextReviewLabel(_ date: Date) -> some View {
         let diff = Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0
         if diff < 0 {
-            Label("Overdue \(-diff)d", systemImage: "exclamationmark.circle.fill")
-                .font(.caption2)
-                .foregroundStyle(.red)
+            statusLabel("Overdue \(-diff)d", systemImage: "exclamationmark.circle.fill", tint: .red)
         } else if diff == 0 {
-            Label("Due today", systemImage: "clock.fill")
-                .font(.caption2)
-                .foregroundStyle(.orange)
+            statusLabel("Due today", systemImage: "clock.fill", tint: .orange)
         } else if diff <= 7 {
-            Label("Due in \(diff)d", systemImage: "clock")
-                .font(.caption2)
-                .foregroundStyle(.orange)
+            statusLabel("Due in \(diff)d", systemImage: "clock", tint: .orange)
         } else {
             Text(date, style: .date)
                 .font(.caption2)

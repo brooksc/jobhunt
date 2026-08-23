@@ -31,14 +31,20 @@ final class AccessibilityAuditTests: XCTestCase {
         super.tearDown()
     }
 
-    /// Screen → the most issues it may report. Observed counts on 2026-08-22 were
-    /// Dashboard 28, All Jobs 30, Needs Action 13, Sites 21, Data Quality 100.
+    /// Screen → the most issues it may report. Observed on 2026-08-22 after the first pass of
+    /// TASK-689: Dashboard 28, All Jobs 30, Needs Action 12, Sites 19, Data Quality 64.
+    ///
+    /// What's left is mostly not ours to fix by a code change alone. The bulk is macOS's own
+    /// `.secondary`/`.tertiary` label colours at 13–16pt, which the audit measures below 4.5:1 —
+    /// overriding Apple's semantic colours app-wide is a design decision, not a defect fix. The rest
+    /// is SwiftUI exposing structural containers (the split view, the sidebar column) as unlabelled
+    /// groups, and the Touch Bar simulator, which isn't our UI at all.
     private let ceilings = [
-        "Dashboard": 40,
-        "All Jobs": 45,
-        "Needs Action": 25,
-        "Sites": 35,
-        "Data Quality": 130
+        "Dashboard": 38,
+        "All Jobs": 40,
+        "Needs Action": 20,
+        "Sites": 28,
+        "Data Quality": 80
     ]
 
     func testMainScreensStayWithinTheirAccessibilityDebt() throws {
@@ -50,7 +56,11 @@ final class AccessibilityAuditTests: XCTestCase {
             // The handler returning true means "reported, don't fail the test" — this counts rather
             // than throwing on the first finding.
             try app.performAccessibilityAudit { issue in
-                issues.append(issue.compactDescription)
+                // The element, not just the complaint: "Element has no description" on its own names
+                // nothing to fix. `element` is the audit's own handle on the offending view.
+                let element = issue.element
+                    .map { "\($0.elementType.rawValue) id=\($0.identifier) label=\($0.label) frame=\($0.frame)" }
+                issues.append("\(issue.compactDescription) | \(element ?? "no element")")
                 return true
             }
 
@@ -60,6 +70,13 @@ final class AccessibilityAuditTests: XCTestCase {
                 report.lifetime = .keepAlways
                 activity.add(report)
             }
+            // Also to a known path: an attachment is only readable by opening the .xcresult, which
+            // makes working the debt down (TASK-689) far more awkward than it needs to be. Same
+            // reasoning as the screenshot directory above.
+            try? issues.joined(separator: "\n").write(
+                to: screenshotDir.appendingPathComponent("accessibility-\(screen).txt"),
+                atomically: true, encoding: .utf8
+            )
             XCTAssertLessThanOrEqual(
                 issues.count, ceiling,
                 """

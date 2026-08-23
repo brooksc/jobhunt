@@ -164,7 +164,9 @@ struct DuplicatesView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
                 .font(.caption)
+                .accessibilityHidden(true)
             TextField("Search duplicate pairs…", text: $searchText)
+                .accessibilityLabel("Search duplicate pairs")
                 .textFieldStyle(.plain)
                 .font(.body)
             if !searchText.isEmpty {

@@ -287,7 +287,12 @@ struct DataQualityView: View {
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(kind.isHighSeverity ? Color.red.opacity(0.12) : Color.orange.opacity(0.1))
-                    .foregroundStyle(kind.isHighSeverity ? Color.red : Color.orange)
+                    // The label reads in the primary colour, not the accent one. Orange text on a
+                    // pale orange tint is ~2:1 — the accessibility audit reported 86 contrast
+                    // failures on this screen, essentially all of them these chips (TASK-689).
+                    // Severity is still carried by the tint and the border, which are decoration
+                    // either way; the word itself has to be readable.
+                    .foregroundStyle(Color.primary)
                     .clipShape(Capsule())
                     .overlay(Capsule().strokeBorder(
                         kind.isHighSeverity ? Color.red.opacity(0.3) : Color.orange.opacity(0.25),

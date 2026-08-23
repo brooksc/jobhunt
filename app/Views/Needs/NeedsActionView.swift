@@ -236,9 +236,13 @@ struct NeedsActionView: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
                     .font(.caption)
+                    .accessibilityHidden(true)
                 TextField("Search follow-ups…", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.subheadline)
+                    // macOS doesn't expose a placeholder as an accessibility description, so this
+                    // field announced itself as an unlabelled text field (TASK-689).
+                    .accessibilityLabel("Search follow-ups")
                 if !searchText.isEmpty {
                     Button {
                         searchText = ""

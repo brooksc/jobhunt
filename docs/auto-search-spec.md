@@ -709,19 +709,90 @@ and were silently returning nothing for weeks; re-resolution recovered 8, one of
 
 **Done when:** an amber source can be repaired from the UI without editing anything by hand.
 
-### M6 — Market-wide sources *(not built; optional, measure first)*
+### M6 — Market-wide sources *(not built — and should be redesigned before it is)*
 
-`SourceConfiguration.marketWide` sources need no company: Remotli, HN Who-is-Hiring, The Muse,
-4 Day Week, a16z speedrun.
+The original plan was to add aggregators (Remotli, HN Who-is-Hiring, The Muse, 4 Day Week) as
+`marketWide` sources alongside the per-company ones, justified by a 0.23% hit rate that argued for
+building only the best two. **Measurement on 2026-08-22 says that framing is wrong**, for a reason
+the hit rate alone conceals.
 
-**Be honest about the yield before spending the time.** Measured against the reference system's
-real criteria, 15 aggregators scanned 5,261 postings and surfaced 12 matches — 0.23% — and the
-largest remote boards (RemoteOK, Remotive, WeWorkRemotely, Himalayas) returned **zero**
-program/product roles that day. Of the 12, nine came from two sources (Remotli 6, HN 3). Build
-those two, measure for a fortnight, then decide about the rest.
+#### What is actually on them
 
-Note that these sources have no `atsPostingID`, which is why `DiscoveredPosting.dedupKey` falls
-back to a normalised URL rather than being ATS-only.
+Five aggregators fetched live (RemoteOK, Remotive, WeWorkRemotely, Himalayas, Remotli) — 1,090
+postings, 266 distinct companies:
+
+| Role family | Share |
+|---|---|
+| Engineering | 31.2% |
+| Sales / marketing | 10.4% |
+| Support / ops | 5.9% |
+| **Product management** | **5.6%** |
+| Exec | 4.2% |
+| Design | 3.6% |
+| **Program / project management** | **1.6%** |
+| Other | 37.6% |
+
+Three things follow.
+
+**1. The 0.23% is substantially criteria-specific.** Aggregators carry roughly 5× more engineering
+than product work and ~20× more than program management. A backend engineer running the same
+pipeline would find these sources far more productive than this project's own measurement implies.
+The published number should not be read as "aggregators are low-yield"; it means "aggregators are
+low-yield *for program/product management*".
+
+**2. But part of it isn't.** Remotli alone was 858 of the 1,090 postings, and a large share of that
+is not remote professional work at all — "Parcel Delivery Drivers", "Removalist Offsider", "Store
+Manager Bunbury", "Stock Assistant Supre Parramatta". That bulk inflates the denominator for
+*everyone*, whatever they're looking for, and is the reason a raw hit-rate figure flatters the
+better-targeted sources.
+
+**3. The earlier "the big remote boards returned zero program/product roles that day" was a bad
+snapshot, not a structural finding.** WeWorkRemotely alone was carrying 15 product-manager
+postings on the day of this measurement. One day's reading is not a yield estimate.
+
+#### The finding that changes the design
+
+**65.4% of aggregator postings link straight to a Greenhouse, Ashby, Lever or Workday board** — the
+exact four vendors jobhunt already sweeps:
+
+```
+  386  greenhouse (job-boards / boards / job-boards.eu)
+  139  workday (per-tenant hosts)
+  112  ashby
+   55  lever
+  ---
+  713 of 1,090 (65.4%)
+```
+
+Those URLs already key through `DuplicateDetector.atsPostingID`, already hydrate through the
+existing `fetchPosting`, and already resolve through `SourceResolver`. So an aggregator is not
+really a new *kind of source* needing its own parsing and maintenance — for two thirds of what it
+carries it is a **directory of employers whose boards jobhunt can already read directly**.
+
+#### What M6 should be instead
+
+Not "add aggregator sources". **"Company discovery."** Sweep one or two aggregators periodically,
+extract the distinct employers, resolve each through `SourceResolver`, and offer the user a list:
+*"14 companies you don't track are hiring for your titles — add them?"*
+
+This is better on every axis that matters:
+
+- **It works for any role family.** The employer set is the same whether you want engineers or
+  program managers; only the filter over it differs. The 0.23% problem doesn't transfer.
+- **It's durable.** A company added as a proper source keeps producing after the aggregator drops
+  the posting, and gets the full board rather than the handful the aggregator syndicated.
+- **It's cheap to maintain.** Aggregators are used as a hint, so a parser that breaks costs a
+  discovery round, not a data source. That was the strongest argument against carrying HTML
+  parsers alone, and it mostly evaporates when the parse is advisory.
+- **It reuses everything already built.** No new ingest path, no new dedup key, no new hydration.
+
+**Done when:** a user with no sources configured can go from a company name they've never heard of
+to a tracked board, without knowing what an ATS is.
+
+**Still measure before building.** The claim above rests on one day's fetch of five aggregators.
+Before committing, sample across a fortnight and check the employer-overlap rate — if most
+discovered companies are ones the user already tracks, the feature is redundant no matter how
+elegant the framing.
 
 ### Explicitly out of scope
 

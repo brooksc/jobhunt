@@ -12,7 +12,9 @@ struct DashboardView: View {
     /// All jobs — used for stat cards, opportunities, pipeline, quality
     @Query private var jobs: [Job]
     /// All captures in last 30 days — used for daily activity chart
-    @Query private var recentCaptures: [Capture]
+    /// Not private: read by the daily-activity section, which lives in its own file so this
+    /// one stays under the file-length limit.
+    @Query var recentCaptures: [Capture]
     /// Sites sorted by addedAt — filtered/sorted for schedule in computed property
     @Query(sort: \Site.addedAt) private var sites: [Site]
     /// LLM requests — used for the queue card in Housekeeping
@@ -32,7 +34,7 @@ struct DashboardView: View {
 
     /// Start-of-day token driving date-window metrics (TASK-583) — advances at local midnight (via
     /// `dayTick`) so date-window sections refresh across a day change with no data mutation.
-    @State private var dayToken = Calendar.current.startOfDay(for: Date())
+    @State var dayToken = Calendar.current.startOfDay(for: Date())
     private let dayTick = Timer.publish(every: 300, on: .main, in: .common).autoconnect()
 
     init() {
@@ -49,6 +51,7 @@ struct DashboardView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 20) {
                 SetupChecklistCard(settings: appServices.settings)
+                AutoSearchCard(settings: appServices.settings)
                 statCardsSection
                 TodayRecapCard(day: dayToken)
                 // Above the funnel: a scheduled interview or an offer deadline outranks everything
@@ -81,7 +84,9 @@ struct DashboardView: View {
         // TASK-583: day rollover — rebuild date-window metrics + re-render live-`Date()` sections.
         .onReceive(dayTick) { _ in
             let today = Calendar.current.startOfDay(for: Date())
-            if today != dayToken { dayToken = today }
+            if today != dayToken {
+                dayToken = today
+            }
         }
         .onChange(of: dayToken) { _, _ in recomputeMetrics() }
     }
@@ -462,41 +467,6 @@ struct DashboardView: View {
 
     // MARK: - Daily Activity (30 days)
 
-    private var dailyActivitySection: some View {
-        let captureData = recentCaptures.map { (capturedAt: $0.capturedAt, id: $0.id) }
-        let activity = DashboardMetrics.buildDailyActivity(captures: captureData, now: dayToken)
-
-        return VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("Daily Activity (30 days)")
-
-            GroupBox {
-                if activity.isEmpty || activity.allSatisfy({ $0.count == 0 }) { // swiftlint:disable:this empty_count
-                    emptyState("No activity in the last 30 days", subtitle: nil)
-                        .frame(height: 120)
-                } else {
-                    Chart {
-                        ForEach(activity, id: \.day) { item in
-                            BarMark(
-                                x: .value("Day", item.day, unit: .day),
-                                y: .value("Captures", item.count)
-                            )
-                            .foregroundStyle(Theme.accent)
-                            .cornerRadius(2)
-                        }
-                    }
-                    .frame(height: 150)
-                    .chartXAxis {
-                        AxisMarks(values: .stride(by: .day, count: 7)) {
-                            AxisValueLabel(format: .dateTime.month().day())
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Site Check-in Schedule
-
     private var siteScheduleSection: some View {
         let now = Date()
         let upcoming: [(site: Site, overdue: Bool)] = sites
@@ -565,13 +535,13 @@ struct DashboardView: View {
 
     // MARK: - Helpers
 
-    private func sectionHeader(_ title: String) -> some View {
+    func sectionHeader(_ title: String) -> some View {
         Text(title)
             .font(.headline)
             .foregroundStyle(.primary)
     }
 
-    private func emptyState(_ message: String, subtitle: String?) -> some View {
+    func emptyState(_ message: String, subtitle: String?) -> some View {
         VStack(spacing: 6) {
             Text(message)
                 .font(.subheadline)

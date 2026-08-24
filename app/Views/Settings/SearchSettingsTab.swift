@@ -311,13 +311,12 @@ struct SearchSettingsTab: View {
             )
             let result = await scheduler.runOneDueSweep(
                 criteria: DiscoverySettings.criteria(from: settings),
-                remainingDailyBudget: DiscoverySettings.remainingDailyBudget(settings),
+                remainingDailyBudget: DiscoverySettings.reserve(
+                    DiscoverySettings.caps(from: settings).perSweep, settings: settings
+                ),
                 alreadyCaptured: (try? store.capturedDedupKeys()) ?? []
             )
             if let result {
-                if result.ingested > 0 {
-                    DiscoverySettings.recordIngests(result.ingested, settings: settings)
-                }
                 appServices.toastStore.show(summary(of: result, label: label), isError: result.error != nil)
             }
             await refreshPreview()

@@ -133,25 +133,26 @@ public struct DiscoverySweeper: Sendable {
         }
 
         // 2. Gate A — free, and runs on everything.
-        var rejections: [DiscoveryRejectReason: Int] = [:]
-        var outcomes: [(DiscoveredPosting, DiscoveryOutcome, DiscoveryRejectReason?)] = []
-        var survivors: [DiscoveredPosting] = []
-        for posting in postings {
-            switch criteria.evaluate(posting, now: now) {
-            case .pass:
-                survivors.append(posting)
-            case let .reject(reason):
-                rejections[reason, default: 0] += 1
-                if ledgerRejections {
-                    outcomes.append((posting, .rejected, reason))
-                }
-            }
-        }
+        let gated = applyGate(postings, criteria: criteria, now: now)
+        var rejections = gated.rejections
+        var outcomes = gated.outcomes
+        let survivors = gated.survivors
 
         // 3. Ledger — drop everything already judged under these criteria. This is what makes the
         // second sweep of an unchanged board cost nothing.
-        var unjudged = await (try? store.unjudgedPostings(survivors, criteriaFingerprint: fingerprint))
-            ?? survivors
+        // Fails CLOSED. Treating a ledger read error as "nothing has been judged yet" would let
+        // already-handled postings consume the day's allowance — crowding out genuinely new ones
+        // later in the board — and would recreate discoveries the user had deleted. A board we
+        // can't reason about is a board we skip, and the cursor doesn't advance past it.
+        var unjudged: [DiscoveredPosting]
+        do {
+            unjudged = try await store.unjudgedPostings(survivors, criteriaFingerprint: fingerprint)
+        } catch {
+            return SweepResult(
+                status: .unreachable, found: postings.count, passed: survivors.count,
+                rejections: rejections, error: "couldn't read what has already been seen"
+            )
+        }
 
         // …and drop anything the user already has, whatever route it arrived by. Discovery only
         // ever creates; it must not reach into a job that already exists.
@@ -186,9 +187,13 @@ public struct DiscoverySweeper: Sendable {
                     // The store refused to touch it, which is the guarantee working. Not a find.
                     outcomes.append((posting, .alreadyCaptured, nil))
                 case .refused:
-                    // A URL-policy rejection or a content duplicate resolved inside ingestCapture.
-                    // Terminal either way: retrying would refuse it identically, forever.
-                    outcomes.append((posting, .ingested, nil))
+                    // Deterministic: a URL-policy rejection, or a content duplicate resolved inside
+                    // ingestCapture. Retrying would refuse it identically, so record it.
+                    outcomes.append((posting, .alreadyCaptured, nil))
+                case .failed:
+                    // Operational. Deliberately NOT recorded — a terminal verdict on a transient
+                    // store error would suppress a real posting forever.
+                    hydrationFailures += 1
                 }
             } else {
                 outcomes.append((posting, .hydrationFailed, nil))
@@ -211,6 +216,32 @@ public struct DiscoverySweeper: Sendable {
             truncatedByCap: truncated,
             rejections: rejections
         )
+    }
+
+    /// Gate A over a board's postings. Split out for size, and because it is the one part of a
+    /// sweep with no I/O in it at all.
+    func applyGate(
+        _ postings: [DiscoveredPosting], criteria: DiscoveryCriteria, now: Date
+    ) -> (
+        survivors: [DiscoveredPosting],
+        rejections: [DiscoveryRejectReason: Int],
+        outcomes: [(DiscoveredPosting, DiscoveryOutcome, DiscoveryRejectReason?)]
+    ) {
+        var rejections: [DiscoveryRejectReason: Int] = [:]
+        var outcomes: [(DiscoveredPosting, DiscoveryOutcome, DiscoveryRejectReason?)] = []
+        var survivors: [DiscoveredPosting] = []
+        for posting in postings {
+            switch criteria.evaluate(posting, now: now) {
+            case .pass:
+                survivors.append(posting)
+            case let .reject(reason):
+                rejections[reason, default: 0] += 1
+                if ledgerRejections {
+                    outcomes.append((posting, .rejected, reason))
+                }
+            }
+        }
+        return (survivors, rejections, outcomes)
     }
 
     // MARK: - Hydration
@@ -240,7 +271,12 @@ public struct DiscoverySweeper: Sendable {
 
     // MARK: - Ingest
 
-    enum IngestOutcome { case created, alreadyExisted, refused }
+    /// Why an ingest didn't produce a job.
+    ///
+    /// `refused` is deterministic — a URL-policy rejection, a content duplicate — so it is terminal
+    /// and gets ledgered. `failed` is operational, so it is NOT ledgered: writing it down would let
+    /// one transient store hiccup suppress a posting permanently.
+    enum IngestOutcome { case created, alreadyExisted, refused, failed }
 
     /// Hands the posting to the same entry point the browser extension uses, with `createOnly` set.
     /// One ingest path, on purpose: a second would drift from the first, and everything downstream —
@@ -264,10 +300,18 @@ public struct DiscoverySweeper: Sendable {
             // note would lose finds the user edited and miscount notes that merely start the same.
             discoveredBySourceID: sourceID
         )
-        guard let result = try? await jobService.ingestCapture(payload, createOnly: true) else {
+        do {
+            let result = try await jobService.ingestCapture(payload, createOnly: true)
+            if result.alreadyExisted || result.isDuplicate {
+                return .alreadyExisted
+            }
+            return .created
+        } catch is JobServiceError {
+            // The payload itself is unacceptable — a bad URL, no text. Deterministic.
             return .refused
+        } catch {
+            return .failed
         }
-        return result.alreadyExisted ? .alreadyExisted : .created
     }
 
     // MARK: - Failure mapping

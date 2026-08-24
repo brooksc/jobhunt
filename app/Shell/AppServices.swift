@@ -350,7 +350,9 @@ final class AppServices {
                 // caps since the last sweep, and a stale copy would keep applying the old ones.
                 let criteria = DiscoverySettings.criteria(from: settings)
                 let caps = DiscoverySettings.caps(from: settings)
-                let budget = DiscoverySettings.remainingDailyBudget(settings)
+                // Reserved up front, synchronously, so the two loops can't both spend the same
+                // allowance across the awaits below. Whatever isn't used is released.
+                let budget = DiscoverySettings.reserve(caps.perSweep, settings: settings)
                 guard budget > 0 else { continue }
 
                 let scheduler = DiscoveryScheduler(
@@ -361,11 +363,7 @@ final class AppServices {
                     criteria: criteria, remainingDailyBudget: budget,
                     alreadyCaptured: (try? sweepStore.capturedDedupKeys()) ?? []
                 )
-                // Counted here rather than inside the sweeper so the day's spend survives a source
-                // that fails midway: whatever reached ingest is spent, however the run ended.
-                if let result, result.ingested > 0 {
-                    DiscoverySettings.recordIngests(result.ingested, settings: settings)
-                }
+                DiscoverySettings.release(budget - (result?.ingested ?? 0), settings: settings)
             }
         }
     }
@@ -399,19 +397,29 @@ final class AppServices {
                 // on the first few boards it happened to reach.
                 guard DiscoverySettings.canSweep(settings) else { continue }
 
-                let budget = DiscoverySettings.remainingDailyBudget(settings)
-                guard budget > 0 else { continue }
-
                 let directoryIsStale = boardsLoadedAt
                     .map { Date().timeIntervalSince($0) > 6 * 3600 } ?? true
                 if boards.isEmpty || directoryIsStale {
-                    boards = await MarketDirectory.boards()
+                    let loaded = await MarketDirectory.boards()
+                    // A vendor served from a stale or missing cache still sweeps — sweeping nothing
+                    // would be worse — but the user is told, because a vendor quietly dropping out
+                    // is indistinguishable from that vendor having no matching jobs.
+                    if !loaded.degraded.isEmpty {
+                        toastStore.show(
+                            "Job board list is out of date for \(loaded.degraded.joined(separator: ", ")) "
+                                + "— searching with the last copy.",
+                            isError: false
+                        )
+                    }
+                    boards = loaded.boards
                     boardsLoadedAt = Date()
                 }
                 guard !boards.isEmpty else { continue }
 
                 let startHour = min(23, max(0, settings.int(forKey: SettingsKey.marketSweepStartHour)))
                 let caps = DiscoverySettings.caps(from: settings)
+                let budget = DiscoverySettings.reserve(caps.perSweep, settings: settings)
+                guard budget > 0 else { continue }
                 let sweeper = MarketSweeper(
                     store: sweepStore,
                     // Rejections are not ledgered for a market pass — a row per posting looked at
@@ -420,23 +428,35 @@ final class AppServices {
                         store: sweepStore, jobService: service, caps: caps, ledgerRejections: false
                     )
                 )
-                guard let state = await sweeper.stateForRun(boards: boards, startHour: startHour) else {
+                // Companies the user already has jobs from go first — see MarketBoardOrder. Read
+                // once here, then persisted with the pass, because it grows as the sweep ingests
+                // and a list that reorders mid-pass invalidates the cursor walking it.
+                let priority = await Set(
+                    ((try? sweepStore.untrackedCompanyCandidates()) ?? [])
+                        .map { CompanyNameKey.normalize($0.company) }
+                )
+                guard let pass = await sweeper.passForRun(
+                    boards: boards, startHour: startHour, priority: priority
+                ) else {
+                    DiscoverySettings.release(budget, settings: settings)
                     continue
                 }
 
                 let slice = await sweeper.sweepSlice(
-                    boards: boards,
-                    cursor: state.cursor,
+                    boards: pass.boards,
+                    cursor: pass.cursor,
                     boardLimit: max(1, settings.int(forKey: SettingsKey.marketSweepBoardsPerSlice)),
                     criteria: DiscoverySettings.criteria(from: settings),
                     remainingDailyBudget: budget
                 )
                 try? await sweepStore.recordMarketSweepSlice(
-                    slice.slice, nextCursor: slice.nextCursor
+                    slice.slice, nextCursor: slice.nextCursor,
+                    sweepID: pass.sweepID, directoryRevision: pass.revision,
+                    boardCount: pass.boards.count
                 )
-                if slice.slice.postingsIngested > 0 {
-                    DiscoverySettings.recordIngests(slice.slice.postingsIngested, settings: settings)
-                }
+                DiscoverySettings.release(
+                    budget - slice.slice.postingsIngested, settings: settings
+                )
             }
         }
     }

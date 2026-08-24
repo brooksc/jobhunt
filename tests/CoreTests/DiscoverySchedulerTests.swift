@@ -87,16 +87,54 @@ final class DiscoverySchedulerTests: XCTestCase {
 
     // MARK: - Daily budget
 
-    func testTheDailyBudgetDrainsAsIngestsAreRecorded() throws {
+    func testTheDailyBudgetDrainsAsItIsReserved() throws {
         let settings = try makeSettings()
         settings.setInt(10, forKey: SettingsKey.discoveryMaxIngestsPerDay)
         let now = Date()
 
         XCTAssertEqual(DiscoverySettings.remainingDailyBudget(settings, now: now), 10)
-        DiscoverySettings.recordIngests(4, settings: settings, now: now)
+        XCTAssertEqual(DiscoverySettings.reserve(4, settings: settings, now: now), 4)
         XCTAssertEqual(DiscoverySettings.remainingDailyBudget(settings, now: now), 6)
-        DiscoverySettings.recordIngests(6, settings: settings, now: now)
+        XCTAssertEqual(DiscoverySettings.reserve(6, settings: settings, now: now), 6)
         XCTAssertEqual(DiscoverySettings.remainingDailyBudget(settings, now: now), 0)
+    }
+
+    /// The race this replaces: both runtime loops read the remaining budget, then `await` network
+    /// work before recording what they used, so two could each read "1 remaining" and each create a
+    /// job. Reserving up front makes the second reader see the first one's claim.
+    func testASecondReaderCannotClaimTheSameAllowance() throws {
+        let settings = try makeSettings()
+        settings.setInt(1, forKey: SettingsKey.discoveryMaxIngestsPerDay)
+
+        XCTAssertEqual(DiscoverySettings.reserve(1, settings: settings), 1)
+        XCTAssertEqual(
+            DiscoverySettings.reserve(1, settings: settings), 0,
+            "the allowance is already spoken for"
+        )
+    }
+
+    /// A reservation is a claim, not a spend. Whatever a sweep didn't use goes back, or a single
+    /// run would burn the whole per-sweep allowance whether it found anything or not.
+    func testUnusedReservationIsReleased() throws {
+        let settings = try makeSettings()
+        settings.setInt(50, forKey: SettingsKey.discoveryMaxIngestsPerDay)
+
+        let granted = DiscoverySettings.reserve(50, settings: settings)
+        XCTAssertEqual(granted, 50)
+        DiscoverySettings.release(granted - 3, settings: settings)
+        XCTAssertEqual(
+            DiscoverySettings.remainingDailyBudget(settings), 47, "only the 3 actually used are spent"
+        )
+    }
+
+    /// A reservation may only be partly granted, and the caller must be told how much it got —
+    /// otherwise it would sweep against a budget it does not have.
+    func testAReservationIsClampedToWhatIsLeft() throws {
+        let settings = try makeSettings()
+        settings.setInt(5, forKey: SettingsKey.discoveryMaxIngestsPerDay)
+        XCTAssertEqual(DiscoverySettings.reserve(4, settings: settings), 4)
+        XCTAssertEqual(DiscoverySettings.reserve(4, settings: settings), 1)
+        XCTAssertEqual(DiscoverySettings.reserve(4, settings: settings), 0)
     }
 
     /// A machine asleep for a week must start fresh rather than believing it has already spent
@@ -105,20 +143,34 @@ final class DiscoverySchedulerTests: XCTestCase {
         let settings = try makeSettings()
         settings.setInt(10, forKey: SettingsKey.discoveryMaxIngestsPerDay)
         let today = Date()
-        DiscoverySettings.recordIngests(10, settings: settings, now: today)
+        DiscoverySettings.reserve(10, settings: settings, now: today)
         XCTAssertEqual(DiscoverySettings.remainingDailyBudget(settings, now: today), 0)
 
-        let tomorrow = today.addingTimeInterval(7 * 86400)
-        XCTAssertEqual(DiscoverySettings.remainingDailyBudget(settings, now: tomorrow), 10)
+        let nextWeek = today.addingTimeInterval(7 * 86400)
+        XCTAssertEqual(DiscoverySettings.remainingDailyBudget(settings, now: nextWeek), 10)
     }
 
-    /// Held in settings rather than counted from the ledger, because a job the user deleted must not
-    /// hand the sweeper its budget back.
-    func testTheBudgetNeverGoesNegative() throws {
+    /// Day and count are one value. Written as two keys, a crash between them could stamp today's
+    /// date on yesterday's spend and suppress a whole day of scanning.
+    func testTheDayAndCountCannotDisagree() throws {
         let settings = try makeSettings()
-        settings.setInt(2, forKey: SettingsKey.discoveryMaxIngestsPerDay)
-        DiscoverySettings.recordIngests(9, settings: settings)
-        XCTAssertEqual(DiscoverySettings.remainingDailyBudget(settings), 0)
+        settings.setInt(10, forKey: SettingsKey.discoveryMaxIngestsPerDay)
+        DiscoverySettings.reserve(4, settings: settings)
+
+        let stored = settings.string(forKey: SettingsKey.discoveryIngestsTodayValue)
+        XCTAssertTrue(stored.contains(":"), stored)
+        XCTAssertEqual(stored.split(separator: ":").count, 2)
+    }
+
+    /// A corrupted or half-written value must read as "nothing spent today" rather than crashing or
+    /// silently suppressing the day.
+    func testACorruptCounterFallsBackToUnspent() throws {
+        let settings = try makeSettings()
+        settings.setInt(10, forKey: SettingsKey.discoveryMaxIngestsPerDay)
+        for junk in ["", "garbage", "2026-01-01", ":", "2026-01-01:notanumber"] {
+            try settings.set(junk, forKey: SettingsKey.discoveryIngestsTodayValue)
+            XCTAssertEqual(DiscoverySettings.remainingDailyBudget(settings), 10, junk)
+        }
     }
 
     // MARK: - Picking a source

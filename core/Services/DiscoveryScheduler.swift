@@ -100,23 +100,55 @@ public enum DiscoverySettings {
     /// a machine asleep for a week starts fresh rather than believing it has already spent today.
     public static func remainingDailyBudget(_ settings: SettingsStore, now: Date = Date()) -> Int {
         let cap = max(0, settings.int(forKey: SettingsKey.discoveryMaxIngestsPerDay))
-        let today = dayFormatter.string(from: now)
-        guard settings.string(forKey: SettingsKey.discoveryIngestsTodayDate) == today else {
-            return cap
-        }
-        return max(0, cap - settings.int(forKey: SettingsKey.discoveryIngestsToday))
+        return max(0, cap - spentToday(settings, now: now).spent)
     }
 
-    public static func recordIngests(
+    /// Take `count` from today's allowance and return how much was actually granted.
+    ///
+    /// **Reserve before spending, not after.** Both runtime loops read the remaining budget, then
+    /// `await` network work before recording what they used. Even on the main actor those awaits
+    /// are suspension points, so two loops could each read "1 remaining", each create a job, and
+    /// each then record one — two jobs against a cap of one. Reserving up front, synchronously,
+    /// removes the window.
+    ///
+    /// Day and count are written as **one value** for the same reason a two-step write is unsafe:
+    /// a crash between them could stamp today's date on yesterday's spend and suppress a whole day
+    /// of scanning.
+    @discardableResult
+    public static func reserve(
+        _ count: Int, settings: SettingsStore, now: Date = Date()
+    ) -> Int {
+        guard count > 0 else { return 0 }
+        let cap = max(0, settings.int(forKey: SettingsKey.discoveryMaxIngestsPerDay))
+        let (day, spent) = spentToday(settings, now: now)
+        let granted = max(0, min(count, cap - spent))
+        guard granted > 0 else { return 0 }
+        writeSpend(day: day, spent: spent + granted, settings: settings)
+        return granted
+    }
+
+    /// Hand back what a reservation didn't use, so an over-reservation doesn't burn the day.
+    public static func release(
         _ count: Int, settings: SettingsStore, now: Date = Date()
     ) {
         guard count > 0 else { return }
+        let (day, spent) = spentToday(settings, now: now)
+        writeSpend(day: day, spent: max(0, spent - count), settings: settings)
+    }
+
+    static func spentToday(_ settings: SettingsStore, now: Date) -> (day: String, spent: Int) {
         let today = dayFormatter.string(from: now)
-        let spent = settings.string(forKey: SettingsKey.discoveryIngestsTodayDate) == today
-            ? settings.int(forKey: SettingsKey.discoveryIngestsToday)
-            : 0
-        try? settings.set(today, forKey: SettingsKey.discoveryIngestsTodayDate)
-        settings.setInt(spent + count, forKey: SettingsKey.discoveryIngestsToday)
+        let stored = settings.string(forKey: SettingsKey.discoveryIngestsTodayValue)
+        // "yyyy-MM-dd:count" — one value, so the date and the count cannot disagree.
+        let parts = stored.split(separator: ":", maxSplits: 1).map(String.init)
+        guard parts.count == 2, parts[0] == today, let spent = Int(parts[1]) else {
+            return (today, 0)
+        }
+        return (today, spent)
+    }
+
+    static func writeSpend(day: String, spent: Int, settings: SettingsStore) {
+        try? settings.set("\(day):\(spent)", forKey: SettingsKey.discoveryIngestsTodayValue)
     }
 }
 

@@ -57,8 +57,7 @@ private let settingsDefaults: [String: String] = [
     SettingsKey.discoveryCriteriaSeeded: "false",
     SettingsKey.discoveryMaxIngestsPerSweep: "50",
     SettingsKey.discoveryMaxIngestsPerDay: "200",
-    SettingsKey.discoveryIngestsToday: "0",
-    SettingsKey.discoveryIngestsTodayDate: "",
+    SettingsKey.discoveryIngestsTodayValue: "",
     // On by default, under the same title-keyword interlock as automatic search. This is the
     // feature that finds a job at a company the user has never heard of — measured against
     // career-ops, 96% of real findings came from employers they weren't tracking — so hiding it

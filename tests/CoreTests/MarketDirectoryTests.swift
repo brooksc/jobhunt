@@ -107,3 +107,69 @@ final class MarketDirectoryTests: XCTestCase {
         XCTAssertFalse(MarketDirectory.files.contains { $0.kind == "icims" })
     }
 }
+
+/// The cache must never be replaced by something that decodes to nothing (TASK-701).
+///
+/// A 200 is not proof of a usable file. A malformed upstream commit or a truncated response would
+/// otherwise overwrite the last known good copy, silently removing an entire vendor from every
+/// sweep — and counting as fresh for a week, so it wouldn't even retry.
+final class MarketDirectoryCacheTests: XCTestCase {
+    private func stub(status: Int, body: String) -> URLSession {
+        MockURLProtocol.reset()
+        MockURLProtocol.handlers.append(("raw.githubusercontent.com", { request in
+            let response = HTTPURLResponse(
+                url: request.url ?? URL(fileURLWithPath: "/"), statusCode: status,
+                httpVersion: nil, headerFields: nil
+            )!
+            return (response, Data(body.utf8))
+        }))
+        return MockURLProtocol.makeSession()
+    }
+
+    override func tearDown() {
+        MockURLProtocol.reset()
+        super.tearDown()
+    }
+
+    func testAGoodResponseIsAccepted() async throws {
+        let session = stub(status: 200, body: #"["databricks","stripe"]"#)
+        let loaded = await MarketDirectory.load(
+            file: "greenhouse_companies.json", kind: "greenhouse",
+            session: session, now: Date(), forceRefresh: true
+        )
+        XCTAssertNotNil(loaded)
+        XCTAssertFalse(loaded?.degraded ?? true)
+        XCTAssertEqual(try MarketDirectory.decode(XCTUnwrap(loaded?.data), kind: "greenhouse").count, 2)
+    }
+
+    /// The case that would have removed a vendor for a week: HTTP 200, non-empty body, zero boards.
+    func testAResponseThatDecodesToNothingIsRefused() async {
+        for body in ["not json at all", "[]", #"{"jobs":[]}"#, #"["not/valid","also bad"]"#] {
+            let session = stub(status: 200, body: body)
+            let loaded = await MarketDirectory.load(
+                file: "greenhouse_companies.json", kind: "greenhouse",
+                session: session, now: Date(), forceRefresh: true
+            )
+            // Either nothing (no cache to fall back on) or the cached copy flagged degraded —
+            // never the new payload treated as good.
+            if let loaded {
+                XCTAssertTrue(loaded.degraded, "body: \(body)")
+                XCTAssertFalse(
+                    MarketDirectory.decode(loaded.data, kind: "greenhouse").isEmpty,
+                    "a degraded fallback still has to be usable — body: \(body)"
+                )
+            }
+        }
+    }
+
+    /// A vendor served from a stale or missing cache is reported, because a vendor quietly dropping
+    /// out of every sweep is indistinguishable from that vendor having no matching jobs.
+    func testADegradedVendorIsReportedRatherThanHidden() async {
+        let session = stub(status: 500, body: "")
+        let result = await MarketDirectory.boards(session: session, forceRefresh: true)
+        XCTAssertFalse(
+            result.degraded.isEmpty,
+            "a vendor that couldn't be refreshed must be named, not silently dropped"
+        )
+    }
+}

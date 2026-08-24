@@ -2157,7 +2157,11 @@ public actor BackgroundStore {
             return AtomicIngestResult(
                 captureID: existing.id,
                 jobNumber: existingJob.jobNumber ?? 0,
-                isDuplicate: true
+                isDuplicate: true,
+                // Nothing was inserted, so a create-only caller must not count this as a find.
+                // Without it a sweep that met an identical capture reported a new job and spent
+                // budget on it.
+                alreadyExisted: input.createOnly
             )
         }
 

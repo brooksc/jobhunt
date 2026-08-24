@@ -140,9 +140,11 @@ public enum SettingsKey {
     /// `DiscoveryCaps`.
     public static let discoveryMaxIngestsPerSweep = "discovery_max_ingests_per_sweep"
     public static let discoveryMaxIngestsPerDay = "discovery_max_ingests_per_day"
-    /// The rolling day counter behind `discoveryMaxIngestsPerDay`.
-    public static let discoveryIngestsToday = "discovery_ingests_today"
-    public static let discoveryIngestsTodayDate = "discovery_ingests_today_date"
+    /// The rolling day counter behind `discoveryMaxIngestsPerDay`, as `"yyyy-MM-dd:count"`.
+    ///
+    /// One value rather than two keys: written separately, a crash between the two writes could
+    /// stamp today's date on yesterday's count and suppress a whole day of scanning.
+    public static let discoveryIngestsTodayValue = "discovery_ingests_today_value"
 
     /// Sweep the whole public directory of ATS boards, not just the companies the user added.
     ///

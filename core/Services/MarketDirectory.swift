@@ -126,34 +126,64 @@ public enum MarketDirectory {
     /// A file that can't be refreshed falls back to the cached copy however old it is: a stale
     /// directory sweeps a few boards that have since closed and misses a few that have opened,
     /// which is enormously better than sweeping nothing because GitHub was briefly unreachable.
+    /// The board list, plus the vendors that could only be served from a stale or missing cache.
+    ///
+    /// `degraded` is returned rather than logged because a vendor silently dropping out of every
+    /// sweep is exactly the failure this feature cannot afford, and the caller is the only thing
+    /// that can tell the user.
     public static func boards(
         session: URLSession = .shared, now: Date = Date(), forceRefresh: Bool = false
-    ) async -> [MarketBoard] {
+    ) async -> (boards: [MarketBoard], degraded: [String]) {
         var all: [MarketBoard] = []
+        var degraded: [String] = []
         for (kind, file) in files {
-            let data = await load(file: file, session: session, now: now, forceRefresh: forceRefresh)
-            guard let data else { continue }
-            all.append(contentsOf: decode(data, kind: kind))
+            guard let loaded = await load(
+                file: file, kind: kind, session: session, now: now, forceRefresh: forceRefresh
+            ) else {
+                degraded.append(kind)
+                continue
+            }
+            if loaded.degraded {
+                degraded.append(kind)
+            }
+            all.append(contentsOf: decode(loaded.data, kind: kind))
         }
-        return all
+        return (all, degraded)
     }
 
+    /// Fetch or reuse one dataset file, **validating before it is allowed to replace the cache**.
+    ///
+    /// A 200 is not proof of a usable file. A malformed upstream commit or a truncated response
+    /// would otherwise overwrite the last known good copy with something that decodes to zero
+    /// boards — silently removing an entire vendor from every sweep, and counting as fresh for a
+    /// week. So the response has to parse into at least one board before it is written, and a
+    /// response that doesn't falls back to whatever is already cached.
     static func load(
-        file: String, session: URLSession, now: Date, forceRefresh: Bool
-    ) async -> Data? {
+        file: String, kind: String, session: URLSession, now: Date, forceRefresh: Bool
+    ) async -> (data: Data, degraded: Bool)? {
         let cached = cacheURL(file: file).flatMap { try? Data(contentsOf: $0) }
         let age = cacheAge(file: file, now: now)
         let fresh = !forceRefresh && age.map { $0 < refreshInterval } == true
         if fresh, let cached {
-            return cached
+            return (cached, false)
         }
 
-        guard let url = URL(string: "\(base)/\(file)") else { return cached }
+        func fallback() -> (Data, Bool)? {
+            guard let cached else { return nil }
+            // Reusing a stale copy sweeps a few boards that have closed and misses a few that have
+            // opened. Sweeping nothing misses everything.
+            return (cached, true)
+        }
+
+        guard let url = URL(string: "\(base)/\(file)") else { return fallback() }
         var request = URLRequest(url: url, timeoutInterval: 60)
         request.setValue("jobhunt", forHTTPHeaderField: "User-Agent")
         guard let (data, response) = try? await session.data(for: request),
               (response as? HTTPURLResponse)?.statusCode == 200, !data.isEmpty
-        else { return cached }
+        else { return fallback() }
+
+        // The validation that makes the write safe.
+        guard !decode(data, kind: kind).isEmpty else { return fallback() }
 
         if let target = cacheURL(file: file), let directory = cacheDirectory() {
             try? FileManager.default.createDirectory(
@@ -161,6 +191,6 @@ public enum MarketDirectory {
             )
             try? data.write(to: target, options: .atomic)
         }
-        return data
+        return (data, false)
     }
 }

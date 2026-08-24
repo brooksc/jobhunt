@@ -20,10 +20,23 @@ public final class MarketSweepState {
     public var updatedAt: Date
     public var finishedAt: Date?
 
-    /// How far through the board list this sweep has got. The list is regenerated from the cached
-    /// directory each time, so this is only meaningful alongside `boardCount`.
+    /// How far through the board list this sweep has got.
+    ///
+    /// A positional index, which is only meaningful against the exact list it was taken from — so
+    /// `directoryRevision` records which list that was. Without it, a directory refresh between
+    /// slices silently re-reads some boards and skips others, and a shrunken list stalls a pass
+    /// that can never reach its old `boardCount`.
     public var cursor: Int
     public var boardCount: Int
+    /// Fingerprint of the ordered board list this pass is walking. A mismatch on resume means the
+    /// cursor is meaningless.
+    public var directoryRevision: String
+    /// The priority set used to order this pass, JSON-encoded.
+    ///
+    /// Persisted rather than recomputed because it is derived from the user's library, which grows
+    /// as the sweep ingests — recomputing would reorder the list mid-pass and invalidate the very
+    /// cursor it is meant to keep valid.
+    public var priorityJSON: String
 
     /// Running totals, for the status the user checks on.
     public var boardsSwept: Int
@@ -40,7 +53,9 @@ public final class MarketSweepState {
         id: String = "market-sweep",
         sweepID: String = UUID().uuidString,
         startedAt: Date = Date(),
-        boardCount: Int = 0
+        boardCount: Int = 0,
+        directoryRevision: String = "",
+        priority: Set<String> = []
     ) {
         self.id = id
         self.sweepID = sweepID
@@ -49,6 +64,9 @@ public final class MarketSweepState {
         finishedAt = nil
         cursor = 0
         self.boardCount = boardCount
+        self.directoryRevision = directoryRevision
+        priorityJSON = (try? JSONEncoder().encode(Array(priority).sorted()))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
         boardsSwept = 0
         boardsUnreachable = 0
         postingsSeen = 0
@@ -59,6 +77,13 @@ public final class MarketSweepState {
 
     public var isFinished: Bool {
         finishedAt != nil
+    }
+
+    /// The priority set this pass was ordered with, so a resume rebuilds the identical list.
+    public var priority: Set<String> {
+        guard let data = priorityJSON.data(using: .utf8),
+              let list = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return Set(list)
     }
 
     /// 0–1. Reported against the board list rather than elapsed time, because a sweep's pace varies

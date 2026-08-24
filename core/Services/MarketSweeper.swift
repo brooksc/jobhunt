@@ -118,9 +118,10 @@ public struct MarketSweeper: Sendable {
             }
 
             let board = boards[index]
-            index += 1
-
-            guard let source = JobSources.source(id: board.kind) else { continue }
+            guard let source = JobSources.source(id: board.kind) else {
+                index += 1
+                continue
+            }
             let result = await sweeper.sweep(
                 source: source,
                 config: SourceConfig(slug: board.slug, pageLimit: Self.marketPageLimit),
@@ -129,6 +130,16 @@ public struct MarketSweeper: Sendable {
                 alreadyCaptured: alreadyCaptured,
                 now: now
             )
+
+            // Advance only once the board is genuinely finished with. A board whose matches were
+            // cut off by the per-sweep cap still has postings we have never looked at, and moving
+            // past it would defer them to the *next full pass* — by which time a Workday tenant's
+            // bounded result window may no longer include them. The ledger makes the retry cheap:
+            // everything already ingested is skipped, so a re-swept board only does the remainder.
+            let boardIsFinished = result.truncatedByCap == 0 && result.status != .rateLimited
+            if boardIsFinished {
+                index += 1
+            }
 
             slice.boardsSwept += 1
             slice.postingsSeen += result.found
@@ -149,7 +160,11 @@ public struct MarketSweeper: Sendable {
             // so the next slice picks up exactly here.
             if result.status == .rateLimited {
                 slice.stopReason = "\(source.displayName) is rate limiting — pausing until the next slice"
-                index -= 1
+                break
+            }
+            if result.truncatedByCap > 0 {
+                slice.stopReason = "\(result.truncatedByCap) more matches on this board than today's "
+                    + "limit allows — it will be finished on the next run"
                 break
             }
             if budget <= 0 {
@@ -165,18 +180,62 @@ public struct MarketSweeper: Sendable {
 
     // MARK: - Checkpointing
 
-    /// Load the sweep in progress, starting a new one when the last has finished and the interval
-    /// has elapsed. Returns nil when nothing is due.
-    public func stateForRun(
-        boards: [MarketBoard], startHour: Int, now: Date = Date()
-    ) async -> MarketSweepState? {
-        // `try?` flattens, so a store error and "no state yet" both arrive as nil — and both mean
-        // the same thing here: start a pass.
-        if let existing = try? await store.marketSweepState() {
-            guard existing.isFinished else { return existing }
+    /// A pass, and the exact list it is walking.
+    public struct ActivePass: Sendable {
+        public let sweepID: String
+        public let cursor: Int
+        public let boards: [MarketBoard]
+        public let revision: String
+    }
+
+    /// The pass to work on, or nil when nothing is due.
+    ///
+    /// Rebuilds the ordered list from the *persisted* priority set so a resume walks the identical
+    /// list, and refuses to reuse a cursor whose `directoryRevision` no longer matches — a stale
+    /// index against a changed directory re-reads some boards and skips others with no error
+    /// anywhere, which is the worst kind of failure this feature can have.
+    public func passForRun(
+        boards: [MarketBoard], startHour: Int, priority: Set<String>, now: Date = Date()
+    ) async -> ActivePass? {
+        // A read that FAILS is not a store with no state in it. Conflating them let a transient
+        // error delete an unfinished checkpoint and restart the pass from board zero — repeatedly,
+        // if the error repeated, so the tail of the directory would never be reached.
+        let existing: MarketSweepState?
+        do {
+            existing = try await store.marketSweepState()
+        } catch {
+            return nil
+        }
+
+        if let existing {
+            let resumed = MarketBoardOrder.ordered(boards, priority: existing.priority)
+            let revision = MarketBoardOrder.revision(resumed)
+
+            if !existing.isFinished {
+                guard existing.directoryRevision == revision else {
+                    // The directory changed under an unfinished pass. Restarting loses progress;
+                    // continuing loses *boards*, silently. Progress is the cheaper thing to lose.
+                    return await startPass(boards: boards, priority: priority, now: now)
+                }
+                return ActivePass(
+                    sweepID: existing.sweepID, cursor: existing.cursor,
+                    boards: resumed, revision: revision
+                )
+            }
             guard existing.isDue(startHour: startHour, now: now) else { return nil }
         }
-        return try? await store.startMarketSweep(boardCount: boards.count, now: now)
+        return await startPass(boards: boards, priority: priority, now: now)
+    }
+
+    private func startPass(
+        boards: [MarketBoard], priority: Set<String>, now: Date
+    ) async -> ActivePass? {
+        let ordered = MarketBoardOrder.ordered(boards, priority: priority)
+        let revision = MarketBoardOrder.revision(ordered)
+        guard let state = try? await store.startMarketSweep(
+            boardCount: ordered.count, directoryRevision: revision, priority: priority, now: now
+        ) else { return nil }
+        return ActivePass(sweepID: state.sweepID, cursor: 0, boards: ordered, revision: revision)
     }
 }
 
@@ -185,26 +244,48 @@ public extension BackgroundStore {
         try modelContext.fetch(FetchDescriptor<MarketSweepState>()).first
     }
 
-    /// Begin a pass, replacing any finished one. The row is reused rather than accumulated: history
+    /// Begin a pass, replacing any previous one. The row is reused rather than accumulated: history
     /// belongs in the ledger, which records findings; this only tracks position.
     @discardableResult
-    func startMarketSweep(boardCount: Int, now: Date = Date()) throws -> MarketSweepState {
+    func startMarketSweep(
+        boardCount: Int, directoryRevision: String, priority: Set<String>, now: Date = Date()
+    ) throws -> MarketSweepState {
         for old in try modelContext.fetch(FetchDescriptor<MarketSweepState>()) {
             modelContext.delete(old)
         }
-        let state = MarketSweepState(startedAt: now, boardCount: boardCount)
+        let state = MarketSweepState(
+            startedAt: now, boardCount: boardCount,
+            directoryRevision: directoryRevision, priority: priority
+        )
         modelContext.insert(state)
         try modelContext.save()
         return state
     }
 
-    /// Persist progress. Called after every slice, because an unsaved cursor is a sweep that starts
-    /// over on the next launch.
+    /// Persist progress, but only onto the pass it belongs to.
+    ///
+    /// `sweepID` and `directoryRevision` are checked because the read-sweep-record sequence is not
+    /// atomic: a pass can be restarted between a slice starting and finishing, and recording the
+    /// old slice's counts and cursor onto the new pass would corrupt both its position and its
+    /// totals.
     func recordMarketSweepSlice(
-        _ slice: MarketSweepSlice, nextCursor: Int, now: Date = Date()
+        _ slice: MarketSweepSlice,
+        nextCursor: Int,
+        sweepID: String,
+        directoryRevision: String,
+        boardCount: Int,
+        now: Date = Date()
     ) throws {
-        guard let state = try marketSweepState() else { return }
+        guard let state = try marketSweepState(),
+              state.sweepID == sweepID,
+              state.directoryRevision == directoryRevision
+        else { return }
+
         state.cursor = nextCursor
+        // Against the CURRENT list length, not the one stored when the pass began: a directory that
+        // grew would otherwise finish early and drop the new boards, and one that shrank would stall
+        // forever at a cursor it can never reach.
+        state.boardCount = boardCount
         state.boardsSwept += slice.boardsSwept
         state.boardsUnreachable += slice.boardsUnreachable
         state.postingsSeen += slice.postingsSeen
@@ -212,7 +293,7 @@ public extension BackgroundStore {
         state.postingsIngested += slice.postingsIngested
         state.pauseReason = slice.stopReason
         state.updatedAt = now
-        if nextCursor >= state.boardCount, state.boardCount > 0 {
+        if nextCursor >= boardCount, boardCount > 0 {
             state.finishedAt = now
             state.pauseReason = nil
         }

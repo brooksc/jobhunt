@@ -551,3 +551,139 @@ final class MarketCoverageIntegrityTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(loaded).cursor, 0)
     }
 }
+
+/// The cursor must never be able to stick on one board (TASK-702).
+///
+/// Staying on a truncated board is right when the sweep is working through it, and catastrophic
+/// when it isn't: a hydration failure is deliberately retryable, so a board with more unhydratable
+/// matches than the cap allows produces the same truncation on every visit. With nothing to shrink
+/// it, the cursor would sit there forever and the whole market sweep would stop — permanently, and
+/// silently, because of one bad vendor endpoint.
+final class MarketCursorProgressTests: XCTestCase {
+    private struct NoOp: LLMProvider {
+        let id: String = "noop"
+        let concurrencyLimit: Int = 1
+        func complete(_: ChatRequest) async throws -> ChatResponse {
+            throw LLMProviderError.httpError(statusCode: 503, body: "no-op")
+        }
+    }
+
+    private func makeSweeper(_ store: BackgroundStore, caps: DiscoveryCaps) -> MarketSweeper {
+        let queue = QueueActor(
+            store: store, isPaused: { true }, onSetPaused: { _ in },
+            readExtractionSettings: { ExtractionSettings(
+                llmModel: "", preferredLocations: "", locationFilterEnabled: false,
+                locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true
+            ) },
+            providerFactory: { NoOp() }
+        )
+        return MarketSweeper(
+            store: store,
+            sweeper: DiscoverySweeper(
+                store: store, jobService: JobService(store: store, queue: queue),
+                session: MockURLProtocol.makeSession(), caps: caps, ledgerRejections: false
+            ),
+            session: MockURLProtocol.makeSession()
+        )
+    }
+
+    override func setUp() {
+        super.setUp()
+        MockURLProtocol.reset()
+        // A board with more matches than the cap allows, whose detail endpoint always fails — so
+        // every posting clears the gate and none can ever be hydrated.
+        MockURLProtocol.handlers.append(("boards-api.greenhouse.io", { request in
+            let path = request.url?.path ?? ""
+            let segments = path.split(separator: "/").map(String.init)
+            let isDetail = segments.last != "jobs"
+            if isDetail {
+                let response = HTTPURLResponse(
+                    url: request.url ?? URL(fileURLWithPath: "/"), statusCode: 404,
+                    httpVersion: nil, headerFields: nil
+                )!
+                return (response, Data())
+            }
+            let jobs = (1 ... 60).map { index in
+                """
+                { "id": \(index), "title": "Program Manager \(index)",
+                  "absolute_url": "https://boards.greenhouse.io/stuck/jobs/\(index)",
+                  "location": { "name": "Remote" } }
+                """
+            }.joined(separator: ",")
+            let response = HTTPURLResponse(
+                url: request.url ?? URL(fileURLWithPath: "/"), statusCode: 200,
+                httpVersion: nil, headerFields: nil
+            )!
+            return (response, Data("{ \"jobs\": [\(jobs)] }".utf8))
+        }))
+    }
+
+    override func tearDown() {
+        MockURLProtocol.reset()
+        super.tearDown()
+    }
+
+    func testABoardThatCanNeverBeHydratedDoesNotFreezeTheSweep() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let sweeper = makeSweeper(store, caps: DiscoveryCaps(perSweep: 50, perDay: 500))
+        let boards = [
+            MarketBoard(kind: "greenhouse", slug: "stuck"),
+            MarketBoard(kind: "greenhouse", slug: "next")
+        ]
+
+        let (slice, next) = await sweeper.sweepSlice(
+            boards: boards, cursor: 0, boardLimit: 2,
+            criteria: DiscoveryCriteria(titleIncludeAny: ["program manager"]),
+            remainingDailyBudget: 500
+        )
+        XCTAssertEqual(slice.postingsIngested, 0, "nothing could be hydrated")
+        XCTAssertGreaterThan(
+            next, 0,
+            "the cursor must move past a board it cannot make progress on — otherwise one bad "
+                + "vendor endpoint stops the entire market sweep forever"
+        )
+    }
+
+    /// …but a board the sweep IS working through is still waited on, so its remaining matches
+    /// aren't deferred to the next full pass.
+    func testABoardMakingProgressIsStillWaitedOn() async throws {
+        MockURLProtocol.reset()
+        MockURLProtocol.handlers.append(("boards-api.greenhouse.io", { request in
+            let segments = (request.url?.path ?? "").split(separator: "/").map(String.init)
+            let isDetail = segments.last != "jobs"
+            let response = HTTPURLResponse(
+                url: request.url ?? URL(fileURLWithPath: "/"), statusCode: 200,
+                httpVersion: nil, headerFields: nil
+            )!
+            if isDetail {
+                let id = segments.last ?? "1"
+                return (response, Data("""
+                { "id": \(id), "title": "Program Manager",
+                  "content": "A real description with enough text to be usable.",
+                  "absolute_url": "https://boards.greenhouse.io/big/jobs/\(id)",
+                  "location": { "name": "Remote" } }
+                """.utf8))
+            }
+            let jobs = (1 ... 60).map { index in
+                """
+                { "id": \(index), "title": "Program Manager \(index)",
+                  "absolute_url": "https://boards.greenhouse.io/big/jobs/\(index)",
+                  "location": { "name": "Remote" } }
+                """
+            }.joined(separator: ",")
+            return (response, Data("{ \"jobs\": [\(jobs)] }".utf8))
+        }))
+
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let sweeper = makeSweeper(store, caps: DiscoveryCaps(perSweep: 50, perDay: 500))
+        let (slice, next) = await sweeper.sweepSlice(
+            boards: [MarketBoard(kind: "greenhouse", slug: "big")],
+            cursor: 0, boardLimit: 1,
+            criteria: DiscoveryCriteria(titleIncludeAny: ["program manager"]),
+            remainingDailyBudget: 500
+        )
+        XCTAssertEqual(slice.postingsIngested, 50, "the cap was reached")
+        XCTAssertEqual(next, 0, "ten matches remain, so the board is revisited rather than skipped")
+        XCTAssertNotNil(slice.stopReason)
+    }
+}

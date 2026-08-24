@@ -136,7 +136,17 @@ public struct MarketSweeper: Sendable {
             // past it would defer them to the *next full pass* — by which time a Workday tenant's
             // bounded result window may no longer include them. The ledger makes the retry cheap:
             // everything already ingested is skipped, so a re-swept board only does the remainder.
-            let boardIsFinished = result.truncatedByCap == 0 && result.status != .rateLimited
+            //
+            // **But staying has to be earned.** A hydration failure is deliberately retryable, so a
+            // board with more unhydratable matches than the cap allows produces the same truncation
+            // every visit — and with no progress to shrink it, the cursor would sit on that one
+            // board forever and the entire market sweep would stop advancing. Permanently, and
+            // silently, on one bad vendor endpoint. So the sweep only waits on a board it is
+            // actually making progress through; a visit that ingested nothing moves on and picks the
+            // board up on the next full pass.
+            let stalled = result.ingested == 0 && budget > 0
+            let boardIsFinished = (result.truncatedByCap == 0 || stalled)
+                && result.status != .rateLimited
             if boardIsFinished {
                 index += 1
             }

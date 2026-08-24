@@ -102,6 +102,9 @@ public struct MarketSweeper: Sendable {
         var slice = MarketSweepSlice()
         var budget = remainingDailyBudget
         var index = cursor
+        // Once per slice, not per board: it scans the capture table, which is cheap a few hundred
+        // times and ruinous 28,746 times.
+        let alreadyCaptured = await (try? store.capturedDedupKeys()) ?? []
 
         guard budget > 0 else {
             slice.stopReason = "daily new-job limit reached — resumes tomorrow"
@@ -123,6 +126,7 @@ public struct MarketSweeper: Sendable {
                 config: SourceConfig(slug: board.slug, pageLimit: Self.marketPageLimit),
                 criteria: criteria,
                 remainingDailyBudget: budget,
+                alreadyCaptured: alreadyCaptured,
                 now: now
             )
 

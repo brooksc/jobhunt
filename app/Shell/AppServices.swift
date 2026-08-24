@@ -358,7 +358,8 @@ final class AppServices {
                     sweeper: DiscoverySweeper(store: sweepStore, jobService: service, caps: caps)
                 )
                 let result = await scheduler.runOneDueSweep(
-                    criteria: criteria, remainingDailyBudget: budget
+                    criteria: criteria, remainingDailyBudget: budget,
+                    alreadyCaptured: (try? sweepStore.capturedDedupKeys()) ?? []
                 )
                 // Counted here rather than inside the sweeper so the day's spend survives a source
                 // that fails midway: whatever reached ingest is spent, however the run ended.

@@ -292,3 +292,100 @@ final class DiscoverySweeperTests: XCTestCase {
         )
     }
 }
+
+/// Discovery only ever creates (TASK-699).
+///
+/// `ingestCapture`'s same-URL path is a *recapture*: it overwrites the stored capture, resets
+/// extraction and re-queues it. That is right when a user deliberately re-captures a posting in the
+/// browser, and wrong for an unattended sweep — without this guard a first market pass would
+/// re-extract every job the user already had whose posting was still open, spending real money to
+/// replace descriptions they were happy with.
+final class DiscoveryNeverTouchesExistingJobsTests: XCTestCase {
+    private struct NoOp: LLMProvider {
+        let id: String = "noop"
+        let concurrencyLimit: Int = 1
+        func complete(_: ChatRequest) async throws -> ChatResponse {
+            throw LLMProviderError.httpError(statusCode: 503, body: "no-op")
+        }
+    }
+
+    private struct StubSource: JobSource {
+        let id = "stub"
+        let displayName = "Stub"
+        let configuration = SourceConfiguration.perCompany(slugHint: "x")
+        let postings: [DiscoveredPosting]
+        func fetchRecent(
+            config _: SourceConfig, since _: Date?, session _: URLSession
+        ) async throws -> [DiscoveredPosting] {
+            postings
+        }
+    }
+
+    private func makeSweeper(_ store: BackgroundStore) -> DiscoverySweeper {
+        let queue = QueueActor(
+            store: store, isPaused: { true }, onSetPaused: { _ in },
+            readExtractionSettings: { ExtractionSettings(
+                llmModel: "", preferredLocations: "", locationFilterEnabled: false,
+                locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true
+            ) },
+            providerFactory: { NoOp() }
+        )
+        return DiscoverySweeper(
+            store: store, jobService: JobService(store: store, queue: queue),
+            session: MockURLProtocol.makeSession()
+        )
+    }
+
+    func testAPostingTheUserAlreadyHasIsNotIngestedAgain() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        // A job the user captured through the browser, with the tracking parameter the extension
+        // would have picked up.
+        let capture = Capture(
+            url: "https://boards.greenhouse.io/acme/jobs/4567?gh_src=abc",
+            pageTitle: "Program Manager", rawHash: "existing"
+        )
+        let job = Job(company: "Acme")
+        job.capture = capture
+        try await store.insert(job)
+
+        // The sweep sees the same posting without the tracking parameter.
+        let posting = DiscoveredPosting(
+            dedupKey: "gh:4567", url: "https://boards.greenhouse.io/acme/jobs/4567",
+            title: "Program Manager", company: "Acme", locationRaw: "Remote",
+            descriptionPlain: "A description.", sourceID: "stub"
+        )
+        let known: Set<String> = try await store.capturedDedupKeys()
+        XCTAssertTrue(
+            known.contains("gh:4567"),
+            "keyed on the ATS id, so a tracking parameter doesn't make it look like a different job"
+        )
+
+        let result = await makeSweeper(store).sweep(
+            source: StubSource(postings: [posting]), config: SourceConfig(slug: "acme"),
+            criteria: DiscoveryCriteria(titleIncludeAny: ["program manager"]),
+            alreadyCaptured: known
+        )
+        XCTAssertEqual(result.passed, 1, "it still matches the criteria")
+        XCTAssertEqual(result.ingested, 0, "…but the user already has it")
+
+        let jobs: [Job] = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertEqual(jobs.count, 1, "no second job, and no recapture of the first")
+    }
+
+    /// Without the guard, the same posting would go through — which is what makes the guard the
+    /// thing doing the work rather than some incidental dedup.
+    func testWithoutTheGuardItWouldHaveBeenIngested() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let posting = DiscoveredPosting(
+            dedupKey: "gh:4567", url: "https://boards.greenhouse.io/acme/jobs/4567",
+            title: "Program Manager", company: "Acme", locationRaw: "Remote",
+            descriptionPlain: "A description.", sourceID: "stub"
+        )
+        let result = await makeSweeper(store).sweep(
+            source: StubSource(postings: [posting]), config: SourceConfig(slug: "acme"),
+            criteria: DiscoveryCriteria(titleIncludeAny: ["program manager"]),
+            alreadyCaptured: []
+        )
+        XCTAssertEqual(result.ingested, 1)
+    }
+}

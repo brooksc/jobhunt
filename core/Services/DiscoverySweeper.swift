@@ -93,12 +93,18 @@ public struct DiscoverySweeper: Sendable {
     /// - Parameter remainingDailyBudget: how many ingests are still allowed today across all
     ///   sources. Passed in rather than read here so the scheduler owns the day boundary and one
     ///   greedy source can't exhaust the rest.
+    /// - Parameter alreadyCaptured: dedup keys the store already holds, so discovery never touches
+    ///   an existing job. `ingestCapture`'s same-URL path is a *recapture* — it overwrites the
+    ///   capture, resets extraction and re-queues it — which is right when the user deliberately
+    ///   re-captures a posting in the browser and wrong for a sweep. Passed in rather than read here
+    ///   because a market pass would otherwise re-scan the capture table once per board.
     public func sweep(
         source: any JobSource,
         config: SourceConfig,
         criteria: DiscoveryCriteria,
         since: Date? = nil,
         remainingDailyBudget: Int = Int.max,
+        alreadyCaptured: Set<String> = [],
         now: Date = Date()
     ) async -> SweepResult {
         let fingerprint = criteria.fingerprint
@@ -141,8 +147,17 @@ public struct DiscoverySweeper: Sendable {
 
         // 3. Ledger — drop everything already judged under these criteria. This is what makes the
         // second sweep of an unchanged board cost nothing.
-        let unjudged = await (try? store.unjudgedPostings(survivors, criteriaFingerprint: fingerprint))
+        var unjudged = await (try? store.unjudgedPostings(survivors, criteriaFingerprint: fingerprint))
             ?? survivors
+
+        // …and drop anything the user already has, whatever route it arrived by. Discovery only
+        // ever creates; it must not reach into a job that already exists.
+        if !alreadyCaptured.isEmpty {
+            let known = unjudged.filter { alreadyCaptured.contains($0.dedupKey) }
+            unjudged.removeAll { alreadyCaptured.contains($0.dedupKey) }
+            // Ledgered so the next pass skips them without re-deriving the capture set.
+            outcomes.append(contentsOf: known.map { ($0, DiscoveryOutcome.ingested, nil) })
+        }
 
         // 4. Caps, applied here so they bound hydration requests and not just ingests.
         let allowance = max(0, min(caps.perSweep, remainingDailyBudget))

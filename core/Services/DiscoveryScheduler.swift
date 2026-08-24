@@ -152,6 +152,7 @@ public struct DiscoveryScheduler: Sendable {
     public func runOneDueSweep(
         criteria: DiscoveryCriteria,
         remainingDailyBudget: Int,
+        alreadyCaptured: Set<String> = [],
         now: Date = Date()
     ) async -> SweepResult? {
         // `try?` flattens, so a store error and "nothing due" both land here as nil. That's the
@@ -173,6 +174,7 @@ public struct DiscoveryScheduler: Sendable {
             config: searchSource.config,
             criteria: criteria,
             remainingDailyBudget: remainingDailyBudget,
+            alreadyCaptured: alreadyCaptured,
             now: now
         )
         try? await store.recordSearchSourceRun(

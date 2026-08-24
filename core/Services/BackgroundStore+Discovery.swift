@@ -15,17 +15,48 @@ public extension BackgroundStore {
         _ postings: [DiscoveredPosting], criteriaFingerprint: String
     ) throws -> [DiscoveredPosting] {
         guard !postings.isEmpty else { return [] }
-        let keys = Set(postings.map(\.dedupKey))
-        // Fetch the whole set at once rather than per key: one round trip beats 6,000, and the
-        // predicate can't reach into a Swift Set, so the membership test is done in memory.
-        let existing = try modelContext.fetch(FetchDescriptor<DiscoveryLedgerEntry>())
-            .filter { keys.contains($0.dedupKey) }
-        let judged = Dictionary(existing.map { ($0.dedupKey, $0) }, uniquingKeysWith: { first, _ in first })
-
-        return postings.filter { posting in
-            guard let entry = judged[posting.dedupKey] else { return true }
+        // One small keyed fetch per candidate rather than a full-table scan. Only postings that
+        // already cleared the gate reach here — typically none or a handful per board — while the
+        // ledger grows into the tens of thousands, so a scan per board would be the most expensive
+        // thing in a market sweep by a wide margin.
+        return try postings.filter { posting in
+            let key = posting.dedupKey
+            var descriptor = FetchDescriptor<DiscoveryLedgerEntry>(
+                predicate: #Predicate { $0.dedupKey == key }
+            )
+            descriptor.fetchLimit = 1
+            guard let entry = try modelContext.fetch(descriptor).first else { return true }
             return entry.needsReevaluation(under: criteriaFingerprint)
         }
+    }
+
+    /// Dedup keys for every posting already captured, however it got here.
+    ///
+    /// **The guard on "discovery only ever creates."** `ingestCapture`'s same-URL path is a
+    /// *recapture*: it overwrites the stored capture, resets extraction and re-queues it. That is
+    /// right for the browser extension, where a re-capture is the user deliberately refreshing a
+    /// posting, and wrong for a sweep — a first market pass would otherwise re-extract every job the
+    /// user already has whose posting is still open, spending real money to replace a description
+    /// they were happy with.
+    ///
+    /// Keyed on `DuplicateDetector.atsPostingID` rather than the raw URL, because the two arrive by
+    /// different routes: the extension captures `…/jobs/123?gh_src=abc` while a sweep sees
+    /// `…/jobs/123`, and an exact string compare would call those two different jobs.
+    ///
+    /// Read once per slice, not per board — it is a scan of the capture table, and a few hundred
+    /// rows once is nothing while the same scan 28,746 times is a sweep that never finishes.
+    func capturedDedupKeys() throws -> Set<String> {
+        var keys: Set<String> = []
+        for capture in try modelContext.fetch(FetchDescriptor<Capture>()) {
+            if let key = DiscoveredPosting.dedupKey(for: capture.url) {
+                keys.insert(key)
+            }
+            if let canonical = capture.canonicalURL, !canonical.isEmpty,
+               let key = DiscoveredPosting.dedupKey(for: canonical) {
+                keys.insert(key)
+            }
+        }
+        return keys
     }
 
     /// Record what a sweep decided, and refresh `lastSeenAt` on everything it saw again.

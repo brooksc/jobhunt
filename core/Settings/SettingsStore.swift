@@ -50,7 +50,10 @@ private let settingsDefaults: [String: String] = [
     SettingsKey.discoveryLocationBlock: "",
     SettingsKey.discoveryLocationBlockHard: "",
     SettingsKey.discoveryMinSalary: "0",
-    SettingsKey.discoveryMaxAgeDays: "0",
+    // 90 days. A first market pass would otherwise offer every matching posting a board has ever
+    // left open, and the oldest are the likeliest to be ghost reqs. Postings with no date still
+    // pass, per "absent data never rejects" -- about 10% of Workday's are undated.
+    SettingsKey.discoveryMaxAgeDays: "90",
     SettingsKey.discoveryCriteriaSeeded: "false",
     SettingsKey.discoveryMaxIngestsPerSweep: "50",
     SettingsKey.discoveryMaxIngestsPerDay: "200",
@@ -61,7 +64,7 @@ private let settingsDefaults: [String: String] = [
     // career-ops, 96% of real findings came from employers they weren't tracking — so hiding it
     // behind a toggle would hide the point of the product.
     SettingsKey.marketSweepEnabled: "true",
-    SettingsKey.marketSweepIntervalHours: "24",
+    SettingsKey.marketSweepStartHour: "3",
     SettingsKey.marketSweepBoardsPerSlice: "250",
     SettingsKey.availabilityAutoCheckEnabled: "true",
     SettingsKey.availabilityAutoCheckIntervalDays: "1",

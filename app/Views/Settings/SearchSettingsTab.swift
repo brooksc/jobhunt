@@ -730,6 +730,24 @@ extension SearchSettingsTab {
             .font(.caption)
             .foregroundStyle(.secondary)
 
+            LabeledContent("Start each day at") {
+                Picker("Start each day at", selection: Binding(
+                    get: { settings.int(forKey: SettingsKey.marketSweepStartHour) },
+                    set: { settings.setInt($0, forKey: SettingsKey.marketSweepStartHour) }
+                )) {
+                    ForEach(0 ..< 24, id: \.self) { hour in
+                        Text(String(format: "%02d:00", hour)).tag(hour)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 110)
+            }
+            Text("A pass takes a few hours, so an early start means it has finished by the time you "
+                + "sit down. A fixed hour rather than a gap after the last one — otherwise the start "
+                + "time creeps later every day.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             if let state = marketState.first {
                 marketProgress(state)
             } else if settings.bool(forKey: SettingsKey.marketSweepEnabled) {

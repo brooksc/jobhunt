@@ -168,13 +168,13 @@ public struct MarketSweeper: Sendable {
     /// Load the sweep in progress, starting a new one when the last has finished and the interval
     /// has elapsed. Returns nil when nothing is due.
     public func stateForRun(
-        boards: [MarketBoard], interval: TimeInterval, now: Date = Date()
+        boards: [MarketBoard], startHour: Int, now: Date = Date()
     ) async -> MarketSweepState? {
         // `try?` flattens, so a store error and "no state yet" both arrive as nil — and both mean
         // the same thing here: start a pass.
         if let existing = try? await store.marketSweepState() {
             guard existing.isFinished else { return existing }
-            guard existing.isDue(interval: interval, now: now) else { return nil }
+            guard existing.isDue(startHour: startHour, now: now) else { return nil }
         }
         return try? await store.startMarketSweep(boardCount: boards.count, now: now)
     }

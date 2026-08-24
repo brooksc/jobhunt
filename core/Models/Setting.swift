@@ -150,8 +150,12 @@ public enum SettingsKey {
     /// is a handful of requests a day, while a market pass is tens of thousands over hours. A user
     /// should be able to have one without the other.
     public static let marketSweepEnabled = "market_sweep_enabled"
-    /// How long after a pass finishes before the next one starts.
-    public static let marketSweepIntervalHours = "market_sweep_interval_hours"
+    /// Local hour (0-23) at which a new pass starts.
+    ///
+    /// A wall-clock hour rather than an interval after the last finish: "every 24 hours" drifts by
+    /// however long the pass took, so within a week an overnight sweep is running through the
+    /// afternoon. 3am by default, so a pass that takes five hours is done before the user sits down.
+    public static let marketSweepStartHour = "market_sweep_start_hour"
     /// Boards per slice. The sweep is deliberately unhurried — see MarketPacing.
     public static let marketSweepBoardsPerSlice = "market_sweep_boards_per_slice"
 

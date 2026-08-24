@@ -389,3 +389,100 @@ final class DiscoveryNeverTouchesExistingJobsTests: XCTestCase {
         XCTAssertEqual(result.ingested, 1)
     }
 }
+
+/// The safety property, stated against a realistic job rather than a synthetic one (TASK-699).
+///
+/// A recapture is destructive in ways that are easy to underestimate: it wipes every AI-extracted
+/// field (`clearExtractionOwnedFields` nils company, title, location, salary, seniority, remote
+/// type), sets extraction back to pending, queues a fresh LLM request, and moves a `.duplicate` job
+/// to `.new`. Manual overrides survive, nothing else does. So this pins the whole shape of an
+/// existing job across a sweep, not just its count.
+final class DiscoveryLeavesExistingJobsTests: XCTestCase {
+    private struct NoOp: LLMProvider {
+        let id: String = "noop"
+        let concurrencyLimit: Int = 1
+        func complete(_: ChatRequest) async throws -> ChatResponse {
+            throw LLMProviderError.httpError(statusCode: 503, body: "no-op")
+        }
+    }
+
+    private struct StubSource: JobSource {
+        let id = "stub"
+        let displayName = "Stub"
+        let configuration = SourceConfiguration.perCompany(slugHint: "x")
+        let postings: [DiscoveredPosting]
+        func fetchRecent(
+            config _: SourceConfig, since _: Date?, session _: URLSession
+        ) async throws -> [DiscoveredPosting] {
+            postings
+        }
+    }
+
+    func testAnAlreadyTrackedJobSurvivesASweepUnchanged() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+
+        let capture = Capture(
+            url: "https://boards.greenhouse.io/acme/jobs/4567?gh_src=browser",
+            pageTitle: "Senior Program Manager",
+            cleanedDescription: "The description the user already had.",
+            rawHash: "browser-capture"
+        )
+        let job = Job(company: "Acme")
+        job.title = "Senior Program Manager"
+        job.location = "Remote, United States"
+        job.salaryMin = 180_000
+        job.status = .pursuing
+        job.extractionStatus = .succeeded
+        job.extractedJSON = #"{"company":"Acme"}"#
+        job.fitScore = 82
+        job.capture = capture
+        try await store.insert(job)
+
+        let queue = QueueActor(
+            store: store, isPaused: { true }, onSetPaused: { _ in },
+            readExtractionSettings: { ExtractionSettings(
+                llmModel: "", preferredLocations: "", locationFilterEnabled: false,
+                locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true
+            ) },
+            providerFactory: { NoOp() }
+        )
+        let sweeper = DiscoverySweeper(
+            store: store, jobService: JobService(store: store, queue: queue),
+            session: MockURLProtocol.makeSession()
+        )
+        let known: Set<String> = try await store.capturedDedupKeys()
+        _ = await sweeper.sweep(
+            source: StubSource(postings: [DiscoveredPosting(
+                dedupKey: "gh:4567", url: "https://boards.greenhouse.io/acme/jobs/4567",
+                title: "Senior Program Manager", company: "Acme",
+                locationRaw: "Remote, United States",
+                descriptionPlain: "A DIFFERENT description from the ATS.", sourceID: "stub"
+            )]),
+            config: SourceConfig(slug: "acme"),
+            criteria: DiscoveryCriteria(titleIncludeAny: ["program manager"]),
+            alreadyCaptured: known
+        )
+
+        let jobs: [Job] = try await store.fetch(FetchDescriptor<Job>())
+        let after = try XCTUnwrap(jobs.first)
+        XCTAssertEqual(jobs.count, 1)
+        XCTAssertEqual(after.status, .pursuing, "the user's own triage decision must survive")
+        XCTAssertEqual(after.extractionStatus, .succeeded, "no re-extraction was queued")
+        XCTAssertEqual(after.company, "Acme", "extracted fields must not be wiped")
+        XCTAssertEqual(after.title, "Senior Program Manager")
+        XCTAssertEqual(after.location, "Remote, United States")
+        XCTAssertEqual(after.salaryMin, 180_000)
+        XCTAssertEqual(after.fitScore, 82, "the fit score cost money and must not be discarded")
+        XCTAssertNotNil(after.extractedJSON)
+
+        let captures: [Capture] = try await store.fetch(FetchDescriptor<Capture>())
+        XCTAssertEqual(
+            captures.first?.cleanedDescription, "The description the user already had.",
+            "the stored description must not be overwritten by the sweep's version"
+        )
+
+        // The decisive one: a recapture always queues an extract request. None here means none ran.
+        let requests: [LLMRequest] = try await store.fetch(FetchDescriptor<LLMRequest>())
+        XCTAssertTrue(requests.isEmpty, "no LLM spend on a job the user already had")
+    }
+}

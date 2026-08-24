@@ -68,10 +68,27 @@ public final class MarketSweepState {
         return min(1, Double(cursor) / Double(boardCount))
     }
 
-    /// Whether a new sweep is due. A finished sweep waits out the interval; an unfinished one is
-    /// always due, because resuming it is the whole point.
-    public func isDue(interval: TimeInterval, now: Date = Date()) -> Bool {
+    /// Whether a new sweep is due.
+    ///
+    /// An unfinished sweep is *always* due — resuming it is the whole point, and a pass that never
+    /// reaches the end of the directory finds nothing at the end of the directory.
+    ///
+    /// A finished one waits for the next occurrence of `startHour` in local time, rather than a
+    /// fixed interval after it finished. "24 hours after the last one ended" drifts: a pass that
+    /// takes five hours starts five hours later each day, and within a week the sweep is running
+    /// through the afternoon instead of overnight. A wall-clock hour holds still, so the work lands
+    /// before the user sits down.
+    public func isDue(startHour: Int, now: Date = Date(), calendar: Calendar = .current) -> Bool {
         guard let finishedAt else { return true }
-        return now.timeIntervalSince(finishedAt) >= interval
+        // The most recent occurrence of startHour on or before `now`. Due when the last pass
+        // finished before that, i.e. a scheduled start has come round since.
+        let today = calendar.startOfDay(for: now)
+        guard let todaysStart = calendar.date(byAdding: .hour, value: startHour, to: today) else {
+            return now.timeIntervalSince(finishedAt) >= 24 * 3600
+        }
+        let lastStart = todaysStart <= now
+            ? todaysStart
+            : calendar.date(byAdding: .day, value: -1, to: todaysStart) ?? todaysStart
+        return finishedAt < lastStart
     }
 }

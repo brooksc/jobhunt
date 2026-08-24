@@ -188,16 +188,57 @@ final class MarketSweeperTests: XCTestCase {
         XCTAssertNil(state.pauseReason, "a finished sweep isn't paused")
     }
 
-    /// An unfinished sweep is always due — resuming it is the entire point. A finished one waits.
+    /// An unfinished sweep is always due — resuming it is the entire point.
     func testAnUnfinishedSweepIsAlwaysDue() {
-        let state = MarketSweepState(boardCount: 100)
-        XCTAssertTrue(state.isDue(interval: 24 * 3600))
+        XCTAssertTrue(MarketSweepState(boardCount: 100).isDue(startHour: 3))
+    }
 
-        state.finishedAt = Date()
-        XCTAssertFalse(state.isDue(interval: 24 * 3600))
-        XCTAssertTrue(state.isDue(
-            interval: 24 * 3600, now: Date().addingTimeInterval(25 * 3600)
-        ))
+    /// A wall-clock start, not an interval after the last finish. "Every 24 hours" drifts by however
+    /// long the pass took, so an overnight sweep creeps into the afternoon within a week.
+    func testAFinishedSweepWaitsForTheNextScheduledHour() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        func at(_ day: Int, _ hour: Int) throws -> Date {
+            try XCTUnwrap(calendar.date(
+                from: DateComponents(year: 2026, month: 8, day: day, hour: hour)
+            ))
+        }
+
+        let state = MarketSweepState(boardCount: 100)
+        state.finishedAt = try at(23, 8) // started 3am, ran five hours
+
+        XCTAssertFalse(
+            try state.isDue(startHour: 3, now: at(23, 20), calendar: calendar),
+            "same evening — 3am has not come round again"
+        )
+        XCTAssertFalse(
+            try state.isDue(startHour: 3, now: at(24, 2), calendar: calendar),
+            "just before the next 3am"
+        )
+        XCTAssertTrue(
+            try state.isDue(startHour: 3, now: at(24, 3), calendar: calendar),
+            "3am the next day, regardless of how long the last pass ran"
+        )
+    }
+
+    /// The drift this replaces: a five-hour pass finishing at 08:00 would, on a 24h interval, next
+    /// start at 08:00 — then 13:00, then 18:00. A wall-clock hour stays put.
+    func testTheStartTimeDoesNotDriftWithPassLength() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        func at(_ day: Int, _ hour: Int) throws -> Date {
+            try XCTUnwrap(calendar.date(
+                from: DateComponents(year: 2026, month: 8, day: day, hour: hour)
+            ))
+        }
+        for finishHour in [5, 8, 14, 23] {
+            let state = MarketSweepState(boardCount: 100)
+            state.finishedAt = try at(23, finishHour)
+            XCTAssertTrue(
+                try state.isDue(startHour: 3, now: at(24, 3), calendar: calendar),
+                "due at 3am whether the previous pass ended at \(finishHour):00 or not"
+            )
+        }
     }
 
     func testStartingASweepReplacesTheFinishedOne() async throws {

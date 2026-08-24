@@ -410,7 +410,7 @@ final class AppServices {
                 }
                 guard !boards.isEmpty else { continue }
 
-                let interval = Double(max(1, settings.int(forKey: SettingsKey.marketSweepIntervalHours))) * 3600
+                let startHour = min(23, max(0, settings.int(forKey: SettingsKey.marketSweepStartHour)))
                 let caps = DiscoverySettings.caps(from: settings)
                 let sweeper = MarketSweeper(
                     store: sweepStore,
@@ -420,7 +420,7 @@ final class AppServices {
                         store: sweepStore, jobService: service, caps: caps, ledgerRejections: false
                     )
                 )
-                guard let state = await sweeper.stateForRun(boards: boards, interval: interval) else {
+                guard let state = await sweeper.stateForRun(boards: boards, startHour: startHour) else {
                     continue
                 }
 

@@ -486,3 +486,126 @@ final class DiscoveryLeavesExistingJobsTests: XCTestCase {
         XCTAssertTrue(requests.isEmpty, "no LLM spend on a job the user already had")
     }
 }
+
+/// The create-only guarantee, tested where it actually lives (TASK-700).
+///
+/// The earlier tests handed the sweeper a correct snapshot of existing keys, which proves the
+/// optimisation works and proves nothing about the guarantee. These go at the store instead, and
+/// cover the three ways the snapshot approach failed: a caller that forgets it, a snapshot that
+/// goes stale mid-sweep, and a lookup that throws.
+final class CreateOnlyIngestTests: XCTestCase {
+    private struct NoOp: LLMProvider {
+        let id: String = "noop"
+        let concurrencyLimit: Int = 1
+        func complete(_: ChatRequest) async throws -> ChatResponse {
+            throw LLMProviderError.httpError(statusCode: 503, body: "no-op")
+        }
+    }
+
+    private func makeService(_ store: BackgroundStore) -> JobService {
+        JobService(store: store, queue: QueueActor(
+            store: store, isPaused: { true }, onSetPaused: { _ in },
+            readExtractionSettings: { ExtractionSettings(
+                llmModel: "", preferredLocations: "", locationFilterEnabled: false,
+                locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true
+            ) },
+            providerFactory: { NoOp() }
+        ))
+    }
+
+    private func seedExistingJob(_ store: BackgroundStore) async throws {
+        let capture = Capture(
+            url: "https://boards.greenhouse.io/acme/jobs/4567",
+            pageTitle: "Program Manager",
+            cleanedDescription: "The description the user already had.",
+            rawHash: "browser-capture"
+        )
+        let job = Job(company: "Acme")
+        job.title = "Program Manager"
+        job.status = .pursuing
+        job.extractionStatus = .succeeded
+        job.capture = capture
+        try await store.insert(job)
+    }
+
+    private func payload(_ body: String) -> CapturePayload {
+        CapturePayload(
+            url: "https://boards.greenhouse.io/acme/jobs/4567",
+            pageTitle: "Program Manager",
+            visibleText: body,
+            userNote: "Found automatically via Greenhouse on 2026-08-23"
+        )
+    }
+
+    /// The guarantee holds with NO snapshot at all — which is the whole point of moving it into the
+    /// store. This is the case that was broken: Run Now passed no keys and would have recaptured.
+    func testCreateOnlyRefusesEvenWithNoCallerSideFiltering() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        try await seedExistingJob(store)
+
+        let result = try await makeService(store).ingestCapture(
+            payload("A DIFFERENT description from the ATS."), createOnly: true
+        )
+
+        XCTAssertTrue(result.alreadyExisted)
+        let jobs: [Job] = try await store.fetch(FetchDescriptor<Job>())
+        let job = try XCTUnwrap(jobs.first)
+        XCTAssertEqual(jobs.count, 1)
+        XCTAssertEqual(job.status, .pursuing, "the user's triage decision survives")
+        XCTAssertEqual(job.extractionStatus, .succeeded, "extraction was not reset")
+        XCTAssertEqual(job.title, "Program Manager", "extracted fields were not wiped")
+
+        let captures: [Capture] = try await store.fetch(FetchDescriptor<Capture>())
+        XCTAssertEqual(
+            captures.first?.cleanedDescription, "The description the user already had.",
+            "the stored description was not overwritten"
+        )
+        let requests: [LLMRequest] = try await store.fetch(FetchDescriptor<LLMRequest>())
+        XCTAssertTrue(requests.isEmpty, "no paid extraction was queued")
+    }
+
+    /// Without `createOnly` the very same call recaptures, so the flag is demonstrably what does the
+    /// work — and this pins how destructive the path it guards actually is.
+    func testWithoutCreateOnlyTheSameCallIsDestructive() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        try await seedExistingJob(store)
+
+        _ = try await makeService(store).ingestCapture(payload("A DIFFERENT description."))
+
+        let jobs: [Job] = try await store.fetch(FetchDescriptor<Job>())
+        let job = try XCTUnwrap(jobs.first)
+        XCTAssertEqual(job.extractionStatus, .pending, "recapture resets extraction")
+        XCTAssertNil(job.title, "recapture wipes the extracted fields")
+        let requests: [LLMRequest] = try await store.fetch(FetchDescriptor<LLMRequest>())
+        XCTAssertEqual(requests.count, 1, "recapture queues a paid extraction")
+    }
+
+    /// A job that arrives *after* a sweep took its snapshot — a browser capture mid-sweep, or an
+    /// overlapping run. The snapshot can't know about it; the store transaction can.
+    func testAJobCreatedAfterTheSnapshotIsStillProtected() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let service = makeService(store)
+
+        // Snapshot taken while the store is empty — maximally stale.
+        let snapshot: Set<String> = try await store.capturedDedupKeys()
+        XCTAssertTrue(snapshot.isEmpty)
+
+        try await seedExistingJob(store)
+
+        let result = try await service.ingestCapture(payload("Later ATS body."), createOnly: true)
+        XCTAssertTrue(result.alreadyExisted, "the store saw it even though the snapshot could not")
+        let requests: [LLMRequest] = try await store.fetch(FetchDescriptor<LLMRequest>())
+        XCTAssertTrue(requests.isEmpty)
+    }
+
+    /// A genuinely new posting still gets created — the guard must not be a blanket refusal.
+    func testANewPostingIsStillCreated() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let result = try await makeService(store).ingestCapture(
+            payload("A real description."), createOnly: true
+        )
+        XCTAssertFalse(result.alreadyExisted)
+        let jobs: [Job] = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertEqual(jobs.count, 1)
+    }
+}

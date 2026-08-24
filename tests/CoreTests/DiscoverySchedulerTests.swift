@@ -213,7 +213,8 @@ final class DiscoverySchedulerTests: XCTestCase {
         ))
 
         let result = await scheduler.runOneDueSweep(
-            criteria: DiscoveryCriteria(titleIncludeAny: ["x"]), remainingDailyBudget: 10
+            criteria: DiscoveryCriteria(titleIncludeAny: ["x"]), remainingDailyBudget: 10,
+            alreadyCaptured: []
         )
         XCTAssertEqual(result?.status, .misconfigured)
         let due: [SearchSource] = try await store.dueSearchSources()
@@ -234,7 +235,9 @@ final class DiscoverySchedulerTests: XCTestCase {
             store: store,
             sweeper: DiscoverySweeper(store: store, jobService: JobService(store: store, queue: queue))
         )
-        let result = await scheduler.runOneDueSweep(criteria: DiscoveryCriteria(), remainingDailyBudget: 10)
+        let result = await scheduler.runOneDueSweep(
+            criteria: DiscoveryCriteria(), remainingDailyBudget: 10, alreadyCaptured: []
+        )
         XCTAssertNil(result)
     }
 }

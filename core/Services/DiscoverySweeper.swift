@@ -93,11 +93,14 @@ public struct DiscoverySweeper: Sendable {
     /// - Parameter remainingDailyBudget: how many ingests are still allowed today across all
     ///   sources. Passed in rather than read here so the scheduler owns the day boundary and one
     ///   greedy source can't exhaust the rest.
-    /// - Parameter alreadyCaptured: dedup keys the store already holds, so discovery never touches
-    ///   an existing job. `ingestCapture`'s same-URL path is a *recapture* — it overwrites the
-    ///   capture, resets extraction and re-queues it — which is right when the user deliberately
-    ///   re-captures a posting in the browser and wrong for a sweep. Passed in rather than read here
-    ///   because a market pass would otherwise re-scan the capture table once per board.
+    /// - Parameter alreadyCaptured: dedup keys the store already holds, used to skip the hydration
+    ///   request for postings the user already has.
+    ///
+    ///   **Purely an optimisation.** The guarantee that discovery never modifies an existing job
+    ///   lives in the store, inside the same transaction as the existence check (`createOnly`),
+    ///   because a caller-side snapshot goes stale during network work, fails open when the read
+    ///   throws, and can simply be forgotten by a caller — all three of which happened here before
+    ///   the invariant was moved.
     public func sweep(
         source: any JobSource,
         config: SourceConfig,
@@ -156,7 +159,7 @@ public struct DiscoverySweeper: Sendable {
             let known = unjudged.filter { alreadyCaptured.contains($0.dedupKey) }
             unjudged.removeAll { alreadyCaptured.contains($0.dedupKey) }
             // Ledgered so the next pass skips them without re-deriving the capture set.
-            outcomes.append(contentsOf: known.map { ($0, DiscoveryOutcome.ingested, nil) })
+            outcomes.append(contentsOf: known.map { ($0, DiscoveryOutcome.alreadyCaptured, nil) })
         }
 
         // 4. Caps, applied here so they bound hydration requests and not just ingests.
@@ -173,13 +176,18 @@ public struct DiscoverySweeper: Sendable {
                 break
             }
             if let body = await hydrate(posting) {
-                if await ingest(posting, body: body, sourceName: source.displayName, now: now) {
+                switch await ingest(
+                    posting, body: body, sourceName: source.displayName, sourceID: source.id, now: now
+                ) {
+                case .created:
                     outcomes.append((posting, .ingested, nil))
                     ingested += 1
-                } else {
-                    // Ingest refused it — a URL policy rejection, or a duplicate resolved inside
-                    // ingestCapture. Ledger it as done either way: retrying next sweep would refuse
-                    // it identically, forever.
+                case .alreadyExisted:
+                    // The store refused to touch it, which is the guarantee working. Not a find.
+                    outcomes.append((posting, .alreadyCaptured, nil))
+                case .refused:
+                    // A URL-policy rejection or a content duplicate resolved inside ingestCapture.
+                    // Terminal either way: retrying would refuse it identically, forever.
                     outcomes.append((posting, .ingested, nil))
                 }
             } else {
@@ -232,12 +240,15 @@ public struct DiscoverySweeper: Sendable {
 
     // MARK: - Ingest
 
-    /// Hands the posting to the same entry point the browser extension uses. Unchanged, on purpose:
-    /// a second ingest path would drift from the first, and everything downstream — cleaning,
-    /// hashing, duplicate detection, the extraction queue — already works.
+    enum IngestOutcome { case created, alreadyExisted, refused }
+
+    /// Hands the posting to the same entry point the browser extension uses, with `createOnly` set.
+    /// One ingest path, on purpose: a second would drift from the first, and everything downstream —
+    /// cleaning, hashing, duplicate detection, the extraction queue — already works. The only
+    /// difference is that discovery is forbidden from modifying what it finds.
     func ingest(
-        _ posting: DiscoveredPosting, body: String, sourceName: String, now: Date
-    ) async -> Bool {
+        _ posting: DiscoveredPosting, body: String, sourceName: String, sourceID: String, now: Date
+    ) async -> IngestOutcome {
         let stamp = DateFormatter.discoveryNote.string(from: now)
         let payload = CapturePayload(
             url: posting.url,
@@ -248,9 +259,15 @@ public struct DiscoverySweeper: Sendable {
             // every status-handling site in the app for something a note conveys.
             userNote: "Found automatically via \(sourceName) on \(stamp)",
             canonicalURL: nil,
-            structuredDataJSON: nil
+            structuredDataJSON: nil,
+            // The note is user-facing copy; this is the fact. Counting discoveries by parsing the
+            // note would lose finds the user edited and miscount notes that merely start the same.
+            discoveredBySourceID: sourceID
         )
-        return await (try? jobService.ingestCapture(payload)) != nil
+        guard let result = try? await jobService.ingestCapture(payload, createOnly: true) else {
+            return .refused
+        }
+        return result.alreadyExisted ? .alreadyExisted : .created
     }
 
     // MARK: - Failure mapping

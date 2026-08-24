@@ -12,6 +12,13 @@ public final class Capture {
     public var cleanedDescription: String?
     public var structuredDataJSON: String?
     public var userNote: String?
+    /// Which `JobSource` discovered this, when automatic search created it. Nil for a browser
+    /// capture, a paste or MCP.
+    ///
+    /// Structured rather than inferred from `userNote`. The note is user-facing copy the user can
+    /// edit and a future release may localise, so counting discoveries by its prefix would lose
+    /// real finds silently and miscount any other note that happened to start the same way.
+    public var discoveredBySourceID: String?
     // Safe to mark unique on fresh installs. For existing stores with duplicate rawHash rows,
     // deduplicate before opening the store with this constraint active.
     @Attribute(.unique) public var rawHash: String
@@ -32,6 +39,7 @@ public final class Capture {
         cleanedDescription: String? = nil,
         structuredDataJSON: String? = nil,
         userNote: String? = nil,
+        discoveredBySourceID: String? = nil,
         rawHash: String,
         cleanedHash: String? = nil,
         capturedAt: Date = Date(),
@@ -46,6 +54,7 @@ public final class Capture {
         self.cleanedDescription = cleanedDescription
         self.structuredDataJSON = structuredDataJSON
         self.userNote = userNote
+        self.discoveredBySourceID = discoveredBySourceID
         self.rawHash = rawHash
         self.cleanedHash = cleanedHash
         self.capturedAt = capturedAt

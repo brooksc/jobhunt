@@ -3,8 +3,12 @@ import SwiftData
 
 /// What happened to one swept posting.
 public enum DiscoveryOutcome: String, Sendable, Equatable, CaseIterable {
-    /// Cleared gate A and was handed to hydration + ingest.
+    /// Cleared gate A and became a new job.
     case ingested
+    /// Cleared gate A, but the user already had this posting — so nothing was created and nothing
+    /// was touched. Terminal: re-examining it can only ever reach the same answer, and reporting it
+    /// as "added" would inflate what discovery actually found.
+    case alreadyCaptured
     /// Cleared gate A but couldn't be given a body, so it was never ingested. Distinct from a
     /// rejection: the criteria liked it, the network didn't cooperate, and it should be retried.
     case hydrationFailed
@@ -83,7 +87,7 @@ public final class DiscoveryLedgerEntry {
     /// failure was the network's fault rather than the posting's.
     public func needsReevaluation(under fingerprint: String) -> Bool {
         switch outcome {
-        case .ingested: false
+        case .ingested, .alreadyCaptured: false
         case .hydrationFailed: true
         case .rejected: criteriaFingerprint != fingerprint
         }

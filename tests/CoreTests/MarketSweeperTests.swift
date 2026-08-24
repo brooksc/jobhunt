@@ -344,3 +344,62 @@ final class MarketPageLimitTests: XCTestCase {
         XCTAssertEqual(postings.count, 40)
     }
 }
+
+/// The scheduled start survives both DST transitions (TASK-700).
+///
+/// `Calendar.date(byAdding: .hour,)` adds *elapsed* time, so building "3am" as midnight-plus-three
+/// lands on the wrong wall clock across a boundary: in America/Los_Angeles it gave 04:00 on
+/// spring-forward day and 02:00 on fall-back day. Verified against Foundation before fixing.
+final class MarketSweepDSTTests: XCTestCase {
+    private var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        return calendar
+    }
+
+    private func at(_ month: Int, _ day: Int, _ hour: Int) throws -> Date {
+        try XCTUnwrap(calendar.date(
+            from: DateComponents(year: 2026, month: month, day: day, hour: hour)
+        ))
+    }
+
+    /// 2026-03-08: clocks jump 02:00 → 03:00.
+    func testSpringForwardKeepsTheThreeAmStart() throws {
+        let state = MarketSweepState(boardCount: 100)
+        state.finishedAt = try at(3, 7, 8) // finished the previous morning
+
+        XCTAssertFalse(
+            try state.isDue(startHour: 3, now: at(3, 8, 1), calendar: calendar),
+            "01:00 on the transition day is before the 3am start"
+        )
+        XCTAssertTrue(
+            try state.isDue(startHour: 3, now: at(3, 8, 3), calendar: calendar),
+            "03:00 must still be the start, not 04:00"
+        )
+    }
+
+    /// 2026-11-01: clocks fall back 02:00 → 01:00, so the hour 01:00–02:00 happens twice.
+    func testFallBackKeepsTheThreeAmStart() throws {
+        let state = MarketSweepState(boardCount: 100)
+        state.finishedAt = try at(10, 31, 8)
+
+        XCTAssertFalse(
+            try state.isDue(startHour: 3, now: at(11, 1, 1), calendar: calendar),
+            "01:00 on the transition day is before the 3am start"
+        )
+        XCTAssertTrue(
+            try state.isDue(startHour: 3, now: at(11, 1, 3), calendar: calendar),
+            "03:00 must still be the start, not 02:00"
+        )
+    }
+
+    /// A pass that finished the same morning must not immediately re-fire on a transition day.
+    func testATransitionDayDoesNotCauseADoubleRun() throws {
+        let state = MarketSweepState(boardCount: 100)
+        state.finishedAt = try at(3, 8, 8) // finished after that day's 3am start
+        XCTAssertFalse(
+            try state.isDue(startHour: 3, now: at(3, 8, 20), calendar: calendar),
+            "the 3am start already happened and was served"
+        )
+    }
+}

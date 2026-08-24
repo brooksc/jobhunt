@@ -148,11 +148,16 @@ public struct DiscoveryScheduler: Sendable {
     /// Deliberately does one unit of work per call rather than looping internally: the caller owns
     /// the pacing and the cancellation, and a scheduler that drains everything in one go would keep
     /// the app busy for as long as the user's slowest board takes to answer.
+    /// - Parameter alreadyCaptured: keys the store already holds, to skip hydration for postings the
+    ///   user has. **No default on purpose.** It was optional-with-an-empty-default, and the Run Now
+    ///   button promptly forgot it — which is how a safety parameter behaves. The invariant itself
+    ///   now lives in the store (`AtomicIngestInput.createOnly`); this is only a cost saving, and
+    ///   being made to pass it keeps that distinction visible.
     @discardableResult
     public func runOneDueSweep(
         criteria: DiscoveryCriteria,
         remainingDailyBudget: Int,
-        alreadyCaptured: Set<String> = [],
+        alreadyCaptured: Set<String>,
         now: Date = Date()
     ) async -> SweepResult? {
         // `try?` flattens, so a store error and "nothing due" both land here as nil. That's the

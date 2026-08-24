@@ -80,12 +80,22 @@ public final class MarketSweepState {
     /// before the user sits down.
     public func isDue(startHour: Int, now: Date = Date(), calendar: Calendar = .current) -> Bool {
         guard let finishedAt else { return true }
-        // The most recent occurrence of startHour on or before `now`. Due when the last pass
-        // finished before that, i.e. a scheduled start has come round since.
-        let today = calendar.startOfDay(for: now)
-        guard let todaysStart = calendar.date(byAdding: .hour, value: startHour, to: today) else {
+        // Built from date components, NOT by adding elapsed hours to midnight. `byAdding: .hour`
+        // adds real time, so on a DST boundary it lands on the wrong wall clock: in
+        // America/Los_Angeles a 3am start became 4am on spring-forward day and 2am on fall-back
+        // day. Components ask for "3 o'clock", which is what the user chose.
+        //
+        // Foundation resolves the two awkward cases sensibly on its own: 2am on spring-forward day
+        // doesn't exist and rolls forward, 1am on fall-back day happens twice and takes the first.
+        // Neither is worth special-casing for a sweep whose start time is advisory to the hour.
+        let day = calendar.dateComponents([.year, .month, .day], from: now)
+        guard let todaysStart = calendar.date(from: DateComponents(
+            year: day.year, month: day.month, day: day.day, hour: startHour
+        )) else {
             return now.timeIntervalSince(finishedAt) >= 24 * 3600
         }
+        // Day arithmetic is correct with `byAdding` — a calendar day is what's wanted here, and
+        // Foundation keeps the wall-clock hour across a DST boundary when adding days.
         let lastStart = todaysStart <= now
             ? todaysStart
             : calendar.date(byAdding: .day, value: -1, to: todaysStart) ?? todaysStart

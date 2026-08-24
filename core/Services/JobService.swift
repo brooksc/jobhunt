@@ -20,6 +20,8 @@ public struct CapturePayload: Sendable {
     public let userNote: String?
     public let canonicalURL: String?
     public let structuredDataJSON: String?
+    /// Set only by automatic search — see `Capture.discoveredBySourceID`.
+    public let discoveredBySourceID: String?
 
     public init(
         url: String,
@@ -28,7 +30,8 @@ public struct CapturePayload: Sendable {
         visibleText: String? = nil,
         userNote: String? = nil,
         canonicalURL: String? = nil,
-        structuredDataJSON: String? = nil
+        structuredDataJSON: String? = nil,
+        discoveredBySourceID: String? = nil
     ) {
         self.url = url
         self.pageTitle = pageTitle
@@ -37,6 +40,7 @@ public struct CapturePayload: Sendable {
         self.userNote = userNote
         self.canonicalURL = canonicalURL
         self.structuredDataJSON = structuredDataJSON
+        self.discoveredBySourceID = discoveredBySourceID
     }
 }
 
@@ -45,11 +49,16 @@ public struct IngestResult: Sendable {
     public let captureID: String
     public let jobNumber: Int
     public let isDuplicate: Bool
+    /// A `createOnly` ingest that found the posting already present and changed nothing.
+    public let alreadyExisted: Bool
 
-    public init(captureID: String, jobNumber: Int, isDuplicate: Bool) {
+    public init(
+        captureID: String, jobNumber: Int, isDuplicate: Bool, alreadyExisted: Bool = false
+    ) {
         self.captureID = captureID
         self.jobNumber = jobNumber
         self.isDuplicate = isDuplicate
+        self.alreadyExisted = alreadyExisted
     }
 }
 
@@ -94,7 +103,12 @@ public actor JobService {
     // MARK: - Core ingestion
 
     /// Validate → clean → hash → dedup → create Job → enqueue extraction.
-    public func ingestCapture(_ payload: CapturePayload) async throws -> IngestResult {
+    /// - Parameter createOnly: refuse to modify a posting that already exists, returning
+    ///   `alreadyExisted` instead of recapturing it. Discovery passes true; the browser extension
+    ///   and MCP pass false, because for them a re-capture is the user's deliberate act.
+    public func ingestCapture(
+        _ payload: CapturePayload, createOnly: Bool = false
+    ) async throws -> IngestResult {
         // 1. Validate — one shared URL policy (TASK-443). Reject before any persistence/enqueue.
         guard !payload.url.trimmingCharacters(in: .whitespaces).isEmpty else {
             throw JobServiceError.missingURL
@@ -167,7 +181,9 @@ public actor JobService {
             structuredDataJSON: payload.structuredDataJSON,
             userNote: payload.userNote,
             rawHash: rawHashValue,
-            cleanedHash: cleanedHashValue
+            cleanedHash: cleanedHashValue,
+            createOnly: createOnly,
+            discoveredBySourceID: payload.discoveredBySourceID
         )
         let atomic = try await store.insertCaptureAtomically(input)
 
@@ -176,7 +192,7 @@ public actor JobService {
         // Without this, captures sit "Queued" whenever the loop has already drained and exited, and
         // the user has to hit Resume to get them processed. Kick it here (no-op if paused / already
         // running). Exact duplicates queue nothing, so skip them.
-        if !atomic.isDuplicate {
+        if !atomic.isDuplicate, !atomic.alreadyExisted {
             await queue.kick()
         }
 
@@ -184,7 +200,8 @@ public actor JobService {
         return IngestResult(
             captureID: atomic.captureID,
             jobNumber: atomic.jobNumber,
-            isDuplicate: atomic.isDuplicate
+            isDuplicate: atomic.isDuplicate,
+            alreadyExisted: atomic.alreadyExisted
         )
     }
 
@@ -414,35 +431,6 @@ public actor JobService {
         }
     }
 
-    // MARK: - Contacts
-
-    public func createContact(jobID: String, name: String, email: String?, role: String?) async throws {
-        // TASK-526: created + linked inside the store actor.
-        try await store.insertContact(jobID: jobID, name: name, role: role, email: email)
-    }
-
-    public func updateContact(contactID: String, name: String, email: String?, role: String?) async throws {
-        let id = contactID
-        try await store.update(Contact.self, predicate: #Predicate { $0.id == id }) { contact in
-            contact.name = name
-            contact.email = email
-            contact.role = role
-            contact.updatedAt = Date()
-        }
-    }
-
-    public func deleteContact(contactID: String) async throws {
-        let id = contactID
-        try await store.delete(Contact.self, predicate: #Predicate { $0.id == id })
-    }
-
-    // MARK: - Cover letters
-
-    public func deleteCoverLetter(id: String) async throws {
-        let covID = id
-        try await store.delete(CoverLetter.self, predicate: #Predicate { $0.id == covID })
-    }
-
     // MARK: - Data quality
 
     public func markDataQualityReviewed(jobID: String, notes: String?) async throws {
@@ -527,11 +515,21 @@ public actor JobService {
         try await store.update(Job.self, predicate: #Predicate { $0.id == id }) { job in
             // Record which extraction-owned fields the user edited so re-extraction won't clobber them.
             var overrides = manualFieldOverrideSet(job.manualFieldOverridesJSON)
-            if let v = company { job.company = v; overrides.insert("company") }
-            if let v = title { job.title = v; overrides.insert("title") }
-            if let v = location { job.location = v; overrides.insert("location") }
-            if let v = remoteType { job.remoteType = v; overrides.insert("remoteType") }
-            if let v = applicationURL { job.applicationURL = v; overrides.insert("applicationURL") }
+            if let v = company {
+                job.company = v; overrides.insert("company")
+            }
+            if let v = title {
+                job.title = v; overrides.insert("title")
+            }
+            if let v = location {
+                job.location = v; overrides.insert("location")
+            }
+            if let v = remoteType {
+                job.remoteType = v; overrides.insert("remoteType")
+            }
+            if let v = applicationURL {
+                job.applicationURL = v; overrides.insert("applicationURL")
+            }
             if let v = duplicateOfJobID {
                 job.duplicateOfJobID = v // not an extraction field
                 // Invariant repair (TASK-370): keep status consistent with the duplicate link.
@@ -542,10 +540,18 @@ public actor JobService {
                 }
                 job.duplicateConfidence = v == nil ? nil : job.duplicateConfidence
             }
-            if let v = salaryMin { job.salaryMin = v; overrides.insert("salaryMin") }
-            if let v = salaryMax { job.salaryMax = v; overrides.insert("salaryMax") }
-            if let v = salaryCurrency { job.salaryCurrency = v; overrides.insert("salaryCurrency") }
-            if let v = salaryNote { job.salaryNote = v; overrides.insert("salaryNote") }
+            if let v = salaryMin {
+                job.salaryMin = v; overrides.insert("salaryMin")
+            }
+            if let v = salaryMax {
+                job.salaryMax = v; overrides.insert("salaryMax")
+            }
+            if let v = salaryCurrency {
+                job.salaryCurrency = v; overrides.insert("salaryCurrency")
+            }
+            if let v = salaryNote {
+                job.salaryNote = v; overrides.insert("salaryNote")
+            }
             job.manualFieldOverridesJSON = manualFieldOverrideJSON(overrides)
             job.updatedAt = Date()
         }
@@ -569,14 +575,18 @@ public actor JobService {
         let exact = try await store.fetch(FetchDescriptor<Capture>(
             predicate: #Predicate { $0.url == url || $0.canonicalURL == url }
         ))
-        if let job = exact.first?.job { return job.jobNumber }
+        if let job = exact.first?.job {
+            return job.jobNumber
+        }
 
         // Fallback (only when the indexed lookup misses): compare normalized forms, so a tab reached
         // via a canonical/tracking-param/trailing-slash variant still resolves to the captured job.
         guard let target = URLNormalizer.normalized(url) else { return nil }
         let all = try await store.fetch(FetchDescriptor<Capture>())
         let match = all.first { cap in
-            if let canon = cap.canonicalURL, URLNormalizer.normalized(canon) == target { return true }
+            if let canon = cap.canonicalURL, URLNormalizer.normalized(canon) == target {
+                return true
+            }
             return URLNormalizer.normalized(cap.url) == target
         }
         return match?.job?.jobNumber
@@ -611,7 +621,9 @@ public actor JobService {
         let all = try await store.fetch(descriptor)
 
         let matches = all.filter { job in
-            if let wantedStatus, job.status != wantedStatus { return false }
+            if let wantedStatus, job.status != wantedStatus {
+                return false
+            }
             if let companyNeedle, !companyNeedle.isEmpty {
                 guard (job.company ?? "").lowercased().contains(companyNeedle) else { return false }
             }

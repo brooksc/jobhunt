@@ -311,7 +311,8 @@ struct SearchSettingsTab: View {
             )
             let result = await scheduler.runOneDueSweep(
                 criteria: DiscoverySettings.criteria(from: settings),
-                remainingDailyBudget: DiscoverySettings.remainingDailyBudget(settings)
+                remainingDailyBudget: DiscoverySettings.remainingDailyBudget(settings),
+                alreadyCaptured: (try? store.capturedDedupKeys()) ?? []
             )
             if let result {
                 if result.ingested > 0 {

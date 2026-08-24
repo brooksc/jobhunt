@@ -37,9 +37,9 @@ struct AutoSearchCard: View {
 
     private var foundToday: Int {
         let start = Calendar.current.startOfDay(for: Date())
-        return captures.count {
-            $0.capturedAt >= start && ($0.userNote?.hasPrefix("Found automatically") ?? false)
-        }
+        // On the structured field, not the note: the note is editable copy, so parsing it would
+        // lose a find the user annotated and miscount any other note starting the same way.
+        return captures.count { $0.capturedAt >= start && $0.discoveredBySourceID != nil }
     }
 
     private var state: MarketSweepState? {
@@ -58,16 +58,7 @@ struct AutoSearchCard: View {
                         .font(.caption)
                 }
 
-                if blocked {
-                    Label(
-                        "Paused — add at least one job title so it knows what to look for.",
-                        systemImage: "exclamationmark.triangle.fill"
-                    )
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-                } else {
-                    statusLine
-                }
+                statusLine
 
                 Text(summary)
                     .font(.caption)
@@ -78,25 +69,85 @@ struct AutoSearchCard: View {
         }
     }
 
+    /// What the card is claiming, in priority order.
+    ///
+    /// Derived as one value rather than a chain of `if`s in the view, because the earlier version
+    /// treated any unfinished sweep row as "checking" — so it reported scanning as healthy while
+    /// the sweep was disabled, rate-limited, budget-paused or misconfigured. A status surface that
+    /// can say "working" when nothing is working is worse than no status surface.
+    enum Status: Equatable {
+        case needsCriteria
+        case paused(String)
+        case nothingConfigured
+        case sweeping(done: Int, total: Int)
+        case foundToday(Int)
+        case idle
+    }
+
+    var status: Status {
+        if blocked {
+            return .needsCriteria
+        }
+        if foundToday > 0 {
+            return .foundToday(foundToday)
+        }
+
+        let marketOn = settings.bool(forKey: SettingsKey.marketSweepEnabled)
+        let activeSources = sources.count { $0.enabled }
+        if !marketOn, activeSources == 0 {
+            return .nothingConfigured
+        }
+
+        // A pause is only meaningful while the market sweep is the thing running.
+        if marketOn, let state, !state.isFinished {
+            if let reason = state.pauseReason {
+                return .paused(reason)
+            }
+            return .sweeping(done: state.cursor, total: state.boardCount)
+        }
+        if let source = sources.first(where: { $0.enabled && $0.status.needsAttention }) {
+            return .paused("\(source.label): \(source.status.rawValue)")
+        }
+        return .idle
+    }
+
     @ViewBuilder
     private var statusLine: some View {
-        if foundToday > 0 {
+        switch status {
+        case .needsCriteria:
             Label(
-                "\(foundToday) new job\(foundToday == 1 ? "" : "s") found today",
+                "Paused — add at least one job title so it knows what to look for.",
+                systemImage: "exclamationmark.triangle.fill"
+            )
+            .font(.callout)
+            .foregroundStyle(.orange)
+        case let .paused(reason):
+            Label(reason, systemImage: "pause.circle.fill")
+                .font(.callout)
+                .foregroundStyle(.orange)
+        case .nothingConfigured:
+            Label(
+                "No companies watched and no full search running — nothing is being checked.",
+                systemImage: "questionmark.circle"
+            )
+            .font(.callout)
+            .foregroundStyle(.orange)
+        case let .sweeping(done, total):
+            // Boards rather than a percentage: on a pass this long the percentage barely moves,
+            // and a number that doesn't move reads as stuck.
+            Label(
+                "Checking company job boards — \(done.formatted()) of \(total.formatted()) so far",
+                systemImage: "arrow.triangle.2.circlepath"
+            )
+            .font(.callout)
+        case let .foundToday(count):
+            Label(
+                "\(count) new job\(count == 1 ? "" : "s") found today",
                 systemImage: "sparkles"
             )
             .font(.callout)
             .foregroundStyle(.green)
-        } else if let state, !state.isFinished {
-            // Boards rather than a percentage: on a pass this long the percentage barely moves,
-            // and a number that doesn't move reads as stuck.
-            Label(
-                "Checking company job boards — \(state.cursor.formatted()) of "
-                    + "\(state.boardCount.formatted()) so far",
-                systemImage: "arrow.triangle.2.circlepath"
-            )
-            .font(.callout)
-        } else {
+        case .idle:
             Label("Watching — nothing new yet today", systemImage: "checkmark.circle")
                 .font(.callout)
                 .foregroundStyle(.secondary)

@@ -37,12 +37,61 @@ public struct AtomicIngestInput: Sendable {
     public let userNote: String?
     public let rawHash: String
     public let cleanedHash: String?
+    /// Refuse to touch a job that already exists (TASK-699).
+    ///
+    /// The same-URL path is a *recapture*: it overwrites the stored capture, clears every
+    /// AI-extracted field, resets extraction, queues a paid LLM request and moves a `.duplicate`
+    /// job to `.new`. That is right when the user deliberately re-captures a posting in the browser
+    /// and catastrophic when an unattended sweep finds a posting they already have.
+    ///
+    /// Enforced **here**, inside the same transaction as the existence check, rather than by
+    /// callers filtering beforehand. A caller-side filter is a snapshot: it goes stale while the
+    /// sweep is doing network work, it fails open if the read throws, and one caller had already
+    /// forgotten to apply it. Ownership of an invariant belongs with the thing that can break it.
+    public let createOnly: Bool
+    /// See `Capture.discoveredBySourceID`.
+    public let discoveredBySourceID: String?
+
+    public init(
+        captureID: String, jobID: String, url: String, canonicalURL: String?, pageTitle: String,
+        selectedText: String?, visibleText: String?, cleanedDescription: String?,
+        structuredDataJSON: String?, userNote: String?, rawHash: String, cleanedHash: String?,
+        createOnly: Bool = false,
+        discoveredBySourceID: String? = nil
+    ) {
+        self.captureID = captureID
+        self.jobID = jobID
+        self.url = url
+        self.canonicalURL = canonicalURL
+        self.pageTitle = pageTitle
+        self.selectedText = selectedText
+        self.visibleText = visibleText
+        self.cleanedDescription = cleanedDescription
+        self.structuredDataJSON = structuredDataJSON
+        self.userNote = userNote
+        self.rawHash = rawHash
+        self.cleanedHash = cleanedHash
+        self.createOnly = createOnly
+        self.discoveredBySourceID = discoveredBySourceID
+    }
 }
 
 public struct AtomicIngestResult: Sendable {
     public let captureID: String
     public let jobNumber: Int
     public let isDuplicate: Bool
+    /// A `createOnly` ingest that found the posting already present, and therefore changed nothing.
+    /// Distinct from `isDuplicate`, which means the *content* hash matched.
+    public let alreadyExisted: Bool
+
+    public init(
+        captureID: String, jobNumber: Int, isDuplicate: Bool, alreadyExisted: Bool = false
+    ) {
+        self.captureID = captureID
+        self.jobNumber = jobNumber
+        self.isDuplicate = isDuplicate
+        self.alreadyExisted = alreadyExisted
+    }
 }
 
 /// Sendable tally of LLM-queue request statuses (for diagnostics).
@@ -92,7 +141,9 @@ public actor BackgroundStore {
 
     private func saveAtomically() throws {
         do {
-            if let saveFault { throw saveFault }
+            if let saveFault {
+                throw saveFault
+            }
             try modelContext.save()
         } catch {
             modelContext.rollback()
@@ -348,7 +399,9 @@ public actor BackgroundStore {
                 .lazy
                 .compactMap { $0.modelReturned ?? $0.modelRequested }
                 .first { !$0.isEmpty }
-            if let model { req.model = model }
+            if let model {
+                req.model = model
+            }
         }
     }
 
@@ -449,7 +502,9 @@ public actor BackgroundStore {
 
     /// Fetch items in the background context.
     public func fetch<T: PersistentModel>(_ descriptor: FetchDescriptor<T>) throws -> sending [T] {
-        if let fetchFault { throw fetchFault } // TASK-479 test seam (nil in production)
+        if let fetchFault {
+            throw fetchFault
+        } // TASK-479 test seam (nil in production)
         return try modelContext.fetch(descriptor)
     }
 
@@ -582,7 +637,9 @@ public actor BackgroundStore {
             job.updatedAt = Date()
             changed += 1
         }
-        if changed > 0 { try modelContext.save() }
+        if changed > 0 {
+            try modelContext.save()
+        }
         return changed
     }
 
@@ -604,9 +661,13 @@ public actor BackgroundStore {
             job.seniority = normalized
             job.updatedAt = Date()
             changed += 1
-            if normalized == nil { cleared += 1 }
+            if normalized == nil {
+                cleared += 1
+            }
         }
-        if changed > 0 { try modelContext.save() }
+        if changed > 0 {
+            try modelContext.save()
+        }
         return (changed, cleared)
     }
 
@@ -650,7 +711,9 @@ public actor BackgroundStore {
             record.updatedAt = Date()
             flagged += result.flagged
         }
-        if flagged > 0 { try modelContext.save() }
+        if flagged > 0 {
+            try modelContext.save()
+        }
         return (checked, flagged, skipped)
     }
 
@@ -673,7 +736,9 @@ public actor BackgroundStore {
             // keep failing the criteria (job #525).
             let inferred = RemoteTypeInference.infer(remoteType: job.remoteType, location: job.location)
             let arrangementChanged = inferred != job.remoteType
-            if arrangementChanged { job.remoteType = inferred }
+            if arrangementChanged {
+                job.remoteType = inferred
+            }
 
             let meets = LocationCriteria.meets(
                 remoteType: inferred, location: job.location,
@@ -682,13 +747,17 @@ public actor BackgroundStore {
                 allowHybrid: allowHybrid, allowOnsite: allowOnsite, filterEnabled: filterEnabled
             )
             let verdictChanged = job.meetsCriteria != meets
-            if verdictChanged { job.meetsCriteria = meets }
+            if verdictChanged {
+                job.meetsCriteria = meets
+            }
 
             guard arrangementChanged || verdictChanged else { continue }
             job.updatedAt = Date()
             changed += 1
         }
-        if changed > 0 { try modelContext.save() }
+        if changed > 0 {
+            try modelContext.save()
+        }
         return changed
     }
 
@@ -738,7 +807,9 @@ public actor BackgroundStore {
             capture.canonicalURL = nil
             cleared += 1
         }
-        if cleared > 0 { try modelContext.save() }
+        if cleared > 0 {
+            try modelContext.save()
+        }
         return cleared
     }
 
@@ -752,7 +823,9 @@ public actor BackgroundStore {
         for orphan in orphans {
             modelContext.delete(orphan)
         }
-        if !orphans.isEmpty { try modelContext.save() }
+        if !orphans.isEmpty {
+            try modelContext.save()
+        }
         return orphans.count
     }
 
@@ -780,7 +853,9 @@ public actor BackgroundStore {
             record.fitScore = result.overall
             record.updatedAt = Date()
             updated += 1
-            if let job = record.job { affectedJobIDs.insert(job.id) }
+            if let job = record.job {
+                affectedJobIDs.insert(job.id)
+            }
         }
         guard updated > 0 else { return 0 }
         let jobs = try modelContext.fetch(FetchDescriptor<Job>())
@@ -823,7 +898,9 @@ public actor BackgroundStore {
                   let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let assessments = dict["requirement_assessments"] as? [[String: Any]] else { continue }
             let recordJob = record.job?.jobNumber
-            if let recordJob { totalJobs.insert(recordJob) }
+            if let recordJob {
+                totalJobs.insert(recordJob)
+            }
             // A job-specific rule can only ever reach its own posting, so scoring the whole corpus
             // against it would overstate the blast radius.
             let inScope = kind != .jobSpecific || recordJob == jobNumber
@@ -832,7 +909,9 @@ public actor BackgroundStore {
                 totalRequirements += 1
                 guard inScope, ScoringFeedback.matches(phrase: phrase, in: requirement) else { continue }
                 matchingRequirements += 1
-                if let recordJob { matchingJobs.insert(recordJob) }
+                if let recordJob {
+                    matchingJobs.insert(recordJob)
+                }
             }
         }
         return FeedbackMatchPreview(
@@ -857,7 +936,9 @@ public actor BackgroundStore {
                 guard let requirement = item["requirement"] as? String else { continue }
                 for entry in feedback {
                     // A job-specific rule only ever applies to its own posting.
-                    if entry.kind == .jobSpecific, entry.jobNumber != jobNumber { continue }
+                    if entry.kind == .jobSpecific, entry.jobNumber != jobNumber {
+                        continue
+                    }
                     if ScoringFeedback.matches(phrase: entry.phrase, in: requirement) {
                         counts[entry.id, default: 0] += 1
                     }
@@ -1052,7 +1133,9 @@ public actor BackgroundStore {
         var fixed = 0
         for job in try modelContext.fetch(FetchDescriptor<Job>())
             where job.extractionStatus == .pending || job.extractionStatus == .running {
-            if backed.contains(job.id) { continue } // a live request still backs it
+            if backed.contains(job.id) {
+                continue
+            } // a live request still backs it
             job.extractionStatus = .failed
             job.extractionError = Self.orphanedExtractionError
             job.updatedAt = Date()
@@ -1088,7 +1171,9 @@ public actor BackgroundStore {
         var fixed = 0
         for score in scores where score.fitStatus == .running || score.fitStatus == .pending {
             guard let jid = score.job?.id, let rid = score.resume?.id else { continue }
-            if backed.contains("\(jid)|\(rid)") { continue } // a live request still backs it
+            if backed.contains("\(jid)|\(rid)") {
+                continue
+            } // a live request still backs it
             score.fitStatus = FitStatus.none
             score.fitScore = nil
             score.updatedAt = Date()
@@ -1194,24 +1279,48 @@ public actor BackgroundStore {
 
         let overrides = manualFieldOverrideSet(job.manualFieldOverridesJSON)
         job.extractedJSON = result.extractedJSON
-        if !overrides.contains("title") { job.title = result.title }
-        if !overrides.contains("company") { job.company = result.company }
-        if !overrides.contains("location") { job.location = result.location }
-        if !overrides.contains("remoteType") { job.remoteType = result.remoteType }
-        if !overrides.contains("salaryMin") { job.salaryMin = result.salaryMin }
-        if !overrides.contains("salaryMax") { job.salaryMax = result.salaryMax }
-        if !overrides.contains("salaryHourlyMin") { job.salaryHourlyMin = result.salaryHourlyMin }
-        if !overrides.contains("salaryHourlyMax") { job.salaryHourlyMax = result.salaryHourlyMax }
-        if !overrides.contains("salaryCurrency") { job.salaryCurrency = result.salaryCurrency }
-        if !overrides.contains("salaryNote") { job.salaryNote = result.salaryNote }
-        if !overrides.contains("employmentType") { job.employmentType = result.employmentType }
+        if !overrides.contains("title") {
+            job.title = result.title
+        }
+        if !overrides.contains("company") {
+            job.company = result.company
+        }
+        if !overrides.contains("location") {
+            job.location = result.location
+        }
+        if !overrides.contains("remoteType") {
+            job.remoteType = result.remoteType
+        }
+        if !overrides.contains("salaryMin") {
+            job.salaryMin = result.salaryMin
+        }
+        if !overrides.contains("salaryMax") {
+            job.salaryMax = result.salaryMax
+        }
+        if !overrides.contains("salaryHourlyMin") {
+            job.salaryHourlyMin = result.salaryHourlyMin
+        }
+        if !overrides.contains("salaryHourlyMax") {
+            job.salaryHourlyMax = result.salaryHourlyMax
+        }
+        if !overrides.contains("salaryCurrency") {
+            job.salaryCurrency = result.salaryCurrency
+        }
+        if !overrides.contains("salaryNote") {
+            job.salaryNote = result.salaryNote
+        }
+        if !overrides.contains("employmentType") {
+            job.employmentType = result.employmentType
+        }
         // Normalize on the way in as well as constraining the prompt: the model still returns the
         // posting's own wording often enough, and one canonical value is what the fit-scoring prompt
         // and any future filter both depend on.
         if !overrides.contains("seniority") {
             job.seniority = SeniorityNormalizer.normalize(result.seniority)
         }
-        if !overrides.contains("applicationURL") { job.applicationURL = result.applicationURL }
+        if !overrides.contains("applicationURL") {
+            job.applicationURL = result.applicationURL
+        }
         job.extractionConfidence = result.extractionConfidence
         job.meetsCriteria = result.meetsCriteria
         job.extractionModel = result.extractionModel
@@ -1413,7 +1522,9 @@ public actor BackgroundStore {
         let jid = jobID
         let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))
         guard let job = jobs.first else {
-            if requireJob { throw BackgroundStoreError.notFound(jobID) }
+            if requireJob {
+                throw BackgroundStoreError.notFound(jobID)
+            }
             return
         }
         let event = JobEvent(eventType: eventType, note: note, occurredAt: occurredAt, createdAt: createdAt)
@@ -1694,7 +1805,9 @@ public actor BackgroundStore {
     @discardableResult
     public func pruneOrphanReferralAttempts() throws -> Int {
         let removed = try MilestonePersistence.pruneOrphanReferralAttempts(in: modelContext)
-        if removed > 0 { try modelContext.save() }
+        if removed > 0 {
+            try modelContext.save()
+        }
         return removed
     }
 
@@ -1747,7 +1860,9 @@ public actor BackgroundStore {
             modelContext.insert(req)
             inserted = true
         }
-        if inserted { try modelContext.save() }
+        if inserted {
+            try modelContext.save()
+        }
         return inserted
     }
 
@@ -1796,10 +1911,14 @@ public actor BackgroundStore {
             // distinct jobs, e.g. a specialization of the same base title (TASK-622).
             guard pair.kind == .exactHash || pair.kind == .atsPostingID else { continue }
             guard let candidate = jobIndex[pair.candidate.id] else { continue }
-            if candidate.duplicateOfJobID == pair.original.id { continue } // already flagged
+            if candidate.duplicateOfJobID == pair.original.id {
+                continue
+            } // already flagged
             candidate.duplicateOfJobID = pair.original.id
             candidate.duplicateConfidence = pair.confidence
-            if candidate.status != .duplicate { candidate.status = .duplicate }
+            if candidate.status != .duplicate {
+                candidate.status = .duplicate
+            }
             candidate.updatedAt = Date()
             let originalNum = pair.original.jobNumber.map { "#\($0)" } ?? "another job"
             let event = JobEvent(
@@ -1810,7 +1929,9 @@ public actor BackgroundStore {
             modelContext.insert(event)
             flagged += 1
         }
-        if flagged > 0 { try modelContext.save() }
+        if flagged > 0 {
+            try modelContext.save()
+        }
         return flagged
     }
 
@@ -1832,7 +1953,9 @@ public actor BackgroundStore {
             guard let latest = dupEvents.last else { continue }
             let note = (latest.note ?? "").lowercased()
             // Keep definitive flags (the same posting); recover everything fuzzy.
-            if note.contains("same ats posting id") || note.contains("exact cleaned-description hash") { continue }
+            if note.contains("same ats posting id") || note.contains("exact cleaned-description hash") {
+                continue
+            }
 
             let restored = priorStatusBeforeDuplicate(job)
             job.duplicateOfJobID = nil
@@ -1847,7 +1970,9 @@ public actor BackgroundStore {
             modelContext.insert(event)
             recovered += 1
         }
-        if recovered > 0 { try modelContext.save() }
+        if recovered > 0 {
+            try modelContext.save()
+        }
         return recovered
     }
 
@@ -1858,7 +1983,9 @@ public actor BackgroundStore {
         for event in statusEvents.reversed() {
             guard let note = event.note, let toRange = note.range(of: "to ", options: .backwards) else { continue }
             let target = note[toRange.upperBound...].trimmingCharacters(in: .whitespaces)
-            if let status = JobStatus(rawValue: target), status != .duplicate { return status }
+            if let status = JobStatus(rawValue: target), status != .duplicate {
+                return status
+            }
         }
         return .pursuing
     }
@@ -2055,12 +2182,22 @@ public actor BackgroundStore {
         // O(N) over a few hundred captures, and only on the miss path.
         if existingByURL == nil, let target = URLNormalizer.normalized(inURL) {
             existingByURL = try modelContext.fetch(FetchDescriptor<Capture>()).first { capture in
-                if URLNormalizer.normalized(capture.url) == target { return true }
+                if URLNormalizer.normalized(capture.url) == target {
+                    return true
+                }
                 guard let canon = capture.canonicalURL, !canon.isEmpty else { return false }
                 return URLNormalizer.normalized(canon) == target
             }
         }
         if let existing = existingByURL, let job = existing.job {
+            // Create-only: the posting is already here, so stop before the destructive part.
+            // Nothing above this point has mutated anything.
+            if input.createOnly {
+                return AtomicIngestResult(
+                    captureID: existing.id, jobNumber: job.jobNumber ?? 0,
+                    isDuplicate: false, alreadyExisted: true
+                )
+            }
             existing.url = input.url
             existing.canonicalURL = input.canonicalURL
             existing.pageTitle = input.pageTitle
@@ -2068,7 +2205,9 @@ public actor BackgroundStore {
             existing.visibleText = input.visibleText
             existing.cleanedDescription = input.cleanedDescription
             existing.structuredDataJSON = input.structuredDataJSON
-            if let note = input.userNote, !note.isEmpty { existing.userNote = note }
+            if let note = input.userNote, !note.isEmpty {
+                existing.userNote = note
+            }
             existing.rawHash = input.rawHash
             existing.cleanedHash = input.cleanedHash
 
@@ -2079,7 +2218,9 @@ public actor BackgroundStore {
             clearExtractionOwnedFields(job)
             job.duplicateOfJobID = nil
             job.duplicateConfidence = nil // TASK-518: confidence is meaningless without the link
-            if job.status == .duplicate { job.status = .new }
+            if job.status == .duplicate {
+                job.status = .new
+            }
             // TASK-445: total raw bytes the extension transmitted (selected + visible). The cleaner
             // uses both inputs, so `max` undercounted captures where both contribute. This is the raw
             // capture-pipeline size; deduped unique content is tracked separately as cleanedTextBytes.
@@ -2143,6 +2284,7 @@ public actor BackgroundStore {
             cleanedDescription: input.cleanedDescription,
             structuredDataJSON: input.structuredDataJSON,
             userNote: input.userNote,
+            discoveredBySourceID: input.discoveredBySourceID,
             rawHash: input.rawHash,
             cleanedHash: input.cleanedHash
         )

@@ -187,6 +187,51 @@ final class DiscoveryLedgerTests: XCTestCase {
         XCTAssertEqual(remaining.map(\.sourceID), ["lever"])
     }
 
+    /// The write path fetches existing rows by key in chunks rather than scanning the table, so a
+    /// batch larger than one chunk must still update every row it already had — and must not
+    /// duplicate any, since `dedupKey` is unique and a second insert would throw.
+    func testALargeBatchUpdatesEveryExistingRowAcrossChunks() async throws {
+        let store = try makeStore()
+        let keys = (0 ..< 1200).map { "k\($0)" }
+        try await store.recordDiscoveryOutcomes(
+            keys.map { (posting($0), DiscoveryOutcome.rejected, DiscoveryRejectReason.title) },
+            criteriaFingerprint: criteria.fingerprint
+        )
+        // Re-record the same keys with a different verdict: every row must be updated in place.
+        try await store.recordDiscoveryOutcomes(
+            keys.map { (posting($0), DiscoveryOutcome.ingested, nil) },
+            criteriaFingerprint: criteria.fingerprint
+        )
+        let counts = try await store.discoveryOutcomeCounts()
+        XCTAssertEqual(counts["ingested"], 1200)
+        XCTAssertNil(counts["rejected.title"], "the earlier verdicts were replaced, not duplicated")
+        let unjudged = try await store.unjudgedPostings(
+            keys.map { posting($0) }, criteriaFingerprint: criteria.fingerprint
+        )
+        XCTAssertTrue(unjudged.isEmpty, "an ingested posting is never reconsidered")
+    }
+
+    /// `retainedRawPostings` now filters on `rawJSON != nil` in the predicate rather than after
+    /// fetching. Same answer, without materialising the rows that carry no payload.
+    func testRetainedRowsExcludeClearedOnesWhateverTheSource() async throws {
+        let store = try makeStore()
+        try await store.recordDiscoveryOutcomes([
+            (posting("1", source: "greenhouse"), .rejected, .title),
+            (posting("2", source: "lever"), .rejected, .title)
+        ], criteriaFingerprint: criteria.fingerprint)
+        try await store.clearRetainedRawRows(sourceID: "greenhouse")
+
+        let lever = try await store.retainedRawPostings(sourceID: "lever")
+        let greenhouse = try await store.retainedRawPostings(sourceID: "greenhouse")
+        let greenhouseCounts = try await store.discoveryOutcomeCounts(sourceID: "greenhouse")
+        XCTAssertEqual(lever.count, 1)
+        XCTAssertTrue(greenhouse.isEmpty)
+        XCTAssertEqual(
+            greenhouseCounts["rejected.title"], 1,
+            "clearing the payload must not forget the key"
+        )
+    }
+
     func testAnEmptySweepIsANoOp() async throws {
         let store = try makeStore()
         try await store.recordDiscoveryOutcomes([], criteriaFingerprint: criteria.fingerprint)

@@ -134,7 +134,7 @@ public struct DiscoverySweeper: Sendable {
 
         // 2. Gate A — free, and runs on everything.
         let gated = applyGate(postings, criteria: criteria, now: now)
-        var rejections = gated.rejections
+        let rejections = gated.rejections
         var outcomes = gated.outcomes
         let survivors = gated.survivors
 

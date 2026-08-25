@@ -71,9 +71,10 @@ public extension BackgroundStore {
     ) throws {
         guard !outcomes.isEmpty else { return }
         let keys = Set(outcomes.map(\.posting.dedupKey))
-        let existing = try modelContext.fetch(FetchDescriptor<DiscoveryLedgerEntry>())
-            .filter { keys.contains($0.dedupKey) }
-        var byKey = Dictionary(existing.map { ($0.dedupKey, $0) }, uniquingKeysWith: { first, _ in first })
+        var byKey = Dictionary(
+            try existingLedgerEntries(keys: keys).map { ($0.dedupKey, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
 
         for (posting, outcome, reason) in outcomes {
             if let entry = byKey[posting.dedupKey] {
@@ -102,6 +103,29 @@ public extension BackgroundStore {
         try modelContext.save()
     }
 
+    /// The ledger rows for a set of keys, fetched by key rather than by scanning.
+    ///
+    /// `unjudgedPostings` already refuses to scan the ledger per board, and the write path below it
+    /// used to do exactly that — fetching every row and filtering in memory. On a watched Workday
+    /// tenant the ledger holds a row per posting, so recording one board's handful of outcomes
+    /// materialised tens of thousands of model objects.
+    ///
+    /// Chunked because this becomes a SQL `IN (…)`, and SQLite binds one variable per element: a
+    /// 3,000-posting tenant would otherwise build a single statement past the host parameter limit.
+    private func existingLedgerEntries(keys: Set<String>) throws -> [DiscoveryLedgerEntry] {
+        let all = Array(keys)
+        var found: [DiscoveryLedgerEntry] = []
+        for start in stride(from: 0, to: all.count, by: 500) {
+            let chunk = Array(all[start ..< min(start + 500, all.count)])
+            found.append(contentsOf: try modelContext.fetch(
+                FetchDescriptor<DiscoveryLedgerEntry>(
+                    predicate: #Predicate { chunk.contains($0.dedupKey) }
+                )
+            ))
+        }
+        return found
+    }
+
     /// Drop the retained raw rows for a source's previous sweep.
     ///
     /// Called at the start of each sweep so exactly one sweep's payloads are held per source: enough
@@ -110,8 +134,11 @@ public extension BackgroundStore {
     /// may have already archived.
     @discardableResult
     func clearRetainedRawRows(sourceID: String) throws -> Int {
-        let entries = try modelContext.fetch(FetchDescriptor<DiscoveryLedgerEntry>())
-            .filter { $0.sourceID == sourceID && $0.rawJSON != nil }
+        let entries = try modelContext.fetch(
+            FetchDescriptor<DiscoveryLedgerEntry>(
+                predicate: #Predicate { $0.sourceID == sourceID && $0.rawJSON != nil }
+            )
+        )
         for entry in entries {
             entry.rawJSON = nil
         }
@@ -122,9 +149,19 @@ public extension BackgroundStore {
     }
 
     /// The retained raw rows, for the settings preview.
+    ///
+    /// Only rows that actually carry a payload: raw JSON is kept for one sweep per source, so the
+    /// overwhelming majority of the ledger has `rawJSON == nil` and fetching it to discard it is
+    /// the settings pane's most expensive query.
     func retainedRawPostings(sourceID: String? = nil) throws -> [DiscoveredPosting] {
-        try modelContext.fetch(FetchDescriptor<DiscoveryLedgerEntry>())
-            .filter { sourceID == nil || $0.sourceID == sourceID }
+        let descriptor: FetchDescriptor<DiscoveryLedgerEntry> = if let sourceID {
+            FetchDescriptor(
+                predicate: #Predicate { $0.rawJSON != nil && $0.sourceID == sourceID }
+            )
+        } else {
+            FetchDescriptor(predicate: #Predicate { $0.rawJSON != nil })
+        }
+        return try modelContext.fetch(descriptor)
             .compactMap(\.rawJSON)
             .compactMap { BackgroundStore.decodeRaw($0) }
     }
@@ -132,8 +169,12 @@ public extension BackgroundStore {
     /// How many postings this source has ever had each outcome — the rejection histogram.
     func discoveryOutcomeCounts(sourceID: String? = nil) throws -> [String: Int] {
         var counts: [String: Int] = [:]
-        for entry in try modelContext.fetch(FetchDescriptor<DiscoveryLedgerEntry>())
-            where sourceID == nil || entry.sourceID == sourceID {
+        let descriptor: FetchDescriptor<DiscoveryLedgerEntry> = if let sourceID {
+            FetchDescriptor(predicate: #Predicate { $0.sourceID == sourceID })
+        } else {
+            FetchDescriptor()
+        }
+        for entry in try modelContext.fetch(descriptor) {
             let key = entry.outcome == .rejected
                 ? "rejected.\(entry.rejectReasonRaw ?? "unknown")"
                 : entry.outcomeRaw

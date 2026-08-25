@@ -22,7 +22,14 @@ struct AutoSearchCard: View {
     /// Jobs discovery has added today. Counted from captures rather than the ledger because this
     /// answers "what turned up for me", and a job the user already deleted should not still be
     /// claimed as today's find.
-    @Query private var captures: [Capture]
+    ///
+    /// Narrowed to discovered captures in the predicate rather than in `foundToday`: unfiltered,
+    /// this fetched every capture in the library — a thousand-plus rows, growing — on every
+    /// Dashboard update, to count the handful that arrived today. The date stays out of the
+    /// predicate deliberately, because a `@Query` predicate is fixed when the view is created and
+    /// one built around "today" would keep reporting yesterday's total after midnight.
+    @Query(filter: #Predicate<Capture> { $0.discoveredBySourceID != nil })
+    private var captures: [Capture]
 
     private var enabled: Bool {
         settings.bool(forKey: SettingsKey.discoveryEnabled)
@@ -38,8 +45,9 @@ struct AutoSearchCard: View {
     private var foundToday: Int {
         let start = Calendar.current.startOfDay(for: Date())
         // On the structured field, not the note: the note is editable copy, so parsing it would
-        // lose a find the user annotated and miscount any other note starting the same way.
-        return captures.count { $0.capturedAt >= start && $0.discoveredBySourceID != nil }
+        // lose a find the user annotated and miscount any other note starting the same way. The
+        // `discoveredBySourceID` half of that test is now the query's predicate.
+        return captures.count { $0.capturedAt >= start }
     }
 
     private var state: MarketSweepState? {

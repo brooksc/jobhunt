@@ -341,13 +341,37 @@ public enum WorkdayJobBoard {
         return nil
     }
 
-    /// Result of a board sweep. `truncated` is not decoration: a run that stopped on a rate limit
-    /// found *some* roles, and recording that as a healthy complete listing is how a board quietly
-    /// stops being scanned properly.
+    /// Why pagination stopped. The distinction is the whole point: a run that stopped on a rate
+    /// limit found *some* roles, and recording that as a healthy complete listing is how a board
+    /// quietly stops being scanned properly — but a run that stopped because the caller only asked
+    /// for five pages did exactly what it was told, and treating *that* as a failure marks the
+    /// largest employers unreachable forever.
+    public enum Stop: Sendable, Equatable {
+        /// The board was read to its end.
+        case complete
+        /// The caller's page cap was reached with more still on the board. Expected, not an error:
+        /// a market pass deliberately reads only the newest `marketPageLimit` pages.
+        case bounded
+        /// The tenant stopped answering partway through. A coverage failure.
+        case failed(String)
+    }
+
     public struct Listing: Sendable {
         public let roles: [GreenhouseJobBoard.OpenRole]
-        public let truncated: Bool
+        public let stop: Stop
         public let reportedTotal: Int?
+
+        /// True when the tenant broke off mid-listing — the only condition a caller should treat as
+        /// a failed read.
+        public var didFail: Bool {
+            if case .failed = stop {
+                return true
+            }
+            return false
+        }
+
+        /// True when this is not the whole board, for whatever reason.
+        public var isPartial: Bool { stop != .complete }
     }
 
     /// Every posting on the board, paginating the CXS API.
@@ -364,13 +388,13 @@ public enum WorkdayJobBoard {
         now: Date = Date()
     ) async -> Listing {
         guard let endpoint = board.listEndpoint else {
-            return Listing(roles: [], truncated: false, reportedTotal: nil)
+            return Listing(roles: [], stop: .complete, reportedTotal: nil)
         }
         guard let first = await fetchWithRetry(
             listRequest(board: board, endpoint: endpoint, offset: 0),
             session: session
         ) else {
-            return Listing(roles: [], truncated: true, reportedTotal: nil)
+            return Listing(roles: [], stop: .failed("didn't answer"), reportedTotal: nil)
         }
 
         var roles = decodeRoles(first, board: board, now: now)
@@ -379,37 +403,49 @@ public enum WorkdayJobBoard {
             total: total, firstPageCount: decodePageCount(first), maxPages: max(1, maxPages)
         )
         if pageIsPastWindow(roles, since: since) {
-            return Listing(roles: roles, truncated: false, reportedTotal: total)
+            return Listing(roles: roles, stop: .complete, reportedTotal: total)
+        }
+        // A short first page is the whole board. Checked explicitly because the loop below never
+        // runs in that case, and inferring "complete" from the loop falling through would report a
+        // one-page board — including an empty one — as bounded.
+        if decodePageCount(first) < pageSize {
+            return Listing(roles: roles, stop: .complete, reportedTotal: total)
         }
 
         // Sequential, not concurrent: one tenant's API has no reason to receive a burst of parallel
         // requests, and a mid-run failure stops cleanly with the pages already gathered instead of
         // discarding all of them.
         var page = 1
+        // Running the loop to exhaustion means the page budget ran out, not that the board ended;
+        // the two `break`s below are the paths that prove we reached the end.
+        var stop = Stop.bounded
         while page < pages {
             if Task.isCancelled {
-                return Listing(roles: roles, truncated: true, reportedTotal: total)
+                return Listing(roles: roles, stop: .failed("cancelled"), reportedTotal: total)
             }
             try? await Task.sleep(for: interPageDelay)
             let request = listRequest(board: board, endpoint: endpoint, offset: page * pageSize)
             guard let data = await fetchWithRetry(request, session: session) else {
-                return Listing(roles: roles, truncated: true, reportedTotal: total)
+                return Listing(
+                    roles: roles,
+                    stop: .failed("stopped answering after \(roles.count) roles"),
+                    reportedTotal: total
+                )
             }
             let pageRoles = decodeRoles(data, board: board, now: now)
             roles.append(contentsOf: pageRoles)
             // A short page is the last page, whatever `total` claimed.
             if decodePageCount(data) < pageSize {
+                stop = .complete
                 break
             }
             if pageIsPastWindow(pageRoles, since: since) {
+                stop = .complete
                 break
             }
             page += 1
         }
-        // Hitting the cap means the listing is incomplete, and a caller that reports it as the
-        // company's open roles would be wrong about it.
-        let hitCap = page >= pages && pages == max(1, maxPages)
-        return Listing(roles: roles, truncated: hitCap, reportedTotal: total)
+        return Listing(roles: roles, stop: stop, reportedTotal: total)
     }
 
     /// One posting's full detail, including the description the list endpoint omits.

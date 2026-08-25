@@ -297,17 +297,18 @@ public struct WorkdaySource: JobSource {
             board: board, session: session, since: since,
             maxPages: config.pageLimit ?? Self.sweepMaxPages
         )
-        // An incomplete listing must NOT read as a complete one. Page one succeeding and page two
-        // timing out used to return page one's roles and discard the truncation flag, so a tenant
+        // A listing the tenant broke off must NOT read as a complete one. Page one succeeding and
+        // page two timing out used to return page one's roles and discard the failure, so a tenant
         // whose scan died at 20 of 3,000 looked exactly like a tenant with 20 open roles — and the
-        // board was marked done and never revisited. Truncation is a failure of coverage even when
-        // it comes with rows attached.
-        if listing.truncated {
-            throw SourceError.unreachable(
-                listing.roles.isEmpty
-                    ? "\(board.tenant) didn't answer"
-                    : "\(board.tenant) answered only partly (\(listing.roles.count) roles before it stopped)"
-            )
+        // board was marked done and never revisited.
+        //
+        // Only a *failure* qualifies. Stopping at the caller's page cap is the market pass working
+        // as designed — it asks every tenant for the newest 100 postings — and throwing on that
+        // made every employer with more than 100 open roles permanently unreachable, which is most
+        // of the large ones (Allstate 441, Humana 362, NVIDIA 2,000, even Zillow 110). They yielded
+        // nothing at all rather than their newest 100.
+        if case let .failed(why) = listing.stop {
+            throw SourceError.unreachable("\(board.tenant) \(why)")
         }
         return listing.roles.compactMap {
             JobSourceTransport.posting(

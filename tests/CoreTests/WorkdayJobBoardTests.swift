@@ -379,3 +379,162 @@ final class WorkdayCoverageTests: XCTestCase {
         XCTAssertNil(WorkdayJobBoard.retryAfter("not a duration"))
     }
 }
+
+/// Why pagination stopped, and why the difference decides whether a board is ever read again
+/// (TASK-703 follow-up).
+///
+/// The first version of the truncation fix threw on *any* incomplete listing. But a market pass
+/// deliberately reads only the newest five pages of every tenant, so "incomplete" is the designed
+/// outcome for every large employer — and throwing turned each of them into a permanently
+/// unreachable board yielding nothing at all. Measured against live tenants at the time: Allstate
+/// 441 open roles, Humana 362, NVIDIA 2,000, Zillow 110 — every one over the 100-role window.
+final class WorkdayStopReasonTests: XCTestCase {
+    private let board = WorkdayJobBoard.Board(
+        tenant: "acme", site: "careers", host: "acme.wd5.myworkdayjobs.com"
+    )
+
+    override func setUp() {
+        super.setUp()
+        MockURLProtocol.reset()
+    }
+
+    override func tearDown() {
+        MockURLProtocol.reset()
+        super.tearDown()
+    }
+
+    /// `count` postings, each with a distinct id so pages don't collapse when deduplicated.
+    private func page(_ count: Int, total: Int?, offset: Int = 0) -> Data {
+        let postings = (0 ..< count).map { index in
+            """
+            {"title":"Role \(offset + index)","externalPath":"/job/Seattle/Role_R\(offset + index)",\
+            "postedOn":"Posted Today"}
+            """
+        }.joined(separator: ",")
+        let totalField = total.map { "\"total\": \($0)," } ?? ""
+        return Data("{ \(totalField) \"jobPostings\": [\(postings)] }".utf8)
+    }
+
+    private func stubEveryPageFull(total: Int) {
+        MockURLProtocol.handlers.append(("wday/cxs", { [self] request in
+            let response = HTTPURLResponse(
+                url: request.url ?? URL(fileURLWithPath: "/"), statusCode: 200,
+                httpVersion: nil, headerFields: nil
+            )!
+            return (response, page(WorkdayJobBoard.pageSize, total: total))
+        }))
+    }
+
+    /// The regression that mattered: a tenant larger than the page cap is *bounded*, not failed, so
+    /// the market pass keeps its newest 100 roles instead of discarding the tenant entirely.
+    func testHittingThePageCapIsBoundedNotFailed() async {
+        stubEveryPageFull(total: 2000)
+        let listing = await WorkdayJobBoard.listOpenRoles(
+            board: board, session: MockURLProtocol.makeSession(), maxPages: 5
+        )
+        XCTAssertEqual(listing.stop, .bounded)
+        XCTAssertFalse(listing.didFail, "the cap is the caller's own bound, not the tenant failing")
+        XCTAssertTrue(listing.isPartial)
+        XCTAssertEqual(listing.roles.count, 5 * WorkdayJobBoard.pageSize)
+    }
+
+    /// And the source turns that into roles rather than an error — the actual user-visible effect.
+    func testALargeTenantStillYieldsItsNewestRoles() async throws {
+        stubEveryPageFull(total: 2000)
+        let postings = try await WorkdaySource().fetchRecent(
+            config: SourceConfig(
+                slug: "https://acme.wd5.myworkdayjobs.com/careers",
+                pageLimit: MarketSweeper.marketPageLimit
+            ),
+            since: nil,
+            session: MockURLProtocol.makeSession()
+        )
+        XCTAssertEqual(
+            postings.count, MarketSweeper.marketPageLimit * WorkdayJobBoard.pageSize,
+            "a 2,000-role tenant must contribute its newest 100, not throw"
+        )
+    }
+
+    /// The original bug still stays fixed: a mid-listing failure is not a complete board.
+    func testATenantThatStopsAnsweringMidListingFails() async {
+        var served = 0
+        MockURLProtocol.handlers.append(("wday/cxs", { [self] request in
+            served += 1
+            let url = request.url ?? URL(fileURLWithPath: "/")
+            if served == 1 {
+                return (
+                    HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    page(WorkdayJobBoard.pageSize, total: 3000)
+                )
+            }
+            return (
+                HTTPURLResponse(url: url, statusCode: 500, httpVersion: nil, headerFields: nil)!,
+                Data()
+            )
+        }))
+        let listing = await WorkdayJobBoard.listOpenRoles(
+            board: board, session: MockURLProtocol.makeSession(), maxPages: 5
+        )
+        XCTAssertTrue(listing.didFail, "page one alone is not a 3,000-role tenant's open roles")
+        XCTAssertFalse(listing.roles.isEmpty, "the rows it did get are still returned")
+    }
+
+    func testAPartialListingStillThrowsFromTheSource() async {
+        MockURLProtocol.handlers.append(("wday/cxs", { request in
+            (
+                HTTPURLResponse(
+                    url: request.url ?? URL(fileURLWithPath: "/"), statusCode: 500,
+                    httpVersion: nil, headerFields: nil
+                )!,
+                Data()
+            )
+        }))
+        do {
+            _ = try await WorkdaySource().fetchRecent(
+                config: SourceConfig(slug: "https://acme.wd5.myworkdayjobs.com/careers", pageLimit: 5),
+                since: nil,
+                session: MockURLProtocol.makeSession()
+            )
+            XCTFail("a tenant that never answered must not read as a board with no open roles")
+        } catch {}
+    }
+
+    /// A board that is genuinely empty is complete, not broken. The old `hitCap` expression was
+    /// true whenever `pages == maxPages`, which includes the one-page probe — so every empty
+    /// Workday board told the user their correct URL "didn't answer".
+    func testAnEmptyBoardIsCompleteNotFailed() async {
+        MockURLProtocol.handlers.append(("wday/cxs", { [self] request in
+            (
+                HTTPURLResponse(
+                    url: request.url ?? URL(fileURLWithPath: "/"), statusCode: 200,
+                    httpVersion: nil, headerFields: nil
+                )!,
+                page(0, total: 0)
+            )
+        }))
+        let listing = await WorkdayJobBoard.listOpenRoles(
+            board: board, session: MockURLProtocol.makeSession(), maxPages: 1
+        )
+        XCTAssertEqual(listing.stop, .complete)
+        XCTAssertFalse(listing.didFail)
+        XCTAssertTrue(listing.roles.isEmpty)
+    }
+
+    /// A board smaller than one page is complete too.
+    func testAShortFirstPageIsComplete() async {
+        MockURLProtocol.handlers.append(("wday/cxs", { [self] request in
+            (
+                HTTPURLResponse(
+                    url: request.url ?? URL(fileURLWithPath: "/"), statusCode: 200,
+                    httpVersion: nil, headerFields: nil
+                )!,
+                page(3, total: 3)
+            )
+        }))
+        let listing = await WorkdayJobBoard.listOpenRoles(
+            board: board, session: MockURLProtocol.makeSession(), maxPages: 5
+        )
+        XCTAssertEqual(listing.stop, .complete)
+        XCTAssertEqual(listing.roles.count, 3)
+    }
+}

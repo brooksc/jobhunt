@@ -130,7 +130,13 @@ public enum SourceResolver {
             if !listing.roles.isEmpty {
                 return .listing(count: listing.reportedTotal ?? listing.roles.count)
             }
-            return listing.truncated ? .unknown("\(board.tenant) didn't answer") : .empty
+            // Keyed on a genuine failure, not on partialness: this asks for one page, so a board
+            // with nothing on it always "stopped short" — and reporting a real empty board as
+            // unreachable would tell the user their correct URL was broken.
+            if case let .failed(why) = listing.stop {
+                return .unknown("\(board.tenant) \(why)")
+            }
+            return .empty
         }
 
         guard let source = JobSources.source(id: kind) else {

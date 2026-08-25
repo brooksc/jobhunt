@@ -51,7 +51,7 @@ public enum WorkdayJobBoard {
     /// first non-locale path segment.
     public static func board(for url: URL) -> Board? {
         guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let host = comps.host?.lowercased(), host.hasSuffix("myworkdayjobs.com"),
+              let host = comps.host?.lowercased(), ATSHost.belongs(host, to: "myworkdayjobs.com"),
               let tenant = host.split(separator: ".").first.map(String.init), !tenant.isEmpty
         else { return nil }
 
@@ -197,10 +197,16 @@ public enum WorkdayJobBoard {
     public static func pageIsPastWindow(
         _ roles: [GreenhouseJobBoard.OpenRole], since: Date?
     ) -> Bool {
-        guard let since else { return false }
+        guard let since, !roles.isEmpty else { return false }
         let dated = roles.compactMap(\.firstPublished)
-        guard let oldest = dated.min() else { return false }
-        return oldest < since.addingTimeInterval(-earlyStopMargin)
+        // Every row on the page has to be dated. A page mixing old dated rows with undated ones
+        // says nothing about what comes next — the undated ones could be anything — and stopping
+        // there would silently truncate the tenant.
+        guard dated.count == roles.count else { return false }
+        // And the NEWEST row has to be outside the window, not the oldest. Keying on the oldest
+        // meant a single stale outlier among otherwise fresh postings ended the scan.
+        guard let newest = dated.max() else { return false }
+        return newest < since.addingTimeInterval(-earlyStopMargin)
     }
 
     // MARK: - Pagination arithmetic
@@ -217,11 +223,16 @@ public enum WorkdayJobBoard {
     /// return page 0 again. The cap is what contains that, which is why it applies to the reported
     /// total rather than being bypassed by it.
     public static func pagesToFetch(total: Int?, firstPageCount: Int, maxPages: Int) -> Int {
-        guard let total else {
-            return firstPageCount >= pageSize ? maxPages : 1
-        }
+        // A short first page is the end of the board, whatever `total` claims.
+        guard firstPageCount >= pageSize else { return 1 }
+        // A FULL first page means there may be more, and `total` is only advisory — the header
+        // comment already records tenants reporting a `total` far below what they will serve, and
+        // trusting it as a boundary means a tenant answering `total: 1` with twenty roles is
+        // declared complete after one page. So a full page always justifies looking at the next
+        // one; the page cap, the short-page check and the early stop are what actually bound this.
+        guard let total else { return maxPages }
         let needed = Int((Double(total) / Double(pageSize)).rounded(.up))
-        return max(1, min(needed, maxPages))
+        return max(2, min(max(needed, 2), maxPages))
     }
 
     // MARK: - Retry classification
@@ -235,7 +246,29 @@ public enum WorkdayJobBoard {
     /// — career-ops measured a 3,383-posting tenant reduced to 20.
     public static func isRetryable(status: Int?) -> Bool {
         guard let status else { return true }
-        return status == 429 || status >= 500
+        // 408 is a timeout the server chose to report rather than drop — as transient as the
+        // dropped-connection case that arrives here as a nil status.
+        return status == 429 || status == 408 || status >= 500
+    }
+
+    /// A `Retry-After`, clamped.
+    ///
+    /// Honoured because a server telling us how long to wait knows better than a fixed backoff, and
+    /// clamped because a hostile or misconfigured `Retry-After: 86400` would otherwise stall a
+    /// sweep for a day. Accepts both permitted forms: delta-seconds and an HTTP-date.
+    static func retryAfter(_ header: String?, maximum: Duration = .seconds(30)) -> Duration? {
+        guard let header = header?.trimmingCharacters(in: .whitespaces), !header.isEmpty else {
+            return nil
+        }
+        if let seconds = Double(header), seconds >= 0 {
+            return min(.seconds(seconds), maximum)
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        guard let date = formatter.date(from: header) else { return nil }
+        return min(.seconds(max(0, date.timeIntervalSinceNow)), maximum)
     }
 
     // MARK: - Network
@@ -278,13 +311,16 @@ public enum WorkdayJobBoard {
         _ request: URLRequest, session: URLSession, attempts: Int = retryAttempts
     ) async -> Data? {
         for attempt in 0 ..< attempts {
+            var serverAsked: Duration?
             do {
                 let (data, response) = try await session.data(for: request)
-                let status = (response as? HTTPURLResponse)?.statusCode
+                let http = response as? HTTPURLResponse
+                let status = http?.statusCode
                 if status == 200 {
                     return data
                 }
                 guard isRetryable(status: status) else { return nil }
+                serverAsked = retryAfter(http?.value(forHTTPHeaderField: "Retry-After"))
             } catch {
                 // Cancellation is not a transient failure — a cancelled sweep must stop, not retry.
                 if error is CancellationError {
@@ -295,10 +331,12 @@ public enum WorkdayJobBoard {
                 }
             }
             guard attempt < attempts - 1 else { return nil }
-            // Jitter so concurrent retries don't re-collide in lockstep.
+            // The server's own answer wins over a guess; a fixed backoff into an active rate limit
+            // is how a throttle turns into a lost tenant. Jitter otherwise, so concurrent retries
+            // don't re-collide in lockstep.
             let backoff = Duration.milliseconds(500 << attempt)
             let jitter = Duration.milliseconds(Int.random(in: 0 ... 250))
-            try? await Task.sleep(for: backoff + jitter)
+            try? await Task.sleep(for: serverAsked ?? (backoff + jitter))
         }
         return nil
     }

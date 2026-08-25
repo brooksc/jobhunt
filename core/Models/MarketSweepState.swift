@@ -30,13 +30,21 @@ public final class MarketSweepState {
     public var boardCount: Int
     /// Fingerprint of the ordered board list this pass is walking. A mismatch on resume means the
     /// cursor is meaningless.
-    public var directoryRevision: String
+    ///
+    /// **Optional because an initializer default is not a migration default.** A non-optional
+    /// property added to a model that already has rows fails the lightweight migration outright —
+    /// "missing attribute values on mandatory destination attribute" — and the store won't open at
+    /// all. Nil here reads as "written before this existed", which correctly forces a restart
+    /// rather than trusting a cursor whose list is unknown.
+    public var directoryRevision: String?
     /// The priority set used to order this pass, JSON-encoded.
     ///
     /// Persisted rather than recomputed because it is derived from the user's library, which grows
     /// as the sweep ingests — recomputing would reorder the list mid-pass and invalidate the very
     /// cursor it is meant to keep valid.
-    public var priorityJSON: String
+    ///
+    /// Optional for the same migration reason as `directoryRevision`.
+    public var priorityJSON: String?
 
     /// Running totals, for the status the user checks on.
     public var boardsSwept: Int
@@ -81,7 +89,7 @@ public final class MarketSweepState {
 
     /// The priority set this pass was ordered with, so a resume rebuilds the identical list.
     public var priority: Set<String> {
-        guard let data = priorityJSON.data(using: .utf8),
+        guard let data = priorityJSON?.data(using: .utf8),
               let list = try? JSONDecoder().decode([String].self, from: data) else { return [] }
         return Set(list)
     }

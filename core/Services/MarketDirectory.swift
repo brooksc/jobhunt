@@ -45,6 +45,10 @@ public enum MarketDirectory {
     /// daily re-download of 600 KB buys nothing a weekly one doesn't.
     public static let refreshInterval: TimeInterval = 7 * 24 * 3600
 
+    /// The four real files total about 600 KB. 16 MB is ample headroom and still bounds what a
+    /// broken or hostile upstream can make jobhunt buffer and parse.
+    static let maxFileBytes = 16 * 1024 * 1024
+
     // MARK: - Parsing
 
     /// Turn one dataset line into a board, or nil when it can't safely become a URL.
@@ -71,7 +75,7 @@ public enum MarketDirectory {
             // own, and must end at myworkdayjobs.com.
             guard let parsed = URL(string: url), let host = parsed.host?.lowercased(),
                   host == "\(parts[0]).\(parts[1]).myworkdayjobs.com".lowercased(),
-                  host.hasSuffix(".myworkdayjobs.com")
+                  ATSHost.belongs(host, to: "myworkdayjobs.com")
             else { return nil }
             return MarketBoard(kind: kind, slug: url)
         }
@@ -182,8 +186,20 @@ public enum MarketDirectory {
               (response as? HTTPURLResponse)?.statusCode == 200, !data.isEmpty
         else { return fallback() }
 
+        guard data.count <= maxFileBytes else { return fallback() }
+
         // The validation that makes the write safe.
-        guard !decode(data, kind: kind).isEmpty else { return fallback() }
+        let incoming = decode(data, kind: kind)
+        guard !incoming.isEmpty else { return fallback() }
+
+        // A file that decodes to a handful of boards where the cached one had thousands is far more
+        // likely to be a broken or truncated upstream commit than a vendor genuinely losing 99% of
+        // its customers. Accepting it would quietly shrink every future sweep, and it would count as
+        // fresh for a week. An implausible contraction keeps the copy that still works.
+        if let cached, case let existing = decode(cached, kind: kind), !existing.isEmpty,
+           incoming.count < existing.count / 2 {
+            return fallback()
+        }
 
         if let target = cacheURL(file: file), let directory = cacheDirectory() {
             try? FileManager.default.createDirectory(

@@ -248,7 +248,9 @@ public enum AvailabilityChecker {
         while path.hasSuffix("/") && path.count > 1 {
             path = String(path.dropLast())
         }
-        if path.isEmpty { path = "/" }
+        if path.isEmpty {
+            path = "/"
+        }
         components.path = path
         return components.url
     }
@@ -279,7 +281,9 @@ public enum AvailabilityChecker {
         let cleaned = lower.unicodeScalars.map { scalar -> Character in
             let codePoint = scalar.value
             if (codePoint >= 97 && codePoint <= 122) ||
-                (codePoint >= 48 && codePoint <= 57) { return Character(scalar) } // a-z, 0-9
+                (codePoint >= 48 && codePoint <= 57) {
+                return Character(scalar)
+            } // a-z, 0-9
             return " "
         }
         return String(cleaned).split(separator: " ").joined(separator: " ")
@@ -297,7 +301,9 @@ public enum AvailabilityChecker {
         guard let orig = normalizedURL(originalURLString),
               let final = normalizedURL(finalURLString) else { return false }
         // If URLs are effectively identical, no redirect.
-        if orig.absoluteString == final.absoluteString { return false }
+        if orig.absoluteString == final.absoluteString {
+            return false
+        }
 
         guard let origComponents = URLComponents(url: orig, resolvingAgainstBaseURL: false),
               let finalComponents = URLComponents(url: final, resolvingAgainstBaseURL: false) else {
@@ -381,7 +387,7 @@ public enum AvailabilityChecker {
         let host = (components.host ?? "").lowercased()
         let path = components.path.lowercased()
         // Greenhouse: `?error=true` on the board root.
-        if host.contains("greenhouse.io"),
+        if ATSHost.belongs(host, to: "greenhouse.io"),
            components.queryItems?.contains(where: { $0.name == "error" && $0.value == "true" }) ?? false {
             return true
         }
@@ -439,10 +445,16 @@ public enum AvailabilityChecker {
     /// be lowercased. Scoped to the challenge markers so an ordinary 403 without a challenge falls
     /// through to the normal heuristics.
     static func isBotChallenge(_ body: String) -> Bool {
-        if body.contains("just a moment") { return true }
+        if body.contains("just a moment") {
+            return true
+        }
         if body.contains("challenge-platform") || body.contains("cf-mitigated") ||
-            body.contains("_cf_chl_opt") || body.contains("cf-challenge") { return true }
-        if body.contains("attention required") && body.contains("cloudflare") { return true }
+            body.contains("_cf_chl_opt") || body.contains("cf-challenge") {
+            return true
+        }
+        if body.contains("attention required") && body.contains("cloudflare") {
+            return true
+        }
         return false
     }
 
@@ -476,7 +488,7 @@ public enum AvailabilityChecker {
     /// `https://{host}/wday/cxs/{tenant}/{site}/jobs` and the requisition id is `P750186`.
     static func workdayCXSQuery(for url: URL) -> (endpoint: URL, reqId: String)? {
         guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let host = comps.host?.lowercased(), host.hasSuffix("myworkdayjobs.com"),
+              let host = comps.host?.lowercased(), ATSHost.belongs(host, to: "myworkdayjobs.com"),
               let tenant = host.split(separator: ".").first.map(String.init), !tenant.isEmpty else {
             return nil
         }
@@ -524,7 +536,9 @@ public enum AvailabilityChecker {
         let idLower = reqId.lowercased()
         return postings.contains { posting in
             if let bullets = posting["bulletFields"] as? [String],
-               bullets.contains(where: { $0.lowercased() == idLower }) { return true }
+               bullets.contains(where: { $0.lowercased() == idLower }) {
+                return true
+            }
             if let path = posting["externalPath"] as? String, path.lowercased().contains(idLower) {
                 return true
             }
@@ -547,7 +561,9 @@ public enum AvailabilityChecker {
             "/login", "/signin", "/sign-in", "/authwall", "/uas/login",
             "/checkpoint", "/account/login", "/sso/", "/auth/realms"
         ]
-        if authFragments.contains(where: { path.contains($0) }) { return true }
+        if authFragments.contains(where: { path.contains($0) }) {
+            return true
+        }
         // LinkedIn serves a generic "collections / similar jobs" page when a specific posting
         // can't be viewed without login — ambiguous, so treat it as indeterminate, not gone.
         if host.contains("linkedin.com"),
@@ -911,8 +927,12 @@ public enum AvailabilityChecker {
                 break
             }
             let outcome = await linkedInOutcome(for: spec, session: session)
-            if case let .gone(result) = outcome { gone.append(result) }
-            if case let .live(jobID) = outcome { alive.append(jobID) }
+            if case let .gone(result) = outcome {
+                gone.append(result)
+            }
+            if case let .live(jobID) = outcome {
+                alive.append(jobID)
+            }
             if case let .indeterminate(why) = outcome {
                 skipped.append(unverified(spec, .unreadablePage, why))
             }
@@ -1041,7 +1061,7 @@ public enum AvailabilityChecker {
     public static func greenhouseBoardCandidates(company: String?, urlString: String) -> [String] {
         var candidates: [String] = []
         if let comps = URLComponents(string: urlString), let host = comps.host?.lowercased() {
-            if host.hasSuffix("greenhouse.io") {
+            if ATSHost.belongs(host, to: "greenhouse.io") {
                 if let board = comps.path.split(separator: "/").map(String.init).first, !board.isEmpty {
                     candidates.append(board)
                 }
@@ -1061,7 +1081,9 @@ public enum AvailabilityChecker {
             let slug = String(String.UnicodeScalarView(
                 company.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }
             ))
-            if !slug.isEmpty { candidates.append(slug) }
+            if !slug.isEmpty {
+                candidates.append(slug)
+            }
         }
         var seen = Set<String>()
         return candidates.filter { !$0.isEmpty && seen.insert($0).inserted }
@@ -1092,10 +1114,14 @@ public enum AvailabilityChecker {
             // "couldn't verify", which is what made consecutive runs disagree.
             guard let http = await ATSResponseCache.shared.response(for: request, session: session)
             else { continue }
-            if http.statusCode == 200 { return true }
+            if http.statusCode == 200 {
+                return true
+            }
             // Not 404 (rate limit, 5xx, network hiccup) tells us nothing — try the next candidate.
             guard http.statusCode == 404 else { continue }
-            if await greenhouseBoardExists(board, session: session) { return false }
+            if await greenhouseBoardExists(board, session: session) {
+                return false
+            }
         }
         return nil
     }
@@ -1184,7 +1210,11 @@ public enum AvailabilityChecker {
         // Mark gone jobs.
         var markedCount = 0
         var failedCount = 0
-        let unavailableCount = checkedJobs.count(where: { if case .gone = $0.result { return true }; return false })
+        let unavailableCount = checkedJobs.count(where: {
+            if case .gone = $0.result {
+                return true
+            }; return false
+        })
 
         for checked in checkedJobs {
             if case let .gone(reason) = checked.result {
@@ -1340,7 +1370,11 @@ public enum AvailabilityChecker {
         for job in jobs {
             guard let urlString = JobURLPolicy.availabilityCheckURL(job: job),
                   let url = URL(string: urlString) else { continue }
-            if isLinkedInHost(url) { linkedIn += 1 } else { other += 1 }
+            if isLinkedInHost(url) {
+                linkedIn += 1
+            } else {
+                other += 1
+            }
         }
         return RunSummary(
             checking: other + min(linkedIn, maxLinkedInPerRun),
@@ -1426,7 +1460,9 @@ public enum AvailabilityChecker {
             predicate: #Predicate { $0.capturedAtDenormalized != nil },
             sortBy: [SortDescriptor(\Job.capturedAtDenormalized, order: .forward)]
         )
-        if let limit { descriptor.fetchLimit = limit * 4 } // over-fetch to allow for in-memory status filter
+        if let limit {
+            descriptor.fetchLimit = limit * 4
+        } // over-fetch to allow for in-memory status filter
         let newStyleRows = try await store.fetch(descriptor)
 
         // Legacy rows with nil capturedAtDenormalized: fetch separately, filter via relationship
@@ -1434,14 +1470,18 @@ public enum AvailabilityChecker {
             predicate: #Predicate { $0.capturedAtDenormalized == nil },
             sortBy: [SortDescriptor(\Job.createdAt, order: .forward)]
         )
-        if let limit { legacyDescriptor.fetchLimit = limit * 2 }
+        if let limit {
+            legacyDescriptor.fetchLimit = limit * 2
+        }
         let legacyRows = try await store.fetch(legacyDescriptor)
 
         let all = newStyleRows + legacyRows
         let eligible = all.filter { job in
             // Skip terminal statuses — incl. `.duplicate`: no point expiring a resolved dup (TASK-626).
             guard !job.status.isTerminal else { return false }
-            if alwaysCheckStatuses.contains(job.status.rawValue) { return true } // checked every run
+            if alwaysCheckStatuses.contains(job.status.rawValue) {
+                return true
+            } // checked every run
             let ageDate = job.capturedAtDenormalized ?? job.capture?.capturedAt ?? job.createdAt
             return ageDate <= cutoff
         }

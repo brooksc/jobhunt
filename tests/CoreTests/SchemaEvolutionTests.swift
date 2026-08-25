@@ -232,7 +232,12 @@ final class SchemaEvolutionTests: XCTestCase {
 
     func testSchemaV1ContainsAllExpectedModels() {
         let modelTypeNames = SchemaV1.models.map { String(describing: $0) }
-        let expected = ["Capture", "Job", "Resume", "Site", "Setting", "LLMRequest", "SavedSearch"]
+        let expected = [
+            "Capture", "Job", "Resume", "Site", "Setting", "LLMRequest", "SavedSearch",
+            // Automatic discovery (TASK-703). Listed here because this test is the tripwire that
+            // is supposed to notice a model joining the schema, and it did not notice these.
+            "DiscoveryLedgerEntry", "SearchSource", "MarketSweepState"
+        ]
         for name in expected {
             XCTAssertTrue(modelTypeNames.contains(name), "SchemaV1 should include \(name)")
         }
@@ -266,6 +271,7 @@ final class SchemaEvolutionTests: XCTestCase {
         _ = cap.selectedText; _ = cap.visibleText; _ = cap.cleanedDescription
         _ = cap.structuredDataJSON; _ = cap.userNote; _ = cap.rawHash
         _ = cap.cleanedHash; _ = cap.capturedAt; _ = cap.createdAt; _ = cap.job
+        _ = cap.discoveredBySourceID
 
         // Job
         let job = Job(jobNumber: 1, title: "T")
@@ -551,5 +557,82 @@ final class SchemaEvolutionTests: XCTestCase {
         let _: Bool = ss.sortAscending
 
         try ctx.save()
+    }
+}
+
+/// Migration guards for the discovery models (TASK-703).
+///
+/// The existing tripwires open the *current* schema and reopen it, which cannot catch the failure
+/// that matters: a property added to a model that already has rows. An initializer default is not a
+/// migration default, and a non-optional addition fails the lightweight migration outright with
+/// "missing attribute values on mandatory destination attribute" — the store simply won't open.
+/// That shipped once already and was caught by review rather than by these tests.
+final class DiscoverySchemaMigrationTests: XCTestCase {
+    private func makeStoreURL() -> URL {
+        URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: "jh-schema-\(UUID().uuidString)")
+            .appending(path: "store.sqlite")
+    }
+
+    /// The concrete regression: write discovery rows, close, reopen. A required property added to
+    /// `MarketSweepState` breaks this and nothing else in the suite.
+    func testDiscoveryRowsSurviveAReopen() throws {
+        let url = makeStoreURL()
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        do {
+            let context = try ModelContext(ModelContainerFactory.test(at: url))
+            context.insert(MarketSweepState(boardCount: 100))
+            context.insert(SearchSource(
+                kind: "greenhouse", label: "Acme", config: SourceConfig(slug: "acme")
+            ))
+            context.insert(DiscoveryLedgerEntry(
+                dedupKey: "gh:1", sourceID: "greenhouse", outcome: .ingested,
+                criteriaFingerprint: "fp"
+            ))
+            let capture = Capture(
+                url: "https://boards.greenhouse.io/acme/jobs/1", pageTitle: "PM",
+                discoveredBySourceID: "greenhouse", rawHash: "h"
+            )
+            context.insert(capture)
+            try context.save()
+        }
+
+        let reopened = try ModelContext(ModelContainerFactory.test(at: url))
+        XCTAssertEqual(try reopened.fetch(FetchDescriptor<MarketSweepState>()).count, 1)
+        XCTAssertEqual(try reopened.fetch(FetchDescriptor<SearchSource>()).count, 1)
+        XCTAssertEqual(try reopened.fetch(FetchDescriptor<DiscoveryLedgerEntry>()).count, 1)
+        XCTAssertEqual(
+            try reopened.fetch(FetchDescriptor<Capture>()).first?.discoveredBySourceID, "greenhouse",
+            "provenance has to survive a reopen or the discovery count silently resets"
+        )
+    }
+
+    /// A sweep row written before `directoryRevision` existed reads as nil, and nil must mean
+    /// "unknown list" — which forces a restart rather than trusting a cursor into a list nobody can
+    /// identify.
+    func testASweepRowWithNoRevisionIsTreatedAsUnusable() {
+        let state = MarketSweepState(boardCount: 100)
+        state.directoryRevision = nil
+        XCTAssertNotEqual(
+            state.directoryRevision, MarketBoardOrder.revision([]),
+            "a nil revision must never compare equal to a real one"
+        )
+        XCTAssertTrue(state.priority.isEmpty, "a nil priority set decodes to empty, not a crash")
+    }
+
+    /// The new models must be insertable and fetchable, which the existing "all model types" test
+    /// does not cover for them.
+    func testDiscoveryModelsRoundTripInMemory() throws {
+        let context = try ModelContext(ModelContainerFactory.inMemory())
+        context.insert(DiscoveryLedgerEntry(
+            dedupKey: "k", sourceID: "s", outcome: .alreadyCaptured, criteriaFingerprint: "f"
+        ))
+        try context.save()
+        let fetched = try context.fetch(FetchDescriptor<DiscoveryLedgerEntry>())
+        XCTAssertEqual(fetched.first?.outcome, .alreadyCaptured)
     }
 }

@@ -238,18 +238,18 @@ public enum SourceResolver {
         let segments = url.path.split(separator: "/").map(String.init)
 
         // Workday keeps its whole config in the URL, so the slug IS the URL.
-        if host.hasSuffix("myworkdayjobs.com"), let board = WorkdayJobBoard.board(for: url) {
+        if ATSHost.belongs(host, to: "myworkdayjobs.com"), let board = WorkdayJobBoard.board(for: url) {
             return ResolvedBoard(
                 kind: "workday", displayName: "Workday", slug: boardURL,
                 boardURL: "\(board.jobBase)", jobCount: 0
             )
         }
         // Everything else is `{host}/{slug}[/...]`.
-        let kind: String? = if host.hasSuffix("greenhouse.io") {
+        let kind: String? = if ATSHost.belongs(host, to: "greenhouse.io") {
             "greenhouse"
-        } else if host.hasSuffix("ashbyhq.com") {
+        } else if ATSHost.belongs(host, to: "ashbyhq.com") {
             "ashby"
-        } else if host.hasSuffix("lever.co") {
+        } else if ATSHost.belongs(host, to: "lever.co") {
             "lever"
         } else {
             nil

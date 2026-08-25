@@ -124,7 +124,11 @@ public struct MarketSweeper: Sendable {
             }
             let result = await sweeper.sweep(
                 source: source,
-                config: SourceConfig(slug: board.slug, pageLimit: Self.marketPageLimit),
+                config: SourceConfig(
+                    slug: board.slug, pageLimit: Self.marketPageLimit,
+                    // A market pass reads each board once, and the shared cache has no size limit.
+                    useCache: false
+                ),
                 criteria: criteria,
                 remainingDailyBudget: budget,
                 alreadyCaptured: alreadyCaptured,
@@ -222,6 +226,8 @@ public struct MarketSweeper: Sendable {
             let revision = MarketBoardOrder.revision(resumed)
 
             if !existing.isFinished {
+                // Nil means the row predates the revision field, so the cursor's list is unknown
+                // and cannot be trusted — same conclusion as a mismatch.
                 guard existing.directoryRevision == revision else {
                     // The directory changed under an unfinished pass. Restarting loses progress;
                     // continuing loses *boards*, silently. Progress is the cheaper thing to lose.

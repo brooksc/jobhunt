@@ -178,7 +178,9 @@ public struct DuplicateDetector {
             let sorted = group.map(\.snap).sorted { ($0.jobNumber ?? Int.max) < ($1.jobNumber ?? Int.max) }
             let original = sorted[0]
             for candidate in sorted.dropFirst() {
-                if let hash = candidate.cleanedHash, resolvedHashes.contains(hash) { continue }
+                if let hash = candidate.cleanedHash, resolvedHashes.contains(hash) {
+                    continue
+                }
                 pairs.append(DuplicatePair(
                     original: original, candidate: candidate, confidence: 1.0,
                     reason: "same ATS posting id in the source URL", kind: .atsPostingID
@@ -199,7 +201,9 @@ public struct DuplicateDetector {
             let sorted = group.map(\.snap).sorted { ($0.jobNumber ?? Int.max) < ($1.jobNumber ?? Int.max) }
             let original = sorted[0]
             for candidate in sorted.dropFirst() {
-                if let hash = candidate.cleanedHash, resolvedHashes.contains(hash) { continue }
+                if let hash = candidate.cleanedHash, resolvedHashes.contains(hash) {
+                    continue
+                }
                 pairs.append(DuplicatePair(
                     original: original, candidate: candidate, confidence: 1.0,
                     reason: "same source URL (captured twice)", kind: .sameURL
@@ -216,13 +220,19 @@ public struct DuplicateDetector {
         // confidence wins (ATS id / exact hash before the fuzzy heuristic); ties break deterministically
         // by job number then id. The unordered-pair guard also prevents A→B and B→A both appearing.
         let ordered = pairs.sorted { lhs, rhs in
-            if lhs.confidence != rhs.confidence { return lhs.confidence > rhs.confidence }
+            if lhs.confidence != rhs.confidence {
+                return lhs.confidence > rhs.confidence
+            }
             let leftOrig = lhs.original.jobNumber ?? Int.max
             let rightOrig = rhs.original.jobNumber ?? Int.max
-            if leftOrig != rightOrig { return leftOrig < rightOrig }
+            if leftOrig != rightOrig {
+                return leftOrig < rightOrig
+            }
             let leftCand = lhs.candidate.jobNumber ?? Int.max
             let rightCand = rhs.candidate.jobNumber ?? Int.max
-            if leftCand != rightCand { return leftCand < rightCand }
+            if leftCand != rightCand {
+                return leftCand < rightCand
+            }
             return lhs.candidate.id < rhs.candidate.id
         }
         var claimedCandidates = Set<String>()
@@ -230,7 +240,9 @@ public struct DuplicateDetector {
         var deduped: [DuplicatePair] = []
         for pair in ordered {
             let unordered = [pair.original.id, pair.candidate.id].sorted().joined(separator: "||")
-            if seenUnordered.contains(unordered) || claimedCandidates.contains(pair.candidate.id) { continue }
+            if seenUnordered.contains(unordered) || claimedCandidates.contains(pair.candidate.id) {
+                continue
+            }
             seenUnordered.insert(unordered)
             claimedCandidates.insert(pair.candidate.id)
             deduped.append(pair)
@@ -256,8 +268,12 @@ public struct DuplicateDetector {
         let candATSID = Self.atsPostingID(urlString: candidate.sourceURL)
         let relevant = corpus.filter { snap in
             guard snap.id != candidate.id else { return false }
-            if let hash = candidate.cleanedHash, snap.cleanedHash == hash { return true }
-            if let candATSID, Self.atsPostingID(urlString: snap.sourceURL) == candATSID { return true }
+            if let hash = candidate.cleanedHash, snap.cleanedHash == hash {
+                return true
+            }
+            if let candATSID, Self.atsPostingID(urlString: snap.sourceURL) == candATSID {
+                return true
+            }
             guard let title = snap.title, let candTitle = candidate.title else { return false }
             return Self.titlesAreSimilar(candTitle, title)
         }
@@ -334,7 +350,9 @@ public struct DuplicateDetector {
         let left = titleTokens(lhs)
         let right = titleTokens(rhs)
         guard !left.isEmpty, !right.isEmpty else { return false }
-        if left.isSubset(of: right) || right.isSubset(of: left) { return true }
+        if left.isSubset(of: right) || right.isSubset(of: left) {
+            return true
+        }
         let intersection = left.intersection(right).count
         let union = left.union(right).count
         return union > 0 && Double(intersection) / Double(union) >= titleSimilarityThreshold
@@ -380,21 +398,34 @@ public struct DuplicateDetector {
 
         // Greenhouse `gh_jid` — globally unique, and exposed by many company career sites (Pinterest,
         // Stripe, Toast, GFiber, Motional, Cribl, Five9, …) as well as job-boards.greenhouse.io.
-        if let ghjid = query("gh_jid"), !ghjid.isEmpty, ghjid.allSatisfy(\.isNumber) { return "gh:\(ghjid)" }
-        if host.contains("greenhouse.io"), let id = trailingNumericID(in: path, after: "jobs") { return "gh:\(id)" }
+        if let ghjid = query("gh_jid"), !ghjid.isEmpty, ghjid.allSatisfy(\.isNumber) {
+            return "gh:\(ghjid)"
+        }
+        if ATSHost.belongs(host, to: "greenhouse.io"),
+           let id = trailingNumericID(in: path, after: "jobs") {
+            return "gh:\(id)"
+        }
         // LinkedIn — /jobs/view/N and search ?currentJobId=N are the same posting.
-        if host.hasSuffix("linkedin.com") {
-            if let id = query("currentJobId"), !id.isEmpty, id.allSatisfy(\.isNumber) { return "li:\(id)" }
-            if let id = trailingNumericID(in: path, after: "view") { return "li:\(id)" }
+        if ATSHost.belongs(host, to: "linkedin.com") {
+            if let id = query("currentJobId"), !id.isEmpty, id.allSatisfy(\.isNumber) {
+                return "li:\(id)"
+            }
+            if let id = trailingNumericID(in: path, after: "view") {
+                return "li:\(id)"
+            }
         }
         // Workday — req id is only tenant-unique, so key by tenant (the host's first label) + req.
-        if host.hasSuffix("myworkdayjobs.com"), let reqID = workdayReqID(fromPath: path) {
+        if ATSHost.belongs(host, to: "myworkdayjobs.com"), let reqID = workdayReqID(fromPath: path) {
             let tenant = host.split(separator: ".").first.map(String.init) ?? ""
             return "wd:\(tenant):\(reqID)"
         }
         // Ashby / Lever — /{company}/{uuid}; uuid is unique but qualify with company for safety.
-        if host.hasSuffix("ashbyhq.com"), let key = firstTwoPathSegments(path) { return "ashby:\(key)" }
-        if host.hasSuffix("lever.co"), let key = firstTwoPathSegments(path) { return "lever:\(key)" }
+        if ATSHost.belongs(host, to: "ashbyhq.com"), let key = firstTwoPathSegments(path) {
+            return "ashby:\(key)"
+        }
+        if ATSHost.belongs(host, to: "lever.co"), let key = firstTwoPathSegments(path) {
+            return "lever:\(key)"
+        }
         return nil
     }
 
@@ -417,7 +448,9 @@ public struct DuplicateDetector {
         guard let last = path.split(separator: "/").last.map(String.init),
               let underscore = last.lastIndex(of: "_") else { return nil }
         var reqID = String(last[last.index(after: underscore)...])
-        if let dash = reqID.range(of: #"-\d+$"#, options: .regularExpression) { reqID.removeSubrange(dash) }
+        if let dash = reqID.range(of: #"-\d+$"#, options: .regularExpression) {
+            reqID.removeSubrange(dash)
+        }
         return reqID.isEmpty ? nil : reqID
     }
 
@@ -472,8 +505,12 @@ public struct DuplicateDetector {
     static func companyJaccard(_ compA: String, _ compB: String) -> Double {
         let tokensA = companyTokens(compA)
         let tokensB = companyTokens(compB)
-        if tokensA.isEmpty && tokensB.isEmpty { return 1.0 }
-        if tokensA.isEmpty || tokensB.isEmpty { return 0.0 }
+        if tokensA.isEmpty && tokensB.isEmpty {
+            return 1.0
+        }
+        if tokensA.isEmpty || tokensB.isEmpty {
+            return 0.0
+        }
         let intersection = tokensA.intersection(tokensB).count
         let union = tokensA.union(tokensB).count
         return Double(intersection) / Double(union)
@@ -529,16 +566,30 @@ public struct DuplicateDetector {
         let registrable = labels.count >= 2 ? labels[labels.count - 2] : labels.first ?? ""
         let hostCompact = labels.joined()
 
-        if registrable == companyCompact { return 100 }
-        if labels.contains(companyCompact) { return 90 }
-        if hostCompact == companyCompact { return 85 }
-        if companyCompact.count >= 4 && labels.contains(where: { $0.contains(companyCompact) }) { return 70 }
-        if companyCompact.count >= 4 && hostCompact.contains(companyCompact) { return 60 }
+        if registrable == companyCompact {
+            return 100
+        }
+        if labels.contains(companyCompact) {
+            return 90
+        }
+        if hostCompact == companyCompact {
+            return 85
+        }
+        if companyCompact.count >= 4 && labels.contains(where: { $0.contains(companyCompact) }) {
+            return 70
+        }
+        if companyCompact.count >= 4 && hostCompact.contains(companyCompact) {
+            return 60
+        }
 
         let companyWords = companyText.split(separator: " ").map(String.init).filter { $0.count >= 3 }
-        if !companyWords.isEmpty && companyWords.contains(where: { labels.contains($0) }) { return 50 }
+        if !companyWords.isEmpty && companyWords.contains(where: { labels.contains($0) }) {
+            return 50
+        }
 
-        if atsRegistrables.contains(registrable) { return 45 }
+        if atsRegistrables.contains(registrable) {
+            return 45
+        }
         return 0
     }
 
@@ -567,7 +618,9 @@ public struct DuplicateDetector {
            let lMax = left.salaryMax, let rMax = right.salaryMax {
             let minDiff = Double(abs(lMin - rMin)) / Double(max(lMin, rMin))
             let maxDiff = Double(abs(lMax - rMax)) / Double(max(lMax, rMax))
-            if minDiff > salaryDivergenceThreshold && maxDiff > salaryDivergenceThreshold { return nil }
+            if minDiff > salaryDivergenceThreshold && maxDiff > salaryDivergenceThreshold {
+                return nil
+            }
         }
 
         var fieldConflicts: [String] = []
@@ -579,7 +632,9 @@ public struct DuplicateDetector {
         ] as [(String, String?, String?)] {
             let leftKnown = knownValue(leftVal)
             let rightKnown = knownValue(rightVal)
-            if !leftKnown.isEmpty && !rightKnown.isEmpty && leftKnown != rightKnown { fieldConflicts.append(field) }
+            if !leftKnown.isEmpty && !rightKnown.isEmpty && leftKnown != rightKnown {
+                fieldConflicts.append(field)
+            }
         }
         if let leftCurrency = left.salaryCurrency, let rightCurrency = right.salaryCurrency,
            leftCurrency != rightCurrency {
@@ -614,7 +669,9 @@ public struct DuplicateDetector {
             for jdx in (idx + 1) ..< count
                 where companyJaccard(jobs[idx].company ?? "", jobs[jdx].company ?? "") >= threshold {
                 let parentI = find(idx), parentJ = find(jdx)
-                if parentI != parentJ { parent[parentI] = parentJ }
+                if parentI != parentJ {
+                    parent[parentI] = parentJ
+                }
             }
         }
         var clusters: [Int: [JobSnapshot]] = [:]
@@ -685,8 +742,12 @@ public struct DuplicateDetector {
 
         guard ["new", "pursuing", "duplicate", "applied"].contains(candidate.status) else { return nil }
         guard let evidence = DuplicateDetector.evidenceMatch(left: keep, right: candidate) else { return nil }
-        if let hash = candidate.cleanedHash, resolvedHashes.contains(hash) { return nil }
-        if let hash = keep.cleanedHash, resolvedHashes.contains(hash) { return nil }
+        if let hash = candidate.cleanedHash, resolvedHashes.contains(hash) {
+            return nil
+        }
+        if let hash = keep.cleanedHash, resolvedHashes.contains(hash) {
+            return nil
+        }
 
         let domainConfidence = Self.baseDomainConfidence
             + (Double(keepPair.score - candPair.score) / 100.0) * Self.rankSpreadWeight

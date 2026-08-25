@@ -32,6 +32,11 @@ public struct SourceConfig: Sendable, Equatable, Codable {
     /// The employer name, for postings whose board payload doesn't carry one. Greenhouse's list
     /// endpoint doesn't.
     public var company: String?
+    /// Whether the shared response cache may serve this board.
+    ///
+    /// A watched company is re-read on a schedule and shares its board with the open-roles pane, so
+    /// caching helps. A market pass visits each board once and would only fill an unbounded cache.
+    public var useCache: Bool = true
     /// How deep to paginate, for the vendors that paginate at all (only Workday does).
     ///
     /// Exists because the two callers want opposite things. A *watched company* wants the whole
@@ -40,10 +45,13 @@ public struct SourceConfig: Sendable, Equatable, Codable {
     /// turns a daily sweep into a four-day one. Nil means the source's own default.
     public var pageLimit: Int?
 
-    public init(slug: String, company: String? = nil, pageLimit: Int? = nil) {
+    public init(
+        slug: String, company: String? = nil, pageLimit: Int? = nil, useCache: Bool = true
+    ) {
         self.slug = slug
         self.company = company
         self.pageLimit = pageLimit
+        self.useCache = useCache
     }
 }
 
@@ -76,20 +84,47 @@ public protocol JobSource: Sendable {
 enum JobSourceTransport {
     /// A board fetch that reports *why* it failed, unlike the `ATSProvider` fetches which return
     /// `[]` for everything. Discovery needs the distinction; refresh legitimately doesn't.
+    /// Largest board payload worth reading.
+    ///
+    /// `URLSession.data(for:)` buffers the whole body before anything can inspect it, and a board
+    /// is a third party — a broken or hostile one can answer with as much as it likes. GitLab's
+    /// 204-role board is about 700 KB, so 32 MB is two orders of magnitude of headroom and still
+    /// bounds what one board can cost.
+    static let maxResponseBytes = 32 * 1024 * 1024
+
+    /// - Parameter cache: whether the shared ATS response cache may serve and store this.
+    ///   **False for a market pass**, which visits each of ~29,000 boards exactly once: caching
+    ///   buys nothing there and the cache has no size limit, so a full pass would retain thousands
+    ///   of complete board bodies — descriptions included — for the life of the process.
     static func fetchJSON(
-        _ url: URL, session: URLSession, timeout: TimeInterval = 20
+        _ url: URL, session: URLSession, timeout: TimeInterval = 20, cache: Bool = true
     ) async -> Result<Data, SourceError> {
         var request = URLRequest(url: url)
         request.timeoutInterval = timeout
-        // Cached and coalesced, same as the ATSProvider board fetches — a sweep and an open-roles
-        // pane asking for the same board within the TTL should cost one request.
-        guard let http = await ATSResponseCache.shared.response(for: request, session: session) else {
-            return .failure(.unreachable("no response from \(url.host ?? "board")"))
+
+        let body: Data
+        let status: Int
+        if cache {
+            // Cached and coalesced: every posting on a board asks for the same board.
+            guard let http = await ATSResponseCache.shared.response(for: request, session: session)
+            else { return .failure(.unreachable("no response from \(url.host ?? "board")")) }
+            (body, status) = (http.body, http.statusCode)
+        } else {
+            guard let (data, response) = try? await session.data(for: request),
+                  let http = response as? HTTPURLResponse
+            else { return .failure(.unreachable("no response from \(url.host ?? "board")")) }
+            (body, status) = (data, http.statusCode)
         }
-        guard http.statusCode == 200 else {
-            return .failure(.unreachable("HTTP \(http.statusCode) from \(url.host ?? "board")"))
+
+        guard status == 200 else {
+            return .failure(.unreachable("HTTP \(status) from \(url.host ?? "board")"))
         }
-        return .success(http.body)
+        guard body.count <= maxResponseBytes else {
+            return .failure(.malformedResponse(
+                "\(url.host ?? "board") sent \(body.count / 1_048_576) MB — refusing to parse it"
+            ))
+        }
+        return .success(body)
     }
 
     /// The dedup key plus the fields every adapter fills the same way.
@@ -136,7 +171,16 @@ public struct GreenhouseSource: JobSource {
               let url = URL(string: "https://boards-api.greenhouse.io/v1/boards/\(encoded)/jobs")
         else { throw SourceError.misconfigured("“\(config.slug)” isn't a usable Greenhouse board slug") }
 
-        let data = try await JobSourceTransport.fetchJSON(url, session: session).get()
+        let data = try await JobSourceTransport.fetchJSON(
+            url, session: session, cache: config.useCache
+        ).get()
+        // A board that answers with something we can't read is not an empty board. Greenhouse's
+        // decoder returns [] for both, and conflating them marks a broken board healthy — which is
+        // the silence this whole feature is built to avoid.
+        guard let raw = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              raw["jobs"] is [[String: Any]]
+        else { throw SourceError.malformedResponse("Greenhouse returned something that isn't a board") }
+
         return GreenhouseJobBoard.decodeRoles(data).compactMap {
             JobSourceTransport.posting(from: $0, sourceID: id, company: config.company)
         }
@@ -164,7 +208,9 @@ public struct LeverSource: JobSource {
               let url = URL(string: "https://api.lever.co/v0/postings/\(encoded)?mode=json")
         else { throw SourceError.misconfigured("“\(config.slug)” isn't a usable Lever company handle") }
 
-        let data = try await JobSourceTransport.fetchJSON(url, session: session).get()
+        let data = try await JobSourceTransport.fetchJSON(
+            url, session: session, cache: config.useCache
+        ).get()
         guard let entries = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else {
             throw SourceError.malformedResponse("Lever returned something that isn't a board")
         }
@@ -201,7 +247,9 @@ public struct AshbySource: JobSource {
               let url = URL(string: "https://api.ashbyhq.com/posting-api/job-board/\(encoded)")
         else { throw SourceError.misconfigured("“\(config.slug)” isn't a usable Ashby org") }
 
-        let data = try await JobSourceTransport.fetchJSON(url, session: session).get()
+        let data = try await JobSourceTransport.fetchJSON(
+            url, session: session, cache: config.useCache
+        ).get()
         guard let raw = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let entries = raw["jobs"] as? [[String: Any]]
         else { throw SourceError.malformedResponse("Ashby returned something that isn't a board") }
@@ -249,8 +297,17 @@ public struct WorkdaySource: JobSource {
             board: board, session: session, since: since,
             maxPages: config.pageLimit ?? Self.sweepMaxPages
         )
-        if listing.roles.isEmpty, listing.truncated {
-            throw SourceError.unreachable("\(board.tenant) didn't answer")
+        // An incomplete listing must NOT read as a complete one. Page one succeeding and page two
+        // timing out used to return page one's roles and discard the truncation flag, so a tenant
+        // whose scan died at 20 of 3,000 looked exactly like a tenant with 20 open roles — and the
+        // board was marked done and never revisited. Truncation is a failure of coverage even when
+        // it comes with rows attached.
+        if listing.truncated {
+            throw SourceError.unreachable(
+                listing.roles.isEmpty
+                    ? "\(board.tenant) didn't answer"
+                    : "\(board.tenant) answered only partly (\(listing.roles.count) roles before it stopped)"
+            )
         }
         return listing.roles.compactMap {
             JobSourceTransport.posting(

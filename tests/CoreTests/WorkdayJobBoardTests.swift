@@ -299,3 +299,83 @@ final class WorkdayJobBoardTests: XCTestCase {
         XCTAssertTrue(roles.isEmpty, "no network call should be attempted for a non-Workday URL")
     }
 }
+
+/// Coverage losses in the Workday client, at market scale (TASK-703).
+final class WorkdayCoverageTests: XCTestCase {
+    private func role(daysAgo: Double?, now: Date) -> GreenhouseJobBoard.OpenRole {
+        GreenhouseJobBoard.OpenRole(
+            id: "\(daysAgo ?? -1)", title: "Role", locationName: nil,
+            absoluteURL: "https://example.com", updatedAt: nil,
+            firstPublished: daysAgo.map { now.addingTimeInterval(-$0 * 86400) }
+        )
+    }
+
+    /// The stop keyed on the OLDEST row, so a single stale outlier among fresh postings ended the
+    /// scan — losing everything after it on a large tenant.
+    func testOneOldOutlierDoesNotStopPagination() {
+        let now = Date()
+        let since = now.addingTimeInterval(-7 * 86400)
+        XCTAssertFalse(
+            WorkdayJobBoard.pageIsPastWindow(
+                [role(daysAgo: 1, now: now), role(daysAgo: 2, now: now), role(daysAgo: 400, now: now)],
+                since: since
+            ),
+            "the page is mostly fresh — one old row says nothing about what follows"
+        )
+    }
+
+    /// A page mixing dated and undated rows says nothing about what comes next, because the undated
+    /// ones could be anything.
+    func testAMixedPageDoesNotStopPagination() {
+        let now = Date()
+        XCTAssertFalse(WorkdayJobBoard.pageIsPastWindow(
+            [role(daysAgo: 400, now: now), role(daysAgo: nil, now: now)],
+            since: now.addingTimeInterval(-7 * 86400)
+        ))
+    }
+
+    /// It still stops when the whole page really is past the window.
+    func testAWhollyStalePageStillStops() {
+        let now = Date()
+        XCTAssertTrue(WorkdayJobBoard.pageIsPastWindow(
+            [role(daysAgo: 300, now: now), role(daysAgo: 400, now: now)],
+            since: now.addingTimeInterval(-7 * 86400)
+        ))
+    }
+
+    /// A tenant reporting `total: 1` while serving a full page was declared complete after one page.
+    /// `total` is advisory; a full page always justifies looking at the next one.
+    func testAnUnderreportedTotalDoesNotEndPagination() {
+        XCTAssertGreaterThan(
+            WorkdayJobBoard.pagesToFetch(total: 1, firstPageCount: 20, maxPages: 5), 1,
+            "a full first page means there may be more, whatever the tenant claims"
+        )
+    }
+
+    /// A short first page is still the end of the board.
+    func testAShortFirstPageStillEndsPagination() {
+        XCTAssertEqual(WorkdayJobBoard.pagesToFetch(total: 999, firstPageCount: 7, maxPages: 5), 1)
+    }
+
+    func testTheCapStillBounds() {
+        XCTAssertEqual(
+            WorkdayJobBoard.pagesToFetch(total: 99999, firstPageCount: 20, maxPages: 5), 5
+        )
+    }
+
+    /// 408 is a timeout the server chose to report rather than drop — as transient as the dropped
+    /// connection that arrives with no status at all.
+    func testATimeoutStatusIsRetryable() {
+        XCTAssertTrue(WorkdayJobBoard.isRetryable(status: 408))
+        XCTAssertFalse(WorkdayJobBoard.isRetryable(status: 404))
+    }
+
+    /// A server that says how long to wait knows better than a fixed backoff — but a hostile value
+    /// must not stall a sweep for a day.
+    func testRetryAfterIsHonouredButClamped() {
+        XCTAssertEqual(WorkdayJobBoard.retryAfter("5"), .seconds(5))
+        XCTAssertEqual(WorkdayJobBoard.retryAfter("86400"), .seconds(30), "clamped")
+        XCTAssertNil(WorkdayJobBoard.retryAfter(nil))
+        XCTAssertNil(WorkdayJobBoard.retryAfter("not a duration"))
+    }
+}

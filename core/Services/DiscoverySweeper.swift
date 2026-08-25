@@ -18,10 +18,21 @@ public struct SweepResult: Sendable, Equatable {
     public var rejections: [DiscoveryRejectReason: Int]
     public var error: String?
 
+    /// Postings this visit settled *permanently* — written to the ledger with a verdict that is
+    /// never revisited (ingested, or already in the library). Zero means the next visit will do
+    /// exactly this visit's work again.
+    ///
+    /// Separate from `ingested` because the market sweep's anti-pin rule needs "did this board
+    /// move forward", not "did it produce a job". A capped batch can settle fifty postings the user
+    /// already had and create nothing; treating that as no progress abandons the board's remaining
+    /// matches until the next full 29,000-board pass, by which time short-lived postings are gone.
+    public var settled: Int
+
     public init(
         status: SearchSourceStatus, found: Int = 0, passed: Int = 0, ingested: Int = 0,
         hydrationFailures: Int = 0, truncatedByCap: Int = 0,
-        rejections: [DiscoveryRejectReason: Int] = [:], error: String? = nil
+        rejections: [DiscoveryRejectReason: Int] = [:], error: String? = nil,
+        settled: Int = 0
     ) {
         self.status = status
         self.found = found
@@ -31,6 +42,7 @@ public struct SweepResult: Sendable, Equatable {
         self.truncatedByCap = truncatedByCap
         self.rejections = rejections
         self.error = error
+        self.settled = settled
     }
 }
 
@@ -201,11 +213,18 @@ public struct DiscoverySweeper: Sendable {
             }
         }
 
-        try? await store.recordDiscoveryOutcomes(
-            outcomes.map { (posting: $0.0, outcome: $0.1, reason: $0.2) },
-            criteriaFingerprint: fingerprint,
-            now: now
-        )
+        // Counted before the write and zeroed if it fails: an outcome that didn't reach the ledger
+        // will be re-derived next visit, so it is not progress.
+        var settled = outcomes.count { $0.1 == .ingested || $0.1 == .alreadyCaptured }
+        do {
+            try await store.recordDiscoveryOutcomes(
+                outcomes.map { (posting: $0.0, outcome: $0.1, reason: $0.2) },
+                criteriaFingerprint: fingerprint,
+                now: now
+            )
+        } catch {
+            settled = 0
+        }
 
         return SweepResult(
             status: .ok,
@@ -214,7 +233,8 @@ public struct DiscoverySweeper: Sendable {
             ingested: ingested,
             hydrationFailures: hydrationFailures,
             truncatedByCap: truncated,
-            rejections: rejections
+            rejections: rejections,
+            settled: settled
         )
     }
 

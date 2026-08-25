@@ -175,7 +175,9 @@ struct AutoSearchCard: View {
             } else {
                 parts.append("\(state.postingsSeen.formatted()) postings checked this pass")
             }
-        } else if settings.bool(forKey: SettingsKey.marketSweepEnabled) {
+        } else if settings.bool(forKey: SettingsKey.marketSweepEnabled), !blocked {
+            // Only when it can actually start. The status line already says the interlock is
+            // closed; claiming a first check is "starting" underneath it contradicts that.
             parts.append("starting the first full check of every public job board")
         }
         return parts.isEmpty ? "No sources configured yet." : parts.joined(separator: " · ")

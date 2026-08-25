@@ -353,4 +353,172 @@ final class DiscoveryInterlockTests: XCTestCase {
             "whitespace and stray commas are not keywords"
         )
     }
+
+    // MARK: - withBudget
+
+    /// The interlock now lives with the reservation, because Run Now checked neither. A closed
+    /// interlock must not even reserve — a caller that spends the allowance and then declines to
+    /// sweep starves the background loops for the rest of the day.
+    @MainActor
+    func testAClosedInterlockNeitherRunsNorReserves() async throws {
+        let settings = try makeSettings()
+        var ran = false
+        let result: Int? = await DiscoverySettings.withBudget(settings) { _ in
+            ran = true
+            return (1, 1)
+        }
+        XCTAssertNil(result)
+        XCTAssertFalse(ran)
+        XCTAssertEqual(DiscoverySettings.spentToday(settings, now: Date()).spent, 0)
+    }
+
+    /// The leak Run Now had: reserve the whole per-sweep allowance, ingest nothing, release none.
+    @MainActor
+    func testAnUnusedReservationIsHandedBack() async throws {
+        let settings = try makeSettings()
+        try settings.set("Product Manager", forKey: SettingsKey.discoveryTitleInclude)
+        let result: String? = await DiscoverySettings.withBudget(settings) { budget in
+            XCTAssertGreaterThan(budget, 0)
+            return ("done", 0)
+        }
+        XCTAssertEqual(result, "done")
+        XCTAssertEqual(
+            DiscoverySettings.spentToday(settings, now: Date()).spent, 0,
+            "a sweep that created nothing must not consume the day"
+        )
+    }
+
+    /// A run that bails out entirely still has to give the reservation back.
+    @MainActor
+    func testABailedRunReleasesTheWholeReservation() async throws {
+        let settings = try makeSettings()
+        try settings.set("Product Manager", forKey: SettingsKey.discoveryTitleInclude)
+        let result: String? = await DiscoverySettings.withBudget(settings) { _ in nil }
+        XCTAssertNil(result)
+        XCTAssertEqual(DiscoverySettings.spentToday(settings, now: Date()).spent, 0)
+    }
+
+    @MainActor
+    func testOnlyWhatWasIngestedIsKept() async throws {
+        let settings = try makeSettings()
+        try settings.set("Product Manager", forKey: SettingsKey.discoveryTitleInclude)
+        _ = await DiscoverySettings.withBudget(settings) { _ in (0, 3) }
+        XCTAssertEqual(DiscoverySettings.spentToday(settings, now: Date()).spent, 3)
+    }
+}
+
+/// `SourceConfig` is persisted as JSON, so its decoding is a compatibility contract.
+final class SourceConfigDecodingTests: XCTestCase {
+    /// The exact shape written by builds before `useCache` existed. A property default is not a
+    /// decoding default: synthesized `Decodable` calls `decode` for a non-optional and throws
+    /// `keyNotFound`, and `SearchSource.config` swallows that into `SourceConfig(slug: "")` — so
+    /// every watched company silently lost the board it was watching.
+    func testConfigJSONWrittenBeforeUseCacheStillDecodes() throws {
+        let legacy = Data(#"{"slug":"acme","company":"Acme Corp"}"#.utf8)
+        let config = try JSONDecoder().decode(SourceConfig.self, from: legacy)
+        XCTAssertEqual(config.slug, "acme")
+        XCTAssertEqual(config.company, "Acme Corp")
+        XCTAssertTrue(config.useCache, "absent means the old behaviour, which was to cache")
+        XCTAssertNil(config.pageLimit)
+    }
+
+    /// And the same through the property the app actually reads.
+    func testASourceSavedBeforeUseCacheKeepsItsBoard() throws {
+        let source = SearchSource(
+            kind: "greenhouse", label: "Acme", config: SourceConfig(slug: "placeholder")
+        )
+        source.configJSON = #"{"slug":"acme","company":"Acme Corp"}"#
+        XCTAssertEqual(source.config.slug, "acme", "an empty slug here reads as a broken source")
+        XCTAssertEqual(source.config.company, "Acme Corp")
+    }
+
+    func testAnExplicitFalseIsHonoured() throws {
+        let json = Data(#"{"slug":"acme","useCache":false}"#.utf8)
+        XCTAssertFalse(try JSONDecoder().decode(SourceConfig.self, from: json).useCache)
+    }
+
+    func testRoundTrip() throws {
+        let original = SourceConfig(slug: "acme", company: "Acme", pageLimit: 5, useCache: false)
+        let decoded = try JSONDecoder().decode(
+            SourceConfig.self, from: JSONEncoder().encode(original)
+        )
+        XCTAssertEqual(decoded, original)
+    }
+}
+
+/// Run Now sweeps the source that was clicked (TASK-703 follow-up).
+final class TargetedSweepTests: XCTestCase {
+    private struct NoOp: LLMProvider {
+        let id: String = "noop"
+        let concurrencyLimit: Int = 1
+        func complete(_: ChatRequest) async throws -> ChatResponse {
+            throw LLMProviderError.unavailable(reason: "unused")
+        }
+    }
+
+    /// No network stub: every test here terminates before any fetch.
+    static func makeSweeper(store: BackgroundStore) -> DiscoverySweeper {
+        let queue = QueueActor(
+            store: store, isPaused: { true }, onSetPaused: { _ in },
+            readExtractionSettings: { ExtractionSettings(
+                llmModel: "", preferredLocations: "", locationFilterEnabled: false,
+                locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true
+            ) },
+            providerFactory: { NoOp() }
+        )
+        return DiscoverySweeper(store: store, jobService: JobService(store: store, queue: queue))
+    }
+
+    /// It used to mark its source due and then call `runOneDueSweep`, which takes the
+    /// longest-waiting source — so with another source more overdue, the button swept a different
+    /// company and reported the result under the clicked one's name.
+    func testRunSweepPicksTheNamedSourceNotTheOldest() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let now = Date()
+        let stale = SearchSource(
+            kind: "greenhouse", label: "Stale", config: SourceConfig(slug: "stale"),
+            createdAt: now.addingTimeInterval(-86400)
+        )
+        let clicked = SearchSource(
+            kind: "greenhouse", label: "Clicked", config: SourceConfig(slug: "clicked"),
+            createdAt: now.addingTimeInterval(-60)
+        )
+        try await store.insert(stale)
+        try await store.insert(clicked)
+
+        let due: [SearchSource] = try await store.dueSearchSources(now: now)
+        XCTAssertEqual(due.first?.label, "Stale", "the oldest is what runOneDueSweep would take")
+
+        // A source kind that doesn't exist makes the sweep terminate immediately and record which
+        // row it actually chose, without any network work.
+        let unknown = SearchSource(
+            kind: "not-a-vendor", label: "Clicked", config: SourceConfig(slug: "clicked"),
+            createdAt: now
+        )
+        try await store.insert(unknown)
+        let scheduler = DiscoveryScheduler(
+            store: store,
+            sweeper: Self.makeSweeper(store: store)
+        )
+        let result = await scheduler.runSweep(
+            sourceID: unknown.id,
+            criteria: DiscoveryCriteria(titleIncludeAny: ["manager"]),
+            remainingDailyBudget: 10,
+            alreadyCaptured: []
+        )
+        XCTAssertEqual(result?.status, .misconfigured, "it ran the row it was given, not the oldest")
+    }
+
+    func testAnUnknownSourceIDSweepsNothing() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let scheduler = DiscoveryScheduler(
+            store: store,
+            sweeper: Self.makeSweeper(store: store)
+        )
+        let result = await scheduler.runSweep(
+            sourceID: "nope", criteria: DiscoveryCriteria(titleIncludeAny: ["manager"]),
+            remainingDailyBudget: 10, alreadyCaptured: []
+        )
+        XCTAssertNil(result)
+    }
 }

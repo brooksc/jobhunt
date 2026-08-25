@@ -53,6 +53,29 @@ public struct SourceConfig: Sendable, Equatable, Codable {
         self.pageLimit = pageLimit
         self.useCache = useCache
     }
+
+    enum CodingKeys: String, CodingKey {
+        case slug, company, useCache, pageLimit
+    }
+
+    /// Decoded field by field because this type is **persisted**, as JSON, in
+    /// `SearchSource.configJSON`.
+    ///
+    /// A property declaration default is not a decoding default: synthesized `Decodable` calls
+    /// `decode` for a non-optional property and throws `keyNotFound` when the key is absent. So
+    /// adding `useCache` made every previously-saved row fail to decode — and the failure was
+    /// invisible, because `SearchSource.config` falls back to `SourceConfig(slug: "")`, which reads
+    /// downstream as a misconfigured source that has lost the company it was watching.
+    ///
+    /// Every future field added here needs the same treatment. Optionals are safe (synthesis uses
+    /// `decodeIfPresent`); anything with a default is not.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        slug = try container.decode(String.self, forKey: .slug)
+        company = try container.decodeIfPresent(String.self, forKey: .company)
+        pageLimit = try container.decodeIfPresent(Int.self, forKey: .pageLimit)
+        useCache = try container.decodeIfPresent(Bool.self, forKey: .useCache) ?? true
+    }
 }
 
 /// A source that can be swept for postings without knowing about any specific posting (TASK-691, M2).

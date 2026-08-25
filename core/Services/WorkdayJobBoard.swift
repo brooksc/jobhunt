@@ -215,24 +215,21 @@ public enum WorkdayJobBoard {
 
     /// How many pages to fetch in total, including the first (already-fetched) one.
     ///
-    /// When the tenant reports `total`, believe it but cap it. When it doesn't, only keep going if
-    /// the first page came back full — a short first page already means there is nothing more.
+    /// A short first page is the end of the board. A full one means there may be more, so
+    /// pagination runs to the caller's cap and the *response* decides where it actually stops: a
+    /// short page, the date window, or a failure.
     ///
-    /// `total` is not always honest: Workday's backend sometimes reports exactly
-    /// `maxPages × pageSize` when the real count is far higher, and requests past that offset
-    /// return page 0 again. The cap is what contains that, which is why it applies to the reported
-    /// total rather than being bypassed by it.
-    public static func pagesToFetch(total: Int?, firstPageCount: Int, maxPages: Int) -> Int {
-        // A short first page is the end of the board, whatever `total` claims.
+    /// **`total` is not an input to this, deliberately.** Workday tenants underreport it — one
+    /// answering `total: 1` while serving a full page is real, and so is one reporting exactly
+    /// `maxPages × pageSize` when the true count is far higher. Deriving a page budget from it
+    /// capped pagination at two pages for such a tenant and silently lost every posting after the
+    /// fortieth. Believing a full page and letting the short-page check terminate costs at most one
+    /// extra request on an honest small board, which is the cheaper error by a wide margin.
+    public static func pagesToFetch(firstPageCount: Int, maxPages: Int) -> Int {
         guard firstPageCount >= pageSize else { return 1 }
-        // A FULL first page means there may be more, and `total` is only advisory — the header
-        // comment already records tenants reporting a `total` far below what they will serve, and
-        // trusting it as a boundary means a tenant answering `total: 1` with twenty roles is
-        // declared complete after one page. So a full page always justifies looking at the next
-        // one; the page cap, the short-page check and the early stop are what actually bound this.
-        guard let total else { return maxPages }
-        let needed = Int((Double(total) / Double(pageSize)).rounded(.up))
-        return max(2, min(max(needed, 2), maxPages))
+        // Clamped last, so the cap is genuinely a cap: an earlier `max(2, …)` on the outside
+        // returned 2 for `maxPages: 1`, so the one-page probe fetched two pages.
+        return max(1, maxPages)
     }
 
     // MARK: - Retry classification
@@ -260,8 +257,14 @@ public enum WorkdayJobBoard {
         guard let header = header?.trimmingCharacters(in: .whitespaces), !header.isEmpty else {
             return nil
         }
-        if let seconds = Double(header), seconds >= 0 {
-            return min(.seconds(seconds), maximum)
+        // `isFinite` is load-bearing, not belt-and-braces. `Double("inf")` succeeds, as does any
+        // overflowing exponent like "1e400", and both pass `>= 0` — then `Duration.seconds(_:)`
+        // traps on a non-finite value and takes the app down. This header is written by a third
+        // party we already assume may be hostile, so it is parsed as untrusted input: bounded as a
+        // Double first, and only then turned into a Duration.
+        if let seconds = Double(header), seconds.isFinite, seconds >= 0 {
+            let capped = min(seconds, Double(maximum.components.seconds))
+            return .seconds(capped)
         }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -399,9 +402,7 @@ public enum WorkdayJobBoard {
 
         var roles = decodeRoles(first, board: board, now: now)
         let total = decodeTotal(first)
-        let pages = pagesToFetch(
-            total: total, firstPageCount: decodePageCount(first), maxPages: max(1, maxPages)
-        )
+        let pages = pagesToFetch(firstPageCount: decodePageCount(first), maxPages: max(1, maxPages))
         if pageIsPastWindow(roles, since: since) {
             return Listing(roles: roles, stop: .complete, reportedTotal: total)
         }

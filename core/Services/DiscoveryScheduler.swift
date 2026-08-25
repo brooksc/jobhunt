@@ -127,6 +127,33 @@ public enum DiscoverySettings {
         return granted
     }
 
+    /// Reserve, run, and hand back whatever wasn't used — as one thing, because doing it in three
+    /// was how Run Now came to reserve the whole per-sweep allowance and never release it. An empty
+    /// or failed run could burn the day's budget and leave automatic search with nothing to spend.
+    ///
+    /// Also enforces the title interlock, so a caller cannot sweep with criteria that match every
+    /// posting. `canSweep` was checked in both background loops and not in Run Now; a safety rule
+    /// duplicated across call sites is a safety rule that drifts.
+    ///
+    /// Returns nil when the interlock is closed or the day's allowance is spent — in both cases
+    /// nothing ran and nothing was reserved.
+    @MainActor
+    public static func withBudget<T>(
+        _ settings: SettingsStore,
+        now: Date = Date(),
+        run: (Int) async -> (result: T, ingested: Int)?
+    ) async -> T? {
+        guard canSweep(settings) else { return nil }
+        let granted = reserve(caps(from: settings).perSweep, settings: settings, now: now)
+        guard granted > 0 else { return nil }
+        guard let outcome = await run(granted) else {
+            release(granted, settings: settings, now: now)
+            return nil
+        }
+        release(granted - outcome.ingested, settings: settings, now: now)
+        return outcome.result
+    }
+
     /// Hand back what a reservation didn't use, so an over-reservation doesn't burn the day.
     public static func release(
         _ count: Int, settings: SettingsStore, now: Date = Date()
@@ -195,6 +222,40 @@ public struct DiscoveryScheduler: Sendable {
         // `try?` flattens, so a store error and "nothing due" both land here as nil. That's the
         // behaviour we want: neither is a reason to sweep something.
         guard let searchSource = try? await nextDueSource(now: now) else { return nil }
+        return await sweep(
+            searchSource, criteria: criteria, remainingDailyBudget: remainingDailyBudget,
+            alreadyCaptured: alreadyCaptured, now: now
+        )
+    }
+
+    /// Sweep one *named* source, whatever else is due.
+    ///
+    /// Run Now used to mark its source due and then call `runOneDueSweep`, which picks the
+    /// longest-waiting source — so with more than one source overdue the button swept a different
+    /// company than the one clicked, and reported the result under the clicked one's name.
+    @discardableResult
+    public func runSweep(
+        sourceID: String,
+        criteria: DiscoveryCriteria,
+        remainingDailyBudget: Int,
+        alreadyCaptured: Set<String>,
+        now: Date = Date()
+    ) async -> SweepResult? {
+        guard let searchSource = try? await store.searchSources().first(where: { $0.id == sourceID })
+        else { return nil }
+        return await sweep(
+            searchSource, criteria: criteria, remainingDailyBudget: remainingDailyBudget,
+            alreadyCaptured: alreadyCaptured, now: now
+        )
+    }
+
+    private func sweep(
+        _ searchSource: SearchSource,
+        criteria: DiscoveryCriteria,
+        remainingDailyBudget: Int,
+        alreadyCaptured: Set<String>,
+        now: Date
+    ) async -> SweepResult? {
         guard let source = searchSource.source else {
             // The stored `kind` names a vendor this build doesn't have — a downgrade, or a source
             // added by a newer version. Record it and move the clock on rather than retrying every

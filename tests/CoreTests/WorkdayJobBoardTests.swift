@@ -205,23 +205,19 @@ final class WorkdayJobBoardTests: XCTestCase {
 
     // MARK: - Pagination arithmetic
 
-    func testPageCountComesFromTheReportedTotal() {
-        XCTAssertEqual(WorkdayJobBoard.pagesToFetch(total: 17, firstPageCount: 17, maxPages: 50), 1)
-        XCTAssertEqual(WorkdayJobBoard.pagesToFetch(total: 41, firstPageCount: 20, maxPages: 50), 3)
+    /// A short first page is the end of the board — probing further would waste a request on every
+    /// small board.
+    func testOnlyAFullFirstPageJustifiesMorePages() {
+        XCTAssertEqual(WorkdayJobBoard.pagesToFetch(firstPageCount: 17, maxPages: 50), 1)
+        XCTAssertEqual(WorkdayJobBoard.pagesToFetch(firstPageCount: 0, maxPages: 50), 1)
+        XCTAssertEqual(WorkdayJobBoard.pagesToFetch(firstPageCount: 20, maxPages: 50), 50)
     }
 
-    /// The cap applies to the tenant's own `total`, not just to unbounded probing: Workday's
-    /// backend sometimes reports a `total` far above what it will actually serve, and requests past
-    /// that offset return page 0 again.
-    func testTheCapBoundsEvenAReportedTotal() {
-        XCTAssertEqual(WorkdayJobBoard.pagesToFetch(total: 23609, firstPageCount: 20, maxPages: 50), 50)
-    }
-
-    /// With no `total`, a short first page already means there is nothing more — probing further
-    /// would be a wasted request on every small board.
-    func testWithoutATotalOnlyAFullFirstPageJustifiesMorePages() {
-        XCTAssertEqual(WorkdayJobBoard.pagesToFetch(total: nil, firstPageCount: 7, maxPages: 50), 1)
-        XCTAssertEqual(WorkdayJobBoard.pagesToFetch(total: nil, firstPageCount: 20, maxPages: 50), 50)
+    /// The cap is what bounds pagination, since the tenant's own `total` is not trustworthy in
+    /// either direction: Workday's backend both underreports it and sometimes reports far above
+    /// what it will actually serve, with requests past that offset returning page 0 again.
+    func testTheCapBounds() {
+        XCTAssertEqual(WorkdayJobBoard.pagesToFetch(firstPageCount: 20, maxPages: 50), 50)
     }
 
     // MARK: - Retry classification
@@ -343,24 +339,30 @@ final class WorkdayCoverageTests: XCTestCase {
         ))
     }
 
-    /// A tenant reporting `total: 1` while serving a full page was declared complete after one page.
-    /// `total` is advisory; a full page always justifies looking at the next one.
-    func testAnUnderreportedTotalDoesNotEndPagination() {
-        XCTAssertGreaterThan(
-            WorkdayJobBoard.pagesToFetch(total: 1, firstPageCount: 20, maxPages: 5), 1,
+    /// A tenant reporting `total: 1` while serving a full page was declared complete after two
+    /// pages, losing everything past the fortieth posting. Deriving a page budget from `total` is
+    /// what did that, so nothing derives one now: a full first page paginates to the cap.
+    func testAnUnderreportedTotalDoesNotBoundPagination() {
+        XCTAssertEqual(
+            WorkdayJobBoard.pagesToFetch(firstPageCount: 20, maxPages: 5), 5,
             "a full first page means there may be more, whatever the tenant claims"
         )
     }
 
     /// A short first page is still the end of the board.
     func testAShortFirstPageStillEndsPagination() {
-        XCTAssertEqual(WorkdayJobBoard.pagesToFetch(total: 999, firstPageCount: 7, maxPages: 5), 1)
+        XCTAssertEqual(WorkdayJobBoard.pagesToFetch(firstPageCount: 7, maxPages: 5), 1)
     }
 
     func testTheCapStillBounds() {
-        XCTAssertEqual(
-            WorkdayJobBoard.pagesToFetch(total: 99999, firstPageCount: 20, maxPages: 5), 5
-        )
+        XCTAssertEqual(WorkdayJobBoard.pagesToFetch(firstPageCount: 20, maxPages: 5), 5)
+    }
+
+    /// The cap has to hold at its smallest value too: `max(2, …)` on the outside of the old
+    /// expression returned 2 here, so `SourceResolver`'s deliberately-one-page probe asked a
+    /// stranger's board for a second page.
+    func testAOnePageCapFetchesOnePage() {
+        XCTAssertEqual(WorkdayJobBoard.pagesToFetch(firstPageCount: 20, maxPages: 1), 1)
     }
 
     /// 408 is a timeout the server chose to report rather than drop — as transient as the dropped
@@ -377,6 +379,25 @@ final class WorkdayCoverageTests: XCTestCase {
         XCTAssertEqual(WorkdayJobBoard.retryAfter("86400"), .seconds(30), "clamped")
         XCTAssertNil(WorkdayJobBoard.retryAfter(nil))
         XCTAssertNil(WorkdayJobBoard.retryAfter("not a duration"))
+    }
+
+    /// `Double("inf")` parses, and `Duration.seconds(_:)` traps on it — so a board answering a
+    /// retryable status with `Retry-After: inf` crashed the app mid-sweep. Same for any overflowing
+    /// exponent. Reaching a `fatalError` from a response header is a third party halting jobhunt.
+    func testAnInfiniteRetryAfterDoesNotCrash() {
+        // Not honoured at all rather than clamped: a header that isn't a duration tells us nothing
+        // about when to retry, and nil means "use the normal backoff".
+        XCTAssertNil(WorkdayJobBoard.retryAfter("inf"))
+        XCTAssertNil(WorkdayJobBoard.retryAfter("Infinity"))
+        XCTAssertNil(WorkdayJobBoard.retryAfter("1e400"), "overflows to infinity")
+        // A merely enormous but finite value is a duration, so it clamps like any other.
+        XCTAssertEqual(WorkdayJobBoard.retryAfter("1e308"), .seconds(30))
+    }
+
+    func testANonNumericOrNegativeRetryAfterIsIgnored() {
+        XCTAssertNil(WorkdayJobBoard.retryAfter("nan"))
+        XCTAssertNil(WorkdayJobBoard.retryAfter("-1"))
+        XCTAssertNil(WorkdayJobBoard.retryAfter("-inf"))
     }
 }
 

@@ -148,7 +148,11 @@ public struct MarketSweeper: Sendable {
             // silently, on one bad vendor endpoint. So the sweep only waits on a board it is
             // actually making progress through; a visit that ingested nothing moves on and picks the
             // board up on the next full pass.
-            let stalled = result.ingested == 0 && budget > 0
+            // Progress is what was *settled*, not what was created. A capped batch that recorded
+            // fifty postings the user already had moved this board forward by fifty even though it
+            // produced no job, and calling that a stall abandons the rest of the board until the
+            // next full pass.
+            let stalled = result.settled == 0 && budget > 0
             let boardIsFinished = (result.truncatedByCap == 0 || stalled)
                 && result.status != .rateLimited
             if boardIsFinished {

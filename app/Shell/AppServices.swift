@@ -342,28 +342,26 @@ final class AppServices {
                 try? await Task.sleep(for: .seconds(600))
                 guard !Task.isCancelled, let self else { return }
                 guard settings.bool(forKey: SettingsKey.discoveryEnabled) else { continue }
-                // No title keywords means the gate would match everything — see canSweep.
-                guard DiscoverySettings.canSweep(settings) else { continue }
                 guard NSApplication.shared.isActive else { continue }
 
                 // Read every cycle rather than caching: the user may have edited the criteria or the
                 // caps since the last sweep, and a stale copy would keep applying the old ones.
                 let criteria = DiscoverySettings.criteria(from: settings)
                 let caps = DiscoverySettings.caps(from: settings)
-                // Reserved up front, synchronously, so the two loops can't both spend the same
-                // allowance across the awaits below. Whatever isn't used is released.
-                let budget = DiscoverySettings.reserve(caps.perSweep, settings: settings)
-                guard budget > 0 else { continue }
-
                 let scheduler = DiscoveryScheduler(
                     store: sweepStore,
                     sweeper: DiscoverySweeper(store: sweepStore, jobService: service, caps: caps)
                 )
-                let result = await scheduler.runOneDueSweep(
-                    criteria: criteria, remainingDailyBudget: budget,
-                    alreadyCaptured: (try? sweepStore.capturedDedupKeys()) ?? []
-                )
-                DiscoverySettings.release(budget - (result?.ingested ?? 0), settings: settings)
+                // The title interlock and the budget both live in `withBudget`: it reserves up
+                // front and synchronously, so the two loops can't spend the same allowance across
+                // the awaits below, and releases whatever the sweep didn't use.
+                await DiscoverySettings.withBudget(settings) { budget in
+                    let result = await scheduler.runOneDueSweep(
+                        criteria: criteria, remainingDailyBudget: budget,
+                        alreadyCaptured: (try? sweepStore.capturedDedupKeys()) ?? []
+                    )
+                    return (result, result?.ingested ?? 0)
+                }
             }
         }
     }

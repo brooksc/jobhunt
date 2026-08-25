@@ -70,7 +70,10 @@ func frameworkTarget(
     )
 }
 
-func testTarget(name: String, bundleSuffix: String, sources: SourceFilesList, deps: [TargetDependency]) -> Target {
+func testTarget(
+    name: String, bundleSuffix: String, sources: SourceFilesList,
+    deps: [TargetDependency], resources: ResourceFileElements? = nil
+) -> Target {
     Target.target(
         name: name,
         destinations: [.mac],
@@ -78,6 +81,7 @@ func testTarget(name: String, bundleSuffix: String, sources: SourceFilesList, de
         bundleId: "\(bundleId).\(bundleSuffix)",
         deploymentTargets: deploymentTarget,
         sources: sources,
+        resources: resources,
         dependencies: deps,
         settings: .settings(
             base: sharedBase,
@@ -277,7 +281,10 @@ let coreTestsTarget = testTarget(
         "tools/migrator/RepairJobNumbers.swift",
         "tools/migrator/Args.swift",
     ],
-    deps: [.target(name: "JobhuntCore")]
+    deps: [.target(name: "JobhuntCore")],
+    // Golden stores written by earlier builds. A migration test that writes and reopens the
+    // *current* schema doesn't test migration at all — see SchemaEvolutionTests.
+    resources: ["tests/Support/Fixtures/**"]
 )
 
 let serverTestsTarget = testTarget(

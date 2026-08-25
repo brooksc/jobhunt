@@ -624,6 +624,82 @@ final class DiscoverySchemaMigrationTests: XCTestCase {
         XCTAssertTrue(state.priority.isEmpty, "a nil priority set decodes to empty, not a crash")
     }
 
+    // MARK: - Real migration, from a real older store
+
+    /// The tripwire that actually trips.
+    ///
+    /// `testDiscoveryRowsSurviveAReopen` above writes and reopens the *current* schema, so it would
+    /// have passed while the shipped required-property bug made every existing store refuse to
+    /// open. Writing today's schema can never exercise a migration from yesterday's.
+    ///
+    /// `pre-discovery-revision.store` is a golden store written by the build at 7d899dae — before
+    /// `directoryRevision` and `priorityJSON` existed. Its `ZMARKETSWEEPSTATE` table genuinely has
+    /// no column for either, so opening it here is the migration, and CoreData fails it outright if
+    /// a mandatory destination attribute has no value to fill.
+    ///
+    /// Regenerate after a schema change only if the change is intended to be readable from that
+    /// era; otherwise add a new fixture rather than replacing this one.
+    private func fixtureURL() throws -> URL {
+        try XCTUnwrap(
+            Bundle(for: Self.self).url(
+                forResource: "pre-discovery-revision", withExtension: "store"
+            ),
+            "the golden pre-migration store is missing from the test bundle's resources"
+        )
+    }
+
+    func testAStoreFromBeforeTheRevisionFieldStillOpens() throws {
+        let container = try ModelContainerFactory.fixture(copying: fixtureURL())
+        let context = ModelContext(container)
+
+        let states = try context.fetch(FetchDescriptor<MarketSweepState>())
+        XCTAssertEqual(states.count, 1, "the pre-existing sweep row has to survive the migration")
+        let state = try XCTUnwrap(states.first)
+        XCTAssertEqual(state.cursor, 17, "and keep the fields it did have")
+        XCTAssertEqual(state.boardCount, 42)
+        XCTAssertEqual(state.postingsSeen, 999)
+        XCTAssertNil(state.directoryRevision, "the column didn't exist, so it reads as nil")
+        XCTAssertTrue(state.priority.isEmpty)
+
+        XCTAssertEqual(try context.fetch(FetchDescriptor<SearchSource>()).count, 1)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<DiscoveryLedgerEntry>()).count, 1)
+    }
+
+    /// And the migrated row is *used* correctly, not merely readable: an unfinished pass whose
+    /// revision is unknown must restart rather than resume a cursor into an unidentifiable list.
+    func testAMigratedSweepRestartsRatherThanResumingAnUnknownCursor() async throws {
+        let container = try ModelContainerFactory.fixture(copying: fixtureURL())
+        let store = try BackgroundStore(modelContainer: container)
+        let sweeper = MarketSweeper(
+            store: store,
+            sweeper: DiscoverySweeper(
+                store: store,
+                jobService: JobService(store: store, queue: Self.idleQueue(store))
+            )
+        )
+        let boards = (1 ... 30).map { MarketBoard(kind: "greenhouse", slug: "c\($0)") }
+        let existing = try await store.marketSweepState()
+        let before = try XCTUnwrap(existing)
+        XCTAssertEqual(before.cursor, 17)
+
+        let active = await sweeper.passForRun(boards: boards, startHour: 3, priority: [])
+        let pass = try XCTUnwrap(active)
+        XCTAssertEqual(pass.cursor, 0, "a cursor into an unidentifiable list can't be trusted")
+        XCTAssertNotEqual(pass.sweepID, before.sweepID, "that's a new pass, not a resume")
+        XCTAssertEqual(pass.revision, MarketBoardOrder.revision(pass.boards))
+    }
+
+    private static func idleQueue(_ store: BackgroundStore) -> QueueActor {
+        QueueActor(
+            store: store, isPaused: { true }, onSetPaused: { _ in },
+            readExtractionSettings: { ExtractionSettings(
+                llmModel: "", preferredLocations: "", locationFilterEnabled: false,
+                locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true
+            ) },
+            providerFactory: { SchemaNoOpProvider() }
+        )
+    }
+
     /// The new models must be insertable and fetchable, which the existing "all model types" test
     /// does not cover for them.
     func testDiscoveryModelsRoundTripInMemory() throws {
@@ -634,5 +710,14 @@ final class DiscoverySchemaMigrationTests: XCTestCase {
         try context.save()
         let fetched = try context.fetch(FetchDescriptor<DiscoveryLedgerEntry>())
         XCTAssertEqual(fetched.first?.outcome, .alreadyCaptured)
+    }
+}
+
+/// Never called — the migration tests never reach extraction.
+private struct SchemaNoOpProvider: LLMProvider {
+    let id: String = "noop"
+    let concurrencyLimit: Int = 1
+    func complete(_: ChatRequest) async throws -> ChatResponse {
+        throw LLMProviderError.unavailable(reason: "unused")
     }
 }

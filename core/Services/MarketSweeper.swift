@@ -226,23 +226,27 @@ public struct MarketSweeper: Sendable {
         }
 
         if let existing {
+            // Cheapest question first. Ordering ~29,000 boards and hashing the result is the most
+            // expensive thing in this function, and the loop asks every three minutes — 480 times a
+            // day, almost always to be told the finished pass isn't due yet.
+            if existing.isFinished {
+                guard existing.isDue(startHour: startHour, now: now) else { return nil }
+                return await startPass(boards: boards, priority: priority, now: now)
+            }
+
             let resumed = MarketBoardOrder.ordered(boards, priority: existing.priority)
             let revision = MarketBoardOrder.revision(resumed)
-
-            if !existing.isFinished {
-                // Nil means the row predates the revision field, so the cursor's list is unknown
-                // and cannot be trusted — same conclusion as a mismatch.
-                guard existing.directoryRevision == revision else {
-                    // The directory changed under an unfinished pass. Restarting loses progress;
-                    // continuing loses *boards*, silently. Progress is the cheaper thing to lose.
-                    return await startPass(boards: boards, priority: priority, now: now)
-                }
-                return ActivePass(
-                    sweepID: existing.sweepID, cursor: existing.cursor,
-                    boards: resumed, revision: revision
-                )
+            // Nil means the row predates the revision field, so the cursor's list is unknown and
+            // cannot be trusted — same conclusion as a mismatch. The directory changed under an
+            // unfinished pass: restarting loses progress, continuing loses *boards*, silently.
+            // Progress is the cheaper thing to lose.
+            guard existing.directoryRevision == revision else {
+                return await startPass(boards: boards, priority: priority, now: now)
             }
-            guard existing.isDue(startHour: startHour, now: now) else { return nil }
+            return ActivePass(
+                sweepID: existing.sweepID, cursor: existing.cursor,
+                boards: resumed, revision: revision
+            )
         }
         return await startPass(boards: boards, priority: priority, now: now)
     }

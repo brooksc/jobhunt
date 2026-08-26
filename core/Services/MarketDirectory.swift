@@ -105,19 +105,30 @@ public enum MarketDirectory {
 
     /// Beside the store, so a backup that captures Application Support captures this too — though
     /// losing it costs only a re-download.
-    public static func cacheDirectory() -> URL? {
+    ///
+    /// - Parameter root: overridden by tests. **Not a nicety.** `load` writes the file it fetched,
+    ///   so a test exercising the download path with a stubbed response wrote that stub into the
+    ///   real user's cache — which is exactly what happened: running the suite replaced a working
+    ///   8,333-entry Greenhouse directory with the two-entry fixture, and every subsequent sweep
+    ///   then covered two Greenhouse boards instead of thousands. Silently, and for a week, because
+    ///   a freshly written file counts as fresh. Threading the path through as a parameter makes
+    ///   that mistake unrepresentable rather than merely discouraged.
+    public static func cacheDirectory(root: URL? = nil) -> URL? {
+        if let root {
+            return root
+        }
         guard let support = FileManager.default.urls(
             for: .applicationSupportDirectory, in: .userDomainMask
         ).first else { return nil }
         return support.appending(path: "Jobhunt/market-directory", directoryHint: .isDirectory)
     }
 
-    static func cacheURL(file: String) -> URL? {
-        cacheDirectory()?.appending(path: file)
+    static func cacheURL(file: String, root: URL? = nil) -> URL? {
+        cacheDirectory(root: root)?.appending(path: file)
     }
 
-    public static func cacheAge(file: String, now: Date = Date()) -> TimeInterval? {
-        guard let url = cacheURL(file: file),
+    public static func cacheAge(file: String, now: Date = Date(), root: URL? = nil) -> TimeInterval? {
+        guard let url = cacheURL(file: file, root: root),
               let modified = try? url.resourceValues(forKeys: [.contentModificationDateKey])
               .contentModificationDate else { return nil }
         return now.timeIntervalSince(modified)
@@ -136,13 +147,15 @@ public enum MarketDirectory {
     /// sweep is exactly the failure this feature cannot afford, and the caller is the only thing
     /// that can tell the user.
     public static func boards(
-        session: URLSession = .shared, now: Date = Date(), forceRefresh: Bool = false
+        session: URLSession = .shared, now: Date = Date(), forceRefresh: Bool = false,
+        cacheRoot: URL? = nil
     ) async -> (boards: [MarketBoard], degraded: [String]) {
         var all: [MarketBoard] = []
         var degraded: [String] = []
         for (kind, file) in files {
             guard let loaded = await load(
-                file: file, kind: kind, session: session, now: now, forceRefresh: forceRefresh
+                file: file, kind: kind, session: session, now: now, forceRefresh: forceRefresh,
+                cacheRoot: cacheRoot
             ) else {
                 degraded.append(kind)
                 continue
@@ -163,10 +176,11 @@ public enum MarketDirectory {
     /// week. So the response has to parse into at least one board before it is written, and a
     /// response that doesn't falls back to whatever is already cached.
     static func load(
-        file: String, kind: String, session: URLSession, now: Date, forceRefresh: Bool
+        file: String, kind: String, session: URLSession, now: Date, forceRefresh: Bool,
+        cacheRoot: URL? = nil
     ) async -> (data: Data, degraded: Bool)? {
-        let cached = cacheURL(file: file).flatMap { try? Data(contentsOf: $0) }
-        let age = cacheAge(file: file, now: now)
+        let cached = cacheURL(file: file, root: cacheRoot).flatMap { try? Data(contentsOf: $0) }
+        let age = cacheAge(file: file, now: now, root: cacheRoot)
         let fresh = !forceRefresh && age.map { $0 < refreshInterval } == true
         if fresh, let cached {
             return (cached, false)
@@ -201,7 +215,8 @@ public enum MarketDirectory {
             return fallback()
         }
 
-        if let target = cacheURL(file: file), let directory = cacheDirectory() {
+        if let target = cacheURL(file: file, root: cacheRoot),
+           let directory = cacheDirectory(root: cacheRoot) {
             try? FileManager.default.createDirectory(
                 at: directory, withIntermediateDirectories: true
             )

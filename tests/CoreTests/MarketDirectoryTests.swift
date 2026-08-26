@@ -126,7 +126,23 @@ final class MarketDirectoryCacheTests: XCTestCase {
         return MockURLProtocol.makeSession()
     }
 
+    /// A directory of its own, per test. `load` WRITES what it fetched, so without this the
+    /// stubbed two-entry response below lands in the real user's cache at
+    /// ~/Library/Application Support/Jobhunt/market-directory — which is how running this suite
+    /// replaced a working 8,333-entry Greenhouse directory with two boards, and left every sweep
+    /// covering two Greenhouse companies until someone noticed.
+    private var cacheRoot: URL!
+
+    override func setUp() {
+        super.setUp()
+        cacheRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: "jh-directory-\(UUID().uuidString)")
+    }
+
     override func tearDown() {
+        if let cacheRoot {
+            try? FileManager.default.removeItem(at: cacheRoot)
+        }
         MockURLProtocol.reset()
         super.tearDown()
     }
@@ -135,7 +151,7 @@ final class MarketDirectoryCacheTests: XCTestCase {
         let session = stub(status: 200, body: #"["databricks","stripe"]"#)
         let loaded = await MarketDirectory.load(
             file: "greenhouse_companies.json", kind: "greenhouse",
-            session: session, now: Date(), forceRefresh: true
+            session: session, now: Date(), forceRefresh: true, cacheRoot: cacheRoot
         )
         XCTAssertNotNil(loaded)
         XCTAssertFalse(loaded?.degraded ?? true)
@@ -148,7 +164,7 @@ final class MarketDirectoryCacheTests: XCTestCase {
             let session = stub(status: 200, body: body)
             let loaded = await MarketDirectory.load(
                 file: "greenhouse_companies.json", kind: "greenhouse",
-                session: session, now: Date(), forceRefresh: true
+                session: session, now: Date(), forceRefresh: true, cacheRoot: cacheRoot
             )
             // Either nothing (no cache to fall back on) or the cached copy flagged degraded —
             // never the new payload treated as good.
@@ -166,10 +182,66 @@ final class MarketDirectoryCacheTests: XCTestCase {
     /// out of every sweep is indistinguishable from that vendor having no matching jobs.
     func testADegradedVendorIsReportedRatherThanHidden() async {
         let session = stub(status: 500, body: "")
-        let result = await MarketDirectory.boards(session: session, forceRefresh: true)
+        let result = await MarketDirectory.boards(
+            session: session, forceRefresh: true, cacheRoot: cacheRoot
+        )
         XCTAssertFalse(
             result.degraded.isEmpty,
             "a vendor that couldn't be refreshed must be named, not silently dropped"
+        )
+    }
+}
+
+/// The cache must never be the user's real one during a test (TASK-704).
+final class MarketDirectoryIsolationTests: XCTestCase {
+    /// The specific accident this guards: `load` writes what it fetched, so a stubbed response in a
+    /// test that forgot to pass `cacheRoot` overwrites the production directory — and the write
+    /// counts as fresh for a week, so the loss is silent and lasts.
+    func testAnOverriddenRootIsUsedInsteadOfApplicationSupport() throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: "jh-isolation-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let overridden = try XCTUnwrap(
+            MarketDirectory.cacheURL(file: "greenhouse_companies.json", root: root)
+        )
+        let production = try XCTUnwrap(
+            MarketDirectory.cacheURL(file: "greenhouse_companies.json")
+        )
+        XCTAssertTrue(overridden.path.hasPrefix(root.path))
+        XCTAssertNotEqual(overridden, production)
+        XCTAssertFalse(
+            overridden.path.contains("Application Support/Jobhunt/market-directory"),
+            "a test's writes must not be able to reach the real cache"
+        )
+    }
+
+    /// And a write through the override really does land there, not beside the store.
+    func testAWriteThroughTheOverrideStaysInTheOverride() async throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appending(path: "jh-isolation-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        MockURLProtocol.reset()
+        defer { MockURLProtocol.reset() }
+        MockURLProtocol.handlers.append(("raw.githubusercontent.com", { request in
+            (
+                HTTPURLResponse(
+                    url: request.url ?? URL(fileURLWithPath: "/"), statusCode: 200,
+                    httpVersion: nil, headerFields: nil
+                )!,
+                Data(#"["acme-isolation-probe"]"#.utf8)
+            )
+        }))
+
+        _ = await MarketDirectory.load(
+            file: "greenhouse_companies.json", kind: "greenhouse",
+            session: MockURLProtocol.makeSession(), now: Date(), forceRefresh: true,
+            cacheRoot: root
+        )
+        let written = root.appending(path: "greenhouse_companies.json")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: written.path),
+            "the fetched file should be cached under the override"
         )
     }
 }

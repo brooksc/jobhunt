@@ -16,6 +16,11 @@ struct DuplicatesView: View {
     @State private var pairs: [DuplicatePair] = []
     @State private var jobIndex: [String: Job] = [:]
     @State private var actionError: String?
+    /// Where the pair being resolved sat in the list, so the next one can take its place once the
+    /// list actually updates. See `refreshAndAdvance`.
+    @State private var pendingAdvanceIndex: Int?
+    /// The pair being resolved, so a not-yet-refreshed list isn't mistaken for a refreshed one.
+    @State private var resolvedPairID: String?
     /// Persisted width of the pair-list pane so the compare panel's width is sticky across selections
     /// and launches, and defaults wide enough to use the space (TASK-625).
     @AppStorage("duplicates.listPaneWidth") private var listWidth: Double = 440
@@ -72,6 +77,14 @@ struct DuplicatesView: View {
         // giving us implicit debouncing without holding a main-thread lock.
         .task(id: pairRefreshID) {
             await refreshPairsInBackground()
+        }
+        // The resolved pair leaves the list twice: once when the explicit refresh after the action
+        // publishes, and again when the `@Query` write lands and re-triggers the scan above. The
+        // second one is the reason advancing can't be done once at the point of action — the row
+        // is often still present then, because the write hasn't propagated yet. So the advance is
+        // driven by the list actually changing.
+        .onChange(of: filteredPairs) { _, _ in
+            advanceIfSelectionResolved()
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {
@@ -307,25 +320,44 @@ struct DuplicatesView: View {
         }
     }
 
-    /// After resolving the selected pair, refresh and advance to the NEXT pair (the one that followed
-    /// it, or the new last if it was last), so the user can work through the queue without re-selecting
-    /// or losing the compare panel (TASK-625).
+    /// Resolve, then move to the next pair, so the queue can be worked through without reaching for
+    /// the list between every decision (TASK-625).
+    ///
+    /// This records *where* the resolved pair was and lets `advanceIfSelectionResolved` do the move
+    /// when the row actually disappears. Two things defeat doing it here:
+    ///
+    /// - The refresh below reads `allJobs`, a `@Query`, and the write that resolved the pair has
+    ///   usually not propagated yet — so the resolved row is often still in the list at this point.
+    /// - Pair ids are `original||candidate`, and resolving one pair re-runs the grouping over a
+    ///   corpus with one job removed, which can re-key the *others*. Advancing to a remembered id
+    ///   therefore missed often, and the fallback was `filteredPairs.last` — jumping to the end of
+    ///   the queue rather than to the next item, which is what this was supposed to prevent.
     @MainActor
     private func refreshAndAdvance() async {
-        let nextID = selectedPairID.flatMap { pairIDAfter($0) }
+        pendingAdvanceIndex = selectedPairID.flatMap { filteredPairs.firstIndex(of: $0) } ?? 0
+        resolvedPairID = selectedPairID
         await refreshPairsInBackground()
-        if let nextID, filteredPairs.contains(nextID) {
-            selectedPairID = nextID
-        } else {
-            selectedPairID = filteredPairs.last
-        }
+        advanceIfSelectionResolved()
     }
 
-    /// The pair-list id immediately after `pairID` in the current filtered list, or nil if it's last.
-    private func pairIDAfter(_ pairID: String) -> String? {
-        let ids = filteredPairs
-        guard let idx = ids.firstIndex(of: pairID), idx + 1 < ids.count else { return nil }
-        return ids[idx + 1]
+    /// Select whatever now occupies the resolved pair's position — by index, not by id, because the
+    /// list is rebuilt rather than edited. Removing item *n* means item *n* is the next one, and
+    /// clamping to the end handles resolving the last pair.
+    @MainActor
+    private func advanceIfSelectionResolved() {
+        guard let index = pendingAdvanceIndex else { return }
+        // Still showing the pair that was just resolved: the refresh hasn't caught up, so wait for
+        // the change that removes it rather than selecting it again.
+        if let resolvedPairID, filteredPairs.contains(resolvedPairID) {
+            return
+        }
+        pendingAdvanceIndex = nil
+        resolvedPairID = nil
+        guard !filteredPairs.isEmpty else {
+            selectedPairID = nil
+            return
+        }
+        selectedPairID = filteredPairs[min(index, filteredPairs.count - 1)]
     }
 }
 

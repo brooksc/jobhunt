@@ -42,6 +42,15 @@ final class AppServices {
     var serverRunning: Bool = false
     var serverError: String?
 
+    /// True while a market slice is in flight, so the timer loop and *Search Now* can't sweep
+    /// concurrently and overwrite each other's cursor.
+    private(set) var marketSweepInProgress = false
+    /// Why the last attempt to sweep did nothing, for a caller that has to tell the user.
+    var sweepDeclined: String?
+    /// The board list, cached across slices and shared by both callers.
+    private var marketBoards: [MarketBoard] = []
+    private var marketBoardsLoadedAt: Date?
+
     /// Postings a check couldn't answer for, and everything the follow-up passes have since found.
     ///
     /// A sweep leaves work behind on purpose — LinkedIn goes twelve per run, a throttled board yields
@@ -378,85 +387,143 @@ final class AppServices {
     /// vendor that pushes back is waited out rather than worked around, because a board wrongly
     /// recorded as unreachable loses every match on it silently.
     private func marketSweepTask() -> Task<Void, Never> {
-        let sweepStore = backgroundStore
-        let service = jobService
-        return Task { @MainActor [weak self] in
-            // Cached across slices: the board list is ~29,000 entries parsed from four files, and
-            // rebuilding it every few minutes would be the most expensive thing in the loop.
-            var boards: [MarketBoard] = []
-            var boardsLoadedAt: Date?
-
+        Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(180))
                 guard !Task.isCancelled, let self else { return }
-                guard settings.bool(forKey: SettingsKey.marketSweepEnabled) else { continue }
-                // No title keywords means the gate would match everything — see canSweep. This
-                // matters most here: without it a 29,000-board pass would spend the whole daily cap
-                // on the first few boards it happened to reach.
-                guard DiscoverySettings.canSweep(settings) else { continue }
-
-                let directoryIsStale = boardsLoadedAt
-                    .map { Date().timeIntervalSince($0) > 6 * 3600 } ?? true
-                if boards.isEmpty || directoryIsStale {
-                    let loaded = await MarketDirectory.boards()
-                    // A vendor served from a stale or missing cache still sweeps — sweeping nothing
-                    // would be worse — but the user is told, because a vendor quietly dropping out
-                    // is indistinguishable from that vendor having no matching jobs.
-                    if !loaded.degraded.isEmpty {
-                        toastStore.show(
-                            "Job board list is out of date for \(loaded.degraded.joined(separator: ", ")) "
-                                + "— searching with the last copy.",
-                            isError: false
-                        )
-                    }
-                    boards = loaded.boards
-                    boardsLoadedAt = Date()
-                }
-                guard !boards.isEmpty else { continue }
-
-                let startHour = min(23, max(0, settings.int(forKey: SettingsKey.marketSweepStartHour)))
-                let caps = DiscoverySettings.caps(from: settings)
-                let sweeper = MarketSweeper(
-                    store: sweepStore,
-                    // Rejections are not ledgered for a market pass — a row per posting looked at
-                    // would grow the ledger without bound. See DiscoverySweeper.
-                    sweeper: DiscoverySweeper(
-                        store: sweepStore, jobService: service, caps: caps, ledgerRejections: false
-                    )
-                )
-                // Companies the user already has jobs from go first — see MarketBoardOrder. Read
-                // once here, then persisted with the pass, because it grows as the sweep ingests
-                // and a list that reorders mid-pass invalidates the cursor walking it.
-                let priority = await Set(
-                    ((try? sweepStore.untrackedCompanyCandidates()) ?? [])
-                        .map { CompanyNameKey.normalize($0.company) }
-                )
-                // Through `withBudget` like the watched-company loop, rather than reserving and
-                // releasing by hand. Doing it by hand here is what left this loop refunding an
-                // unused reservation into whatever day it happened to finish on — the same
-                // cross-midnight bug the helper exists to prevent, in the loop that runs longest.
-                let _: MarketSweepSlice? = await DiscoverySettings.withBudget(settings) { budget in
-                    guard let pass = await sweeper.passForRun(
-                        boards: boards, startHour: startHour, priority: priority
-                    ) else {
-                        return nil as (result: MarketSweepSlice, ingested: Int)?
-                    }
-                    let slice = await sweeper.sweepSlice(
-                        boards: pass.boards,
-                        cursor: pass.cursor,
-                        boardLimit: max(1, settings.int(forKey: SettingsKey.marketSweepBoardsPerSlice)),
-                        criteria: DiscoverySettings.criteria(from: settings),
-                        remainingDailyBudget: budget
-                    )
-                    try? await sweepStore.recordMarketSweepSlice(
-                        slice.slice, nextCursor: slice.nextCursor,
-                        sweepID: pass.sweepID, directoryRevision: pass.revision,
-                        boardCount: pass.boards.count
-                    )
-                    return (slice.slice, slice.slice.postingsIngested)
-                }
+                await runMarketSlice()
             }
         }
+    }
+
+    /// *Search Job Boards Now* — one slice, started by the user, reported by toast.
+    ///
+    /// A slice, not the whole pass: a full pass is ~29,000 boards and hours long, so "now" means
+    /// "start, and show me it working". The scheduled loop carries on from the same cursor.
+    @MainActor
+    func startSearchNow() async {
+        let started = Date()
+        guard let slice = await runMarketSlice(force: true) else {
+            toastStore.show(sweepDeclined ?? "Nothing to search right now.", isError: true)
+            return
+        }
+        let seconds = Int(Date().timeIntervalSince(started))
+        var line = "Searched \(slice.boardsSwept.formatted()) job boards in \(seconds)s — "
+            + "\(slice.postingsSeen.formatted()) postings, \(slice.postingsIngested) added"
+        if let reason = slice.stopReason {
+            line += " · \(reason)"
+        }
+        toastStore.show(line)
+    }
+
+    /// One slice of the market pass. The body of the timer loop, and what *Search Now* runs.
+    ///
+    /// - Parameter force: start a pass even if the last one finished and the next isn't due yet.
+    ///   Only the user's own explicit request sets this; the timer never does, or the daily
+    ///   schedule would mean nothing.
+    /// - Returns: what the slice did, or nil if it didn't run — and `sweepDeclined` says why, for a
+    ///   caller that has to explain itself to the user.
+    @MainActor
+    @discardableResult
+    func runMarketSlice(force: Bool = false) async -> MarketSweepSlice? {
+        guard settings.bool(forKey: SettingsKey.marketSweepEnabled) else {
+            sweepDeclined = "Full search is switched off in Settings → Search."
+            return nil
+        }
+        // No title keywords means the gate would match everything — see canSweep. This matters most
+        // here: without it a 29,000-board pass would spend the whole daily cap on the first few
+        // boards it happened to reach.
+        guard DiscoverySettings.canSweep(settings) else {
+            sweepDeclined = "Add at least one job title in Settings → Search first."
+            return nil
+        }
+        // The timer loop and a manual start would otherwise sweep concurrently and both write the
+        // cursor, so one would silently overwrite the other's position.
+        guard !marketSweepInProgress else {
+            sweepDeclined = "A search is already running."
+            return nil
+        }
+        marketSweepInProgress = true
+        defer { marketSweepInProgress = false }
+        sweepDeclined = nil
+
+        // Cached across slices: the board list is ~29,000 entries parsed from four files, and
+        // rebuilding it every few minutes would be the most expensive thing in the loop.
+        let directoryIsStale = marketBoardsLoadedAt
+            .map { Date().timeIntervalSince($0) > 6 * 3600 } ?? true
+        if marketBoards.isEmpty || directoryIsStale {
+            let loaded = await MarketDirectory.boards()
+            // A vendor served from a stale or missing cache still sweeps — sweeping nothing would
+            // be worse — but the user is told, because a vendor quietly dropping out is
+            // indistinguishable from that vendor having no matching jobs.
+            if !loaded.degraded.isEmpty {
+                toastStore.show(
+                    "Job board list is out of date for \(loaded.degraded.joined(separator: ", ")) "
+                        + "— searching with the last copy.",
+                    isError: false
+                )
+            }
+            marketBoards = loaded.boards
+            marketBoardsLoadedAt = Date()
+        }
+        guard !marketBoards.isEmpty else {
+            sweepDeclined = "Couldn't load the job board list."
+            return nil
+        }
+
+        let boards = marketBoards
+        let sweepStore = backgroundStore
+        let startHour = min(23, max(0, settings.int(forKey: SettingsKey.marketSweepStartHour)))
+        let caps = DiscoverySettings.caps(from: settings)
+        let sweeper = MarketSweeper(
+            store: sweepStore,
+            // Rejections are not ledgered for a market pass — a row per posting looked at would
+            // grow the ledger without bound. See DiscoverySweeper.
+            sweeper: DiscoverySweeper(
+                store: sweepStore, jobService: jobService, caps: caps, ledgerRejections: false
+            )
+        )
+        // Companies the user already has jobs from go first — see MarketBoardOrder. Read once here,
+        // then persisted with the pass, because it grows as the sweep ingests and a list that
+        // reorders mid-pass invalidates the cursor walking it.
+        let priority = await Set(
+            ((try? sweepStore.untrackedCompanyCandidates()) ?? [])
+                .map { CompanyNameKey.normalize($0.company) }
+        )
+        // Through `withBudget` like the watched-company loop, rather than reserving and releasing by
+        // hand. Doing it by hand here is what left this loop refunding an unused reservation into
+        // whatever day it happened to finish on — the same cross-midnight bug the helper exists to
+        // prevent, in the loop that runs longest.
+        let slice: MarketSweepSlice? = await DiscoverySettings.withBudget(settings) { budget in
+            guard let pass = await sweeper.passForRun(
+                boards: boards, startHour: startHour, priority: priority, force: force
+            ) else {
+                return nil as (result: MarketSweepSlice, ingested: Int)?
+            }
+            let done = await sweeper.sweepSlice(
+                boards: pass.boards,
+                cursor: pass.cursor,
+                boardLimit: max(1, settings.int(forKey: SettingsKey.marketSweepBoardsPerSlice)),
+                criteria: DiscoverySettings.criteria(from: settings),
+                remainingDailyBudget: budget
+            )
+            try? await sweepStore.recordMarketSweepSlice(
+                done.slice, nextCursor: done.nextCursor,
+                sweepID: pass.sweepID, directoryRevision: pass.revision,
+                boardCount: pass.boards.count
+            )
+            return (done.slice, done.slice.postingsIngested)
+        }
+        if slice == nil {
+            // `withBudget` returns nil for a spent allowance as well as a closed interlock, and the
+            // pass itself returns nil when nothing is due. Distinguishing them here is the
+            // difference between "wait until tomorrow" and "nothing is wrong".
+            sweepDeclined = DiscoverySettings.remainingDailyBudget(settings) > 0
+                ? "Everything is already searched — the next full pass starts at "
+                    + "\(startHour):00."
+                : "Today's new-job limit is used up. It resets tomorrow."
+        }
+        return slice
     }
 
     /// Starts runtime services and launch-time side effects: the local HTTP server, LLM-queue crash

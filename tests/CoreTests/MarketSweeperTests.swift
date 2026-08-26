@@ -687,3 +687,89 @@ final class MarketCursorProgressTests: XCTestCase {
         XCTAssertNotNil(slice.stopReason)
     }
 }
+
+/// *Search Now* overriding the schedule (TASK-703 follow-up).
+final class ForcedPassTests: XCTestCase {
+    private struct NoOp: LLMProvider {
+        let id: String = "noop"
+        let concurrencyLimit: Int = 1
+        func complete(_: ChatRequest) async throws -> ChatResponse {
+            throw LLMProviderError.unavailable(reason: "unused")
+        }
+    }
+
+    private func makeSweeper(_ store: BackgroundStore) -> MarketSweeper {
+        let queue = QueueActor(
+            store: store, isPaused: { true }, onSetPaused: { _ in },
+            readExtractionSettings: { ExtractionSettings(
+                llmModel: "", preferredLocations: "", locationFilterEnabled: false,
+                locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true
+            ) },
+            providerFactory: { NoOp() }
+        )
+        return MarketSweeper(
+            store: store,
+            sweeper: DiscoverySweeper(
+                store: store, jobService: JobService(store: store, queue: queue),
+                session: MockURLProtocol.makeSession(), ledgerRejections: false
+            ),
+            session: MockURLProtocol.makeSession()
+        )
+    }
+
+    private func boards(_ count: Int) -> [MarketBoard] {
+        (1 ... count).map { MarketBoard(kind: "greenhouse", slug: "company-\($0)") }
+    }
+
+    /// A finished pass whose next start hour hasn't arrived is exactly when the user reaches for
+    /// the button, so it has to beat the schedule.
+    func testForceStartsANewPassWhenNoneIsDue() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let sweeper = makeSweeper(store)
+        let list = boards(10)
+
+        // Morning, local. A pass runs to the end of the list, which is what marks it finished.
+        let morning = Date(timeIntervalSince1970: 1_700_000_000)
+        let first = await sweeper.passForRun(boards: list, startHour: 3, priority: [], now: morning)
+        let started = try XCTUnwrap(first)
+        try await store.recordMarketSweepSlice(
+            MarketSweepSlice(), nextCursor: list.count, sweepID: started.sweepID,
+            directoryRevision: started.revision, boardCount: list.count, now: morning
+        )
+
+        // Later the same day: today's 3am has been and gone, so nothing is due until tomorrow's.
+        let afternoon = morning.addingTimeInterval(6 * 3600)
+        let notDue = await sweeper.passForRun(
+            boards: list, startHour: 3, priority: [], now: afternoon
+        )
+        XCTAssertNil(notDue, "the schedule holds when nobody asked")
+
+        let forced = await sweeper.passForRun(
+            boards: list, startHour: 3, priority: [], now: afternoon, force: true
+        )
+        let newPass = try XCTUnwrap(forced, "the user asking explicitly beats the schedule")
+        XCTAssertEqual(newPass.cursor, 0)
+        XCTAssertNotEqual(newPass.sweepID, started.sweepID)
+    }
+
+    /// Force must not restart an unfinished pass — that would throw away hours of cursor.
+    func testForceResumesRatherThanRestartingAnUnfinishedPass() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let sweeper = makeSweeper(store)
+        let list = boards(50)
+
+        let firstPass = await sweeper.passForRun(boards: list, startHour: 3, priority: [])
+        let first = try XCTUnwrap(firstPass)
+        try await store.recordMarketSweepSlice(
+            MarketSweepSlice(), nextCursor: 20, sweepID: first.sweepID,
+            directoryRevision: first.revision, boardCount: list.count
+        )
+
+        let resumedPass = await sweeper.passForRun(
+            boards: list, startHour: 3, priority: [], force: true
+        )
+        let resumed = try XCTUnwrap(resumedPass)
+        XCTAssertEqual(resumed.sweepID, first.sweepID, "same pass")
+        XCTAssertEqual(resumed.cursor, 20, "and the cursor it had reached")
+    }
+}

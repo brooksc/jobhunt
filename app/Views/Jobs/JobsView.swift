@@ -487,6 +487,18 @@ struct JobsView: View {
                     )
                 }
                 .disabled(isScanningDuplicates)
+                // Automatic search runs itself on a schedule; this is for the user who has just
+                // set it up and wants to see it do something rather than wait for the next tick.
+                Button {
+                    Task { await appServices.startSearchNow() }
+                } label: {
+                    Label(
+                        appServices.marketSweepInProgress ? "Searching job boards…" : "Search Job Boards Now",
+                        systemImage: "binoculars"
+                    )
+                }
+                .disabled(appServices.marketSweepInProgress)
+                .help("Check the next batch of public job boards for matches")
                 Button {
                     exportCSV()
                 } label: {

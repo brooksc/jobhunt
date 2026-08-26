@@ -223,8 +223,13 @@ public struct MarketSweeper: Sendable {
     /// list, and refuses to reuse a cursor whose `directoryRevision` no longer matches — a stale
     /// index against a changed directory re-reads some boards and skips others with no error
     /// anywhere, which is the worst kind of failure this feature can have.
+    /// - Parameter force: begin a new pass even when the last one finished and the next isn't due.
+    ///   The user asking explicitly; the scheduled loop never sets it, or the start hour would mean
+    ///   nothing. It does *not* override an unfinished pass — that one is resumed, which is what the
+    ///   user wants anyway.
     public func passForRun(
-        boards: [MarketBoard], startHour: Int, priority: Set<String>, now: Date = Date()
+        boards: [MarketBoard], startHour: Int, priority: Set<String>, now: Date = Date(),
+        force: Bool = false
     ) async -> ActivePass? {
         // A read that FAILS is not a store with no state in it. Conflating them let a transient
         // error delete an unfinished checkpoint and restart the pass from board zero — repeatedly,
@@ -241,7 +246,7 @@ public struct MarketSweeper: Sendable {
             // expensive thing in this function, and the loop asks every three minutes — 480 times a
             // day, almost always to be told the finished pass isn't due yet.
             if existing.isFinished {
-                guard existing.isDue(startHour: startHour, now: now) else { return nil }
+                guard force || existing.isDue(startHour: startHour, now: now) else { return nil }
                 return await startPass(boards: boards, priority: priority, now: now)
             }
 

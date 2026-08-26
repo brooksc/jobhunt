@@ -50,6 +50,32 @@ extension SearchSettingsTab {
             } else if settings.bool(forKey: SettingsKey.marketSweepEnabled) {
                 marketWaitingNotice
             }
+
+            // The sweep is unattended by design, which makes it hard to believe in the first time
+            // you turn it on. This is the "prove it" button: one slice, on demand, reported.
+            HStack(spacing: 8) {
+                Button {
+                    Task { await appServices.startSearchNow() }
+                } label: {
+                    if appServices.marketSweepInProgress {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Searching…")
+                        }
+                    } else {
+                        Text("Search Now")
+                    }
+                }
+                .disabled(
+                    appServices.marketSweepInProgress
+                        || !settings.bool(forKey: SettingsKey.marketSweepEnabled)
+                        || !DiscoverySettings.canSweep(settings)
+                )
+                Text("Checks the next \(settings.int(forKey: SettingsKey.marketSweepBoardsPerSlice)) "
+                    + "boards without waiting for the schedule.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

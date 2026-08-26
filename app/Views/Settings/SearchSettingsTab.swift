@@ -11,7 +11,9 @@ import SwiftUI
 /// reason: it turns "no results in a week" into a number you can see before the week starts.
 struct SearchSettingsTab: View {
     let settings: SettingsStore
-    @Environment(AppServices.self) private var appServices
+    /// Not `private`: the market section is an extension in its own file, to keep this one under
+    /// the file-length limit, and it needs the same services.
+    @Environment(AppServices.self) var appServices
     @Query(sort: \SearchSource.label) private var sources: [SearchSource]
     /// Not `private`: the market section lives in its own file to keep this one under the file-length
     /// limit, and an extension in another file can't see a private stored property.

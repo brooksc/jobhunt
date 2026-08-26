@@ -128,7 +128,10 @@ public enum SourceResolver {
                 board: board, session: session, maxPages: 1
             )
             if !listing.roles.isEmpty {
-                return .listing(count: listing.reportedTotal ?? listing.roles.count)
+                // `max`, not `??`: the tenant's own total underreports — one answering `total: 1`
+                // while serving a full page is real — so trusting it here would tell the user a
+                // 3,000-role board has one opening while we are holding twenty of them.
+                return .listing(count: max(listing.reportedTotal ?? 0, listing.roles.count))
             }
             // Keyed on a genuine failure, not on partialness: this asks for one page, so a board
             // with nothing on it always "stopped short" — and reporting a real empty board as

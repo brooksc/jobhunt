@@ -309,6 +309,19 @@ When adding a new fixup: add a `BackgroundStore` (or other JobhuntCore) method +
 
 ## Conventions
 
+- **A Codable type stored as JSON is a schema too.** `SourceConfig` (in `SearchSource.configJSON`),
+  `PromptTemplate`, `ScoringFeedback`, `FitScoreResult` and `BackgroundStore.RawRow` are all persisted
+  as JSON strings. A property *declaration default* is not a *decoding default*: synthesized
+  `Decodable` calls `decode` for a non-optional property and throws `keyNotFound` when the key is
+  absent, so **adding a non-optional property with a default silently breaks every previously-saved
+  row**. Worse, the call sites use `try?` and fall back to a blank value, so the failure looks like
+  data loss rather than an error (adding `useCache: Bool = true` made every watched source come back
+  with an empty slug). Add new fields as optionals, or write `init(from:)` with `decodeIfPresent`.
+  Same rule, one layer down, as the SwiftData schema policy below.
+- **Changing gate-A matching logic requires bumping `DiscoveryCriteria.gateVersion`.** The ledger
+  keys each verdict on `criteriaFingerprint`, and that hash covers the user's criteria *values* plus
+  that version constant. Without a bump, every posting already rejected under the old logic stays
+  marked as judged and the fix never reaches it.
 - **Don't over-optimize for scale this app won't reach.** Expected data is on the order of a *few
   hundred* jobs — a single user's tracked applications. An O(N) or O(N×S) filter/sort/scan over a few
   hundred rows on the main thread is imperceptible, and SwiftUI `List`/`LazyVStack` already window row

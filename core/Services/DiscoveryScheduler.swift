@@ -146,21 +146,40 @@ public enum DiscoverySettings {
         guard canSweep(settings) else { return nil }
         let granted = reserve(caps(from: settings).perSweep, settings: settings, now: now)
         guard granted > 0 else { return nil }
+        // The day the reservation was stamped on. A sweep runs for minutes and the watched-company
+        // loop runs around the clock, so the release below can land on the far side of midnight —
+        // and refunding into a day this reservation was never counted against is what would
+        // hand back allowance the new day hasn't spent.
+        let reservedOn = dayFormatter.string(from: now)
         guard let outcome = await run(granted) else {
-            release(granted, settings: settings, now: now)
+            release(granted, reservedOn: reservedOn, settings: settings)
             return nil
         }
-        release(granted - outcome.ingested, settings: settings, now: now)
+        release(granted - outcome.ingested, reservedOn: reservedOn, settings: settings)
         return outcome.result
     }
 
     /// Hand back what a reservation didn't use, so an over-reservation doesn't burn the day.
+    ///
+    /// - Parameter reservedOn: the `yyyy-MM-dd` the reservation was made on, when the caller knows
+    ///   it. A refund is void once the counter has rolled to a new day: the reservation was never
+    ///   part of the new day's spend, so subtracting it would give away allowance — and, worse,
+    ///   re-stamp the record with yesterday's date, which reads to the next `reserve` as a fresh
+    ///   day and lifts the cap entirely.
     public static func release(
-        _ count: Int, settings: SettingsStore, now: Date = Date()
+        _ count: Int, reservedOn: String? = nil, settings: SettingsStore, now: Date = Date()
     ) {
         guard count > 0 else { return }
         let (day, spent) = spentToday(settings, now: now)
+        if let reservedOn, reservedOn != day {
+            return
+        }
         writeSpend(day: day, spent: max(0, spent - count), settings: settings)
+    }
+
+    /// The `yyyy-MM-dd` a reservation belongs to, for pairing a later `release` with it.
+    static func dayString(_ date: Date) -> String {
+        dayFormatter.string(from: date)
     }
 
     static func spentToday(_ settings: SettingsStore, now: Date) -> (day: String, spent: Int) {

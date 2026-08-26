@@ -92,11 +92,28 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
     /// every start: not incorrect, since re-evaluation is idempotent, but it would re-flood the
     /// ingest cap daily and make the "already seen" count meaningless. `Hashable` conformance is
     /// still there — it's fine for in-memory use, which is what it's for.
+    /// Bumped whenever the **matching logic below changes**, as opposed to the user's settings.
+    ///
+    /// Without this the fingerprint covers only the criteria *values*, so fixing a bug in
+    /// `evaluate` left every posting already rejected under the broken rule marked as judged —
+    /// `needsReevaluation` compares fingerprints, sees no change, and skips it forever. A gate fix
+    /// that doesn't apply to anything it previously got wrong is not a fix.
+    ///
+    /// Bumping invalidates every recorded *rejection* and re-examines it on the next sweep.
+    /// Ingested and already-captured rows are terminal regardless, so nothing is re-ingested.
+    ///
+    /// - 1: original.
+    /// - 2: one-character keywords anchored, as two- and three-character ones already were.
+    static let gateVersion = 2
+
     public var fingerprint: String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         guard let data = try? encoder.encode(self) else { return "unfingerprintable" }
-        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        var hasher = SHA256()
+        hasher.update(data: Data("gate/v\(Self.gateVersion)\u{1F}".utf8))
+        hasher.update(data: data)
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: - Evaluation
@@ -250,8 +267,18 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
         return false
     }
 
+    /// Short keywords are anchored, because unanchored they stop being keywords.
+    ///
+    /// career-ops anchored 2–3 characters; one is included here for a reason it never met. Left
+    /// unanchored, a single-character *include* keyword matches every title via `contains`, which
+    /// silently disables the title filter — the exact outcome `canSweep` exists to prevent, except
+    /// arrived at through a field the user filled in. A single-character *exclude* keyword rejects
+    /// every title containing that letter, which is close to all of them.
+    ///
+    /// Anchored, both fail visibly instead: the sweep returns little and the rejection histogram
+    /// says why. That is the trade this whole gate is built around.
     static func isShortAcronym(_ keyword: String) -> Bool {
-        keyword.count >= 2 && keyword.count <= 3 && keyword.allSatisfy { $0.isLetter && $0.isASCII }
+        !keyword.isEmpty && keyword.count <= 3 && keyword.allSatisfy { $0.isLetter && $0.isASCII }
     }
 
     /// Lookarounds rather than `\b`, so a keyword that begins or ends with punctuation (", IND",

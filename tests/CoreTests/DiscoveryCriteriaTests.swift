@@ -365,3 +365,72 @@ final class DiscoveryLocationHintTests: XCTestCase {
         )
     }
 }
+
+/// Gate rules a user's own settings can reach that the ported career-ops config never did
+/// (TASK-703 follow-up).
+final class DiscoveryGateEdgeCaseTests: XCTestCase {
+    private func posting(title: String = "Senior Program Manager") -> DiscoveredPosting {
+        DiscoveredPosting(
+            dedupKey: "gh:1", url: "https://boards.greenhouse.io/acme/jobs/1", title: title,
+            company: "Acme", locationRaw: "Remote, United States"
+        )
+    }
+
+    // MARK: - Short keywords are anchored
+
+    /// Unanchored, a one-character include keyword matches every title through `contains` — which
+    /// silently disables the title filter and lets a sweep spend the whole daily cap on arbitrary
+    /// jobs. That is the outcome the interlock exists to prevent, reached through a field the user
+    /// filled in.
+    func testAOneCharacterIncludeKeywordDoesNotMatchEverything() {
+        let criteria = DiscoveryCriteria(titleIncludeAny: ["c"])
+        XCTAssertEqual(criteria.evaluate(posting(title: "Senior Program Manager")),
+                       .reject(.title))
+        XCTAssertEqual(criteria.evaluate(posting(title: "Engineer, C")), .pass)
+    }
+
+    /// And unanchored, a one-character exclude keyword rejects nearly every posting there is.
+    func testAOneCharacterExcludeKeywordDoesNotRejectEverything() {
+        let criteria = DiscoveryCriteria(
+            titleIncludeAny: ["program manager"], titleExcludeAny: ["r"]
+        )
+        XCTAssertEqual(criteria.evaluate(posting(title: "Senior Program Manager")), .pass)
+    }
+
+    /// The existing two- and three-character behaviour is unchanged.
+    func testTwoAndThreeCharacterKeywordsStillAnchor() {
+        let criteria = DiscoveryCriteria(titleIncludeAny: ["tpm"])
+        XCTAssertEqual(criteria.evaluate(posting(title: "TPM, Infrastructure")), .pass)
+        XCTAssertEqual(criteria.evaluate(posting(title: "Contpmanager")), .reject(.title))
+    }
+
+    // MARK: - Fingerprint covers the logic, not just the settings
+
+    /// The mechanism bug behind both fixes above: the fingerprint covered only the user's criteria
+    /// values, so a posting rejected under a broken rule stayed marked as judged and the fix never
+    /// reached it. `needsReevaluation` has to return true when the *rule* changes too.
+    func testTheGateVersionParticipatesInTheFingerprint() {
+        let criteria = DiscoveryCriteria(titleIncludeAny: ["program manager"])
+        let entry = DiscoveryLedgerEntry(
+            dedupKey: "gh:1", sourceID: "greenhouse", outcome: .rejected,
+            rejectReason: .salary, criteriaFingerprint: "gate/v1-era-fingerprint"
+        )
+        XCTAssertTrue(
+            entry.needsReevaluation(under: criteria.fingerprint),
+            "a rejection recorded under older gate logic must be re-examined"
+        )
+    }
+
+    /// …but an ingested posting stays terminal across a version bump, or bumping would resurrect
+    /// jobs the user has since archived.
+    func testAVersionBumpDoesNotResurrectIngestedPostings() {
+        let criteria = DiscoveryCriteria(titleIncludeAny: ["program manager"])
+        for outcome in [DiscoveryOutcome.ingested, .alreadyCaptured] {
+            let entry = DiscoveryLedgerEntry(
+                dedupKey: "gh:1", sourceID: "greenhouse", outcome: outcome,
+                criteriaFingerprint: "gate/v1-era-fingerprint"
+            )
+            XCTAssertFalse(entry.needsReevaluation(under: criteria.fingerprint))
+        }
+    }
+}

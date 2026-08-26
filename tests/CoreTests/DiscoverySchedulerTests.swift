@@ -398,6 +398,46 @@ final class DiscoveryInterlockTests: XCTestCase {
         XCTAssertEqual(DiscoverySettings.spentToday(settings, now: Date()).spent, 0)
     }
 
+    /// A sweep that starts before midnight and finishes after it must not refund into the new day.
+    /// The counter reset at midnight, so the reservation was never part of the new day's spend —
+    /// subtracting it hands back allowance nothing used, and re-stamps the record with yesterday's
+    /// date, which the next `reserve` reads as a fresh day and so lifts the cap altogether.
+    func testAReservationIsNotRefundedAcrossMidnight() throws {
+        let settings = try makeSettings()
+        // A full day apart, so this is a different local date whatever the zone or DST does to it.
+        let lateLastNight = Date(timeIntervalSince1970: 1_700_003_500)
+        let thisMorning = lateLastNight.addingTimeInterval(86400)
+
+        let granted = DiscoverySettings.reserve(50, settings: settings, now: lateLastNight)
+        XCTAssertEqual(granted, 50)
+
+        // A new day: the counter has already rolled over and been spent against afresh.
+        _ = DiscoverySettings.reserve(10, settings: settings, now: thisMorning)
+        XCTAssertEqual(DiscoverySettings.spentToday(settings, now: thisMorning).spent, 10)
+
+        DiscoverySettings.release(
+            50,
+            reservedOn: DiscoverySettings.dayString(lateLastNight),
+            settings: settings,
+            now: thisMorning
+        )
+        XCTAssertEqual(
+            DiscoverySettings.spentToday(settings, now: thisMorning).spent, 10,
+            "yesterday's refund must not touch today's spend"
+        )
+    }
+
+    /// Within the same day it refunds normally.
+    func testAReservationIsRefundedWithinTheSameDay() throws {
+        let settings = try makeSettings()
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        _ = DiscoverySettings.reserve(50, settings: settings, now: now)
+        DiscoverySettings.release(
+            30, reservedOn: DiscoverySettings.dayString(now), settings: settings, now: now
+        )
+        XCTAssertEqual(DiscoverySettings.spentToday(settings, now: now).spent, 20)
+    }
+
     @MainActor
     func testOnlyWhatWasIngestedIsKept() async throws {
         let settings = try makeSettings()

@@ -153,8 +153,12 @@ public struct MarketSweeper: Sendable {
             // produced no job, and calling that a stall abandons the rest of the board until the
             // next full pass.
             let stalled = result.settled == 0 && budget > 0
+            // A cancelled board is unfinished whatever else is true: it stopped because the app is
+            // going away, not because the board ran out, so advancing past it would skip the rest
+            // of it until the next full pass.
             let boardIsFinished = (result.truncatedByCap == 0 || stalled)
                 && result.status != .rateLimited
+                && !result.cancelled
             if boardIsFinished {
                 index += 1
             }
@@ -164,6 +168,13 @@ public struct MarketSweeper: Sendable {
             slice.postingsPassed += result.passed
             slice.postingsIngested += result.ingested
             budget -= result.ingested
+
+            // After the counters, so the work this board *did* do is still recorded and its
+            // ingests still charged against the budget before the slice ends.
+            if result.cancelled {
+                slice.stopReason = "stopped part-way through — will resume here"
+                break
+            }
 
             switch result.status {
             case .unreachable, .rateLimited, .misconfigured:

@@ -243,3 +243,75 @@ final class DiscoveryLedgerTests: XCTestCase {
         XCTAssertTrue(counts.isEmpty)
     }
 }
+
+/// The histogram counts with `fetchCount` per bucket instead of materialising the ledger. Same
+/// answers, without turning an indefinitely growing table into model objects to produce a dozen
+/// integers (TASK-703 follow-up).
+final class DiscoveryHistogramTests: XCTestCase {
+    private func makeStore() throws -> BackgroundStore {
+        try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+    }
+
+    private func posting(_ key: String, source: String = "greenhouse") -> DiscoveredPosting {
+        DiscoveredPosting(
+            dedupKey: key, url: "https://boards.greenhouse.io/acme/jobs/\(key)",
+            title: "Program Manager", company: "Acme", sourceID: source
+        )
+    }
+
+    private let criteria = DiscoveryCriteria(titleIncludeAny: ["program manager"])
+
+    func testTheCountingQueryAgreesWithARowScan() async throws {
+        let store = try makeStore()
+        try await store.recordDiscoveryOutcomes([
+            (posting("1"), .ingested, nil),
+            (posting("2"), .alreadyCaptured, nil),
+            (posting("3"), .hydrationFailed, nil),
+            (posting("4"), .rejected, .title),
+            (posting("5"), .rejected, .title),
+            (posting("6"), .rejected, .location),
+            (posting("7", source: "lever"), .rejected, .salary)
+        ], criteriaFingerprint: criteria.fingerprint)
+
+        let counted = try await store.discoveryOutcomeCounts()
+        let scanned = try await store.discoveryOutcomeCountsByScan()
+        XCTAssertEqual(counted, scanned)
+        XCTAssertEqual(counted["ingested"], 1)
+        XCTAssertEqual(counted["rejected.title"], 2)
+        XCTAssertEqual(counted["rejected.salary"], 1)
+    }
+
+    func testScopingToOneSourceAgreesToo() async throws {
+        let store = try makeStore()
+        try await store.recordDiscoveryOutcomes([
+            (posting("1"), .rejected, .title),
+            (posting("2", source: "lever"), .rejected, .title),
+            (posting("3", source: "lever"), .ingested, nil)
+        ], criteriaFingerprint: criteria.fingerprint)
+
+        let counted = try await store.discoveryOutcomeCounts(sourceID: "lever")
+        let scanned = try await store.discoveryOutcomeCountsByScan(sourceID: "lever")
+        XCTAssertEqual(counted, scanned)
+        XCTAssertEqual(counted["rejected.title"], 1)
+        XCTAssertEqual(counted["ingested"], 1)
+    }
+
+    /// A rejection whose reason this build doesn't recognise still has to appear, or the buckets
+    /// stop summing to the ledger and the histogram quietly under-reports.
+    func testAnUnrecognisedRejectReasonIsStillCounted() async throws {
+        let store = try makeStore()
+        try await store.recordDiscoveryOutcomes(
+            [(posting("1"), .rejected, nil)], criteriaFingerprint: criteria.fingerprint
+        )
+        let counted = try await store.discoveryOutcomeCounts()
+        let scanned = try await store.discoveryOutcomeCountsByScan()
+        XCTAssertEqual(counted["rejected.unknown"], 1)
+        XCTAssertEqual(counted, scanned)
+    }
+
+    func testAnEmptyLedgerCountsNothing() async throws {
+        let store = try makeStore()
+        let counted = try await store.discoveryOutcomeCounts()
+        XCTAssertTrue(counted.isEmpty)
+    }
+}

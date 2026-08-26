@@ -23,6 +23,15 @@ struct SearchSettingsTab: View {
     @State private var histogram: [String: Int] = [:]
     @State private var runningSourceID: String?
     @State private var showingSuggestions = false
+    @State private var pendingRepoint: PendingRepoint?
+
+    /// A board re-resolution waiting on the user. See `reresolve`.
+    struct PendingRepoint: Identifiable, Equatable {
+        let id: String
+        let label: String
+        let company: String
+        let board: ResolvedBoard
+    }
 
     var body: some View {
         Form {
@@ -38,6 +47,25 @@ struct SearchSettingsTab: View {
         }
         .sheet(isPresented: $showingSuggestions) {
             SuggestedCompaniesSheet(onAdd: addSource)
+        }
+        .alert(
+            "Point \(pendingRepoint?.label ?? "this source") at a different board?",
+            isPresented: Binding(
+                get: { pendingRepoint != nil },
+                set: { if !$0 { pendingRepoint = nil } }
+            ),
+            presenting: pendingRepoint
+        ) { pending in
+            Button("Use This Board") { applyRepoint(pending) }
+            Button("Keep Current", role: .cancel) { pendingRepoint = nil }
+        } message: { pending in
+            Text(
+                "Found \(pending.board.displayName) board “\(pending.board.suggestedCompany)” "
+                    + "with \(pending.board.jobCount) open role"
+                    + "\(pending.board.jobCount == 1 ? "" : "s").\n\n\(pending.board.boardURL)\n\n"
+                    + "Jobhunt matched this by name, so check it really is \(pending.company) "
+                    + "before using it."
+            )
         }
         .task(id: criteriaSignature) { await refreshPreview() }
         .task { await refreshHistogram() }
@@ -363,11 +391,12 @@ struct SearchSettingsTab: View {
                         + "\(board.jobCount == 1 ? "" : "s"). It just had nothing matching."
                 )
             case let .resolved(board):
-                try? await appServices.backgroundStore.updateSearchSourceConfig(
-                    id: id, kind: board.kind, config: SourceConfig(slug: board.slug, company: company)
-                )
-                appServices.toastStore.show(
-                    "\(label): moved to \(board.displayName) — \(board.jobCount) open roles"
+                // Asked, not applied. The resolver matches on a slug derived from the company
+                // name and never establishes that the board it found belongs to that employer, so
+                // repointing silently is how a user ends up tracking a different company's jobs
+                // under their own label — with nothing on screen that would ever say so.
+                pendingRepoint = PendingRepoint(
+                    id: id, label: label, company: company, board: board
                 )
             case .failed(.noBoardFound):
                 appServices.toastStore.show(
@@ -380,6 +409,20 @@ struct SearchSettingsTab: View {
             case let .failed(.unusableName(detail)):
                 appServices.toastStore.show("\(label): \(detail)", isError: true)
             }
+        }
+    }
+
+    private func applyRepoint(_ pending: PendingRepoint) {
+        pendingRepoint = nil
+        Task {
+            try? await appServices.backgroundStore.updateSearchSourceConfig(
+                id: pending.id, kind: pending.board.kind,
+                config: SourceConfig(slug: pending.board.slug, company: pending.company)
+            )
+            appServices.toastStore.show(
+                "\(pending.label): moved to \(pending.board.displayName) — "
+                    + "\(pending.board.jobCount) open roles"
+            )
         }
     }
 
@@ -564,6 +607,14 @@ private struct AddSearchSourceSheet: View {
             )
             .foregroundStyle(.green)
             Text(found.boardURL).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+            // A pasted URL identifies its own board. A *name* was turned into a slug and probed
+            // vendor by vendor, and nothing checks that the board found belongs to the employer
+            // meant — two companies with similar names share one slug and the tick looks the same.
+            if !query.trimmingCharacters(in: .whitespaces).lowercased().hasPrefix("http") {
+                Text("Matched by name — open the link to check it's the right company.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         } else if !emptyBoards.isEmpty {
             // A real board with nothing on it today. Worth offering, but the user has to say so.
             ForEach(emptyBoards, id: \.boardURL) { board in
@@ -589,12 +640,15 @@ private struct AddSearchSourceSheet: View {
         }
     }
 
-    /// What the source is called. A pasted URL has no company name in it worth showing, so the
-    /// resolved slug stands in.
+    /// What the source is called, and what becomes `SourceConfig.company`.
+    ///
+    /// A pasted URL has no company name in it worth showing, so the resolver's employer hint stands
+    /// in. Not the slug: for Workday the slug is the entire URL, and this value ends up as the
+    /// company on every job the source discovers.
     private var displayLabel: String {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         if trimmed.lowercased().hasPrefix("http") {
-            return found?.slug ?? trimmed
+            return found?.suggestedCompany ?? trimmed
         }
         return trimmed
     }

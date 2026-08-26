@@ -157,7 +157,11 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
     /// Nothing to judge on → pass. That is the same "absent data never rejects" rule as everywhere
     /// else here, and it matters most for Workday, whose location is often a rollup count.
     func passesLocation(_ posting: DiscoveredPosting) -> Bool {
-        let location = (posting.locationRaw ?? "").trimmingCharacters(in: .whitespaces).lowercased()
+        // `whitespacesAndNewlines`: a vendor emitting "\n" as its location is reporting nothing,
+        // and trimming only spaces left it looking like a location no keyword could match — which
+        // rejects the posting rather than passing it as absent data.
+        let location = (posting.locationRaw ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         // The URL is a second, independent statement of where the role is, and the two disagree
         // often enough to matter. A tenant can report "Indianapolis, IN" on a posting whose own URL
         // says `/job/US-TX-Remote/`, or roll several offices up into "4 Locations" while the path
@@ -205,6 +209,13 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
     /// evidence of a foreign currency.
     func passesSalary(_ posting: DiscoveredPosting) -> Bool {
         guard minSalaryIfPublished > 0 || maxSalaryIfPublished > 0 else { return true }
+        // An inverted configuration rejects every band there is, and does it invisibly. career-ops
+        // fails open here; so do we. Latent while the UI exposes only the minimum, but the setting
+        // is stored and a future field would reach it.
+        if minSalaryIfPublished > 0, maxSalaryIfPublished > 0,
+           minSalaryIfPublished > maxSalaryIfPublished {
+            return true
+        }
         let low = posting.salaryMinPublished ?? posting.salaryMaxPublished
         let high = posting.salaryMaxPublished ?? posting.salaryMinPublished
         guard let low, let high else { return true }
@@ -256,15 +267,31 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
             // An empty keyword would match everything via `contains("")`, silently disabling the
             // tier it belongs to.
             guard !needle.isEmpty else { continue }
-            if boundaryAlways || isShortAcronym(needle) {
-                if matchesOnBoundary(needle, in: haystack) {
-                    return true
-                }
-            } else if haystack.contains(needle) {
+            // `a + b` means both terms, in any order — career-ops syntax, and the reason it exists
+            // is that job titles interleave. "director + engineering" has to match "Senior
+            // Director, Platform Engineering", which no single substring can. Treated as a literal
+            // it matched nothing, and a keyword that matches nothing is a silent false reject.
+            let terms = needle.components(separatedBy: "+")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            // All-punctuation entries ("+") carry no term, and matching on the raw string would
+            // put the separator back into the needle — so "manager +" would look for a literal
+            // "manager +" and match nothing.
+            guard !terms.isEmpty else { continue }
+            if terms.allSatisfy({ matchesTerm($0, in: haystack, boundaryAlways: boundaryAlways) }) {
                 return true
             }
         }
         return false
+    }
+
+    private static func matchesTerm(
+        _ needle: String, in haystack: String, boundaryAlways: Bool
+    ) -> Bool {
+        if boundaryAlways || isShortAcronym(needle) {
+            return matchesOnBoundary(needle, in: haystack)
+        }
+        return haystack.contains(needle)
     }
 
     /// Short keywords are anchored, because unanchored they stop being keywords.

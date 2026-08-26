@@ -434,3 +434,99 @@ final class DiscoveryGateEdgeCaseTests: XCTestCase {
         }
     }
 }
+
+/// career-ops parity gaps the user's own ported config never exercised (TASK-703 follow-up).
+///
+/// Distinct from `DiscoveryCriteriaParityTests`, which checks the ported cases agree; these are
+/// cases the port never covered because the config in hand never produced them.
+final class DiscoveryCriteriaParityGapTests: XCTestCase {
+    private func posting(
+        title: String = "Senior Program Manager",
+        location: String? = "Remote, United States",
+        url: String = "https://boards.greenhouse.io/acme/jobs/1"
+    ) -> DiscoveredPosting {
+        DiscoveredPosting(
+            dedupKey: "gh:1", url: url, title: title, company: "Acme", locationRaw: location
+        )
+    }
+
+    // MARK: - `a + b` means both terms, any order
+
+    /// Job titles interleave, so no single substring can express "a director role in engineering".
+    /// Treated as a literal, the keyword matched nothing at all — a keyword that can never match is
+    /// a silent false reject, which is the failure direction this gate exists to avoid.
+    func testAPlusKeywordMatchesBothTermsInAnyOrder() {
+        let criteria = DiscoveryCriteria(titleIncludeAny: ["director + engineering"])
+        XCTAssertEqual(criteria.evaluate(posting(title: "Senior Director, Platform Engineering")),
+                       .pass)
+        XCTAssertEqual(criteria.evaluate(posting(title: "Engineering Director")), .pass)
+    }
+
+    func testAPlusKeywordStillNeedsEveryTerm() {
+        let criteria = DiscoveryCriteria(titleIncludeAny: ["director + engineering"])
+        XCTAssertEqual(criteria.evaluate(posting(title: "Director, Product")), .reject(.title))
+        XCTAssertEqual(criteria.evaluate(posting(title: "Engineering Manager")), .reject(.title))
+    }
+
+    /// It works in the exclude list too, where it narrows rather than widens.
+    func testAPlusKeywordInTheExcludeListNeedsEveryTerm() {
+        let criteria = DiscoveryCriteria(
+            titleIncludeAny: ["manager"], titleExcludeAny: ["junior + manager"]
+        )
+        XCTAssertEqual(criteria.evaluate(posting(title: "Junior Program Manager")),
+                       .reject(.title))
+        XCTAssertEqual(criteria.evaluate(posting(title: "Senior Program Manager")), .pass)
+    }
+
+    func testAStrayPlusIsNotAnEmptyTerm() {
+        let criteria = DiscoveryCriteria(titleIncludeAny: ["manager +"])
+        XCTAssertEqual(criteria.evaluate(posting(title: "Program Manager")), .pass)
+        XCTAssertEqual(criteria.evaluate(posting(title: "Engineer")), .reject(.title))
+    }
+
+    // MARK: - Location normalisation
+
+    /// Tenants emit all three separators interchangeably. Leaving two of them joined means a
+    /// location keyword never boundary-matches on those postings — missed silently, on both the
+    /// allow and block lists.
+    func testUnderscoreAndPlusSeparatedURLLocationsAreRead() {
+        for separator in ["-", "_", "+"] {
+            let url = "https://acme.wd5.myworkdayjobs.com/en-US/careers/job/"
+                + "United\(separator)States/Program-Manager_R1"
+            let criteria = DiscoveryCriteria(
+                titleIncludeAny: ["program manager"], locationBlock: ["united states"]
+            )
+            XCTAssertEqual(
+                criteria.evaluate(posting(location: "4 Locations", url: url)),
+                .reject(.location),
+                "“United\(separator)States” has to read as a location"
+            )
+        }
+    }
+
+    /// A vendor sending a newline as its location is reporting nothing. Trimming only spaces left
+    /// it looking like a location no keyword could match, which rejects rather than passing.
+    func testAWhitespaceOnlyLocationCountsAsAbsent() {
+        let criteria = DiscoveryCriteria(
+            titleIncludeAny: ["program manager"], locationAllow: ["united states"]
+        )
+        XCTAssertEqual(criteria.evaluate(posting(location: "\n\t ", url: "https://x.test/j")),
+                       .pass)
+    }
+
+    // MARK: - Invalid salary configuration
+
+    /// A floor above the ceiling rejects every band there is, invisibly. career-ops fails open.
+    func testAnInvertedSalaryRangeFailsOpen() {
+        let criteria = DiscoveryCriteria(
+            titleIncludeAny: ["program manager"],
+            minSalaryIfPublished: 300_000, maxSalaryIfPublished: 100_000
+        )
+        let band = DiscoveredPosting(
+            dedupKey: "gh:1", url: "https://boards.greenhouse.io/acme/jobs/1",
+            title: "Senior Program Manager", company: "Acme", locationRaw: "Remote, United States",
+            salaryMinPublished: 150_000, salaryMaxPublished: 200_000
+        )
+        XCTAssertEqual(criteria.evaluate(band), .pass)
+    }
+}

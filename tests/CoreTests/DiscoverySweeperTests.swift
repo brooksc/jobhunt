@@ -609,3 +609,124 @@ final class CreateOnlyIngestTests: XCTestCase {
         XCTAssertEqual(jobs.count, 1)
     }
 }
+
+/// What a sweep reports as *progress*, and why the market cursor depends on getting it right
+/// (TASK-703 follow-up). A board reported as having moved forward keeps the cursor; one reported
+/// as stalled loses its remaining matches until the next full pass over ~29,000 boards.
+final class SweepProgressAccountingTests: XCTestCase {
+    private struct NoOp: LLMProvider {
+        let id: String = "noop"
+        let concurrencyLimit: Int = 1
+        func complete(_: ChatRequest) async throws -> ChatResponse {
+            throw LLMProviderError.httpError(statusCode: 503, body: "no-op")
+        }
+    }
+
+    private struct StubSource: JobSource {
+        let id = "stub"
+        let displayName = "Stub"
+        let configuration = SourceConfiguration.perCompany(slugHint: "x")
+        let postings: [DiscoveredPosting]
+        func fetchRecent(
+            config _: SourceConfig, since _: Date?, session _: URLSession
+        ) async throws -> [DiscoveredPosting] {
+            postings
+        }
+    }
+
+    private func makeSweeper(_ store: BackgroundStore, caps: DiscoveryCaps) -> DiscoverySweeper {
+        let queue = QueueActor(
+            store: store, isPaused: { true }, onSetPaused: { _ in },
+            readExtractionSettings: { ExtractionSettings(
+                llmModel: "", preferredLocations: "", locationFilterEnabled: false,
+                locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true
+            ) },
+            providerFactory: { NoOp() }
+        )
+        return DiscoverySweeper(
+            store: store, jobService: JobService(store: store, queue: queue),
+            session: MockURLProtocol.makeSession(), caps: caps, ledgerRejections: false
+        )
+    }
+
+    private func posting(_ index: Int) -> DiscoveredPosting {
+        DiscoveredPosting(
+            dedupKey: "gh:\(index)",
+            url: "https://boards.greenhouse.io/acme/jobs/\(index)",
+            title: "Program Manager", company: "Acme", locationRaw: "Remote, United States",
+            descriptionPlain: "A real job description, long enough to be usable."
+        )
+    }
+
+    override func setUp() {
+        super.setUp()
+        MockURLProtocol.reset()
+    }
+
+    /// A posting the user already holds is settled work: it is now in the ledger, so the next visit
+    /// skips it. Counting only *created* jobs meant a capped batch that settled fifty
+    /// already-captured postings reported zero progress and the board was abandoned.
+    func testAlreadyCapturedPostingsCountAsProgress() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let sweeper = makeSweeper(store, caps: DiscoveryCaps(perSweep: 2, perDay: 100))
+        let postings = (1 ... 5).map { posting($0) }
+
+        let result = await sweeper.sweep(
+            source: StubSource(postings: postings),
+            config: SourceConfig(slug: "acme"),
+            criteria: DiscoveryCriteria(titleIncludeAny: ["program manager"]),
+            alreadyCaptured: Set(postings.map(\.dedupKey))
+        )
+        XCTAssertEqual(result.ingested, 0, "the user already has every one of them")
+        XCTAssertEqual(result.settled, 5, "…but all five are now settled and will be skipped next time")
+    }
+
+    /// Cancellation stops the ingest loop mid-batch. The postings it never reached are neither
+    /// truncated by the cap nor recorded in the ledger, so without saying so the board looks
+    /// finished and the market cursor moves past it.
+    func testCancellationReportsTheBoardAsUnfinished() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let sweeper = makeSweeper(store, caps: DiscoveryCaps(perSweep: 50, perDay: 100))
+        let postings = (1 ... 10).map { posting($0) }
+        let source = StubSource(postings: postings)
+        let criteria = DiscoveryCriteria(titleIncludeAny: ["program manager"])
+
+        let task = Task {
+            await sweeper.sweep(
+                source: source, config: SourceConfig(slug: "acme"),
+                criteria: criteria, alreadyCaptured: []
+            )
+        }
+        task.cancel()
+        let result = await task.value
+
+        if result.cancelled {
+            XCTAssertGreaterThan(
+                result.truncatedByCap, 0,
+                "postings admitted to the batch but never looked at are unfinished work"
+            )
+        }
+        // The board must never read as finished-and-empty when it was cut short.
+        XCTAssertFalse(
+            result.cancelled && result.truncatedByCap == 0,
+            "a cancelled sweep that claims nothing is outstanding would advance the cursor"
+        )
+    }
+
+    /// A board with fewer matches than the cap, all handled, is finished: nothing outstanding.
+    func testAFullyProcessedBoardReportsNothingOutstanding() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let sweeper = makeSweeper(store, caps: DiscoveryCaps(perSweep: 50, perDay: 100))
+        let postings = (1 ... 3).map { posting($0) }
+
+        let result = await sweeper.sweep(
+            source: StubSource(postings: postings),
+            config: SourceConfig(slug: "acme"),
+            criteria: DiscoveryCriteria(titleIncludeAny: ["program manager"]),
+            alreadyCaptured: []
+        )
+        XCTAssertFalse(result.cancelled)
+        XCTAssertEqual(result.truncatedByCap, 0)
+        XCTAssertEqual(result.settled, 3)
+    }
+}

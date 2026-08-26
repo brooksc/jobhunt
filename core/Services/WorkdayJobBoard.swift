@@ -474,8 +474,15 @@ public enum WorkdayJobBoard {
         let segments = path.split(separator: "/").map(String.init)
         guard let idx = segments.lastIndex(of: "job"), idx + 1 < segments.count else { return nil }
         let raw = segments[idx + 1].removingPercentEncoding ?? segments[idx + 1]
-        let spaced = raw.replacingOccurrences(of: "-", with: " ")
-            .trimmingCharacters(in: .whitespaces)
+        // All three separators, not just the hyphen: tenants emit `United-States`, `United_States`
+        // and `United+States` interchangeably, and leaving two of them joined means a location
+        // keyword never word-boundary-matches on those postings — a silent miss on the allow and
+        // block lists alike. career-ops normalises all three.
+        var spaced = raw
+        for separator in ["-", "_", "+"] {
+            spaced = spaced.replacingOccurrences(of: separator, with: " ")
+        }
+        spaced = spaced.trimmingCharacters(in: .whitespaces)
         return spaced.isEmpty ? nil : spaced
     }
 

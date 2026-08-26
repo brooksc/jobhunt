@@ -155,7 +155,12 @@ public enum DiscoverySettings {
             release(granted, reservedOn: reservedOn, settings: settings)
             return nil
         }
-        release(granted - outcome.ingested, reservedOn: reservedOn, settings: settings)
+        // Clamped: a caller reporting more ingests than it was granted would make this refund
+        // negative, and `release` treats a non-positive count as nothing to hand back — so the
+        // over-spend would vanish instead of being charged. No current caller can exceed its
+        // grant; this is here so a future one cannot do so silently.
+        let used = min(max(0, outcome.ingested), granted)
+        release(granted - used, reservedOn: reservedOn, settings: settings)
         return outcome.result
     }
 

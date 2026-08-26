@@ -28,11 +28,16 @@ public struct SweepResult: Sendable, Equatable {
     /// matches until the next full 29,000-board pass, by which time short-lived postings are gone.
     public var settled: Int
 
+    /// The sweep stopped because the task was cancelled — app quitting, restore, settings change —
+    /// rather than because the board ran out. The board is unfinished regardless of what the other
+    /// counters say, and must not be treated as done.
+    public var cancelled: Bool
+
     public init(
         status: SearchSourceStatus, found: Int = 0, passed: Int = 0, ingested: Int = 0,
         hydrationFailures: Int = 0, truncatedByCap: Int = 0,
         rejections: [DiscoveryRejectReason: Int] = [:], error: String? = nil,
-        settled: Int = 0
+        settled: Int = 0, cancelled: Bool = false
     ) {
         self.status = status
         self.found = found
@@ -43,6 +48,7 @@ public struct SweepResult: Sendable, Equatable {
         self.rejections = rejections
         self.error = error
         self.settled = settled
+        self.cancelled = cancelled
     }
 }
 
@@ -180,50 +186,31 @@ public struct DiscoverySweeper: Sendable {
         let toIngest = Array(unjudged.prefix(allowance))
         let truncated = unjudged.count - toIngest.count
 
-        // 5. Hydrate and ingest, one at a time. A burst of parallel requests to one board is what
-        // rate limiting is for, and there are at most `allowance` of them.
-        var ingested = 0
-        var hydrationFailures = 0
-        for posting in toIngest {
-            if Task.isCancelled {
-                break
-            }
-            if let body = await hydrate(posting) {
-                switch await ingest(
-                    posting, body: body, sourceName: source.displayName, sourceID: source.id, now: now
-                ) {
-                case .created:
-                    outcomes.append((posting, .ingested, nil))
-                    ingested += 1
-                case .alreadyExisted:
-                    // The store refused to touch it, which is the guarantee working. Not a find.
-                    outcomes.append((posting, .alreadyCaptured, nil))
-                case .refused:
-                    // Deterministic: a URL-policy rejection, or a content duplicate resolved inside
-                    // ingestCapture. Retrying would refuse it identically, so record it.
-                    outcomes.append((posting, .alreadyCaptured, nil))
-                case .failed:
-                    // Operational. Deliberately NOT recorded — a terminal verdict on a transient
-                    // store error would suppress a real posting forever.
-                    hydrationFailures += 1
-                }
-            } else {
-                outcomes.append((posting, .hydrationFailed, nil))
-                hydrationFailures += 1
-            }
-        }
+        // 5. Hydrate and ingest.
+        let run = await hydrateAndIngest(toIngest, source: source, now: now)
+        outcomes.append(contentsOf: run.outcomes)
+        let ingested = run.ingested
+        let hydrationFailures = run.hydrationFailures
+        let unprocessed = run.unprocessed
 
-        // Counted before the write and zeroed if it fails: an outcome that didn't reach the ledger
-        // will be re-derived next visit, so it is not progress.
-        var settled = outcomes.count { $0.1 == .ingested || $0.1 == .alreadyCaptured }
+        // A ledger row that never landed will be re-derived next visit, so it isn't progress. A
+        // *job* that landed is progress whatever the ledger did: each ingest commits its own
+        // Job/Capture in its own transaction, before this batch write, and those rows are already
+        // in `capturedDedupKeys` — the next visit sees them as alreadyCaptured and does less work.
+        //
+        // Conflating the two meant a ledger failure after twenty successful ingests reported zero
+        // progress, which MarketSweeper reads as a stall and answers by abandoning the rest of the
+        // board for the whole pass.
+        var settled = ingested
         do {
             try await store.recordDiscoveryOutcomes(
                 outcomes.map { (posting: $0.0, outcome: $0.1, reason: $0.2) },
                 criteriaFingerprint: fingerprint,
                 now: now
             )
+            settled = outcomes.count { $0.1 == .ingested || $0.1 == .alreadyCaptured }
         } catch {
-            settled = 0
+            // `ingested` alone stands.
         }
 
         return SweepResult(
@@ -232,10 +219,62 @@ public struct DiscoverySweeper: Sendable {
             passed: survivors.count,
             ingested: ingested,
             hydrationFailures: hydrationFailures,
-            truncatedByCap: truncated,
+            truncatedByCap: truncated + unprocessed,
             rejections: rejections,
-            settled: settled
+            settled: settled,
+            cancelled: unprocessed > 0
         )
+    }
+
+    /// Hydrate and ingest a bounded batch, one posting at a time.
+    ///
+    /// Sequential on purpose: a burst of parallel requests to one board is what rate limiting is
+    /// for, and there are at most `caps.perSweep` of them.
+    private func hydrateAndIngest(
+        _ toIngest: [DiscoveredPosting], source: any JobSource, now: Date
+    ) async -> (
+        outcomes: [(DiscoveredPosting, DiscoveryOutcome, DiscoveryRejectReason?)],
+        ingested: Int,
+        hydrationFailures: Int,
+        unprocessed: Int
+    ) {
+        var outcomes: [(DiscoveredPosting, DiscoveryOutcome, DiscoveryRejectReason?)] = []
+        var ingested = 0
+        var hydrationFailures = 0
+
+        for (index, posting) in toIngest.enumerated() {
+            if Task.isCancelled {
+                // Postings already admitted to this batch that were never looked at. They are not
+                // truncated by the cap and carry no ledger verdict, so without counting them a
+                // cancelled board is indistinguishable from a finished one and the market cursor
+                // moves past it — losing the rest of the board until the next full pass.
+                return (outcomes, ingested, hydrationFailures, toIngest.count - index)
+            }
+            guard let body = await hydrate(posting) else {
+                outcomes.append((posting, .hydrationFailed, nil))
+                hydrationFailures += 1
+                continue
+            }
+            switch await ingest(
+                posting, body: body, sourceName: source.displayName, sourceID: source.id, now: now
+            ) {
+            case .created:
+                outcomes.append((posting, .ingested, nil))
+                ingested += 1
+            case .alreadyExisted:
+                // The store refused to touch it, which is the guarantee working. Not a find.
+                outcomes.append((posting, .alreadyCaptured, nil))
+            case .refused:
+                // Deterministic: a URL-policy rejection, or a content duplicate resolved inside
+                // ingestCapture. Retrying would refuse it identically, so record it.
+                outcomes.append((posting, .alreadyCaptured, nil))
+            case .failed:
+                // Operational. Deliberately NOT recorded — a terminal verdict on a transient store
+                // error would suppress a real posting forever.
+                hydrationFailures += 1
+            }
+        }
+        return (outcomes, ingested, hydrationFailures, 0)
     }
 
     /// Gate A over a board's postings. Split out for size, and because it is the one part of a

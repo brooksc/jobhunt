@@ -278,3 +278,44 @@ final class SearchSourceRepairTests: XCTestCase {
         XCTAssertTrue(after.isDue(), "the user should see whether the repair worked, not wait a cycle")
     }
 }
+
+/// What a resolved board is called, and why that name matters beyond the label (TASK-703
+/// follow-up).
+final class ResolvedBoardNamingTests: XCTestCase {
+    /// Workday keeps its whole config in the URL, so `slug` is the entire URL. The add sheet used
+    /// the slug as the source's name and persisted it as `SourceConfig.company` — and the Workday
+    /// adapter prefers the configured company over the board's own tenant, so every job discovered
+    /// through a pasted link came out with a URL where the employer should be.
+    func testAWorkdayURLSuggestsTheTenantNotTheWholeURL() throws {
+        let url = "https://servicetitan.wd1.myworkdayjobs.com/careers"
+        let board = try XCTUnwrap(SourceResolver.identify(boardURL: url))
+        XCTAssertEqual(board.kind, "workday")
+        XCTAssertEqual(board.slug, url, "the adapter still needs the whole URL")
+        XCTAssertEqual(board.suggestedCompany, "servicetitan")
+        XCTAssertFalse(
+            board.suggestedCompany.contains("://"),
+            "a company name must never be a URL"
+        )
+    }
+
+    /// A posting deep link resolves the same way.
+    func testAWorkdayPostingLinkAlsoSuggestsTheTenant() throws {
+        let board = try XCTUnwrap(SourceResolver.identify(
+            boardURL: "https://zillow.wd5.myworkdayjobs.com/en-US/Zillow_Group_External"
+                + "/job/Remote-USA/Program-Manager_P745"
+        ))
+        XCTAssertEqual(board.suggestedCompany, "zillow")
+    }
+
+    /// For the other vendors the slug already is the company handle, so it stands.
+    func testOtherVendorsSuggestTheirSlug() throws {
+        for url in [
+            "https://job-boards.greenhouse.io/acme",
+            "https://jobs.lever.co/acme",
+            "https://jobs.ashbyhq.com/acme"
+        ] {
+            let board = try XCTUnwrap(SourceResolver.identify(boardURL: url), url)
+            XCTAssertEqual(board.suggestedCompany, "acme", url)
+        }
+    }
+}

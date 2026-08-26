@@ -25,6 +25,27 @@ public struct ResolvedBoard: Sendable, Equatable {
     /// Where a human would look.
     public let boardURL: String
     public let jobCount: Int
+    /// The employer this board belongs to, as best the URL can say — what to offer as the source's
+    /// name and `SourceConfig.company`.
+    ///
+    /// Separate from `slug` because for Workday the slug **is the whole URL**: the tenant, site and
+    /// host are all config the adapter needs. Using the slug as the name meant a pasted Workday
+    /// link became the company on every job discovered through it — `SourceConfig.company` is what
+    /// the adapter prefers over the board's own tenant, so rows read
+    /// "https://acme.wd5.myworkdayjobs.com/careers" where the employer should be.
+    public let suggestedCompany: String
+
+    public init(
+        kind: String, displayName: String, slug: String, boardURL: String, jobCount: Int,
+        suggestedCompany: String? = nil
+    ) {
+        self.kind = kind
+        self.displayName = displayName
+        self.slug = slug
+        self.boardURL = boardURL
+        self.jobCount = jobCount
+        self.suggestedCompany = suggestedCompany ?? slug
+    }
 }
 
 /// Why nothing resolved. The wording matters: each of these sends the user somewhere different.
@@ -250,7 +271,8 @@ public enum SourceResolver {
         if ATSHost.belongs(host, to: "myworkdayjobs.com"), let board = WorkdayJobBoard.board(for: url) {
             return ResolvedBoard(
                 kind: "workday", displayName: "Workday", slug: boardURL,
-                boardURL: "\(board.jobBase)", jobCount: 0
+                boardURL: "\(board.jobBase)", jobCount: 0,
+                suggestedCompany: board.tenant
             )
         }
         // Everything else is `{host}/{slug}[/...]`.

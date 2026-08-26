@@ -416,8 +416,6 @@ final class AppServices {
 
                 let startHour = min(23, max(0, settings.int(forKey: SettingsKey.marketSweepStartHour)))
                 let caps = DiscoverySettings.caps(from: settings)
-                let budget = DiscoverySettings.reserve(caps.perSweep, settings: settings)
-                guard budget > 0 else { continue }
                 let sweeper = MarketSweeper(
                     store: sweepStore,
                     // Rejections are not ledgered for a market pass — a row per posting looked at
@@ -433,28 +431,30 @@ final class AppServices {
                     ((try? sweepStore.untrackedCompanyCandidates()) ?? [])
                         .map { CompanyNameKey.normalize($0.company) }
                 )
-                guard let pass = await sweeper.passForRun(
-                    boards: boards, startHour: startHour, priority: priority
-                ) else {
-                    DiscoverySettings.release(budget, settings: settings)
-                    continue
+                // Through `withBudget` like the watched-company loop, rather than reserving and
+                // releasing by hand. Doing it by hand here is what left this loop refunding an
+                // unused reservation into whatever day it happened to finish on — the same
+                // cross-midnight bug the helper exists to prevent, in the loop that runs longest.
+                let _: MarketSweepSlice? = await DiscoverySettings.withBudget(settings) { budget in
+                    guard let pass = await sweeper.passForRun(
+                        boards: boards, startHour: startHour, priority: priority
+                    ) else {
+                        return nil as (result: MarketSweepSlice, ingested: Int)?
+                    }
+                    let slice = await sweeper.sweepSlice(
+                        boards: pass.boards,
+                        cursor: pass.cursor,
+                        boardLimit: max(1, settings.int(forKey: SettingsKey.marketSweepBoardsPerSlice)),
+                        criteria: DiscoverySettings.criteria(from: settings),
+                        remainingDailyBudget: budget
+                    )
+                    try? await sweepStore.recordMarketSweepSlice(
+                        slice.slice, nextCursor: slice.nextCursor,
+                        sweepID: pass.sweepID, directoryRevision: pass.revision,
+                        boardCount: pass.boards.count
+                    )
+                    return (slice.slice, slice.slice.postingsIngested)
                 }
-
-                let slice = await sweeper.sweepSlice(
-                    boards: pass.boards,
-                    cursor: pass.cursor,
-                    boardLimit: max(1, settings.int(forKey: SettingsKey.marketSweepBoardsPerSlice)),
-                    criteria: DiscoverySettings.criteria(from: settings),
-                    remainingDailyBudget: budget
-                )
-                try? await sweepStore.recordMarketSweepSlice(
-                    slice.slice, nextCursor: slice.nextCursor,
-                    sweepID: pass.sweepID, directoryRevision: pass.revision,
-                    boardCount: pass.boards.count
-                )
-                DiscoverySettings.release(
-                    budget - slice.slice.postingsIngested, settings: settings
-                )
             }
         }
     }

@@ -167,7 +167,65 @@ public extension BackgroundStore {
     }
 
     /// How many postings this source has ever had each outcome — the rejection histogram.
+    ///
+    /// Counted with `fetchCount` per bucket rather than by materialising rows. The settings pane
+    /// calls this with no source, which means the whole ledger — a table that only grows — was
+    /// being turned into model objects every time the tab was opened, to produce a dozen integers.
     func discoveryOutcomeCounts(sourceID: String? = nil) throws -> [String: Int] {
+        var counts: [String: Int] = [:]
+
+        func count(_ key: String, _ predicate: Predicate<DiscoveryLedgerEntry>) throws {
+            let total = try modelContext.fetchCount(FetchDescriptor(predicate: predicate))
+            if total > 0 {
+                counts[key] = total
+            }
+        }
+
+        for outcome in DiscoveryOutcome.allCases where outcome != .rejected {
+            let raw = outcome.rawValue
+            if let sourceID {
+                try count(raw, #Predicate { $0.outcomeRaw == raw && $0.sourceID == sourceID })
+            } else {
+                try count(raw, #Predicate { $0.outcomeRaw == raw })
+            }
+        }
+        let rejected = DiscoveryOutcome.rejected.rawValue
+        for reason in DiscoveryRejectReason.allCases {
+            let raw = reason.rawValue
+            if let sourceID {
+                try count(
+                    "rejected.\(raw)",
+                    #Predicate { $0.outcomeRaw == rejected && $0.rejectReasonRaw == raw
+                        && $0.sourceID == sourceID
+                    }
+                )
+            } else {
+                try count(
+                    "rejected.\(raw)",
+                    #Predicate { $0.outcomeRaw == rejected && $0.rejectReasonRaw == raw }
+                )
+            }
+        }
+        // Rejections carrying no reason, or one this build doesn't know — a downgrade, or a reason
+        // added later. Derived by subtraction rather than by a negated predicate, so the buckets
+        // always sum to the ledger's own count of rejections.
+        let allRejected = try modelContext.fetchCount(
+            FetchDescriptor<DiscoveryLedgerEntry>(
+                predicate: sourceID.map { id in
+                    #Predicate { $0.outcomeRaw == rejected && $0.sourceID == id }
+                } ?? #Predicate { $0.outcomeRaw == rejected }
+            )
+        )
+        let attributed = DiscoveryRejectReason.allCases
+            .reduce(0) { $0 + (counts["rejected.\($1.rawValue)"] ?? 0) }
+        if allRejected > attributed {
+            counts["rejected.unknown"] = allRejected - attributed
+        }
+        return counts
+    }
+
+    /// The row-by-row version, kept for the tests that assert the bucket keys directly.
+    func discoveryOutcomeCountsByScan(sourceID: String? = nil) throws -> [String: Int] {
         var counts: [String: Int] = [:]
         let descriptor: FetchDescriptor<DiscoveryLedgerEntry> = if let sourceID {
             FetchDescriptor(predicate: #Predicate { $0.sourceID == sourceID })

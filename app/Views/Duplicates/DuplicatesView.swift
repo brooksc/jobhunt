@@ -497,7 +497,8 @@ struct CompareView: View {
                         label: "Original",
                         snapshot: pair.original,
                         job: originalJob,
-                        other: pair.candidate
+                        other: pair.candidate,
+                        otherJob: candidateJob
                     )
                     Divider()
                     JobCompareColumn(
@@ -505,6 +506,7 @@ struct CompareView: View {
                         snapshot: pair.candidate,
                         job: candidateJob,
                         other: pair.original,
+                        otherJob: originalJob,
                         isNewer: true
                     )
                 }
@@ -520,6 +522,10 @@ private struct JobCompareColumn: View {
     let snapshot: JobSnapshot
     let job: Job?
     let other: JobSnapshot
+    /// The other side's Job, for the fields `JobSnapshot` doesn't carry — it exists for duplicate
+    /// *detection*, where fit and posting dates are irrelevant, so extending it would put
+    /// review-only concerns into the matching path.
+    var otherJob: Job?
     var isNewer: Bool = false
 
     var body: some View {
@@ -606,6 +612,19 @@ private struct JobCompareColumn: View {
                         value: job.status.displayName,
                         differs: job.status.rawValue != (other.status.lowercased())
                     )
+                    // Two postings that scored differently against the same résumé are usually two
+                    // different roles, whatever their titles share — and when they really are the
+                    // same posting, this is what says which copy to keep.
+                    compareRow(
+                        field: "Fit",
+                        value: fitText(job),
+                        differs: job.fitScore != otherJob?.fitScore
+                    )
+                    compareRow(
+                        field: "Job #",
+                        value: snapshot.jobNumber.map { "#\($0)" } ?? "—",
+                        differs: false
+                    )
                     compareRow(
                         field: "Captured",
                         value: job.createdAt.formatted(date: .abbreviated, time: .shortened),
@@ -629,18 +648,70 @@ private struct JobCompareColumn: View {
                     .padding(.horizontal, 16).padding(.bottom, 8)
                 }
                 if !projection.skills.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Skills")
-                            .font(.caption2).foregroundStyle(.secondary).textCase(.uppercase)
-                        Text(projection.skills.prefix(14).joined(separator: " · "))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16).padding(.bottom, 8)
+                    skillsSection(projection.skills)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func fitText(_ job: Job) -> String {
+        if let score = job.fitScore {
+            return "\(score)"
+        }
+        switch job.fitStatus {
+        case .succeeded: return "—"
+        case .none: return "not scored"
+        default: return job.fitStatus.rawValue
+        }
+    }
+
+    /// Skills the *other* posting doesn't list, marked.
+    ///
+    /// The single most decisive thing on this screen when two postings share a company and most of
+    /// a title. "Senior Technical Program Manager" and "Senior Technical Program Manager, Game
+    /// Security" read as near-identical in every field above and score 62% similar — but one asks
+    /// for Anti-Cheat and Threat Assessment and the other for Cloud Infrastructure. Plain lists
+    /// leave the reader to diff two paragraphs of comma-separated text by eye.
+    @ViewBuilder
+    private func skillsSection(_ skills: [String]) -> some View {
+        let otherSkills = Set(
+            (otherJob.map { JobDetailProjection(job: $0).skills } ?? []).map { $0.lowercased() }
+        )
+        let shown = skills.prefix(14)
+        let uniqueCount = shown.count { !otherSkills.contains($0.lowercased()) }
+
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text("Skills")
+                    .font(.caption2).foregroundStyle(.secondary).textCase(.uppercase)
+                if !otherSkills.isEmpty, uniqueCount > 0 {
+                    Text("\(uniqueCount) not in the other")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+            }
+            // One Text built from styled runs rather than a wrapping stack of chips: it keeps the
+            // existing dense layout, and the whole point is to read the list as a list.
+            Text(
+                shown.enumerated().reduce(into: AttributedString()) { result, item in
+                    if item.offset > 0 {
+                        result += AttributedString(" · ")
+                    }
+                    var run = AttributedString(item.element)
+                    if !otherSkills.isEmpty, !otherSkills.contains(item.element.lowercased()) {
+                        run.foregroundColor = .orange
+                        run.inlinePresentationIntent = .stronglyEmphasized
+                    } else {
+                        run.foregroundColor = .secondary
+                    }
+                    result += run
+                }
+            )
+            .font(.caption)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16).padding(.bottom, 8)
     }
 
     @ViewBuilder

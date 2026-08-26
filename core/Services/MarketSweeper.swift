@@ -91,13 +91,18 @@ public struct MarketSweeper: Sendable {
     /// - Parameter remainingDailyBudget: ingests still allowed today, shared with the per-company
     ///   scheduler. Decremented as boards produce jobs; the slice stops when it reaches zero, since
     ///   continuing would only find postings it isn't allowed to act on.
+    /// - Parameter onProgress: called after each board with the running slice totals.
+    ///   A slice is 250 boards and several minutes, and the persisted checkpoint is only written at
+    ///   the end of it — so anything driving a progress display from the store alone sits frozen for
+    ///   minutes and then jumps. A number that doesn't move reads as stuck.
     public func sweepSlice(
         boards: [MarketBoard],
         cursor: Int,
         boardLimit: Int,
         criteria: DiscoveryCriteria,
         remainingDailyBudget: Int,
-        now: Date = Date()
+        now: Date = Date(),
+        onProgress: (@Sendable (MarketSweepSlice) -> Void)? = nil
     ) async -> (slice: MarketSweepSlice, nextCursor: Int) {
         var slice = MarketSweepSlice()
         var budget = remainingDailyBudget
@@ -168,6 +173,7 @@ public struct MarketSweeper: Sendable {
             slice.postingsPassed += result.passed
             slice.postingsIngested += result.ingested
             budget -= result.ingested
+            onProgress?(slice)
 
             // After the counters, so the work this board *did* do is still recorded and its
             // ingests still charged against the budget before the slice ends.

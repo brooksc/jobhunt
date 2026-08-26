@@ -50,6 +50,8 @@ final class AppServices {
     /// The board list, cached across slices and shared by both callers.
     private var marketBoards: [MarketBoard] = []
     private var marketBoardsLoadedAt: Date?
+    /// What the window's status bar shows. See ActivityCenter.
+    let activity = ActivityCenter()
 
     /// Postings a check couldn't answer for, and everything the follow-up passes have since found.
     ///
@@ -426,6 +428,33 @@ final class AppServices {
     @MainActor
     @discardableResult
     func runMarketSlice(force: Bool = false) async -> MarketSweepSlice? {
+        await runMarketSliceBody(force: force)
+    }
+
+    /// Cached across slices: the board list is ~20,000 entries parsed from four files, and rebuilding
+    /// it every few minutes would be the most expensive thing in the loop.
+    @MainActor
+    private func loadBoardsIfStale() async {
+        let directoryIsStale = marketBoardsLoadedAt
+            .map { Date().timeIntervalSince($0) > 6 * 3600 } ?? true
+        guard marketBoards.isEmpty || directoryIsStale else { return }
+        let loaded = await MarketDirectory.boards()
+        // A vendor served from a stale or missing cache still sweeps — sweeping nothing would be
+        // worse — but the user is told, because a vendor quietly dropping out is indistinguishable
+        // from that vendor having no matching jobs.
+        if !loaded.degraded.isEmpty {
+            toastStore.show(
+                "Job board list is out of date for \(loaded.degraded.joined(separator: ", ")) "
+                    + "— searching with the last copy.",
+                isError: false
+            )
+        }
+        marketBoards = loaded.boards
+        marketBoardsLoadedAt = Date()
+    }
+
+    @MainActor
+    private func runMarketSliceBody(force: Bool) async -> MarketSweepSlice? {
         guard settings.bool(forKey: SettingsKey.marketSweepEnabled) else {
             sweepDeclined = "Full search is switched off in Settings → Search."
             return nil
@@ -447,25 +476,7 @@ final class AppServices {
         defer { marketSweepInProgress = false }
         sweepDeclined = nil
 
-        // Cached across slices: the board list is ~29,000 entries parsed from four files, and
-        // rebuilding it every few minutes would be the most expensive thing in the loop.
-        let directoryIsStale = marketBoardsLoadedAt
-            .map { Date().timeIntervalSince($0) > 6 * 3600 } ?? true
-        if marketBoards.isEmpty || directoryIsStale {
-            let loaded = await MarketDirectory.boards()
-            // A vendor served from a stale or missing cache still sweeps — sweeping nothing would
-            // be worse — but the user is told, because a vendor quietly dropping out is
-            // indistinguishable from that vendor having no matching jobs.
-            if !loaded.degraded.isEmpty {
-                toastStore.show(
-                    "Job board list is out of date for \(loaded.degraded.joined(separator: ", ")) "
-                        + "— searching with the last copy.",
-                    isError: false
-                )
-            }
-            marketBoards = loaded.boards
-            marketBoardsLoadedAt = Date()
-        }
+        await loadBoardsIfStale()
         guard !marketBoards.isEmpty else {
             sweepDeclined = "Couldn't load the job board list."
             return nil
@@ -494,18 +505,29 @@ final class AppServices {
         // hand. Doing it by hand here is what left this loop refunding an unused reservation into
         // whatever day it happened to finish on — the same cross-midnight bug the helper exists to
         // prevent, in the loop that runs longest.
+        let activityCenter = activity
         let slice: MarketSweepSlice? = await DiscoverySettings.withBudget(settings) { budget in
             guard let pass = await sweeper.passForRun(
                 boards: boards, startHour: startHour, priority: priority, force: force
             ) else {
                 return nil as (result: MarketSweepSlice, ingested: Int)?
             }
+            let boardLimit = max(1, settings.int(forKey: SettingsKey.marketSweepBoardsPerSlice))
+            activityCenter.beginMarketSweep(cursor: pass.cursor, total: pass.boards.count)
+            defer { activityCenter.end(ActivityCenter.TaskID.marketSweep) }
+
             let done = await sweeper.sweepSlice(
                 boards: pass.boards,
                 cursor: pass.cursor,
-                boardLimit: max(1, settings.int(forKey: SettingsKey.marketSweepBoardsPerSlice)),
+                boardLimit: boardLimit,
                 criteria: DiscoverySettings.criteria(from: settings),
-                remainingDailyBudget: budget
+                remainingDailyBudget: budget,
+                onProgress: { running in
+                    // Hops to the main actor: the sweep runs off it, and ActivityCenter is UI state.
+                    Task { @MainActor in
+                        activityCenter.reportMarketSweep(from: pass.cursor, running: running)
+                    }
+                }
             )
             try? await sweepStore.recordMarketSweepSlice(
                 done.slice, nextCursor: done.nextCursor,

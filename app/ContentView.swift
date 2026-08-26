@@ -35,6 +35,31 @@ struct ContentView: View {
     @Environment(AppServices.self) private var appServices
     @Environment(\.openSettings) private var openSettings
     @Query(filter: #Predicate<Job> { $0.unread == true }) private var unreadJobs: [Job]
+    /// For the status bar's resting state. A few hundred rows, per the project's own note about not
+    /// optimising for a scale this app won't reach.
+    @Query private var allJobs: [Job]
+    /// Narrowed to discovered captures in the predicate; the date is applied in memory because a
+    /// `@Query` predicate is fixed when the view is created, and one built around "today" would keep
+    /// reporting yesterday's count after midnight.
+    @Query(filter: #Predicate<Capture> { $0.discoveredBySourceID != nil })
+    private var discoveredCaptures: [Capture]
+
+    /// Outstanding AI work. Kept as a `@Query` rather than pushed into `ActivityCenter`, because the
+    /// queue's state already lives in the store and mirroring it imperatively would give the bar a
+    /// second, drifting copy of a number SwiftData already publishes.
+    /// Captured as locals because `#Predicate` can't name an enum case directly in a key-path
+    /// comparison — it has to compare against a value the closure captured.
+    @Query(filter: {
+        let queued = LLMRequestStatus.queued
+        let running = LLMRequestStatus.running
+        return #Predicate<LLMRequest> { $0.status == queued || $0.status == running }
+    }())
+    private var outstandingRequests: [LLMRequest]
+
+    private var discoveredTodayCount: Int {
+        let start = Calendar.current.startOfDay(for: Date())
+        return discoveredCaptures.count { $0.capturedAt >= start }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -122,8 +147,21 @@ struct ContentView: View {
             notificationBell
             serviceStatusMenu
         }
-        .overlay(alignment: .bottomTrailing) {
-            ToastOverlay(store: appServices.toastStore)
+        // The transient message now lives in the status bar rather than a floating capsule — see
+        // StatusBar. Everything actionable or failed is still in the bell, unchanged.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            StatusBar(
+                // Passed, not read from the environment: `.safeAreaInset` content is built outside
+                // the host's environment, so `@Environment(AppServices.self)` inside it traps at
+                // runtime and the compiler says nothing.
+                activity: appServices.activity,
+                toasts: appServices.toastStore,
+                jobCount: allJobs.count,
+                discoveredToday: discoveredTodayCount,
+                queuedAIRequests: outstandingRequests.count,
+                aiPaused: appServices.settings.llmQueuePaused,
+                onOpen: { router.navigateToSection($0) }
+            )
         }
         // Keyboard Shortcuts overlay (TASK-499) — opened by bare `?` (via the key monitor) or the
         // Help ▸ Keyboard Shortcuts menu item; Escape / the close button dismiss it.

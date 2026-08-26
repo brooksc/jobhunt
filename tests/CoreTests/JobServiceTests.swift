@@ -894,7 +894,7 @@ final class JobServiceTests: XCTestCase {
         let svc = JobService(store: store, queue: queue)
 
         for i in 1 ... 3 {
-            let p = CapturePayload(url: "https://example.com/j/\(i)", pageTitle: "Job \(i)", visibleText: "t")
+            let p = CapturePayload(url: "https://example.com/j/\(i)", pageTitle: "Job \(i)", visibleText: "body \(i)")
             _ = try await svc.ingestCapture(p)
         }
 
@@ -916,7 +916,7 @@ final class JobServiceTests: XCTestCase {
             let r = try await svc.ingestCapture(CapturePayload(
                 url: "https://x.com/\(i)",
                 pageTitle: "J\(i)",
-                visibleText: "t"
+                visibleText: "body \(i)"
             ))
             ids.append(r.captureID)
         }
@@ -943,7 +943,7 @@ final class JobServiceTests: XCTestCase {
             _ = try await svc.ingestCapture(CapturePayload(
                 url: "https://x.com/\(i)",
                 pageTitle: "J\(i)",
-                visibleText: "t"
+                visibleText: "body \(i)"
             ))
         }
         let jobs = try await store.fetch(FetchDescriptor<Job>())
@@ -965,7 +965,7 @@ final class JobServiceTests: XCTestCase {
         let container = try ModelContainerFactory.inMemory()
         let store = makeStore(container)
         let svc = JobService(store: store, queue: makeQueue(container))
-        _ = try await svc.ingestCapture(CapturePayload(url: "https://x.com/1", pageTitle: "J", visibleText: "t"))
+        _ = try await svc.ingestCapture(CapturePayload(url: "https://x.com/1", pageTitle: "J", visibleText: "body one"))
         let jobs = try await store.fetch(FetchDescriptor<Job>())
         let jobID = try XCTUnwrap(jobs.first?.id)
 
@@ -985,7 +985,7 @@ final class JobServiceTests: XCTestCase {
         let container = try ModelContainerFactory.inMemory()
         let store = makeStore(container)
         let svc = JobService(store: store, queue: makeQueue(container))
-        _ = try await svc.ingestCapture(CapturePayload(url: "https://x.com/2", pageTitle: "J", visibleText: "t"))
+        _ = try await svc.ingestCapture(CapturePayload(url: "https://x.com/2", pageTitle: "J", visibleText: "body two"))
         let jobs = try await store.fetch(FetchDescriptor<Job>())
         let jobID = try XCTUnwrap(jobs.first?.id)
 
@@ -1005,7 +1005,7 @@ final class JobServiceTests: XCTestCase {
             _ = try await svc.ingestCapture(CapturePayload(
                 url: "https://x.com/\(i)",
                 pageTitle: "J\(i)",
-                visibleText: "t"
+                visibleText: "body \(i)"
             ))
         }
         let jobs = try await store.fetch(FetchDescriptor<Job>())
@@ -1046,7 +1046,7 @@ final class JobServiceTests: XCTestCase {
             _ = try await svc.ingestCapture(CapturePayload(
                 url: "https://x.com/\(i)",
                 pageTitle: "J\(i)",
-                visibleText: "t"
+                visibleText: "body \(i)"
             ))
         }
         let jobs = try await store.fetch(FetchDescriptor<Job>())

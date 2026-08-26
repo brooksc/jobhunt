@@ -730,3 +730,107 @@ final class SweepProgressAccountingTests: XCTestCase {
         XCTAssertEqual(result.settled, 3)
     }
 }
+
+/// Identical postings under two URLs, flagged at ingest rather than left for the review screen
+/// (TASK-704). Found on live data: Axon listed one role twice on its Greenhouse board — different
+/// posting ids, byte-identical descriptions — and both were filed as New.
+final class ContentDuplicateAtIngestTests: XCTestCase {
+    private struct NoOp: LLMProvider {
+        let id: String = "noop"
+        let concurrencyLimit: Int = 1
+        func complete(_: ChatRequest) async throws -> ChatResponse {
+            throw LLMProviderError.httpError(statusCode: 503, body: "no-op")
+        }
+    }
+
+    private func makeService(_ store: BackgroundStore) -> JobService {
+        JobService(store: store, queue: QueueActor(
+            store: store, isPaused: { true }, onSetPaused: { _ in },
+            readExtractionSettings: { ExtractionSettings(
+                llmModel: "", preferredLocations: "", locationFilterEnabled: false,
+                locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true
+            ) },
+            providerFactory: { NoOp() }
+        ))
+    }
+
+    private func payload(
+        url: String,
+        canonical: String? = nil,
+        body: String = "Lead the delivery of complex, enterprise-scale deployments globally."
+    ) -> CapturePayload {
+        CapturePayload(
+            url: url,
+            pageTitle: "Sr. Technical Program Manager I - Enterprise",
+            visibleText: body,
+            canonicalURL: canonical,
+            discoveredBySourceID: "greenhouse"
+        )
+    }
+
+    /// The regression. Neither posting carries a canonical URL — Greenhouse's board API supplies
+    /// none — and the old test required the canonicals to *differ* as well as the URLs. Two absent
+    /// canonicals compare equal, so the check was disabled for every Greenhouse duplicate.
+    func testIdenticalPostingsWithNoCanonicalAreFlagged() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let service = makeService(store)
+
+        _ = try await service.ingestCapture(
+            payload(url: "https://job-boards.greenhouse.io/axon/jobs/7814821003"), createOnly: true
+        )
+        let second = try await service.ingestCapture(
+            payload(url: "https://job-boards.greenhouse.io/axon/jobs/7814826003"), createOnly: true
+        )
+
+        let jobs: [Job] = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertEqual(jobs.count, 2, "two distinct postings still become two jobs")
+        let flagged = jobs.filter { $0.status == .duplicate }
+        XCTAssertEqual(flagged.count, 1, "the second must be filed as a duplicate of the first")
+        XCTAssertNotNil(flagged.first?.duplicateOfJobID)
+        XCTAssertFalse(second.isDuplicate, "different raw content — this is a content match, not an exact one")
+    }
+
+    /// It still works when canonicals are present and differ.
+    func testIdenticalPostingsWithDifferingCanonicalsAreFlagged() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let service = makeService(store)
+
+        _ = try await service.ingestCapture(
+            payload(
+                url: "https://job-boards.greenhouse.io/axon/jobs/1",
+                canonical: "https://job-boards.greenhouse.io/axon/jobs/1"
+            ),
+            createOnly: true
+        )
+        _ = try await service.ingestCapture(
+            payload(
+                url: "https://job-boards.greenhouse.io/axon/jobs/2",
+                canonical: "https://job-boards.greenhouse.io/axon/jobs/2"
+            ),
+            createOnly: true
+        )
+        let jobs: [Job] = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertEqual(jobs.count { $0.status == .duplicate }, 1)
+    }
+
+    /// And a genuinely different posting is left alone — the check must not flag on title alone.
+    func testADifferentPostingIsNotFlagged() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let service = makeService(store)
+
+        _ = try await service.ingestCapture(
+            payload(url: "https://job-boards.greenhouse.io/axon/jobs/1"), createOnly: true
+        )
+        _ = try await service.ingestCapture(
+            payload(
+                url: "https://job-boards.greenhouse.io/axon/jobs/2",
+                body: "An entirely different role with an entirely different description."
+            ),
+            createOnly: true
+        )
+
+        let jobs: [Job] = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertEqual(jobs.count, 2)
+        XCTAssertTrue(jobs.allSatisfy { $0.status != .duplicate })
+    }
+}

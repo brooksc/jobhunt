@@ -2261,12 +2261,19 @@ public actor BackgroundStore {
         var duplicateOfJobID: String?
         if let cHash = input.cleanedHash {
             let url = input.url
-            let canonical = input.canonicalURL
             let cleanedDescriptor = FetchDescriptor<Capture>(predicate: #Predicate { $0.cleanedHash == cHash })
             let candidates = try modelContext.fetch(cleanedDescriptor)
-            if let dup = candidates.first(where: {
-                $0.url != url && ($0.canonicalURL ?? "") != (canonical ?? "")
-            }) {
+            // Only the URL is compared. The old test also required the canonical URLs to differ,
+            // which silently disabled the whole check whenever neither posting had one: two absent
+            // canonicals compare as `"" == ""`, so the `&&` failed and an identical posting was
+            // filed as new. Greenhouse's board API supplies no canonical at all, so that was *every*
+            // duplicate discovery found there — the user was hand-resolving pairs in the Duplicates
+            // view that should never have reached it.
+            //
+            // Requiring it was also redundant: same-URL and same-canonical captures are both caught
+            // by the recapture lookups above, which return before reaching here. Getting this far
+            // already means a different posting.
+            if let dup = candidates.first(where: { $0.url != url }) {
                 duplicateOfJobID = dup.job?.id
             }
         }

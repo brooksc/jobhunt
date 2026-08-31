@@ -19,7 +19,10 @@
 # Usage:  ./scripts/check-docs.sh          # report drift, exit 1 if any
 #         ./scripts/check-docs.sh --quiet  # only print failures
 set -uo pipefail
-cd "$(dirname "$0")/.."
+# `|| exit` is load-bearing, not style: this script runs `set -uo pipefail` WITHOUT `-e`, so a
+# failed cd would carry on and run every check against the wrong directory — reporting success
+# because it found no drift in a tree it never looked at.
+cd "$(dirname "$0")/.." || exit 1
 
 quiet=0
 [[ "${1:-}" == "--quiet" ]] && quiet=1

@@ -37,6 +37,47 @@ cd .claude/worktrees/<topic>                             # build and test HERE
   same DerivedData and the same 8 cores; keep `-jobs 6` and don't start a build while the other
   agent's is running.
 
+## Working with the user: stay interruptible, delegate the work
+
+The user gives feedback continuously, while work is already in flight — a screenshot of something
+wrong, a new requirement, an unrelated bug they just hit. That feedback is worth more than an
+uninterrupted work session, so **the main session's job is to stay free to receive it.** Hand the
+implementation to a subagent and keep this session for talking, triaging and reviewing.
+
+Mid-turn messages are **not lost**. They arrive as a `system-reminder` attached to whatever tool
+result lands next, so the only cost is latency — if a build is running, expect a minute or two.
+Acknowledge one when it arrives rather than silently folding it in, so the user knows it landed.
+
+### The loop
+
+1. **Triage the moment it arrives.** Three destinations, and say which one you picked:
+   - *Changes the task in flight* → fold it in, tell the user you did.
+   - *Real but separate* → `mcp__backlog__task_create` immediately, reply with the task id. This is
+     the default. Capturing costs one tool call; losing it costs the user the whole observation.
+   - *Needs a decision from them* → ask now, while they're present. Don't park a question.
+2. **Delegate the implementation.** `Agent` with a full brief; it runs in the background and
+   notifies on completion. Use `isolation: "worktree"` so it builds somewhere the user's running app
+   isn't affected.
+3. **Stay in the main session** — answer, summarize, take the next piece of feedback. Don't start a
+   long build here; that's the thing that makes you unresponsive.
+4. **Review what comes back** before merging. The subagent's report is a claim, not a verification.
+
+### What this does and doesn't buy
+
+**It buys responsiveness, not parallelism.** Builds serialize whatever you do: one fanless 8-core
+machine, one shared DerivedData, one single-writer store. **Roughly one implementing subagent at a
+time** — a second one just makes both slower and fights over the app. Read-only agents (`Explore`,
+research, code reading) are cheap and can run several at once.
+
+**A subagent cannot ask the user anything.** It will guess instead, and a guess buried in a
+background task surfaces as finished work built on the wrong assumption. So resolve every open
+question *before* delegating; if the work is genuinely exploratory, keep it here where the user can
+be asked.
+
+**A fresh subagent knows nothing about this conversation.** `subagent_type: "fork"` inherits the
+context; anything else starts blank and needs the full brief — file paths, the decision already
+made, what "done" looks like. If writing the brief costs more than the work, just do it here.
+
 ## Project Overview
 
 Jobhunt is a native macOS SwiftUI app (macOS 15+) for tracking job applications. It uses:

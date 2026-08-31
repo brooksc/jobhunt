@@ -3,12 +3,13 @@ id: TASK-709
 title: >-
   Fit rubric v4: domain_fit judges the role not the employer, experience_level
   becomes two-sided, add a function-and-audience rule
-status: To Do
+status: On Hold
 assignee: []
 created_date: '2026-08-31 21:04'
+updated_date: '2026-08-31 21:38'
 labels: []
 dependencies: []
-priority: high
+priority: low
 type: enhancement
 ordinal: 83000
 ---
@@ -63,3 +64,30 @@ Benchmark first — see [[TASK-709]]. **1108 above 777 is the ready-made regress
 - [ ] #5 Job 777 ranks above job 1108 after the change, verified by an eval run
 - [ ] #6 The experience_level distribution is re-measured after the definition change, before any decision to remove the dimension
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: primary
+created: 2026-08-31 21:38
+---
+**Benchmarked 2026-08-31 ([[TASK-710]], `scratchpad/bench-fit.md`, 550 calls, $9.17). Three NO-GOs. Do not ship this as written.**
+
+| change | verdict | evidence |
+|---|---|---|
+| §1 `domain_fit` → role's work | **NO-GO** | internal roles +1.5 vs product roles +1.8 — no differential at all, `domain_fit` simply rises across the board, inversion untouched |
+| §2 `experience_level` two-sided | **diagnosis GO, wording NO-GO** | it does what it claims — the 95-pile drops 65%→15%, σ 8.2→19.1 — but the inversion *worsens* from −3.2 to −12.3 |
+| §3 FUNCTION AND AUDIENCE RULE | **NO-GO** | mean |Δ| 2.21, below the noise floor; 0 of 5 fixture verdicts changed |
+| all three together | **NO-GO** | inversion still unfixed (−1.3) |
+
+**The gating number is run-to-run variance: σ = 3.16, mean spread 7.6 points over five identical runs. 21 of 29 jobs move ≥4 points on repeat scoring alone.** So any argument of the form "job A at 94 beats job B at 90, therefore the rubric is broken" is, in general, reading noise — and that includes the review's framing.
+
+**But the review's specific pair survives, for a reason it did not establish.** Jobs 1108 and 777 are unusually *stable* items (σ 0.9 and 1.5 against a corpus mean of 3.16), and 1108 outscored 777 in **5 of 5** runs (93.6 ± 0.9 vs 90.4 ± 1.5, ~4 standard errors). The inversion is real and reproducible; the *magnitude* argument is not. Credit where due — the finding holds, the reasoning behind it doesn't.
+
+**Consequence for versioning:** shipping §1 or §3 would make 872 stored v3 scores incomparable in exchange for no measured behaviour change. That is a pure loss. §2 is the only change that earns a version bump, and not with this wording, since it makes the one case it was meant to help substantially worse.
+
+**What survives:** §2's *diagnosis* — `experience_level` is degenerate because the definition is one-sided, not because the axis carries no signal. That is now measured, and it settles the open question in `docs/fit-scoring.md` §10.3: **do not delete the dimension.** A better two-sided wording, one that spreads the distribution without inverting the pair further, is worth a second attempt.
+
+Parked at Low rather than closed: the underlying observation about `domain_fit`'s referent may still be correct and simply not reachable through prompt wording alone. Re-open only with a hypothesis that clears ~3 points of per-job noise.
+---
+<!-- COMMENTS:END -->

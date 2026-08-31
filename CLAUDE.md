@@ -360,7 +360,7 @@ JobhuntMigrator --backfill-models              # fill LLMRequest.model on old fi
 JobhuntMigrator --prune-orphan-fit-scores      # delete resume-less fit scores, recompute job mirrors
 JobhuntMigrator --prune-orphan-attempts        # delete LLMRequestAttempts whose request is gone
 JobhuntMigrator --recompute-fit-mirrors        # recompute every job's denormalized fit mirror
-JobhuntMigrator --repair-salaries              # re-parse stored pay, clearing bands the old regex invented
+JobhuntMigrator --repair-salaries              # fix stored bands the old regex invented (never fills in a missing one)
 JobhuntMigrator --detect-duplicates            # flag same-cleaned-hash duplicates across URLs
 JobhuntMigrator --repair-duplicate-job-numbers # renumber duplicate jobNumbers (raw SQLite, pre-open)
 JobhuntMigrator --merge-job --from 761 --into 725 # fold a duplicate job into the keeper, delete it

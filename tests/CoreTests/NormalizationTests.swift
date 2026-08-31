@@ -908,3 +908,44 @@ final class InventedSalaryBandTests: XCTestCase {
         XCTAssertEqual(out["salary_max"] as? Int, 226_600)
     }
 }
+
+/// The pay-evidence requirement was, at first, applied to the model's `salary_note` too, and wiped
+/// five jobs' correct bands when the repair was run over the real store. Both holes are here.
+final class SalaryNoteIsPayByDefinitionTests: XCTestCase {
+    /// `sentenceForIndex` treated the decimal point in "120,000.00" as a sentence end, so the context
+    /// window around the match was "120,000" and the `annually` that proves it is pay was cut off.
+    func testDecimalPointDoesNotTruncateTheContextWindow() {
+        let text = "The posted range is 120,000.00 - 193,725.00 annually for this role."
+        let bands = SalaryNormalizer.salaryBands(text)
+        XCTAssertEqual(bands.count, 1, "\(bands.map(\.label))")
+        XCTAssertEqual(bands.first?.min, 120_000)
+        XCTAssertEqual(bands.first?.max, 193_725)
+    }
+
+    func testDecimalRangeInASalaryNoteParses() {
+        let out = SalaryNormalizer.normalize(extracted: ["salary_note": "120,000.00 - 193,725.00 annually"])
+        XCTAssertEqual(out["salary_min"] as? Int, 120_000)
+        XCTAssertEqual(out["salary_max"] as? Int, 193_725)
+        let other = SalaryNormalizer.normalize(extracted: ["salary_note": "100,000.00 - 170,500.00 annually"])
+        XCTAssertEqual(other["salary_min"] as? Int, 100_000)
+        XCTAssertEqual(other["salary_max"] as? Int, 170_500)
+    }
+
+    /// Job #451: no currency, no k, no pay wording anywhere — and still pay, because it is the value
+    /// of the `salary_note` field.
+    func testBareRangeInASalaryNoteNeedsNoFurtherEvidence() {
+        let out = SalaryNormalizer.normalize(extracted: ["salary_note": "103,500 - 181,000"])
+        XCTAssertEqual(out["salary_min"] as? Int, 103_500)
+        XCTAssertEqual(out["salary_max"] as? Int, 181_000)
+    }
+
+    /// The exemption is scoped to the note. Whole-page prose still has to earn it, or the year range
+    /// comes straight back.
+    func testWholePageProseStillRequiresEvidence() {
+        XCTAssertEqual(SalaryNormalizer.salaryBands("Best Places to Work (2020-2023).").count, 0)
+        XCTAssertEqual(
+            SalaryNormalizer.salaryBands("Best Places to Work (2020-2023).", requirePayEvidence: false).count, 1,
+            "the exemption is what the note path opts into"
+        )
+    }
+}

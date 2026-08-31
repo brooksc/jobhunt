@@ -676,6 +676,26 @@ public actor BackgroundStore {
         return (changed, cleared)
     }
 
+    /// Can a stored salary figure be traced to the job's own pay evidence?
+    ///
+    /// Three ways, and the real store needed all three (a first cut used only the first and would
+    /// have deleted six correct salaries):
+    /// 1. it is a money amount the parser reads — one carrying a currency marker or a k suffix;
+    /// 2. its digits appear in the `salary_note` itself, whatever the currency or grouping. The note
+    ///    is the model's own statement of pay, so a figure written there is stated, not inferred:
+    ///    "₹40,50,000 – ₹56,70,000 INR Annually" (jobs #412/#608) and "SEK 996,819 …" (#1349) use
+    ///    currencies `moneyAmounts` doesn't read at all. Deliberately NOT searched in the page prose,
+    ///    where "(2020-2023)" would make the invented band look stated;
+    /// 3. it is an hourly rate annualized at 2080 h — Providence (#273) posts per-location hourly
+    ///    bands and the stored annual is $39.81 × 2080.
+    func salaryValueIsAccountedFor(_ value: Int, note: String, money: Set<Double>) -> Bool {
+        if money.contains(Double(value)) { return true }
+        let plainNote = note.filter { !", \u{00a0}'’_".contains($0) }
+        if plainNote.contains(String(value)) { return true }
+        // Within a dollar an hour of some rate in the text, i.e. the same annualization.
+        return money.contains { abs($0 * 2080 - Double(value)) < 2080 }
+    }
+
     public struct SalaryRepairSummary: Sendable {
         public var corrected = 0
         public var cleared = 0
@@ -691,28 +711,43 @@ public actor BackgroundStore {
     /// several Elastic postings displayed "$2k–2k". Those bands are already persisted, so fixing the
     /// parser doesn't reach them — this pass does, out-of-band via JobhuntMigrator.
     ///
-    /// Re-runs the *current* normalization over each job's stored pay evidence (its `salaryNote` plus
-    /// its capture's cleaned description), so a repaired job gets exactly what re-extraction would
-    /// compute today. When the parser finds a band, it replaces a differing stored one. When it finds
-    /// nothing, the stored band is cleared **only if the evidence can't support it** — i.e. neither
-    /// end appears as a money amount in the text. That keeps a pay figure the model read out of prose
-    /// the regexes can't re-find, while removing years and percentages the old pattern manufactured.
+    /// **Deliberately narrow.** It only considers a job whose stored band cannot be traced to the
+    /// job's own pay evidence — its `salaryNote` plus its capture's cleaned description — by any of
+    /// the three routes in `salaryValueIsAccountedFor`. That is exactly the shape the old pattern
+    /// manufactured. A job with no salary is left with none: filling one in would be a bulk
+    /// re-extraction of rows nobody asked us to touch, silently overriding what the pipeline decided.
+    /// A stored band the evidence does support is left alone even if re-parsing would pick a different
+    /// band, because that too is re-extraction rather than repair.
+    ///
+    /// For a job that does qualify, re-running the current normalization decides between replacing the
+    /// bogus band (the posting states pay elsewhere) and clearing it (the posting states none).
     ///
     /// Fields in `manualFieldOverridesJSON` are never touched: the user's own edit outranks both
-    /// parsers. Idempotent — a second run recomputes the same values and writes nothing.
+    /// parsers. Idempotent — the repaired value is either supported by the evidence or absent, so a
+    /// second run has nothing to act on.
     public func repairStoredSalaries(preferredLocations: String? = nil) throws -> SalaryRepairSummary {
         var summary = SalaryRepairSummary()
         for job in try modelContext.fetch(FetchDescriptor<Job>()) {
+            guard job.salaryMin != nil || job.salaryMax != nil else { continue }
             let overrides = manualFieldOverrideSet(job.manualFieldOverridesJSON)
-            let hasStoredBand = job.salaryMin != nil || job.salaryMax != nil
             guard !overrides.contains("salaryMin"), !overrides.contains("salaryMax") else {
-                if hasStoredBand { summary.skippedOverridden += 1 }
+                summary.skippedOverridden += 1
                 continue
             }
             // Same cap the extraction path applies before running these backtracking regexes over
             // untrusted capture text (CWE-1333).
             let source = String((job.capture?.cleanedDescription ?? "").prefix(LLMConstants.maxDescriptionChars))
             let note = job.salaryNote ?? ""
+
+            // Is the stored band accounted for by the job's own pay evidence?
+            let money = Set(SalaryNormalizer.moneyAmounts(note + "\n" + source))
+            let hourlyDerived = job.salaryHourlyMin != nil || job.salaryHourlyMax != nil
+            func accounted(_ value: Int?) -> Bool {
+                guard let value else { return true }
+                return hourlyDerived || salaryValueIsAccountedFor(value, note: note, money: money)
+            }
+            if accounted(job.salaryMin), accounted(job.salaryMax) { continue }
+
             let result = SalaryNormalizer.normalize(
                 extracted: ["salary_note": note as Any?, "salary_currency": job.salaryCurrency as Any?],
                 preferredLocations: preferredLocations,
@@ -733,11 +768,6 @@ public actor BackgroundStore {
                 continue
             }
 
-            guard hasStoredBand else { continue }
-            let money = Set(SalaryNormalizer.moneyAmounts(note + "\n" + source))
-            let supported = (job.salaryMin.map { money.contains(Double($0)) } ?? true)
-                && (job.salaryMax.map { money.contains(Double($0)) } ?? true)
-            guard !supported else { continue }
             job.salaryMin = nil
             job.salaryMax = nil
             job.salaryHourlyMin = nil

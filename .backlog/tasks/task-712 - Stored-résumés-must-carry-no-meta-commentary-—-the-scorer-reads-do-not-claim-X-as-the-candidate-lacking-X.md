@@ -6,9 +6,10 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-08-31 21:05'
+updated_date: '2026-08-31 21:38'
 labels: []
 dependencies: []
-priority: medium
+priority: low
 type: docs
 ordinal: 86000
 ---
@@ -43,3 +44,22 @@ Quantifying the effect is part of [[TASK-710]] — re-score a sample against the
 - [ ] #3 Nothing is silently stripped from the user's résumé text
 - [ ] #4 The measured effect from TASK-710 is recorded here once known
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: primary
+created: 2026-08-31 21:38
+---
+**Measured 2026-08-31 ([[TASK-710]]). Null result, and the premise was wrong on both halves.**
+
+1. **The effect is null.** Scoring a sample against annotated vs cleaned résumé text gave Δ = **+0.50 ± 2.78** — comfortably inside the σ = 3.16 noise floor. The meta-commentary is not measurably depressing scores.
+2. **No 51,755-character version exists.** The review reported the master résumé had been cleaned from ~51,755 to 45,104 characters. The benchmark could not find any such earlier text, and **the meta-commentary is still present in the live résumé** at 45,104 characters. So the cleanup the review describes as done has not happened, and the size change it attributes to that cleanup is something else.
+
+A caveat the benchmark states honestly: its `resume_old` comparison confounds meta-commentary with four weeks of ordinary content drift, so it is not a clean isolation of the annotation effect. But the direction and magnitude give no reason to act.
+
+**Downgraded to Low.** The advice is still sound in principle — a scorer reading "do not claim X" as a fact about the candidate is a real failure mode, and documenting that stored résumés should read as a recruiter would read them costs nothing. It is simply not worth engineering effort: no import-time warning, no detection heuristic. A sentence in the help text is the whole appropriate response.
+
+The cost argument for a shorter résumé survives and is stronger than the accuracy one — the 45k master is ~11.1k of ~14k prompt tokens per call. That moves to [[TASK-713]], which is about variance and cost rather than accuracy.
+---
+<!-- COMMENTS:END -->

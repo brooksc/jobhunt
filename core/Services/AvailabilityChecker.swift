@@ -349,26 +349,129 @@ public enum AvailabilityChecker {
     }
 
     /// True for loopback / link-local / private-range hosts that the availability check must not fetch
-    /// (SSRF guard, F8). Recognizes `localhost`, `.local`/`.internal` suffixes, IPv4 literals in the
-    /// loopback (127/8, 0/8), link-local (169.254/16) and private (10/8, 172.16/12, 192.168/16) ranges,
-    /// and IPv6 loopback/link-local/unique-local literals. Hostnames that *resolve* to private IPs are
-    /// not caught here — a full guard would require DNS resolution.
+    /// (SSRF guard, F8). Recognizes `localhost`, `.local`/`.internal` suffixes, and IP literals in the
+    /// loopback (127/8, 0/8), link-local (169.254/16) and private (10/8, 172.16/12, 192.168/16) IPv4
+    /// ranges plus IPv6 loopback/link-local/unique-local and their IPv4-mapped spellings.
+    ///
+    /// **IP literals are parsed, not string-matched.** The previous version split on `.` and required
+    /// exactly four decimal octets, so `127.1`, `2130706433`, `0x7f.1`, `017700000001` and
+    /// `::ffff:127.0.0.1` all sailed through — every one of them reaches 127.0.0.1 (TASK-699). The
+    /// spelling of an address is not a property the guard may depend on.
+    ///
+    /// **Accepted limitation:** hostnames that *resolve* to private IPs are still not caught. That
+    /// needs DNS (and, done properly, pinning the resolved address for the connection), which is out
+    /// of scope here.
     static func isInternalHost(_ host: String) -> Bool {
         let h = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
         if h == "localhost" || h.hasSuffix(".localhost") || h.hasSuffix(".local") || h.hasSuffix(".internal") {
             return true
         }
-        if h.contains(":") { // IPv6 literal
-            return h == "::1" || h.hasPrefix("fe80") || h.hasPrefix("fc") || h.hasPrefix("fd")
+        if let v4 = parsedIPv4Literal(h) { return isInternalIPv4(v4) }
+        if let v6 = parsedIPv6Literal(h) { return isInternalIPv6(v6) }
+        return false
+    }
+
+    /// The address an IPv4 literal denotes, in host byte order, or nil if the string isn't one.
+    ///
+    /// `inet_aton`, deliberately, **not** `inet_pton(AF_INET, …)`: `inet_pton` accepts only
+    /// dotted-quad decimal, while the resolver behind URLSession also accepts the classic BSD short
+    /// and non-decimal forms — `127.1` (a.d), `2130706433` (a), `0x7f.1`, `017700000001`. A guard
+    /// that understands fewer spellings than the connector does is a guard you can spell around.
+    static func parsedIPv4Literal(_ host: String) -> UInt32? {
+        var addr = in_addr()
+        guard host.withCString({ inet_aton($0, &addr) }) == 1 else { return nil }
+        return UInt32(bigEndian: addr.s_addr)
+    }
+
+    /// The 16 bytes an IPv6 literal denotes, or nil if the string isn't one. A zone id (`fe80::1%en0`)
+    /// is stripped first — `inet_pton` rejects it, and dropping it must not make the address look
+    /// unparseable and therefore allowed.
+    static func parsedIPv6Literal(_ host: String) -> [UInt8]? {
+        let literal = host.split(separator: "%", maxSplits: 1).first.map(String.init) ?? host
+        var bytes = [UInt8](repeating: 0, count: 16)
+        let parsed = literal.withCString { cString in
+            bytes.withUnsafeMutableBytes { buffer in
+                inet_pton(AF_INET6, cString, buffer.baseAddress) == 1
+            }
         }
-        let octets = h.split(separator: ".", omittingEmptySubsequences: false).compactMap { Int($0) }
-        guard octets.count == 4, octets.allSatisfy({ (0 ... 255).contains($0) }) else { return false }
-        switch (octets[0], octets[1]) {
-        case (0, _), (10, _), (127, _): return true
-        case (169, 254): return true
-        case (192, 168): return true
-        case (172, 16 ... 31): return true
+        return parsed ? bytes : nil
+    }
+
+    static func isInternalIPv4(_ address: UInt32) -> Bool {
+        let (a, b) = (address >> 24, (address >> 16) & 0xFF)
+        switch a {
+        case 0, 10, 127: return true
+        case 169: return b == 254
+        case 172: return (16 ... 31).contains(b)
+        case 192: return b == 168
         default: return false
+        }
+    }
+
+    static func isInternalIPv6(_ bytes: [UInt8]) -> Bool {
+        // IPv4-mapped (`::ffff:0:0/96`) and the deprecated IPv4-compatible (`::a.b.c.d`) forms carry
+        // an IPv4 address in the last four bytes, so `::ffff:127.0.0.1` *is* loopback and must be
+        // judged by the IPv4 rules. `::` and `::1` fall out of the same path (0/8 and 127/8).
+        if bytes[0 ..< 10].allSatisfy({ $0 == 0 }),
+           (bytes[10] == 0xFF && bytes[11] == 0xFF) || (bytes[10] == 0 && bytes[11] == 0) {
+            let v4 = (UInt32(bytes[12]) << 24) | (UInt32(bytes[13]) << 16)
+                | (UInt32(bytes[14]) << 8) | UInt32(bytes[15])
+            return isInternalIPv4(v4)
+        }
+        if bytes[0] == 0xFE, bytes[1] & 0xC0 == 0x80 { return true } // fe80::/10 link-local
+        if bytes[0] & 0xFE == 0xFC { return true } // fc00::/7 unique-local
+        return false
+    }
+
+    /// Re-applies the SSRF host guard to **every** redirect hop.
+    ///
+    /// Guarding only the request URL guards nothing: any allowed host can answer `302
+    /// Location: http://127.0.0.1/…` and URLSession will follow it with no further checks, which is
+    /// the same request the guard just refused to make directly (TASK-699). A refused hop stops the
+    /// chain — the task completes with the redirect response itself — and `refusedReason` tells
+    /// `checkURL` to report `.unverifiable` rather than interpret that 3xx as a job's status.
+    ///
+    /// The hop cap bounds a redirect loop that stays on allowed hosts; a posting further away than
+    /// that isn't one this check can verify anyway.
+    final class RedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+        static let maxRedirects = 10
+
+        private let lock = NSLock()
+        private var hops = 0
+        private var refusal: String?
+
+        /// Non-nil once a hop was refused, carrying the reason to report.
+        var refusedReason: String? {
+            lock.withLock { refusal }
+        }
+
+        func urlSession(
+            _: URLSession,
+            task _: URLSessionTask,
+            willPerformHTTPRedirection _: HTTPURLResponse,
+            newRequest request: URLRequest
+        ) async -> URLRequest? {
+            // `withLock`, not `lock()`/`unlock()`: the latter are unavailable from an async context.
+            let tooMany = lock.withLock {
+                hops += 1
+                return hops > Self.maxRedirects
+            }
+            if tooMany {
+                record("refusing redirect: chain longer than \(Self.maxRedirects) hops")
+                return nil
+            }
+            let host = request.url?.host ?? ""
+            if host.isEmpty || AvailabilityChecker.isInternalHost(host) {
+                record("refusing redirect to internal host: \(host.isEmpty ? "(none)" : host)")
+                return nil
+            }
+            return request
+        }
+
+        private func record(_ reason: String) {
+            lock.withLock {
+                if refusal == nil { refusal = reason }
+            }
         }
     }
 
@@ -527,7 +630,11 @@ public enum AvailabilityChecker {
         request.httpBody = try? JSONSerialization.data(
             withJSONObject: ["limit": 20, "offset": 0, "searchText": reqId]
         )
-        guard let (data, response) = try? await session.data(for: request),
+        // Same redirect guard as `checkURL`: the tenant host was checked, the hosts it redirects to
+        // were not. A refused hop leaves the answer indeterminate, which is already `nil` here.
+        let redirectGuard = RedirectGuard()
+        guard let (data, response) = try? await session.data(for: request, delegate: redirectGuard),
+              redirectGuard.refusedReason == nil,
               let http = response as? HTTPURLResponse, http.statusCode == 200,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return nil
@@ -595,8 +702,9 @@ public enum AvailabilityChecker {
         // SSRF guard (CWE-918): a captured job's URL / <link rel="canonical"> is attacker-controlled and
         // this default-on background loop fetches it (following redirects). Refuse loopback, link-local,
         // and private hosts so it can't be turned into a request against the local machine or LAN.
-        // (Covers IP-literal / localhost / .local hosts; hostname→private DNS rebinding and redirects to
-        // internal hosts are not covered here.) TASK-644 review / F8.
+        // Covers IP-literal (in every spelling — see `isInternalHost`) / localhost / .local hosts, and
+        // `RedirectGuard` below re-applies it to every redirect hop. A hostname that *resolves* to a
+        // private IP is still not covered: that needs DNS. TASK-644 review / F8, TASK-699.
         if let host = requestURL.host, isInternalHost(host) {
             return .unverifiable(reason: "refusing to fetch internal host: \(host)")
         }
@@ -614,8 +722,14 @@ public enum AvailabilityChecker {
         var request = URLRequest(url: requestURL, timeoutInterval: timeoutSeconds)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
 
+        let redirectGuard = RedirectGuard()
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request, delegate: redirectGuard)
+            // A refused hop means we never reached the posting — indeterminate, never gone. Checked
+            // before anything reads the response, which is the refused 3xx, not the job's page.
+            if let reason = redirectGuard.refusedReason {
+                return .unverifiable(reason: reason)
+            }
             guard let http = response as? HTTPURLResponse else {
                 return .available
             }
@@ -859,9 +973,10 @@ public enum AvailabilityChecker {
             return .live(spec.id)
         case let .unverifiable(detail):
             // The distinction the user sees: a challenge page vs a page we can't trust.
+            // "refusing…" covers both the up-front internal-host refusal and a refused redirect hop.
             let why: UnverifiedReason = detail.hasPrefix("bot challenge")
                 ? .botChallenge
-                : (detail.hasPrefix("refusing to fetch") ? .unreachable : .unreadablePage)
+                : (detail.hasPrefix("refusing") ? .unreachable : .unreadablePage)
             return .unverified(unverified(spec, why, detail))
         case let .error(error):
             return .unverified(unverified(spec, .unreachable, error.localizedDescription))

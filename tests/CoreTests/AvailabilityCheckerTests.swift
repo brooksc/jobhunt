@@ -87,6 +87,63 @@ final class FailingURLProtocol: URLProtocol {
     }
 }
 
+// MARK: - RedirectingURLProtocol
+
+/// URLProtocol subclass that answers a real `302`, so `willPerformHTTPRedirection` actually fires.
+/// `MockURLProtocol` only ever fakes the *result* of a redirect (a 200 whose URL differs), which is
+/// why the missing redirect guard was invisible to the suite (TASK-699).
+final class RedirectingURLProtocol: URLProtocol {
+    /// (pattern the request URL must contain, `Location` to send). First match wins.
+    static var redirects: [(String, String)] = []
+    /// Every URL the session actually asked for, in order — so a test can prove a refused hop was
+    /// never fetched.
+    static var requestedURLs: [String] = []
+
+    override static func canInit(with _: URLRequest) -> Bool {
+        true
+    }
+
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        let urlString = request.url?.absoluteString ?? ""
+        RedirectingURLProtocol.requestedURLs.append(urlString)
+        if let target = RedirectingURLProtocol.redirects.first(where: { urlString.contains($0.0) })?.1,
+           let targetURL = URL(string: target) {
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 302, httpVersion: "HTTP/1.1",
+                headerFields: ["Location": target]
+            )!
+            var followUp = URLRequest(url: targetURL)
+            followUp.httpMethod = "GET"
+            client?.urlProtocol(self, wasRedirectedTo: followUp, redirectResponse: response)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: Data())
+            client?.urlProtocolDidFinishLoading(self)
+            return
+        }
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data("<html>senior swift engineer</html>".utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+
+    static func reset() {
+        redirects = []
+        requestedURLs = []
+    }
+
+    static func makeSession() -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [RedirectingURLProtocol.self]
+        return URLSession(configuration: config)
+    }
+}
+
 // MARK: - Helper
 
 private func makeResponse(url: String, status: Int = 200, body: String = "") -> (HTTPURLResponse, Data) {
@@ -1360,6 +1417,110 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         for host in allowed {
             XCTAssertFalse(AvailabilityChecker.isInternalHost(host), "\(host) should be allowed")
         }
+    }
+
+    /// Every one of these reaches 127.0.0.1 (or another internal range), and every one of them got
+    /// past the old split-on-`.`-and-count-four guard (TASK-699). The point of the table is that the
+    /// guard must not care how the address is spelled.
+    func testIsInternalHostBlocksAlternateIPLiteralSpellings() {
+        let blocked = [
+            "127.1", // a.d short form
+            "127.0.1", // a.b.d short form
+            "2130706433", // 32-bit decimal
+            "0x7f000001", // 32-bit hex
+            "0x7f.1", // mixed hex + short form
+            "017700000001", // octal
+            "0177.0.0.1", // octal first octet
+            "::ffff:127.0.0.1", // IPv4-mapped IPv6
+            "::ffff:7f00:1", // the same address, hex halves
+            "[::ffff:127.0.0.1]", // as URLComponents hands it over
+            "::127.0.0.1", // deprecated IPv4-compatible
+            "::", // unspecified
+            "::ffff:169.254.169.254", // link-local through the mapped form
+            "0xa.0.0.1", // 10/8 in hex
+            "3232235777", // 192.168.1.1 as a 32-bit decimal
+            "fe80::1%en0", // link-local with a zone id
+            "fd12:3456::1", // unique-local
+            "[fe80::1]"
+        ]
+        for host in blocked {
+            XCTAssertTrue(AvailabilityChecker.isInternalHost(host), "\(host) should be blocked")
+        }
+        // Public addresses in the same spellings must still be allowed — the guard blocks ranges,
+        // not notations.
+        let allowed = [
+            "134744072", // 8.8.8.8 as a 32-bit decimal
+            "0x8.8.8.8", // 8.8.8.8 with a hex first octet
+            "::ffff:8.8.8.8",
+            "2606:4700:4700::1111",
+            "8.8.8.8"
+        ]
+        for host in allowed {
+            XCTAssertFalse(AvailabilityChecker.isInternalHost(host), "\(host) should be allowed")
+        }
+    }
+}
+
+// MARK: - Redirect guard (TASK-699)
+
+/// The up-front host check guards the URL we ask for; it says nothing about where the answer sends
+/// us. An allowed host answering `302 Location: http://127.0.0.1/…` was followed unguarded — the
+/// exact request the guard had just refused to make directly.
+final class AvailabilityRedirectGuardTests: XCTestCase {
+    private var session: URLSession!
+
+    override func setUp() {
+        RedirectingURLProtocol.reset()
+        session = RedirectingURLProtocol.makeSession()
+    }
+
+    override func tearDown() {
+        RedirectingURLProtocol.reset()
+        session = nil
+    }
+
+    func testRedirectToLoopbackIsRefused() async throws {
+        RedirectingURLProtocol.redirects = [("example.com/job/1", "http://127.0.0.1:8080/admin")]
+        let url = try XCTUnwrap(URL(string: "https://example.com/job/1"))
+        let result = await AvailabilityChecker.checkURL(url, title: "Engineer", session: session)
+        guard case let .unverifiable(reason) = result else {
+            return XCTFail("expected .unverifiable, got \(result)")
+        }
+        XCTAssertTrue(reason.contains("refusing redirect"), "reason should name the refusal: \(reason)")
+        XCTAssertFalse(
+            RedirectingURLProtocol.requestedURLs.contains { $0.contains("127.0.0.1") },
+            "the loopback hop must never be requested: \(RedirectingURLProtocol.requestedURLs)"
+        )
+    }
+
+    /// Same shape, spelled around the old guard.
+    func testRedirectToAlternateLoopbackSpellingIsRefused() async throws {
+        RedirectingURLProtocol.redirects = [("example.com/job/2", "http://2130706433:8080/admin")]
+        let url = try XCTUnwrap(URL(string: "https://example.com/job/2"))
+        let result = await AvailabilityChecker.checkURL(url, title: "Engineer", session: session)
+        guard case let .unverifiable(reason) = result else {
+            return XCTFail("expected .unverifiable, got \(result)")
+        }
+        XCTAssertTrue(reason.contains("refusing redirect"), "reason should name the refusal: \(reason)")
+    }
+
+    /// The guard must not break ordinary redirects — an ATS moving a posting to its canonical URL is
+    /// the common case, and refusing those would report every one of them as unverifiable.
+    func testRedirectToPublicHostIsFollowed() async throws {
+        RedirectingURLProtocol.redirects = [
+            ("example.com/job/3", "https://boards.greenhouse.io/acme/jobs/3")
+        ]
+        let url = try XCTUnwrap(URL(string: "https://example.com/job/3"))
+        let result = await AvailabilityChecker.checkURL(
+            url, title: "Senior Swift Engineer", session: session
+        )
+        guard case .available = result else {
+            return XCTFail("expected .available, got \(result)")
+        }
+        XCTAssertTrue(
+            RedirectingURLProtocol.requestedURLs.contains { $0.contains("boards.greenhouse.io") },
+            "the allowed hop should have been followed: \(RedirectingURLProtocol.requestedURLs)"
+        )
     }
 }
 

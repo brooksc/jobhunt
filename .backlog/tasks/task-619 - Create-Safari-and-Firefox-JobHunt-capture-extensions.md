@@ -1,10 +1,10 @@
 ---
 id: TASK-619
 title: Create Safari and Firefox JobHunt capture extensions
-status: To Do
+status: On Hold
 assignee: []
 created_date: '2026-07-22 20:01'
-updated_date: '2026-08-10 01:39'
+updated_date: '2026-08-31 18:07'
 labels:
   - extension
   - safari
@@ -36,7 +36,7 @@ modified_files:
   - scripts/package-firefox-extension.sh
   - server/swift/JobhuntServer.swift
   - tests/ServerTests/JobhuntServerTests.swift
-priority: high
+priority: medium
 ---
 
 ## Description

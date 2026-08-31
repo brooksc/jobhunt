@@ -231,8 +231,11 @@ final class ProjectionsTests: XCTestCase {
         XCTAssertEqual(SalaryDisplay.text(min: 120_000, max: 160_000, currency: "USD"), "$120k–$160k")
     }
 
+    /// Was `"$100k+"`. A nil currency is now printed bare rather than assumed to be dollars — see
+    /// `testSalaryDisplay_unknownCurrencyIsNotShownAsDollars`.
     func testSalaryDisplay_minOnly() {
-        XCTAssertEqual(SalaryDisplay.text(min: 100_000, max: nil, currency: nil), "$100k+")
+        XCTAssertEqual(SalaryDisplay.text(min: 100_000, max: nil, currency: "USD"), "$100k+")
+        XCTAssertEqual(SalaryDisplay.text(min: 100_000, max: nil, currency: nil), "100k+")
     }
 
     func testSalaryDisplay_maxOnly() {
@@ -247,12 +250,46 @@ final class ProjectionsTests: XCTestCase {
         XCTAssertEqual(SalaryDisplay.text(min: 60000, max: nil, currency: "EUR"), "€60k+")
     }
 
+    /// The live bug: a Swedish posting extracted at 996,819–1,196,182 SEK — about $95k — had no
+    /// currency recorded and was shown as "$996k–$1196k", which reads as a spectacular offer. A
+    /// wrong currency is worse than a missing one on the field most likely to decide whether a job
+    /// is worth opening.
+    func testSalaryDisplay_unknownCurrencyIsNotShownAsDollars() {
+        XCTAssertEqual(SalaryDisplay.text(min: 996_819, max: 1_196_182, currency: nil), "996k–1196k")
+        XCTAssertEqual(SalaryDisplay.text(min: 996_819, max: 1_196_182, currency: ""), "996k–1196k")
+        XCTAssertEqual(SalaryDisplay.text(min: 996_819, max: 1_196_182, currency: "  "), "996k–1196k")
+    }
+
+    /// A code we have no symbol for prints the code, which is unambiguous. CAD and SEK were both
+    /// silently rendered as US dollars.
+    func testSalaryDisplay_aCurrencyWithoutASymbolPrintsItsCode() {
+        XCTAssertEqual(SalaryDisplay.text(min: 996_819, max: 1_196_182, currency: "SEK"), "SEK 996k–SEK 1196k")
+        XCTAssertEqual(SalaryDisplay.text(min: 211_450, max: 253_740, currency: "CAD"), "CAD 211k–CAD 253k")
+        XCTAssertEqual(SalaryDisplay.text(min: nil, max: 80000, currency: "AUD"), "up to AUD 80k")
+    }
+
+    func testSalaryDisplay_currencyCodeIsCaseInsensitive() {
+        XCTAssertEqual(SalaryDisplay.text(min: 50000, max: 70000, currency: "gbp"), "£50k–£70k")
+    }
+
+    // MARK: - JobNumberDisplay
+
+    /// `Text("#\(number)")` interpolates into a LocalizedStringKey, which groups an Int by locale —
+    /// so job 1349 rendered as "#1,349". A job number is an identifier, not a quantity.
+    func testJobNumberIsNotGrouped() {
+        XCTAssertEqual(JobNumberDisplay.label(1349), "#1349")
+        XCTAssertEqual(JobNumberDisplay.label(1_234_567), "#1234567")
+        XCTAssertEqual(JobNumberDisplay.label(7), "#7")
+    }
+
     func testSalaryDisplay_neitherMinNorMax_returnsNil() {
         XCTAssertNil(SalaryDisplay.text(min: nil, max: nil, currency: "USD"))
     }
 
+    /// Currency made explicit — a nil one no longer implies dollars.
     func testSalaryDisplay_subThousandAmount() {
-        XCTAssertEqual(SalaryDisplay.text(min: 500, max: nil, currency: nil), "$500+")
+        XCTAssertEqual(SalaryDisplay.text(min: 500, max: nil, currency: "USD"), "$500+")
+        XCTAssertEqual(SalaryDisplay.text(min: 500, max: nil, currency: nil), "500+")
     }
 
     // MARK: - TASK-464: MCP payload fields re-added to JobDetailRecord/JobListRecord

@@ -29,7 +29,7 @@ struct PriorApplicationsWarning: View {
                     Button { onOpen(match.jobID) } label: {
                         HStack(spacing: 6) {
                             if let number = match.jobNumber {
-                                Text("#\(number)").font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
+                                Text(JobNumberDisplay.label(number)).font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
                             }
                             Text(match.title ?? "Untitled").lineLimit(1)
                             Text("· \(StatusDisplay.label(forRawValue: match.currentStatus))")

@@ -215,7 +215,7 @@ private struct DetailHeader: View {
             // Row 2: job number + title
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 if let num = job.jobNumber {
-                    Text("#\(num)")
+                    Text(JobNumberDisplay.label(num))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.tertiary)
                 }
@@ -756,7 +756,7 @@ extension OverviewTabView {
 
     func duplicateNoticeText(other: JobSnapshot, pair: DuplicatePair) -> String {
         let who = other.company ?? other.title ?? "another job"
-        let number = other.jobNumber.map { "#\($0) " } ?? ""
+        let number = other.jobNumber.map { "\(JobNumberDisplay.label($0)) " } ?? ""
         let percent = Int((pair.confidence * 100).rounded())
         return "Possible duplicate of \(number)\(who) — \(percent)% match"
     }
@@ -1243,7 +1243,7 @@ struct OverviewTabView: View {
                     Divider()
                 }
                 if let num = job.jobNumber {
-                    detailRow("Job number", value: "#\(num)")
+                    detailRow("Job number", value: JobNumberDisplay.label(num))
                     Divider()
                 }
                 if let model = job.extractionModel {

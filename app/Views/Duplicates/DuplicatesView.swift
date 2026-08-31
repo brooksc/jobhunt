@@ -418,7 +418,7 @@ private struct PairRow: View {
                     .foregroundStyle(.secondary)
                 // Job ID (e.g. #123) so a specific pair is easy to reference when reporting an issue.
                 if let jobNumber {
-                    Text("#\(jobNumber)")
+                    Text(JobNumberDisplay.label(jobNumber))
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.tertiary)
                 }

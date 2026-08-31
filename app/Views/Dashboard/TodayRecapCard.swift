@@ -339,7 +339,7 @@ private struct DayActivitySheet: View {
         } label: {
             HStack(spacing: 8) {
                 if let number = item.jobNumber {
-                    Text("#\(number)").font(.caption.monospacedDigit()).foregroundStyle(.tertiary)
+                    Text(JobNumberDisplay.label(number)).font(.caption.monospacedDigit()).foregroundStyle(.tertiary)
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(item.title ?? "Untitled").font(.subheadline).lineLimit(1)

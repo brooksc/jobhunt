@@ -209,7 +209,7 @@ struct ApplicationHistoryView: View {
                             Text("date needed").font(.caption2).foregroundStyle(.orange)
                         }
                         if let number = record.jobNumber {
-                            Text("#\(number)").font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
+                            Text(JobNumberDisplay.label(number)).font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
                         }
                     }
                     if let status = JobStatus(rawValue: record.currentStatus) {

@@ -224,20 +224,39 @@ public struct FitScoreProjection {
 
 // MARK: - Salary display
 
+/// A job's number, as an identifier rather than a quantity.
+///
+/// `Text("#\(number)")` interpolates into a `LocalizedStringKey`, which formats an `Int` with the
+/// locale's grouping separator — so job 1349 rendered as **#1,349**. A job number is a label, not a
+/// count; nobody groups the digits of an invoice number. Passing a pre-built `String` also picks
+/// SwiftUI's non-localizing `Text` overload, which is what an identifier wants.
+public enum JobNumberDisplay {
+    public static func label(_ number: Int) -> String {
+        "#\(number)"
+    }
+}
+
 public enum SalaryDisplay {
     /// Formats salary fields into a compact display string, e.g. "$120k–$160k".
     /// Returns nil when both min and max are absent.
+    ///
+    /// **A currency is never assumed.** This read `currency ?? "USD"` and defaulted every unknown
+    /// code to `$`, so a Swedish posting extracted at 996,819–1,196,182 SEK — about $95k — was shown
+    /// as **$996k–$1196k**, and CAD rows were shown as USD. A salary is the field most likely to
+    /// decide whether a job is worth opening, so a wrong currency is worse than a missing one:
+    ///
+    /// - A code we have a symbol for prints the symbol.
+    /// - Any other code prints the code itself ("SEK 996k"), which is unambiguous.
+    /// - No code at all prints the bare number, because inventing one is how the bug above happened.
     public static func text(min: Int?, max: Int?, currency: String?) -> String? {
-        let sym: String
-        switch currency ?? "USD" {
-        case "GBP": sym = "£"
-        case "EUR": sym = "€"
-        default: sym = "$"
-        }
+        let code = (currency ?? "").trimmingCharacters(in: .whitespaces).uppercased()
+        let symbols = ["USD": "$", "GBP": "£", "EUR": "€", "JPY": "¥"]
+        // A prefix, so it composes the same way whether it is a symbol, a code, or nothing.
+        let unit = symbols[code] ?? (code.isEmpty ? "" : "\(code) ")
         let k: (Int) -> String = { v in v >= 1000 ? "\(v / 1000)k" : "\(v)" }
-        if let lo = min, let hi = max { return "\(sym)\(k(lo))–\(sym)\(k(hi))" }
-        if let lo = min { return "\(sym)\(k(lo))+" }
-        if let hi = max { return "up to \(sym)\(k(hi))" }
+        if let lo = min, let hi = max { return "\(unit)\(k(lo))–\(unit)\(k(hi))" }
+        if let lo = min { return "\(unit)\(k(lo))+" }
+        if let hi = max { return "up to \(unit)\(k(hi))" }
         return nil
     }
 }

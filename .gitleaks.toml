@@ -30,4 +30,18 @@ regexes = [
   # PostHog project token (marketing/analytics.js) — public by design: a write-only client token
   # meant to be embedded in browser-shipped code, like a Sentry DSN or a GA tracking ID.
   '''phc_qNZcpeGwgfKCViFpw3iQyqfuXMuPDPHGKBNLMC9dDf8S''',
+  # Swift identifiers containing "LinkedIn", not LinkedIn credentials. The built-in
+  # `linkedin-client-secret` rule looks for the vendor's name near an assignment of a 16-ish
+  # character value, which is exactly the shape of an ordinary initializer:
+  #
+  #     self.deferredLinkedIn = deferredLinkedIn        (AvailabilityChecker.RunSummary)
+  #
+  # That one line failed gitleaks on EVERY push from 2026-08-21, and a check that is always red
+  # stops being read — which is worse than not running it.
+  #
+  # Matched against the *secret* gitleaks extracted, which is the bare identifier
+  # `deferredLinkedIn` — 16 letters, hence the collision with the rule's length expectation. The
+  # pattern is anchored and letters-only, so it excuses a camelCase Swift identifier and nothing
+  # else: a real client secret drawn from a mixed alphanumeric charset still trips the rule.
+  '''^[A-Za-z]*[Ll]inked[Ii]n[A-Za-z]*$''',
 ]

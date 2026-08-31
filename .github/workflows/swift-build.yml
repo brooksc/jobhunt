@@ -4,6 +4,9 @@ name: Swift Build
 # Backlog and documentation commits can't affect the build, so they don't start one — roughly a third
 # of pushes here are task-file updates. A code change still always builds.
 on:
+  # Manual runs, for when you want CI's verdict without opening a PR — a clean checkout on a
+  # different Xcode catches what a warm local DerivedData hides.
+  workflow_dispatch:
   push:
     branches: [main, swift-rewrite]
     tags-ignore: ['v*']

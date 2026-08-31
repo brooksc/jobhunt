@@ -728,24 +728,29 @@ final class ForcedPassTests: XCTestCase {
         let sweeper = makeSweeper(store)
         let list = boards(10)
 
-        // Morning, local. A pass runs to the end of the list, which is what marks it finished.
-        let morning = Date(timeIntervalSince1970: 1_700_000_000)
-        let first = await sweeper.passForRun(boards: list, startHour: 3, priority: [], now: morning)
+        // A pass runs to the end of the list, which is what marks it finished.
+        //
+        // Every instant here is the SAME one. `isDue` compares `finishedAt` against the most recent
+        // occurrence of the start hour using `Calendar.current`, so "six hours later" lands on a
+        // different calendar day depending on the machine's time zone — this test passed in
+        // America/Los_Angeles and failed on CI in UTC, breaking every build for four days. Asking
+        // at the instant the pass finished is the same question with no wall clock in it: a pass
+        // cannot be due again the moment it ends, in any zone.
+        let finished = Date(timeIntervalSince1970: 1_700_000_000)
+        let first = await sweeper.passForRun(boards: list, startHour: 3, priority: [], now: finished)
         let started = try XCTUnwrap(first)
         try await store.recordMarketSweepSlice(
             MarketSweepSlice(), nextCursor: list.count, sweepID: started.sweepID,
-            directoryRevision: started.revision, boardCount: list.count, now: morning
+            directoryRevision: started.revision, boardCount: list.count, now: finished
         )
 
-        // Later the same day: today's 3am has been and gone, so nothing is due until tomorrow's.
-        let afternoon = morning.addingTimeInterval(6 * 3600)
         let notDue = await sweeper.passForRun(
-            boards: list, startHour: 3, priority: [], now: afternoon
+            boards: list, startHour: 3, priority: [], now: finished
         )
         XCTAssertNil(notDue, "the schedule holds when nobody asked")
 
         let forced = await sweeper.passForRun(
-            boards: list, startHour: 3, priority: [], now: afternoon, force: true
+            boards: list, startHour: 3, priority: [], now: finished, force: true
         )
         let newPass = try XCTUnwrap(forced, "the user asking explicitly beats the schedule")
         XCTAssertEqual(newPass.cursor, 0)

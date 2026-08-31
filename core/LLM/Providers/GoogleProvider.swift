@@ -63,16 +63,24 @@ public final class GoogleProvider: LLMProvider, @unchecked Sendable {
 
         func makePayload(includeSchema: Bool) -> [String: Any] {
             var payload: [String: Any] = ["contents": contents]
+            var gen: [String: Any] = [:]
             if wantsJSON {
-                var gen: [String: Any] = ["responseMimeType": "application/json"]
+                gen["responseMimeType"] = "application/json"
                 // Send an explicit output budget (TASK-607 parity — Anthropic and the OpenAI-compatible
                 // transport both honour request.maxTokens; Google silently ignored it). On Gemini 3 the
                 // budget also covers hidden reasoning tokens, so the model default could be consumed by
                 // thinking and truncate the JSON mid-object.
                 gen["maxOutputTokens"] = request.maxTokens ?? 16384
                 if includeSchema, let responseSchema { gen["responseSchema"] = responseSchema }
-                payload["generationConfig"] = gen
             }
+            // TASK-713: sampling controls, sent only when the caller asked for them so every existing
+            // call path keeps the model defaults it had. Gemini validates `generationConfig` strictly —
+            // an unknown field is a 400 — so both names below are confirmed against the live API.
+            if let temperature = request.temperature { gen["temperature"] = temperature }
+            if let thinkingLevel = request.thinkingLevel {
+                gen["thinkingConfig"] = ["thinkingLevel": thinkingLevel.rawValue]
+            }
+            if !gen.isEmpty { payload["generationConfig"] = gen }
             if let sys = systemMsg {
                 payload["systemInstruction"] = ["parts": [["text": sys.content]]]
             }

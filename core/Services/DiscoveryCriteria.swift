@@ -6,6 +6,8 @@ import Foundation
 public enum DiscoveryRejectReason: String, Sendable, Equatable, CaseIterable {
     case title
     case location
+    /// The work arrangement — remote / hybrid / on-site — isn't one the user accepts.
+    case arrangement
     case salary
     case stale
 }
@@ -51,7 +53,21 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
     /// Empty means any location passes.
     public var locationAllow: [String]
 
-    /// Only applies when the vendor published a band. 0 disables.
+    /// Which work arrangements the user will take. All true — the default — is no filter.
+    ///
+    /// Aliased from the requirement settings rather than duplicated: `Locations allowed` is a
+    /// *geography* filter and can't express "remote only", so a user who had unticked Hybrid and
+    /// On-site still got on-site postings swept, extracted and filed. Every board writes the country
+    /// into its location string, so `United States` matched *Coeur d'Alene, Idaho, United States*
+    /// exactly as configured — the gate was never told what the user actually wanted.
+    public var allowRemote: Bool
+    public var allowHybrid: Bool
+    public var allowOnsite: Bool
+
+    /// Only applies when a band is published. 0 disables.
+    ///
+    /// Board *list* endpoints publish no pay, so this is evaluated a second time after hydration —
+    /// see `evaluateHydrated`. That's where it does its work in practice.
     public var minSalaryIfPublished: Int
     public var maxSalaryIfPublished: Int
     /// 0 disables. A posting with no date always passes.
@@ -64,6 +80,9 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
         locationAlwaysAllow: [String] = [],
         locationBlock: [String] = [],
         locationAllow: [String] = [],
+        allowRemote: Bool = true,
+        allowHybrid: Bool = true,
+        allowOnsite: Bool = true,
         minSalaryIfPublished: Int = 0,
         maxSalaryIfPublished: Int = 0,
         maxAgeDays: Int = 0
@@ -74,6 +93,9 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
         self.locationAlwaysAllow = locationAlwaysAllow
         self.locationBlock = locationBlock
         self.locationAllow = locationAllow
+        self.allowRemote = allowRemote
+        self.allowHybrid = allowHybrid
+        self.allowOnsite = allowOnsite
         self.minSalaryIfPublished = minSalaryIfPublished
         self.maxSalaryIfPublished = maxSalaryIfPublished
         self.maxAgeDays = maxAgeDays
@@ -104,7 +126,8 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
     ///
     /// - 1: original.
     /// - 2: one-character keywords anchored, as two- and three-character ones already were.
-    static let gateVersion = 2
+    /// - 3: work arrangement is a gate rule; the salary floor is re-applied after hydration.
+    static let gateVersion = 3
 
     public var fingerprint: String {
         let encoder = JSONEncoder()
@@ -124,6 +147,9 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
         }
         if !passesLocation(posting) {
             return .reject(.location)
+        }
+        if !passesArrangement(posting) {
+            return .reject(.arrangement)
         }
         if !passesSalary(posting) {
             return .reject(.salary)
@@ -201,6 +227,119 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
         // widens `allow`, never `block`.
         return Self.titleSignalsRemote(posting.title)
     }
+
+    /// Whether the posting's work arrangement is one the user will take.
+    ///
+    /// **This is the one rule here that rejects on absent data, and it does so deliberately.** Every
+    /// other tier passes what it can't judge, because a false reject is invisible and permanent. That
+    /// reasoning breaks down for arrangement: boards state "Remote" when a role is remote and simply
+    /// name the office when it isn't, so "not stated" is not missing information — it is the on-site
+    /// case, and passing it defeats the filter entirely. Measured on 553 real swept rows: 181 carried
+    /// an explicit remote marker, 99 named only a country, and the remaining 273 named a specific
+    /// city with no remote wording. Passing "unknown" would keep all 273.
+    ///
+    /// The escape hatch is the user's own: this rule does nothing at all while On-site is ticked, so
+    /// re-ticking it restores the previous behaviour exactly.
+    func passesArrangement(_ posting: DiscoveredPosting) -> Bool {
+        // Nothing is excluded, so there is nothing to judge. Also the shipped default, which is why
+        // an unconfigured install is unaffected by any of this.
+        if allowOnsite { return true }
+
+        let location = (posting.locationRaw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let stated = posting.title + "\n" + location
+        if allowRemote, Self.signalsRemote(stated) { return true }
+        if allowHybrid, Self.signalsHybrid(stated) { return true }
+
+        // Nothing said either way. A location naming a specific place is a statement that the work
+        // happens there; a country-level one names no workplace at all and stays the absent-data
+        // case the rest of this type is built around.
+        return !namesSpecificPlace(location)
+    }
+
+    /// Terms that describe a country or a whole market rather than a workplace.
+    ///
+    /// Deliberately tiny. It exists so `passesArrangement` still has an "absent data" case for a user
+    /// whose allow list is empty — without it, an empty list would make every stated location look
+    /// specific and reject the whole board.
+    static let countryLevelTerms = [
+        "united states", "usa", "u.s.", "u.s.a.", "us", "united kingdom", "uk", "canada",
+        "remote", "anywhere", "nationwide", "worldwide", "global", "multiple locations"
+    ]
+
+    /// Whether anything survives once the country-level words are struck out.
+    ///
+    /// "United States" leaves nothing and reads as absent. "New York, New York, United States"
+    /// leaves "New York, New York" and names a place. The user's own allow lists are struck out too,
+    /// so someone who allows "Germany" gets the same treatment for it that US users get for "United
+    /// States" without having to know this list exists.
+    func namesSpecificPlace(_ location: String) -> Bool {
+        guard !location.isEmpty else { return false }
+        var remaining = location.lowercased()
+        for term in Self.countryLevelTerms + locationAllow + locationAlwaysAllow {
+            let needle = term.trimmingCharacters(in: .whitespaces).lowercased()
+            guard !needle.isEmpty else { continue }
+            remaining = Self.strikingOut(needle, from: remaining)
+        }
+        return remaining.contains { $0.isLetter }
+    }
+
+    /// Remove every boundary-anchored occurrence of `needle`, leaving the punctuation behind.
+    ///
+    /// Anchored for the same reason every location match here is: unanchored, striking "us" out of
+    /// "Austin" would erase the city and make an on-site posting look country-level.
+    static func strikingOut(_ needle: String, from haystack: String) -> String {
+        let escaped = NSRegularExpression.escapedPattern(for: needle)
+        let prefix = needle.first.map { $0.isLetter || $0.isNumber } == true ? "(?<![a-z0-9])" : ""
+        let suffix = needle.last.map { $0.isLetter || $0.isNumber } == true ? "(?![a-z0-9])" : ""
+        guard let regex = try? NSRegularExpression(pattern: prefix + escaped + suffix) else {
+            return haystack
+        }
+        let range = NSRange(haystack.startIndex ..< haystack.endIndex, in: haystack)
+        return regex.stringByReplacingMatches(in: haystack, range: range, withTemplate: " ")
+    }
+
+    static func signalsRemote(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        guard !lower.isEmpty else { return false }
+        if lower.range(of: remoteNegation, options: .regularExpression) != nil { return false }
+        return lower.range(of: remoteMarker, options: .regularExpression) != nil
+    }
+
+    static func signalsHybrid(_ text: String) -> Bool {
+        text.range(of: #"\bhybrid\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    // MARK: - Gate B
+
+    /// The salary floor, re-applied to the hydrated body (TASK-702).
+    ///
+    /// `passesSalary` below is unreachable in practice: no board *list* endpoint publishes pay, so
+    /// `salaryMinPublished` is nil for every posting every adapter builds, and the floor rejected
+    /// nothing — 493 postings judged in one real install, zero salary rejections. The band is in the
+    /// posting body, which the sweep already fetches, so this runs there instead.
+    ///
+    /// Still before any spend that matters: hydration is one GET, and what this prevents is the LLM
+    /// extraction and fit score behind it — plus a job in the New queue that the user's own floor
+    /// says they don't want.
+    ///
+    /// Same permissive posture as everywhere else here: text with no parseable band passes, and a
+    /// page carrying several bands is judged on the most generous, so a signing bonus quoted beside
+    /// the salary can't become the salary.
+    public func evaluateHydrated(body: String) -> DiscoveryVerdict {
+        guard minSalaryIfPublished > 0 else { return .pass }
+        let ceiling = SalaryNormalizer.salaryBands(body).map(\.max).max()
+        guard let ceiling, ceiling >= Self.plausibleAnnualSalary else { return .pass }
+        return Int(ceiling) < minSalaryIfPublished ? .reject(.salary) : .pass
+    }
+
+    /// Below this, a parsed "band" is not an annual salary and must not reject anything.
+    ///
+    /// `SalaryNormalizer.salaryBands` only requires both ends over $1,000, which is right for its own job — it is
+    /// parsing text a human already decided was about pay — but wrong as a rejection trigger. Real
+    /// boards produce bands like `$2,000 - $2,000` from an equity line or a relocation allowance, and
+    /// one of those is enough to discard a $250k role permanently. A rejection needs better evidence
+    /// than a number over a thousand.
+    static let plausibleAnnualSalary: Double = 10_000
 
     /// Range *overlap*, not a floor: reject only when the published band lies entirely outside the
     /// user's range. A posting whose band straddles the floor is a negotiation, not a mismatch.
@@ -324,11 +463,14 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
 
     // MARK: - Remote marker
 
-    /// "Remote" must be followed by end-of-string, a non-letter (")", ",", "-") or " in …" as in
-    /// "Remote in MO" — never by another word. A bare search for the word admits the domain
-    /// compounds: "Remote Sensing Program Manager" is an on-site GIS role, and companies do post
-    /// exactly those.
-    static let remoteMarker = #"(?<![a-z])remote(?=$|\s*[^a-z\s]|\s+in\b)"#
+    /// "Remote" must be followed by end-of-string, a non-letter (")", ",", "-") or a preposition that
+    /// introduces a place — "Remote in MO", "Remote within Canada" — never by another word. A bare
+    /// search for the word admits the domain compounds: "Remote Sensing Program Manager" is an
+    /// on-site GIS role, and companies do post exactly those.
+    ///
+    /// `within` was missing and cost real matches: six rows in one install read "…, or Remote within
+    /// Canada or United States" and none of them registered as remote.
+    static let remoteMarker = #"(?<![a-z])remote(?=$|\s*[^a-z\s]|\s+(?:in|within)\b)"#
 
     /// A negation before the word has to lose, which the marker alone can't see: in "Non-Remote"
     /// the delimiter clears the lookbehind and the trailing position clears the lookahead, so an
@@ -342,15 +484,10 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
     /// reach the marker.
     static let remoteNegation = #"\b(?:non|not|no)[^a-z]*remote"#
 
+    /// Over-rejecting is the safe direction here: this tier only ever *rescues* a posting, so a
+    /// false negative restores the previous behaviour while a false positive admits an on-site
+    /// role the user said they didn't want.
     static func titleSignalsRemote(_ title: String) -> Bool {
-        let lower = title.lowercased()
-        guard !lower.isEmpty else { return false }
-        // Over-rejecting is the safe direction here: this tier only ever *rescues* a posting, so a
-        // false negative restores the previous behaviour while a false positive admits an on-site
-        // role the user said they didn't want.
-        if lower.range(of: remoteNegation, options: .regularExpression) != nil {
-            return false
-        }
-        return lower.range(of: remoteMarker, options: .regularExpression) != nil
+        signalsRemote(title)
     }
 }

@@ -152,7 +152,7 @@ public struct DiscoverySweeper: Sendable {
 
         // 2. Gate A — free, and runs on everything.
         let gated = applyGate(postings, criteria: criteria, now: now)
-        let rejections = gated.rejections
+        var rejections = gated.rejections
         var outcomes = gated.outcomes
         let survivors = gated.survivors
 
@@ -186,12 +186,13 @@ public struct DiscoverySweeper: Sendable {
         let toIngest = Array(unjudged.prefix(allowance))
         let truncated = unjudged.count - toIngest.count
 
-        // 5. Hydrate and ingest.
-        let run = await hydrateAndIngest(toIngest, source: source, now: now)
+        // 5. Hydrate, apply gate B to the body, and ingest what survives.
+        let run = await hydrateAndIngest(toIngest, source: source, criteria: criteria, now: now)
         outcomes.append(contentsOf: run.outcomes)
         let ingested = run.ingested
         let hydrationFailures = run.hydrationFailures
         let unprocessed = run.unprocessed
+        rejections.merge(run.rejections) { $0 + $1 }
 
         // A ledger row that never landed will be re-derived next visit, so it isn't progress. A
         // *job* that landed is progress whatever the ledger did: each ingest commits its own
@@ -231,16 +232,18 @@ public struct DiscoverySweeper: Sendable {
     /// Sequential on purpose: a burst of parallel requests to one board is what rate limiting is
     /// for, and there are at most `caps.perSweep` of them.
     private func hydrateAndIngest(
-        _ toIngest: [DiscoveredPosting], source: any JobSource, now: Date
+        _ toIngest: [DiscoveredPosting], source: any JobSource, criteria: DiscoveryCriteria, now: Date
     ) async -> (
         outcomes: [(DiscoveredPosting, DiscoveryOutcome, DiscoveryRejectReason?)],
         ingested: Int,
         hydrationFailures: Int,
+        rejections: [DiscoveryRejectReason: Int],
         unprocessed: Int
     ) {
         var outcomes: [(DiscoveredPosting, DiscoveryOutcome, DiscoveryRejectReason?)] = []
         var ingested = 0
         var hydrationFailures = 0
+        var rejections: [DiscoveryRejectReason: Int] = [:]
 
         for (index, posting) in toIngest.enumerated() {
             if Task.isCancelled {
@@ -248,11 +251,23 @@ public struct DiscoverySweeper: Sendable {
                 // truncated by the cap and carry no ledger verdict, so without counting them a
                 // cancelled board is indistinguishable from a finished one and the market cursor
                 // moves past it — losing the rest of the board until the next full pass.
-                return (outcomes, ingested, hydrationFailures, toIngest.count - index)
+                return (outcomes, ingested, hydrationFailures, rejections, toIngest.count - index)
             }
             guard let body = await hydrate(posting) else {
                 outcomes.append((posting, .hydrationFailed, nil))
                 hydrationFailures += 1
+                continue
+            }
+            // Gate B. The body is the first place a salary band exists — no board list endpoint
+            // publishes one — so the floor is applied here, before the extraction and fit score that
+            // are what a posting actually costs.
+            //
+            // Always ledgered, even for a market sweep where gate-A rejections aren't: this verdict
+            // cost a network request, and not recording it would pay for the same fetch on every
+            // pass, forever.
+            if case let .reject(reason) = criteria.evaluateHydrated(body: body) {
+                outcomes.append((posting, .rejected, reason))
+                rejections[reason, default: 0] += 1
                 continue
             }
             switch await ingest(
@@ -274,7 +289,7 @@ public struct DiscoverySweeper: Sendable {
                 hydrationFailures += 1
             }
         }
-        return (outcomes, ingested, hydrationFailures, 0)
+        return (outcomes, ingested, hydrationFailures, rejections, 0)
     }
 
     /// Gate A over a board's postings. Split out for size, and because it is the one part of a

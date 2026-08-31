@@ -575,10 +575,15 @@ struct JobsView: View {
         // Keychain hit per visible job (~hundreds of ms when switching filters on a full list).
         let canScore = fitScoringAvailable
         let attemptsByJob = Dictionary(grouping: referralAttempts) { $0.jobID }
+        let thresholds = JobRequirements.Thresholds(
+            minSalary: appServices.settings.minSalary,
+            minFitScore: appServices.settings.minFitScore
+        )
         return ScrollViewReader { proxy in
             List(filteredJobs, selection: $selectedJobIDs) { job in
                 JobListRow(
                     job: job, isSelected: selectedJobIDs.contains(job.id), fitScoringAvailable: canScore,
+                    thresholds: thresholds,
                     referralSummary: Self.referralSummary(for: job, attempts: attemptsByJob[job.id] ?? [])
                 )
                 .tag(job.id)
@@ -596,7 +601,11 @@ struct JobsView: View {
                 // cached height is simply clipped, and one above it silently re-measures every row and
                 // made the list 8pt taller. Changing the identity is what actually invalidates the one
                 // row that needs it.
-                .id("\(job.id)#\(job.extractionStatus.rawValue)")
+                //
+                // The salary threshold is in the identity for the same reason: raising it adds the
+                // "doesn't meet" line to rows that didn't have it, which is another line List won't
+                // re-measure on its own.
+                .id("\(job.id)#\(job.extractionStatus.rawValue)#\(thresholds.minSalary)")
                 .contextMenu { jobContextMenu(job) }
                 .accessibilityIdentifier("job.row.\(job.id)")
             }
@@ -1637,7 +1646,30 @@ private struct JobListRow: View {
     let job: Job
     let isSelected: Bool
     let fitScoringAvailable: Bool
+    /// Passed in rather than read here: the verdict is cheap to compute but its thresholds come from
+    /// settings, and reading those once per visible row is the mistake `fitScoringAvailable` above
+    /// already documents.
+    let thresholds: JobRequirements.Thresholds
     var referralSummary: ReferralSummary = .none
+
+    /// Why this job fails the user's own requirements, if it does.
+    ///
+    /// Shown on the row because the alternative is the user opening a posting to find out — which is
+    /// exactly the triage time this is meant to save. Only outright *failures* are flagged: a job
+    /// that merely doesn't state its salary is unjudged, not rejected, and the user still wants to
+    /// look at those.
+    private var failureSummary: String? {
+        guard let verdict = JobRequirements.evaluate(
+            meetsCriteria: job.meetsCriteria,
+            remoteType: job.remoteType,
+            salaryMin: job.salaryMin,
+            salaryMax: job.salaryMax,
+            salaryCurrency: job.salaryCurrency,
+            fitScore: job.fitScore,
+            thresholds: thresholds
+        ), verdict.bucket == .doesNotMeet else { return nil }
+        return verdict.shortSummary
+    }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -1662,6 +1694,9 @@ private struct JobListRow: View {
         // time — and several of those ("circle") say nothing at all.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityDescription)
+        // Appended rather than folded into `JobRowAccessibility.label`, whose sentence is shared with
+        // other surfaces that have no notion of the user's thresholds.
+        .accessibilityValue(failureSummary.map { "Doesn't meet your criteria: \($0)" } ?? "")
     }
 
     /// Composed in Core so the sentence is unit-tested rather than eyeballed.
@@ -1723,6 +1758,13 @@ private struct JobListRow: View {
                     Text("·").font(.caption).foregroundStyle(.quaternary)
                     Text(remote.displayName).font(.caption).foregroundStyle(.tertiary)
                 }
+            }
+            if let failureSummary {
+                HStack(spacing: 3) {
+                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 8))
+                    Text(failureSummary).font(.caption2).lineLimit(1)
+                }
+                .foregroundStyle(Color.orange)
             }
         }
     }

@@ -280,7 +280,11 @@ public enum ExtractionEngine {
         resume: ResumeSnapshot,
         model: String,
         provider: any LLMProvider,
-        feedback: [ScoringFeedback] = [],
+        // Deliberately NOT defaulted (TASK-707). It was, and the queue — the path that produces every
+        // automatically scored job — simply omitted it, so every correction the user recorded was
+        // ignored by everything scored afterwards, with no error and no warning. A caller with no
+        // corrections to apply passes `[]` and says so.
+        feedback: [ScoringFeedback],
         jobNumber: Int? = nil
     ) async throws -> FitScoreOutput {
         guard !resume.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {

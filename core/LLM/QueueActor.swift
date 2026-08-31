@@ -118,6 +118,12 @@ public actor QueueActor {
     /// requires an API key but none is set; true otherwise (incl. local providers that need no key).
     /// Defaults to always-configured so existing call sites (tests) are unaffected.
     private let isProviderConfigured: @Sendable () async -> Bool
+    /// The user's scoring corrections, for every fit score this queue produces (TASK-707).
+    ///
+    /// Read through a closure rather than off the store for the same reason as the settings above: the
+    /// queue never touches a `SettingsStore` from its own isolation. Read per request, not cached —
+    /// a correction recorded while the queue is draining must apply to the next job it scores.
+    private let readScoringFeedback: @Sendable () async -> [ScoringFeedback]
 
     // MARK: - State
 
@@ -171,7 +177,12 @@ public actor QueueActor {
         onSetPaused: @escaping @Sendable (Bool) async -> Void,
         readExtractionSettings: @escaping @Sendable () async -> ExtractionSettings,
         providerFactory: @escaping @Sendable () async -> any LLMProvider,
-        isProviderConfigured: @escaping @Sendable () async -> Bool = { true }
+        isProviderConfigured: @escaping @Sendable () async -> Bool = { true },
+        // Defaulted to "no corrections recorded" for the tests that don't exercise them, matching
+        // `isProviderConfigured`. The app always supplies it (`AppServices`), and `scoreFit` no longer
+        // defaults its own parameter, so a scoring path that forgets feedback is now a compile error
+        // rather than a silent empty list.
+        readScoringFeedback: @escaping @Sendable () async -> [ScoringFeedback] = { [] }
     ) {
         self.store = store
         self.isPaused = isPaused
@@ -179,6 +190,7 @@ public actor QueueActor {
         self.readExtractionSettings = readExtractionSettings
         self.providerFactory = providerFactory
         self.isProviderConfigured = isProviderConfigured
+        self.readScoringFeedback = readScoringFeedback
     }
 
     // MARK: - Public API
@@ -975,11 +987,16 @@ public actor QueueActor {
         }
 
         do {
+            // TASK-707: the corrections the user recorded apply to jobs scored from now on, not only
+            // to a later recompute from stored JSON. Omitting them here made "I don't have this"
+            // silently do nothing for every automatically queued score.
             let fitOutput = try await ExtractionEngine.scoreFit(
                 job: jobSnap,
                 resume: resumeSnap,
                 model: fitModel,
-                provider: provider
+                provider: provider,
+                feedback: readScoringFeedback(),
+                jobNumber: fitInputs.jobNumber
             )
             let fitResult = fitOutput.score
             let fitJSON = fitOutput.fitScoreJSON ?? FitScorer.encode(fitResult)

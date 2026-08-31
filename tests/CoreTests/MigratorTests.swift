@@ -42,6 +42,44 @@ final class MigratorTests: XCTestCase {
         }
     }
 
+    // MARK: - Arg parsing: --rescore-stale-fit-scores (TASK-711)
+
+    /// The one mode that spends money must not start on the bare flag: unconfirmed means "print the
+    /// bill and stop".
+    func testParseArgs_rescoreStale_defaultsToUnconfirmed() {
+        guard case let .rescoreStaleFitScores(_, confirmed, limit) = parseArgs(
+            ["JobhuntMigrator", "--rescore-stale-fit-scores"]
+        ) else {
+            return XCTFail("--rescore-stale-fit-scores should parse")
+        }
+        XCTAssertFalse(confirmed)
+        XCTAssertNil(limit)
+    }
+
+    func testParseArgs_rescoreStale_acceptsConfirmationAndLimit() {
+        guard case let .rescoreStaleFitScores(_, confirmed, limit) = parseArgs(
+            ["JobhuntMigrator", "--rescore-stale-fit-scores", "--yes", "--limit", "5"]
+        ) else {
+            return XCTFail("--yes and --limit should parse alongside the mode")
+        }
+        XCTAssertTrue(confirmed)
+        XCTAssertEqual(limit, 5)
+    }
+
+    /// `--yes` attached to some other mode would read as a confirmation nothing asked for, and a bad
+    /// `--limit` must not silently become "all of them".
+    func testParseArgs_rescoreStale_rejectsMisplacedOrMalformedModifiers() {
+        let invalid = [
+            ["JobhuntMigrator", "--reclean", "--yes"],
+            ["JobhuntMigrator", "--reclean", "--limit", "5"],
+            ["JobhuntMigrator", "--rescore-stale-fit-scores", "--limit", "0"],
+            ["JobhuntMigrator", "--rescore-stale-fit-scores", "--limit", "many"]
+        ]
+        for args in invalid {
+            XCTAssertNil(parseArgs(args), "must reject: \(args.dropFirst().joined(separator: " "))")
+        }
+    }
+
     // MARK: - Arg parsing: --merge-job
 
     func testParseArgs_mergeJob_parsesBothJobNumbers() {

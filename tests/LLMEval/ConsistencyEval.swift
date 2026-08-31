@@ -86,7 +86,7 @@ final class ConsistencyEval: XCTestCase {
             do {
                 output = try await ExtractionEngine.scoreFit(
                     job: job, resume: ResumeSnapshot(text: resumeText),
-                    model: config.model, provider: provider
+                    model: config.model, provider: provider, feedback: []
                 )
             } catch {
                 failedPasses.append("pass \(pass + 1): \(error)")

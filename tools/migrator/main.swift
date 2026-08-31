@@ -66,6 +66,29 @@ func requireAppNotRunning() {
     }
 }
 
+/// Open the live store read-write, with the banner every mode prints. Exits on failure.
+func openLiveStore(_ storePath: String, title: String) -> BackgroundStore {
+    guard FileManager.default.fileExists(atPath: storePath) else {
+        fputs("Error: store not found at '\(storePath)'\n", stderr); exit(1)
+    }
+    print("=== \(title) ===")
+    print("Store: \(storePath)")
+    print("(Run with the Jobhunt app quit — the store is single-writer.)")
+    let schema = Schema(SchemaV1.models)
+    let config = ModelConfiguration(
+        schema: schema, url: URL(fileURLWithPath: storePath), cloudKitDatabase: .none
+    )
+    do {
+        return try BackgroundStore(
+            modelContainer: ModelContainer(
+                for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config
+            )
+        )
+    } catch {
+        fputs("Error: could not open store: \(error)\n", stderr); exit(1)
+    }
+}
+
 requireAppNotRunning()
 
 switch mode {
@@ -400,6 +423,62 @@ case let .mergeJob(storePath, from, into):
         print("Fields filled in on the kept job: \(filled)")
     } catch {
         fputs("Error: merge failed: \(error)\n", stderr); exit(1)
+    }
+
+case let .backfillFitVersions(storePath):
+    let store = openLiveStore(storePath, title: "Backfill Fit Rubric Versions")
+    do {
+        let result = try await store.backfillFitScorePromptVersions()
+        print("Backfill complete: \(result.updated) score(s) had their rubric version filled in "
+            + "from stored JSON (no LLM calls).")
+        if result.unversioned > 0 {
+            print("Left unversioned: \(result.unversioned) score(s) whose analysis records no version "
+                + "— unknown, not v1.")
+        }
+    } catch {
+        fputs("Error: backfill failed: \(error)\n", stderr); exit(1)
+    }
+
+case let .fitVersionHistogram(storePath):
+    let store = openLiveStore(storePath, title: "Fit Rubric Version Histogram")
+    do {
+        let rows = try await store.fitScorePromptVersionHistogram()
+        let total = rows.reduce(0) { $0 + $1.count }
+        print("Current rubric: v\(FitScorer.assessmentPromptVersion)")
+        for row in rows {
+            let name = row.version.map { "v\($0)" } ?? "(no version recorded)"
+            let mean = row.meanScore.map { String(format: "mean %.1f", $0) } ?? "no numeric scores"
+            print("  \(name): \(row.count) score(s), \(mean)")
+        }
+        print("Total: \(total) stored score(s).")
+        print("(Counts read the stored column — run --backfill-fit-versions first if it looks empty.)")
+    } catch {
+        fputs("Error: histogram failed: \(error)\n", stderr); exit(1)
+    }
+
+case let .rescoreStaleFitScores(storePath, confirmed, limit):
+    let store = openLiveStore(storePath, title: "Rescore Stale Fit Scores")
+    do {
+        let current = FitScorer.assessmentPromptVersion
+        var targets = try await store.staleFitScores(currentVersion: current)
+        if let limit { targets = Array(targets.prefix(limit)) }
+        let plan = try await RescorePlan(targets: targets, config: store.storedScoringConfig())
+        guard describeRescorePlan(plan, currentVersion: current) else { break }
+        guard confirmed else {
+            print("Nothing sent. Re-run with --yes to spend that; --limit <n> to try a few first.")
+            break
+        }
+        let apiKey = ProcessInfo.processInfo.environment[apiKeyEnvironmentVariable] ?? ""
+        guard !apiKey.isEmpty || !LLMProviderFactory.requiresAPIKey(provider: plan.config.provider) else {
+            fputs("Error: \(plan.config.provider) needs an API key — set \(apiKeyEnvironmentVariable).\n", stderr)
+            exit(1)
+        }
+        try await runRescore(
+            plan: plan, store: store,
+            feedback: store.scoringFeedbackForRescore(), apiKey: apiKey
+        )
+    } catch {
+        fputs("Error: rescore failed: \(error)\n", stderr); exit(1)
     }
 
 case let .detectDuplicates(storePath):

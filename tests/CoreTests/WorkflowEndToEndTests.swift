@@ -133,7 +133,8 @@ final class WorkflowEndToEndTests: XCTestCase {
             ),
             resume: ResumeSnapshot(text: resume.text),
             model: "stub-model",
-            provider: StubProvider(response: fitJSON)
+            provider: StubProvider(response: fitJSON),
+            feedback: []
         )
         try await store.saveFitScore(
             jobID: keptID, resumeID: resume.id, overall: fitOut.score.overall,

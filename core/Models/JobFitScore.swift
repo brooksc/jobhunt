@@ -17,6 +17,16 @@ public final class JobFitScore {
     /// away, and the user chooses when to spend money re-scoring. Nil on rows written before this
     /// existed — treated as "unknown version", not stale.
     public var resumeTextHash: String?
+    /// Which scoring rubric produced this assessment (`FitScorer.assessmentPromptVersion` at the
+    /// time it was scored).
+    ///
+    /// The value is also inside `fitScoreJSON`, but only as a key in a blob — nothing could select
+    /// on it without parsing every row, so "find every score not on the current rubric" was
+    /// unanswerable. Scores from different rubrics are different measurements: v1 averages 68.9
+    /// across 977 rows and v3 averages 50.0 across 823, so a v1 "74" and a v3 "74" are not the same
+    /// claim. Optional because a handful of stored scores carry no version at all — nil means
+    /// *unknown*, and `--backfill-fit-versions` fills in the rest from the stored JSON.
+    public var assessmentPromptVersion: Int?
     public var createdAt: Date
     public var updatedAt: Date
 

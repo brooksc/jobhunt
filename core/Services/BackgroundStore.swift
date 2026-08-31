@@ -544,7 +544,9 @@ public actor BackgroundStore {
         try modelContext.save()
     }
 
-    private func applyFitScore(
+    /// Not private: `BackgroundStore+FitVersions` commits a migrator rescore through the same path,
+    /// so a CLI-written score gets the identical résumé-hash, version and mirror bookkeeping.
+    func applyFitScore(
         jobID: String,
         resumeID: String,
         overall: Int,
@@ -578,6 +580,10 @@ public actor BackgroundStore {
         // Record WHICH résumé text produced this score, so a later edit can mark it stale instead of
         // deleting it.
         record.resumeTextHash = resume.map { ResumeFingerprint.hash($0.text) }
+        // Mirror the rubric version out of the blob so it can be selected on. Read from the JSON
+        // rather than stamping the current constant: a recompute preserves the version it was
+        // originally assessed under, and the column must agree with the analysis it labels.
+        record.assessmentPromptVersion = FitScorer.promptVersion(inJSON: fitJSON)
 
         // Job-level mirror reflects the BEST score across all resumes (Electron parity).
         recomputeJobFitSummary(job)
@@ -1107,6 +1113,7 @@ public actor BackgroundStore {
                 record.fitScoreJSON = merged
             }
             record.fitScore = result.overall
+            record.assessmentPromptVersion = FitScorer.promptVersion(inJSON: record.fitScoreJSON)
             record.updatedAt = Date()
             updated += 1
             if let job = record.job {
@@ -1554,6 +1561,9 @@ public actor BackgroundStore {
     /// Sendable inputs for a fit run, built on the store actor.
     public struct FitInputs: Sendable {
         public let job: JobFitSnapshot
+        /// The job's user-facing number, which scopes a `.jobSpecific` scoring correction. Without it
+        /// a "wrong for this job only" rule silently never applies to a newly scored job (TASK-707).
+        public let jobNumber: Int?
         /// Empty when the resume has no usable text.
         public let resumeText: String
         /// False when the resume row no longer exists (vs. exists-but-empty).
@@ -1574,6 +1584,7 @@ public actor BackgroundStore {
                 title: job.title, company: job.company, seniority: job.seniority,
                 extractedJSON: job.extractedJSON, extractionModel: job.extractionModel
             ),
+            jobNumber: job.jobNumber,
             resumeText: resume?.text ?? "",
             resumeExists: resume != nil
         )

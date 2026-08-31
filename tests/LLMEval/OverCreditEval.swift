@@ -91,7 +91,8 @@ final class OverCreditEval: XCTestCase {
                     job: job,
                     resume: ResumeSnapshot(text: testCase.resume),
                     model: model,
-                    provider: provider
+                    provider: provider,
+                    feedback: []
                 )
                 guard let json = output.fitScoreJSON,
                       let data = json.data(using: .utf8),

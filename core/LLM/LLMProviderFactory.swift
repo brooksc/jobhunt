@@ -15,24 +15,42 @@ public enum LLMProviderFactory {
     /// hops for it.
     @MainActor
     public static func makeProvider(settings: SettingsStore, session: URLSession = .shared) -> any LLMProvider {
-        let provider = settings.llmProvider
-        let model = settings.llmModel
-        let timeout = settings.llmTimeout
-        let apiKey = settings.apiKey(forProvider: provider)
+        makeProvider(
+            provider: settings.llmProvider,
+            model: settings.llmModel,
+            baseURL: settings.llmBaseURL,
+            apiKey: settings.apiKey(forProvider: settings.llmProvider),
+            timeoutSeconds: settings.llmTimeout,
+            rotateFreeOpenRouterModels: settings.llmOpenRouterFreeRotate,
+            session: session
+        )
+    }
 
+    /// Same construction from explicit values, for a caller with no `SettingsStore` — the migrator's
+    /// rescore mode runs outside the app, reads provider/model from the store's settings rows, and
+    /// takes the API key from the environment (the Keychain item belongs to the app).
+    public static func makeProvider(
+        provider: String,
+        model: String,
+        baseURL: String,
+        apiKey: String,
+        timeoutSeconds: Int,
+        rotateFreeOpenRouterModels: Bool = false,
+        session: URLSession = .shared
+    ) -> any LLMProvider {
         switch provider {
         case "openai":
-            return OpenAIProvider(apiKey: apiKey, model: model, timeoutSeconds: timeout, session: session)
+            return OpenAIProvider(apiKey: apiKey, model: model, timeoutSeconds: timeoutSeconds, session: session)
         case "anthropic":
-            return AnthropicProvider(apiKey: apiKey, model: model, timeoutSeconds: timeout, session: session)
+            return AnthropicProvider(apiKey: apiKey, model: model, timeoutSeconds: timeoutSeconds, session: session)
         case "google":
-            return GoogleProvider(apiKey: apiKey, model: model, timeoutSeconds: timeout, session: session)
+            return GoogleProvider(apiKey: apiKey, model: model, timeoutSeconds: timeoutSeconds, session: session)
         case "openrouter":
             // TASK-462: share the rotation pool (cache + index) across the per-drain provider
             // rebuilds; nil disables rotation (single configured model).
-            let pool = settings.llmOpenRouterFreeRotate ? OpenRouterModelPool.shared : nil
+            let pool = rotateFreeOpenRouterModels ? OpenRouterModelPool.shared : nil
             return OpenRouterProvider(
-                apiKey: apiKey, model: model, timeoutSeconds: timeout, session: session, pool: pool
+                apiKey: apiKey, model: model, timeoutSeconds: timeoutSeconds, session: session, pool: pool
             )
         case "deepseek":
             // DeepSeek serves an OpenAI-compatible API, so the existing transport covers it —
@@ -41,26 +59,24 @@ public enum LLMProviderFactory {
                 baseURL: resolveBaseURL(provider: "deepseek", customBaseURL: ""),
                 apiKey: apiKey,
                 model: model,
-                timeoutSeconds: timeout,
+                timeoutSeconds: timeoutSeconds,
                 session: session
             )
         case "custom":
-            let baseURL = settings.llmBaseURL
             return CustomProvider(
                 baseURL: baseURL,
                 apiKey: apiKey,
                 model: model,
-                timeoutSeconds: timeout,
+                timeoutSeconds: timeoutSeconds,
                 session: session
             )
         default:
             // Default: LM Studio (local OpenAI-compatible)
-            let baseURL = settings.llmBaseURL
             return LMStudioProvider(
                 baseURL: baseURL,
                 apiKey: apiKey,
                 model: model,
-                timeoutSeconds: timeout,
+                timeoutSeconds: timeoutSeconds,
                 session: session
             )
         }

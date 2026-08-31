@@ -185,27 +185,32 @@ public actor BackgroundStore {
         let uniqueIDs = Array(Set(jobIDs))
         guard !uniqueIDs.isEmpty else { return }
 
-        let allJobs = try modelContext.fetch(FetchDescriptor<Job>())
+        // Only the rows being changed. This fetched EVERY job and filtered in memory, so marking one
+        // job Interested from the keyboard materialised all ~1,400 `Job` objects — each one running
+        // the `@Model` keypath machinery — before it could touch the one row the user asked for.
+        // That is the second of visible lag between the shortcut and the row leaving the list.
+        //
+        // The duplicate check below is unaffected: a predicate on `id` returns *every* row carrying
+        // a requested id, so an ambiguous id is still caught. What is lost is the incidental NSLog
+        // about duplicates elsewhere in the store — which this comment already called not-fatal, and
+        // which is not worth a full-table materialisation on every status change.
+        let matched = try fetchJobs(withIDs: uniqueIDs)
+
         // Built by hand rather than with `Dictionary(uniqueKeysWithValues:)`, which TRAPS on a
         // duplicate key — taking the process down on an ordinary status change, with no diagnosis
         // (TASK-678). A repeated URL query parameter killed the app this way once already; this is
         // the same construct applied to runtime data.
         //
-        // A duplicate elsewhere in the store doesn't block unrelated work — but a duplicate among the
-        // jobs being CHANGED does, because which row was meant is unknowable and picking one silently
-        // would corrupt the answer rather than report the corruption.
+        // A duplicate among the jobs being CHANGED is fatal to the operation, because which row was
+        // meant is unknowable and picking one silently would corrupt the answer rather than report
+        // the corruption.
         var jobsByID: [String: Job] = [:]
         var duplicated: Set<String> = []
-        for job in allJobs where jobsByID.updateValue(job, forKey: job.id) != nil {
+        for job in matched where jobsByID.updateValue(job, forKey: job.id) != nil {
             duplicated.insert(job.id)
         }
-        let ambiguous = duplicated.intersection(uniqueIDs)
-        if !ambiguous.isEmpty {
-            throw BackgroundStoreError.duplicateJobIDs(ambiguous.sorted())
-        }
         if !duplicated.isEmpty {
-            // Not fatal here, but not silent either: the store needs repairing.
-            NSLog("BackgroundStore: duplicate job ids present: \(duplicated.sorted())")
+            throw BackgroundStoreError.duplicateJobIDs(duplicated.sorted())
         }
         for id in uniqueIDs where jobsByID[id] == nil {
             throw BackgroundStoreError.notFound(id)
@@ -1697,9 +1702,29 @@ public actor BackgroundStore {
     /// Returns only the rows that still exist: a job deleted between the deferral and the retry is
     /// simply absent, which the caller treats as answered rather than as a batch to keep retrying.
     public func jobs(withIDs ids: [String]) throws -> sending [Job] {
+        try fetchJobs(withIDs: Array(Set(ids)))
+    }
+
+    /// The rows carrying any of `ids`, fetched BY id rather than by scanning the table.
+    ///
+    /// Both callers of this used to fetch every `Job` and filter in memory, which materialises the
+    /// whole library — the app's own convention allows an O(N) pass over a few hundred rows, but not
+    /// one that instantiates a `@Model` per row on a keystroke path.
+    ///
+    /// Chunked because the predicate becomes a SQL `IN (…)` and SQLite binds one variable per
+    /// element, so a bulk action over a large selection would otherwise exceed the host parameter
+    /// limit. Duplicates of a requested id are all returned, which is what lets the caller detect an
+    /// ambiguous id rather than silently pick one.
+    private func fetchJobs(withIDs ids: [String]) throws -> [Job] {
         guard !ids.isEmpty else { return [] }
-        let wanted = Set(ids)
-        return try modelContext.fetch(FetchDescriptor<Job>()).filter { wanted.contains($0.id) }
+        var found: [Job] = []
+        for start in stride(from: 0, to: ids.count, by: 500) {
+            let chunk = Array(ids[start ..< Swift.min(start + 500, ids.count)])
+            found.append(contentsOf: try modelContext.fetch(
+                FetchDescriptor<Job>(predicate: #Predicate { chunk.contains($0.id) })
+            ))
+        }
+        return found
     }
 
     /// Every job as a Spotlight entry (TASK-590). Jobs that can't be linked or named are dropped by

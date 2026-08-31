@@ -78,6 +78,32 @@ be asked.
 context; anything else starts blank and needs the full brief — file paths, the decision already
 made, what "done" looks like. If writing the brief costs more than the work, just do it here.
 
+## LLM spend — the user is job-hunting and paying for this personally
+
+**Default cap for any evaluation or benchmark run: US$0.25. Anything above that needs the user's explicit say-so, per run.** Not a rolling budget, not a per-day allowance — ask each time.
+
+State the estimated cost *before* running, and the actual spend *after*. Both. An estimate that turns out 43% low (which happened: Gemini thinking tokens bill as output) is worse than no estimate, because it gets treated as a number.
+
+**What $0.25 buys, so nobody is surprised:** at ~$0.0166 per fit-scoring call, about **15 calls**. That is a smoke test — does the harness run, does the change do roughly what was expected on a couple of jobs. It is not a measurement. For reference:
+
+| purpose | calls | cost |
+|---|---|---|
+| smoke test | ~15 | $0.25 |
+| one variance measurement (29 jobs × 5 reps) | 145 | ~$2.41 |
+| one condition against the 20-job labelled corpus | ~100 | ~$1.66 |
+| rescore every stale score (1,006 rows) | 1,006 | ~$16.70 |
+
+So propose the tier, don't just propose "a benchmark".
+
+**Ways to spend less that don't cost rigour:**
+
+- **Reuse cached responses.** A prior run's baseline responses are byte-identical to re-running it. One benchmark got 145 of its calls free this way — that is not an approximation of the baseline, it *is* the baseline.
+- **One model.** While iterating on the fit rubric, test the model actually in use. Cross-model comparison is a separate question and multiplies every run by the number of models for no benefit to the question being asked.
+- **Partial is fine.** Fewer jobs with more replicates beats more jobs with one, when the question is about noise. Say what the reduced sample can and cannot support.
+- **Check whether the question needs the API at all.** Several findings this project acted on came from `sqlite3` over the store read-only, at zero cost — the version histogram, the score distributions, the 223 erased work arrangements. Exhaust that first.
+
+**Report negative results plainly.** A run that says "this change does nothing measurable" has bought something real: it stops the change shipping. Four proposals were killed this way for $14 total, each of which would otherwise have made ~872 stored scores incomparable for no benefit.
+
 ## Project Overview
 
 Jobhunt is a native macOS SwiftUI app (macOS 15+) for tracking job applications. It uses:

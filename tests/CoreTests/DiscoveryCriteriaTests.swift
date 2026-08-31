@@ -530,3 +530,160 @@ final class DiscoveryCriteriaParityGapTests: XCTestCase {
         XCTAssertEqual(criteria.evaluate(band), .pass)
     }
 }
+
+/// Gate A's work-arrangement rule, and gate B's salary floor (TASK-702).
+///
+/// Both exist because the shipped gate could not act on two things the user had already told the
+/// app. "Remote only" lived in the requirement settings and the gate never read it; the salary floor
+/// lived in the gate but no board list endpoint publishes pay, so it never fired once — 493 postings
+/// judged in a real install produced zero salary rejections.
+final class DiscoveryArrangementAndHydratedSalaryTests: XCTestCase {
+    private func posting(
+        title: String = "Senior Program Manager", location: String?
+    ) -> DiscoveredPosting {
+        DiscoveredPosting(
+            dedupKey: "gh:1", url: "https://boards.greenhouse.io/acme/jobs/1", title: title,
+            company: "Acme", locationRaw: location
+        )
+    }
+
+    private var remoteOnly: DiscoveryCriteria {
+        DiscoveryCriteria(
+            locationAllow: ["United States"],
+            allowRemote: true, allowHybrid: false, allowOnsite: false
+        )
+    }
+
+    // MARK: - Arrangement
+
+    /// The reported bug, exactly. Every board writes the country into its location string, so a
+    /// geography allow-list of "United States" matched an on-site Idaho posting — and it was swept,
+    /// extracted, scored and filed for a user who accepts remote work only.
+    func testOnsiteIsRejectedWhenOnlyRemoteIsAccepted() {
+        XCTAssertEqual(
+            remoteOnly.evaluate(posting(location: "Coeur d'Alene, Idaho, United States")),
+            .reject(.arrangement)
+        )
+        XCTAssertEqual(
+            remoteOnly.evaluate(posting(location: "Philadelphia, Pennsylvania, United States")),
+            .reject(.arrangement)
+        )
+    }
+
+    /// A posting that offers remote *as well as* an office is a remote posting. Rejecting it would
+    /// throw away the exact roles the filter exists to find.
+    func testARemoteOptionRescuesACityLocation() {
+        XCTAssertEqual(
+            remoteOnly.evaluate(posting(location: "Philadelphia, Pennsylvania, United States; Remote")),
+            .pass
+        )
+        XCTAssertEqual(remoteOnly.evaluate(posting(location: "Remote, United States")), .pass)
+        XCTAssertEqual(
+            remoteOnly.evaluate(posting(title: "Program Manager (Remote)", location: "Austin, Texas")),
+            .pass
+        )
+    }
+
+    /// "Remote within Canada or United States" registered as *not remote* — the marker allowed
+    /// "Remote in …" but not "Remote within …", and six rows in one install were lost to it.
+    func testRemoteWithinAPlaceCountsAsRemote() {
+        XCTAssertEqual(
+            remoteOnly.evaluate(posting(
+                location: "San Francisco, CA, or Remote within Canada or United States"
+            )),
+            .pass
+        )
+    }
+
+    /// A country names no workplace, so it stays the absent-data case the rest of gate A is built
+    /// around. This is the one on-site-shaped row that must still pass.
+    func testACountryOnlyLocationIsNotAnOnsiteStatement() {
+        XCTAssertEqual(remoteOnly.evaluate(posting(location: "United States")), .pass)
+        XCTAssertEqual(remoteOnly.evaluate(posting(location: nil)), .pass)
+    }
+
+    /// The rule must be inert unless the user actually excluded something — an unconfigured install
+    /// sweeps exactly as it did before.
+    func testAcceptingOnsiteDisablesTheRuleEntirely() {
+        let anything = DiscoveryCriteria(locationAllow: ["United States"])
+        XCTAssertEqual(
+            anything.evaluate(posting(location: "Coeur d'Alene, Idaho, United States")), .pass
+        )
+    }
+
+    func testHybridIsAcceptedOnlyWhenItIsAllowed() {
+        let posting = posting(location: "Austin, Texas, United States (Hybrid)")
+        XCTAssertEqual(remoteOnly.evaluate(posting), .reject(.arrangement))
+        var withHybrid = remoteOnly
+        withHybrid.allowHybrid = true
+        XCTAssertEqual(withHybrid.evaluate(posting), .pass)
+    }
+
+    /// Striking country words out to decide "does this name a place" must be anchored, or "us"
+    /// erases the "us" in Austin and an on-site posting reads as country-level.
+    func testStrikingCountryTermsDoesNotEatCityNames() {
+        // "Austin" survives striking "us" out, so this still names a place and is rejected on
+        // arrangement — not passed as country-level. The location tier has already accepted it, so a
+        // reject here can only have come from the arrangement rule.
+        XCTAssertEqual(
+            remoteOnly.evaluate(posting(location: "Austin, Texas, United States")),
+            .reject(.arrangement)
+        )
+    }
+
+    // MARK: - Gate B
+
+    func testTheSalaryFloorRejectsABandBelowIt() {
+        let criteria = DiscoveryCriteria(minSalaryIfPublished: 180_000)
+        XCTAssertEqual(
+            criteria.evaluateHydrated(body: "The salary range is $100,000 - $125,000 USD."),
+            .reject(.salary)
+        )
+    }
+
+    func testTheSalaryFloorKeepsABandThatReachesIt() {
+        let criteria = DiscoveryCriteria(minSalaryIfPublished: 180_000)
+        XCTAssertEqual(
+            criteria.evaluateHydrated(body: "Base pay: $150,000 - $210,000 per year."), .pass
+        )
+    }
+
+    /// Unstated pay is unknown, not disqualifying — and the user still wants to see those.
+    func testTextWithNoBandPasses() {
+        let criteria = DiscoveryCriteria(minSalaryIfPublished: 180_000)
+        XCTAssertEqual(criteria.evaluateHydrated(body: "We offer competitive pay."), .pass)
+    }
+
+    /// Several bands on one page are judged on the most generous, so a bonus quoted beside the
+    /// salary can't become the salary.
+    func testTheMostGenerousBandDecides() {
+        let criteria = DiscoveryCriteria(minSalaryIfPublished: 180_000)
+        XCTAssertEqual(
+            criteria.evaluateHydrated(body: """
+            Signing bonus: $5,000 - $10,000.
+            Zone A base salary: $190,000 - $240,000.
+            """),
+            .pass
+        )
+    }
+
+    /// `salaryBands` accepts anything over $1,000, which is right for parsing but far too weak to
+    /// reject on: a real board produced `$2k–$2k` for a principal role, and treating that as the
+    /// salary would discard a $250k posting permanently.
+    func testAnImplausiblyLowBandCannotReject() {
+        let criteria = DiscoveryCriteria(minSalaryIfPublished: 180_000)
+        XCTAssertEqual(criteria.evaluateHydrated(body: "Equity: $2,000 - $2,000."), .pass)
+    }
+
+    func testNoFloorMeansNoGateB() {
+        XCTAssertEqual(
+            DiscoveryCriteria().evaluateHydrated(body: "$50,000 - $60,000 a year."), .pass
+        )
+    }
+
+    /// Gate logic changed, so verdicts recorded under the old rules have to be re-judged. Without a
+    /// bump, every posting already let through stays marked as judged and the fix reaches nothing.
+    func testGateVersionWasBumped() {
+        XCTAssertEqual(DiscoveryCriteria.gateVersion, 3)
+    }
+}

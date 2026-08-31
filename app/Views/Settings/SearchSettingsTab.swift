@@ -145,9 +145,11 @@ struct SearchSettingsTab: View {
                 .foregroundStyle(.secondary)
             }
 
+            arrangementRow
+
             numberField(
-                "Minimum salary, when published", key: SettingsKey.discoveryMinSalary,
-                help: "Postings that don't publish a salary are always kept."
+                "Minimum salary", key: SettingsKey.discoveryMinSalary,
+                help: "Checked against the posting itself. Postings that don't state pay are kept."
             )
             numberField(
                 "Maximum age in days", key: SettingsKey.discoveryMaxAgeDays,
@@ -155,6 +157,28 @@ struct SearchSettingsTab: View {
             )
 
             previewRow
+        }
+    }
+
+    /// Shown, not editable, because it isn't this tab's setting — the search reads the work
+    /// arrangement you already chose under Jobs. Duplicating it here would give the two copies room
+    /// to disagree, which is how on-site postings were being swept for someone who had asked for
+    /// remote only.
+    @ViewBuilder
+    private var arrangementRow: some View {
+        let accepted = ["Remote": settings.locationAllowRemote,
+                        "Hybrid": settings.locationAllowHybrid,
+                        "On-site": settings.locationAllowOnsite]
+        LabeledContent("Work arrangement") {
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(
+                    settings.locationFilterEnabled
+                        ? ["Remote", "Hybrid", "On-site"].filter { accepted[$0] == true }
+                            .joined(separator: ", ")
+                        : "Any"
+                )
+                Text("From Jobs settings.").font(.caption2).foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -170,9 +194,19 @@ struct SearchSettingsTab: View {
             HStack {
                 Image(systemName: passed == 0 ? "exclamationmark.triangle" : "checkmark.circle")
                     .foregroundStyle(passed == 0 ? Color.orange : Color.green)
-                Text("These criteria would pass **\(passed)** of \(previewTotal) postings "
-                    + "from the last sweep.")
-                    .foregroundStyle(.primary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("These criteria would pass **\(passed)** of \(previewTotal) retained "
+                        + "postings from the last sweep of your watched sources.")
+                        .foregroundStyle(.primary)
+                    // The old wording said "of N postings from the last sweep", which read as the
+                    // whole sweep. It isn't: only one sweep's rows are retained, per watched source,
+                    // and the market sweep retains none — so a 99% pass rate said nothing about how
+                    // the gate was performing. It also can't see the salary rule, which is applied
+                    // to the posting body after this stage.
+                    Text("Pay is checked later, against the posting itself.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .font(.callout)
         }
@@ -240,6 +274,7 @@ struct SearchSettingsTab: View {
         case "hydrationFailed": "Couldn't read the posting"
         case "rejected.title": "Rejected — title"
         case "rejected.location": "Rejected — location"
+        case "rejected.arrangement": "Rejected — remote/on-site"
         case "rejected.salary": "Rejected — salary"
         case "rejected.stale": "Rejected — too old"
         default: key
@@ -279,7 +314,11 @@ struct SearchSettingsTab: View {
             SettingsKey.discoveryTitleInclude, SettingsKey.discoveryTitleExclude,
             SettingsKey.discoveryLocationAllow, SettingsKey.discoveryLocationAlwaysAllow,
             SettingsKey.discoveryLocationBlock, SettingsKey.discoveryLocationBlockHard,
-            SettingsKey.discoveryMinSalary, SettingsKey.discoveryMaxAgeDays
+            SettingsKey.discoveryMinSalary, SettingsKey.discoveryMaxAgeDays,
+            // Not this tab's fields, but the gate reads them — so the preview has to recompute when
+            // they change, or it shows a stale count for criteria that already moved.
+            SettingsKey.locationFilterEnabled, SettingsKey.locationAllowRemote,
+            SettingsKey.locationAllowHybrid, SettingsKey.locationAllowOnsite
         ].map { settings.string(forKey: $0) }.joined(separator: "\u{1F}")
     }
 

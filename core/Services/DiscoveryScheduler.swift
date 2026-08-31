@@ -24,6 +24,18 @@ public enum DiscoverySettings {
             locationAlwaysAllow: list(settings.string(forKey: SettingsKey.discoveryLocationAlwaysAllow)),
             locationBlock: list(settings.string(forKey: SettingsKey.discoveryLocationBlock)),
             locationAllow: list(settings.string(forKey: SettingsKey.discoveryLocationAllow)),
+            // Read straight through rather than seeded into discovery-specific keys, unlike
+            // everything above. Seeding exists so that widening a *search* never re-badges existing
+            // jobs; that risk doesn't apply in this direction, and a second copy of "do you accept
+            // on-site work" is a setting the user would have to keep in sync by hand — the drift
+            // that let on-site postings through in the first place.
+            //
+            // `locationFilterEnabled` is the master switch the three flags hang off — the
+            // requirement check reads them the same way — so an install with the filter off must
+            // sweep exactly as it did before.
+            allowRemote: !settings.locationFilterEnabled || settings.locationAllowRemote,
+            allowHybrid: !settings.locationFilterEnabled || settings.locationAllowHybrid,
+            allowOnsite: !settings.locationFilterEnabled || settings.locationAllowOnsite,
             minSalaryIfPublished: settings.int(forKey: SettingsKey.discoveryMinSalary),
             maxAgeDays: settings.int(forKey: SettingsKey.discoveryMaxAgeDays)
         )

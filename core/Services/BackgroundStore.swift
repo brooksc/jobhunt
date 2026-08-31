@@ -890,16 +890,41 @@ public actor BackgroundStore {
         return changed
     }
 
-    /// `recomputeMeetsCriteria` against the location settings as stored. Used by JobhuntMigrator,
-    /// which has no `SettingsStore`.
-    public func recomputeMeetsCriteriaFromSettings() throws -> Int {
+    /// The user's location/remote settings in the shape `LocationCriteria.meets` wants.
+    ///
+    /// Shared by every pass that has to re-judge a stored job, so none of them can disagree with the
+    /// live extraction path about what the settings mean.
+    struct StoredLocationSettings {
+        var preferredLocations: String?
+        var remoteEligibilityRegions: String?
+        var allowRemote = true
+        var allowHybrid = true
+        var allowOnsite = true
+        var filterEnabled = true
+
+        /// The criteria verdict for one job — the same `LocationCriteria.meets` call
+        /// `recomputeMeetsCriteria` and `ExtractionEngine` make.
+        func meets(remoteType: RemoteType?, location: String?) -> Bool {
+            LocationCriteria.meets(
+                remoteType: remoteType, location: location,
+                preferredLocations: preferredLocations,
+                remoteEligibilityRegions: remoteEligibilityRegions,
+                allowRemote: allowRemote, allowHybrid: allowHybrid, allowOnsite: allowOnsite,
+                filterEnabled: filterEnabled
+            )
+        }
+    }
+
+    /// Read the location/remote settings as stored. Used by the migrator passes, which have no
+    /// `SettingsStore`. An absent flag reads as enabled, matching `SettingsStore`'s defaults.
+    func storedLocationSettings() throws -> StoredLocationSettings {
         let rows = try modelContext.fetch(FetchDescriptor<Setting>())
         let byKey = Dictionary(rows.map { ($0.key, $0.value) }, uniquingKeysWith: { first, _ in first })
         func flag(_ key: String) -> Bool {
             guard let raw = byKey[key] else { return true }
             return raw == "true" || raw == "1"
         }
-        return try recomputeMeetsCriteria(
+        return StoredLocationSettings(
             preferredLocations: combinedPreferredLocations(
                 locations: byKey[SettingsKey.preferredLocations],
                 metros: byKey[SettingsKey.preferredMetros]
@@ -910,6 +935,108 @@ public actor BackgroundStore {
             allowOnsite: flag(SettingsKey.locationAllowOnsite),
             filterEnabled: flag(SettingsKey.locationFilterEnabled)
         )
+    }
+
+    /// `recomputeMeetsCriteria` against the location settings as stored. Used by JobhuntMigrator,
+    /// which has no `SettingsStore`.
+    public func recomputeMeetsCriteriaFromSettings() throws -> Int {
+        let settings = try storedLocationSettings()
+        return try recomputeMeetsCriteria(
+            preferredLocations: settings.preferredLocations,
+            remoteEligibilityRegions: settings.remoteEligibilityRegions,
+            allowRemote: settings.allowRemote,
+            allowHybrid: settings.allowHybrid,
+            allowOnsite: settings.allowOnsite,
+            filterEnabled: settings.filterEnabled
+        )
+    }
+
+    public struct RemoteTypeRepairSummary: Sendable {
+        /// Restored arrangements, counted by the value put back.
+        public var restored: [RemoteType: Int] = [:]
+        /// Jobs left alone because the user edited `remoteType` by hand.
+        public var skippedOverridden = 0
+        /// Jobs with a missing arrangement whose stored extraction has no usable `remote_type` —
+        /// key absent, null, `"unknown"`, or `extractedJSON` unparseable.
+        public var skippedUnrecoverable = 0
+        /// How many of the restored jobs also changed `meetsCriteria`.
+        public var criteriaChanged = 0
+        public var totalRestored: Int {
+            restored.values.reduce(0, +)
+        }
+
+        public init() {}
+    }
+
+    /// The `remote_type` a job's stored extraction actually returned, if it names a real arrangement.
+    ///
+    /// `"unknown"` is deliberately treated as no answer: `JobFilterRules.criteriaBucket` and
+    /// `QualityChecker` both read `.unknown` and `nil` identically, so writing it back would be a
+    /// no-op stored as a change. Malformed or non-object JSON yields nil rather than throwing — a
+    /// bad row must not abort a bulk pass.
+    static func extractedRemoteType(_ extractedJSON: String?) -> RemoteType? {
+        guard let extractedJSON,
+              let data = extractedJSON.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let raw = dict["remote_type"] as? String,
+              let type = RemoteType(rawValue: raw.trimmingCharacters(in: .whitespaces).lowercased()),
+              type != .unknown
+        else { return nil }
+        return type
+    }
+
+    /// Restore work arrangements the old post-extraction clamp erased (TASK-708).
+    ///
+    /// Until TASK-705, `ExtractionEngine` nulled `Job.remoteType` whenever the user's settings
+    /// disallowed that arrangement — enforcement in the wrong layer, and lossy: the value the model
+    /// determined was thrown away, while `meetsCriteria` (which is what every filter consults) was
+    /// already recording the same verdict non-destructively. Measured on the real store, 223 jobs
+    /// were left with a NULL arrangement, so `criteriaBucket` read them as "arrangement not stated"
+    /// and hid them from the *Doesn't meet criteria* filter, and `QualityChecker` flagged them as
+    /// defective. The model's answer survived in `extractedJSON`, so this is a re-read of stored
+    /// JSON — **zero LLM calls**.
+    ///
+    /// Deliberately narrow. It is a repair, not a re-derivation:
+    /// - A job that already states an arrangement is never overwritten (`.unknown` aside, which
+    ///   carries no information — the same rows `RemoteTypeInference` treats as fillable).
+    /// - A missing, null, `"unknown"` or unparseable `remote_type` leaves the job as it is. Inferring
+    ///   one from the location text is `--recompute-criteria`'s job, not this one's.
+    /// - A hand-edited `remoteType` outranks the restore and is counted separately.
+    ///
+    /// Every changed row is re-judged through the same `LocationCriteria.meets` path
+    /// `recomputeMeetsCriteria` uses — without that the arrangement comes back but the job stays
+    /// mis-bucketed, which is the whole visible symptom.
+    ///
+    /// Idempotent: a restored job now has a non-nil, non-`.unknown` arrangement, so a second run
+    /// skips it before reading any JSON.
+    public func repairRemoteTypesFromExtractedJSON() throws -> RemoteTypeRepairSummary {
+        var summary = RemoteTypeRepairSummary()
+        let settings = try storedLocationSettings()
+        for job in try modelContext.fetch(FetchDescriptor<Job>()) {
+            guard job.remoteType == nil || job.remoteType == .unknown else { continue }
+            let overrides = manualFieldOverrideSet(job.manualFieldOverridesJSON)
+            guard !overrides.contains("remoteType") else {
+                summary.skippedOverridden += 1
+                continue
+            }
+            guard let restored = Self.extractedRemoteType(job.extractedJSON) else {
+                summary.skippedUnrecoverable += 1
+                continue
+            }
+            job.remoteType = restored
+            summary.restored[restored, default: 0] += 1
+
+            let meets = settings.meets(remoteType: restored, location: job.location)
+            if job.meetsCriteria != meets {
+                job.meetsCriteria = meets
+                summary.criteriaChanged += 1
+            }
+            job.updatedAt = Date()
+        }
+        if summary.totalRestored > 0 {
+            try modelContext.save()
+        }
+        return summary
     }
 
     /// Scoring corrections, decoded from the settings row the app writes.

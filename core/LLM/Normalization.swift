@@ -333,6 +333,29 @@ public enum SalaryNormalizer {
         return nil
     }
 
+    /// Wording that makes a bare numeric range pay rather than years, headcount or percentages.
+    static let payContextPattern =
+        #"\bper\s+year\b|\bper\s+annum\b|\bper\s+hour\b|\bannually\b|\bannuali[sz]ed\b|\bannual\b|\bhourly\b|/\s*(?:hr|yr|hour|year)\b|\bsalary\b|\bsalaries\b|\bbase\s+pay\b|\bcompensation\b|\bpay\s+(?:range|band|scale)\b|\bhiring\s+range\b|\bpay\s+transparency\b"#
+
+    /// Does a matched range carry evidence that it is about MONEY?
+    ///
+    /// The inline range pattern in `salaryBands` had every currency marker optional, so it degenerated
+    /// to `\d+\s*-\s*\d+` and any two dash-separated numbers became a candidate band. The only filter
+    /// left was the ">= 1000 on both ends" test in `salaryRangeValue`, and a magnitude floor cannot
+    /// tell a year from a wage: job #1502 (SageSure) states no pay at all, but "Best Places to Work in
+    /// Insurance … for four years in a row (2020-2023)" was stored as $2,020–$2,023, and several
+    /// Elastic postings showed "$2k–2k" for the same reason. Raising the floor is not the fix either —
+    /// a real hourly band sits far below it.
+    ///
+    /// So require affirmative evidence: a currency symbol or code, or a k/K magnitude suffix, inside
+    /// the match itself; failing that, pay wording in the sentence the match sits in.
+    static func rangeLooksLikePay(match: String, sentence: String) -> Bool {
+        let currency = #"[$€£]|\b(?:USD|CAD|EUR|GBP)\b"#
+        if match.range(of: currency, options: [.regularExpression, .caseInsensitive]) != nil { return true }
+        if match.range(of: #"\d\s*[kK]\b"#, options: .regularExpression) != nil { return true }
+        return sentence.range(of: payContextPattern, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
     static func sentenceForIndex(_ text: String, _ index: Int) -> String {
         let nsText = text as NSString
         let startNl = nsText.range(of: "\n", options: .backwards, range: NSRange(0 ..< index)).location
@@ -379,6 +402,9 @@ public enum SalaryNormalizer {
                 guard let range = salaryRangeValue(group1, group2, group3, group4) else { continue }
                 if bands.contains(where: { $0.min == range.min && $0.max == range.max }) { continue }
                 let label = sentenceForIndex(text, match.range.location)
+                // Every currency marker in this pattern is optional, so the match alone proves nothing
+                // about pay — see `rangeLooksLikePay`.
+                guard rangeLooksLikePay(match: nsText.substring(with: match.range), sentence: label) else { continue }
                 bands.append(SalaryRange(min: range.min, max: range.max, label: label))
             }
         }

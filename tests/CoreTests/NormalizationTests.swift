@@ -819,3 +819,92 @@ final class CurrencyRepeatedOnBothSidesTests: XCTestCase {
         XCTAssertNil(out["salary_max"] as? Int)
     }
 }
+
+/// Job #1502 (SageSure) states no pay anywhere and was stored as `salary_min: 2020,
+/// salary_max: 2023` — read out of "Best Places to Work in Insurance … for four years in a row
+/// (2020-2023)". The inline range pattern in `salaryBands` had every currency marker optional, so it
+/// degenerated to `\d+ - \d+`, and the only filter left was the ">= 1000 on both ends" magnitude
+/// floor. A floor can't tell a year from a wage, so a match now has to carry pay evidence.
+final class InventedSalaryBandTests: XCTestCase {
+    private let sageSure = """
+    Senior Product Manager. Named among the Best Places to Work in Insurance by Business Insurance \
+    for four years in a row (2020-2023). We look for 5-7 years of product management experience.
+    """
+
+    func testYearRangeIsNotASalaryBand() {
+        XCTAssertEqual(SalaryNormalizer.salaryBands(sageSure).count, 0)
+    }
+
+    func testPostingWithNoStatedPayNormalizesToNoSalary() {
+        let out = SalaryNormalizer.normalize(extracted: ["salary_note": ""], sourceText: sageSure)
+        XCTAssertNil(out["salary_min"] as? Int, "a year range must not become a salary")
+        XCTAssertNil(out["salary_max"] as? Int)
+    }
+
+    /// Rounded for display, "2016-2017" is the "$2k–2k" several Elastic postings were showing.
+    func testAnyBareYearPairIsRejected() {
+        for years in ["2016-2017", "2019 - 2024", "1999–2001"] {
+            XCTAssertEqual(
+                SalaryNormalizer.salaryBands("Awarded every year (\(years)).").count, 0, years
+            )
+        }
+    }
+
+    /// These were rejected before only because both ends fell under the 1,000 floor. They must stay
+    /// rejected — note that "annually" puts pay wording in the second sentence.
+    func testExperienceAndPercentageRangesStayRejected() {
+        XCTAssertEqual(SalaryNormalizer.salaryBands("5-7 years of product management experience").count, 0)
+        XCTAssertEqual(SalaryNormalizer.salaryBands("Bonus is estimated at approximately 10–15% annually.").count, 0)
+    }
+
+    // MARK: - Real pay must still parse
+
+    func testCurrencyMarkedRangesStillParse() {
+        let cases: [(String, Int, Int)] = [
+            ("USD $140,400.00 - USD $372,300.00 /Yr.", 140_400, 372_300),
+            ("$150,000 - $210,000 per year", 150_000, 210_000),
+            ("The range is 116,000 - 197,000 USD Annual", 116_000, 197_000),
+            ("$140K - $180K", 140_000, 180_000)
+        ]
+        for (note, low, high) in cases {
+            let out = SalaryNormalizer.normalize(extracted: ["salary_note": note])
+            XCTAssertEqual(out["salary_min"] as? Int, low, note)
+            XCTAssertEqual(out["salary_max"] as? Int, high, note)
+        }
+    }
+
+    func testHourlyRangeStillParses() {
+        let out = SalaryNormalizer.normalize(extracted: ["salary_note": "$45.00 - $60.00 per hour"])
+        XCTAssertEqual(out["salary_hourly_min"] as? Double, 45)
+        XCTAssertEqual(out["salary_hourly_max"] as? Double, 60)
+        XCTAssertEqual(out["salary_min"] as? Int, 45 * 2080)
+        XCTAssertEqual(out["salary_max"] as? Int, 60 * 2080)
+    }
+
+    /// A band with no currency marker at all is still pay when the sentence says so — the evidence
+    /// requirement is about pay context, not about a dollar sign specifically.
+    func testBareRangeWithPayWordingIsAccepted() {
+        let bands = SalaryNormalizer.salaryBands("The base salary range for this role is 150,000 - 210,000.")
+        XCTAssertEqual(bands.count, 1)
+        XCTAssertEqual(bands.first?.min, 150_000)
+        XCTAssertEqual(bands.first?.max, 210_000)
+    }
+
+    /// The real shape of the bug: a page that has BOTH a year range and a pay range must yield only
+    /// the pay range — and the location-specific band selection must still work over it.
+    func testLocationSpecificBandSurvivesAlongsideAYearRange() {
+        let page = """
+        Best Places to Work in Insurance (2020-2023).
+        San Francisco Bay Area: 133,400 - 226,600 USD Annual
+        All Other US Locations: 116,000 - 197,000 USD Annual
+        """
+        let bands = SalaryNormalizer.salaryBands(page)
+        XCTAssertEqual(bands.count, 2, "the year range must not become a third band: \(bands.map(\.label))")
+
+        let out = SalaryNormalizer.normalize(
+            extracted: ["salary_note": ""], preferredLocations: "San Francisco, CA", sourceText: page
+        )
+        XCTAssertEqual(out["salary_min"] as? Int, 133_400)
+        XCTAssertEqual(out["salary_max"] as? Int, 226_600)
+    }
+}

@@ -152,7 +152,7 @@ struct JobsSettingsTab: View {
             customJDText = settings.string(forKey: SettingsKey.jobDescriptionMarkdown)
             applicationDetailsText = settings.string(forKey: SettingsKey.applicationPersonalInfo)
         }
-        .task(id: locationCriteriaSignature) { await recomputeCriteriaAfterEdit() }
+        .task(id: locationCriteriaInputs) { await recomputeCriteriaAfterEdit(locationCriteriaInputs) }
         .sheet(isPresented: $showingExpiredConfirmation) {
             ExpiredConfirmationSheet(
                 goneJobs: goneJobs,
@@ -170,17 +170,40 @@ struct JobsSettingsTab: View {
 
     // MARK: - Location criteria recompute
 
-    /// Every input `LocationCriteria` reads. `.task(id:)` cancels and restarts whenever one changes,
-    /// so the sleep below debounces per-keystroke edits of the text fields into one recompute.
-    private var locationCriteriaSignature: String {
-        [
-            settings.preferredLocations,
-            settings.preferredMetros,
-            String(settings.locationFilterEnabled),
-            String(settings.locationAllowRemote),
-            String(settings.locationAllowHybrid),
-            String(settings.locationAllowOnsite)
-        ].joined(separator: "\u{1F}")
+    /// The inputs a re-judgement needs, gathered once.
+    ///
+    /// This used to be a hand-written string signature listing "every input `LocationCriteria`
+    /// reads" — and it silently omitted `remoteEligibilityRegions`, so editing that field changed
+    /// nothing and left every stored verdict stale (TASK-702). A comment asserting completeness is
+    /// not a mechanism, so there is no list any more: this one struct is *both* the `.task(id:)` key
+    /// and the argument bundle for the recompute, and its synthesized `Equatable` covers every
+    /// stored property automatically. Adding an input means adding a property here, which changes
+    /// the change-detection key by construction; passing a new argument to
+    /// `recomputeMeetsCriteria` without one won't compile.
+    private struct LocationCriteriaInputs: Equatable {
+        /// Already metro-expanded, i.e. exactly what `LocationCriteria` is handed.
+        var preferredLocations: String
+        var remoteEligibilityRegions: String
+        var allowRemote: Bool
+        var allowHybrid: Bool
+        var allowOnsite: Bool
+        var filterEnabled: Bool
+    }
+
+    /// `.task(id:)` cancels and restarts whenever one of these changes, so the sleep in
+    /// `recomputeCriteriaAfterEdit` debounces per-keystroke edits of the text fields into one
+    /// recompute.
+    private var locationCriteriaInputs: LocationCriteriaInputs {
+        LocationCriteriaInputs(
+            preferredLocations: combinedPreferredLocations(
+                locations: settings.preferredLocations, metros: settings.preferredMetros
+            ),
+            remoteEligibilityRegions: settings.remoteEligibilityRegions,
+            allowRemote: settings.locationAllowRemote,
+            allowHybrid: settings.locationAllowHybrid,
+            allowOnsite: settings.locationAllowOnsite,
+            filterEnabled: settings.locationFilterEnabled
+        )
     }
 
     /// Changing the location settings used to affect only jobs extracted *afterwards* — the existing
@@ -190,21 +213,16 @@ struct JobsSettingsTab: View {
     ///
     /// Values are read here and passed explicitly rather than re-read inside `BackgroundStore`: the
     /// settings live in a different `ModelContext`, so a fetch there could still see the old row.
-    private func recomputeCriteriaAfterEdit() async {
+    private func recomputeCriteriaAfterEdit(_ inputs: LocationCriteriaInputs) async {
         try? await Task.sleep(for: .seconds(1))
         guard !Task.isCancelled else { return }
 
-        let preferred = combinedPreferredLocations(
-            locations: settings.preferredLocations, metros: settings.preferredMetros
-        )
-        let eligibility = settings.remoteEligibilityRegions
-        let (enabled, remote) = (settings.locationFilterEnabled, settings.locationAllowRemote)
-        let (hybrid, onsite) = (settings.locationAllowHybrid, settings.locationAllowOnsite)
         do {
             let changed = try await appServices.backgroundStore.recomputeMeetsCriteria(
-                preferredLocations: preferred, remoteEligibilityRegions: eligibility,
-                allowRemote: remote, allowHybrid: hybrid,
-                allowOnsite: onsite, filterEnabled: enabled
+                preferredLocations: inputs.preferredLocations,
+                remoteEligibilityRegions: inputs.remoteEligibilityRegions,
+                allowRemote: inputs.allowRemote, allowHybrid: inputs.allowHybrid,
+                allowOnsite: inputs.allowOnsite, filterEnabled: inputs.filterEnabled
             )
             // Silent when nothing moved — this also runs once on appear, which must not toast.
             if changed > 0 {

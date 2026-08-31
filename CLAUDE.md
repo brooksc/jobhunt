@@ -2,12 +2,40 @@
 
 ## Git workflow
 
-- **Work directly on `main`** unless there's a specific reason not to (e.g. a subagent running in
-  its own worktree). Don't create feature/fix branches for routine work — they accumulate and have
-  to be cleaned up.
+- **Work directly on `main`** when you are the only agent in the repo. Don't create feature/fix
+  branches for routine solo work — they accumulate and have to be cleaned up.
 - **Commit after each completed change** (one logical change per commit) once it builds and the
   relevant tests pass. Don't batch many unrelated changes into one commit.
 - Commits are SSH-signed via 1Password (must be unlocked); never use `--no-gpg-sign`.
+
+### When another agent is working in this repo — use a worktree
+
+**Check first, every session:** `git worktree list`. More than one entry means someone else is
+mid-change, and two agents committing to `main` in the same checkout will interleave edits in the
+same files and produce conflicts neither of them can see coming.
+
+```bash
+git worktree add .claude/worktrees/<topic> -b <topic>    # branch off current main
+cd .claude/worktrees/<topic>                             # build and test HERE
+```
+
+- **Branch name = what you're doing** (`status-perf`, not `fix`), so `git worktree list` tells the
+  other agent what you're touching.
+- **Merge back at a natural boundary** — a finished, tested change — not at the end of a long
+  session. The longer a branch lives, the worse the conflict:
+  ```bash
+  git -C <main checkout> merge --no-ff <topic>
+  git worktree remove .claude/worktrees/<topic> && git branch -d <topic>
+  ```
+- **`git fetch` and check divergence before pushing.** The other agent may have pushed while you
+  were building: `git rev-list --left-right --count origin/main...HEAD`.
+- **Only one agent runs the app at a time.** The SwiftData store is single-writer and the store path
+  is fixed (not per-worktree), so two running builds fight over the same file. Say which of you
+  holds it. `./scripts/rebuild-and-run.sh` from a worktree launches *that* worktree's binary against
+  the *shared* production store — fine, as long as it's the only one running.
+- **Derived data is shared too.** Concurrent `xcodebuild` runs from two worktrees contend for the
+  same DerivedData and the same 8 cores; keep `-jobs 6` and don't start a build while the other
+  agent's is running.
 
 ## Project Overview
 

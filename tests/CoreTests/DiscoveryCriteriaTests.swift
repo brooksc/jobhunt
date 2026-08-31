@@ -567,14 +567,19 @@ final class DiscoveryArrangementAndPayTests: XCTestCase {
     /// The reported bug, exactly. Every board writes the country into its location string, so a
     /// geography allow-list of "United States" matched an on-site Idaho posting — and it was swept,
     /// extracted, scored and filed for a user who accepts remote work only.
-    func testOnsiteIsRejectedWhenOnlyRemoteIsAccepted() {
+    ///
+    /// It is `provisional` rather than `reject` since TASK-694: the row is not evidence enough on its
+    /// own, so the posting is fetched and judged on its body. `testAnOnsiteBodyIsStillRejected`
+    /// below is the other half — a body that doesn't say remote is still turned away, before any
+    /// extraction.
+    func testAnUnstatedArrangementIsProvisionalNotRejected() {
         XCTAssertEqual(
             remoteOnly.evaluate(posting(location: "Coeur d'Alene, Idaho, United States")),
-            .reject(.arrangement)
+            .provisional
         )
         XCTAssertEqual(
             remoteOnly.evaluate(posting(location: "Philadelphia, Pennsylvania, United States")),
-            .reject(.arrangement)
+            .provisional
         )
     }
 
@@ -586,8 +591,15 @@ final class DiscoveryArrangementAndPayTests: XCTestCase {
         let noGeographyFilter = DiscoveryCriteria(
             allowRemote: true, allowHybrid: false, allowOnsite: false
         )
+        let row = posting(title: "Staff Product Manager", location: "Lehi, Utah")
+        XCTAssertEqual(noGeographyFilter.evaluate(row), .provisional)
+        // …and its body, which says nothing about working from anywhere, ends it — still one GET and
+        // no extraction.
         XCTAssertEqual(
-            noGeographyFilter.evaluate(posting(title: "Staff Product Manager", location: "Lehi, Utah")),
+            noGeographyFilter.evaluateHydrated(
+                body: "You will join our Lehi office and partner with engineering daily.",
+                provisionalArrangement: true
+            ),
             .reject(.arrangement)
         )
         // And with the user's geography allow-list in play it never even gets that far.
@@ -640,7 +652,7 @@ final class DiscoveryArrangementAndPayTests: XCTestCase {
 
     func testHybridIsAcceptedOnlyWhenItIsAllowed() {
         let posting = posting(location: "Austin, Texas, United States (Hybrid)")
-        XCTAssertEqual(remoteOnly.evaluate(posting), .reject(.arrangement))
+        XCTAssertEqual(remoteOnly.evaluate(posting), .provisional)
         var withHybrid = remoteOnly
         withHybrid.allowHybrid = true
         XCTAssertEqual(withHybrid.evaluate(posting), .pass)
@@ -649,12 +661,12 @@ final class DiscoveryArrangementAndPayTests: XCTestCase {
     /// Striking country words out to decide "does this name a place" must be anchored, or "us"
     /// erases the "us" in Austin and an on-site posting reads as country-level.
     func testStrikingCountryTermsDoesNotEatCityNames() {
-        // "Austin" survives striking "us" out, so this still names a place and is rejected on
-        // arrangement — not passed as country-level. The location tier has already accepted it, so a
-        // reject here can only have come from the arrangement rule.
+        // "Austin" survives striking "us" out, so this still names a place and goes to its body —
+        // not passed outright as country-level. The location tier has already accepted it, so a
+        // provisional verdict here can only have come from the arrangement rule.
         XCTAssertEqual(
             remoteOnly.evaluate(posting(location: "Austin, Texas, United States")),
-            .reject(.arrangement)
+            .provisional
         )
     }
 
@@ -708,9 +720,118 @@ final class DiscoveryArrangementAndPayTests: XCTestCase {
         )
     }
 
+    // MARK: - Gate B: arrangement
+
+    /// The measured false reject this exists to fix (TASK-694). The board row is
+    /// `Palo Alto, California, United States`; the role is genuinely remote and says so only in the
+    /// body, in the phrasing Acryl Data's board actually uses.
+    func testAPaloAltoRowWhoseBodySaysRemoteSurvives() {
+        let row = posting(location: "Palo Alto, California, United States")
+        XCTAssertEqual(remoteOnly.evaluate(row), .provisional)
+        XCTAssertEqual(
+            remoteOnly.evaluateHydrated(
+                body: """
+                Remote Work
+
+                All roles are remote unless otherwise specified in the job description. Review the \
+                job description to confirm if the role you are interested in is remote or hybrid.
+                """,
+                provisionalArrangement: true
+            ),
+            .pass
+        )
+    }
+
+    /// The other direction, and the one that must not soften: an on-site body is still turned away.
+    /// It costs one GET and reaches no LLM call, which is what gate A was protecting.
+    func testAnOnsiteBodyIsStillRejected() {
+        XCTAssertEqual(
+            remoteOnly.evaluateHydrated(
+                body: """
+                This role requires working on site 5 days per week in our Reno facility. Hybrid and \
+                remote work options are not available.
+                """,
+                provisionalArrangement: true
+            ),
+            .reject(.arrangement)
+        )
+    }
+
+    /// Silence in the body is still the on-site case — the same rule the board row follows, applied
+    /// where the evidence is. Absent data doesn't rescue a posting here.
+    func testABodyThatSaysNothingAboutArrangementIsRejected() {
+        XCTAssertEqual(
+            remoteOnly.evaluateHydrated(
+                body: "You will own the roadmap and partner with engineering.",
+                provisionalArrangement: true
+            ),
+            .reject(.arrangement)
+        )
+    }
+
+    /// A denial written at a distance from the word — "not eligible for remote work" — reads as an
+    /// offer of remote work to the board-row negation rule, which only sees "non-remote". All six
+    /// on-site false positives measured over the stored corpus had exactly this shape.
+    func testADeniedRemoteOptionDoesNotReadAsAnOffer() {
+        for body in [
+            "Residing in New York City: this role is not eligible for remote work in New York City.",
+            "Hybrid and remote work options are not available for this position.",
+            "This is not a remote position."
+        ] {
+            XCTAssertEqual(
+                remoteOnly.evaluateHydrated(body: body, provisionalArrangement: true),
+                .reject(.arrangement), body
+            )
+        }
+    }
+
+    /// A user who takes hybrid but not on-site gets the same second look, and the same protection
+    /// from a denial phrased at a distance.
+    func testHybridIsReadFromTheBodyOnlyWhenOffered() {
+        var withHybrid = remoteOnly
+        withHybrid.allowHybrid = true
+        XCTAssertEqual(
+            withHybrid.evaluateHydrated(
+                body: "This is a hybrid role: three days a week in the Austin office.",
+                provisionalArrangement: true
+            ),
+            .pass
+        )
+        XCTAssertEqual(
+            withHybrid.evaluateHydrated(
+                body: "On site 5 days per week. Hybrid and remote work options are not available.",
+                provisionalArrangement: true
+            ),
+            .reject(.arrangement)
+        )
+    }
+
+    /// A posting that passed gate A outright is never re-judged on arrangement, whatever its body
+    /// happens to say. Only the speculative fetches pay for this check.
+    func testANonProvisionalPostingIsNotJudgedOnArrangement() {
+        XCTAssertEqual(
+            remoteOnly.evaluateHydrated(body: "You will be on site 5 days per week."), .pass
+        )
+    }
+
+    /// The gate B checks run in one call, and the arrangement one comes first — but a provisional
+    /// posting still has to clear the salary floor.
+    func testAProvisionalPostingStillFacesTheSalaryFloor() {
+        var criteria = remoteOnly
+        criteria.minSalaryIfPublished = 180_000
+        XCTAssertEqual(
+            criteria.evaluateHydrated(
+                body: "This is a fully remote role. The range is $100,000 - $125,000 USD.",
+                provisionalArrangement: true
+            ),
+            .reject(.salary)
+        )
+    }
+
     /// Gate logic changed, so verdicts recorded under the old rules have to be re-judged. Without a
-    /// bump, every posting already let through stays marked as judged and the fix reaches nothing.
+    /// bump, every posting already rejected under the strict arrangement rule stays marked as judged
+    /// and the fix reaches nothing it already got wrong.
     func testGateVersionWasBumped() {
-        XCTAssertEqual(DiscoveryCriteria.gateVersion, 3)
+        XCTAssertEqual(DiscoveryCriteria.gateVersion, 4)
     }
 }

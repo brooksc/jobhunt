@@ -78,3 +78,65 @@ final class JobSearchLinksTests: XCTestCase {
         XCTAssertEqual(JobSearchLinks.companyMatchTokens("GitLab"), ["gitlab"])
     }
 }
+
+/// The "find on company site" button must stay ENABLED on an aggregator, however much the URL slug
+/// looks like the company's own site.
+///
+/// Reported on jobs #966 and #973: both are Glassdoor links whose path carries the company name, so
+/// the whole-URL substring test read them as already-direct, disabled the button, and told the user
+/// the posting "already looks like it's on Vanta's own site". An aggregator link is precisely where
+/// finding the company's own posting is most worth doing.
+final class AggregatorIsNotTheCompanySiteTests: XCTestCase {
+    func testGlassdoorSlugCarryingTheCompanyNameIsNotTheCompanySite() {
+        // Job #966, trimmed of its tracking query.
+        XCTAssertFalse(JobSearchLinks.postingIsOnCompanySite(
+            company: "Vanta",
+            postingURL: "https://www.glassdoor.com/job-listing/staff-product-manager-ai-foundations-vanta-JV_KO0,36_KE37,42.htm"
+        ))
+        // Job #973.
+        XCTAssertFalse(JobSearchLinks.postingIsOnCompanySite(
+            company: "Syniti",
+            postingURL: "https://www.glassdoor.com/job-listing/sr-manager-technical-program-syniti-JV_KO0,28_KE29,35.htm"
+        ))
+    }
+
+    func testEveryExcludedAggregatorIsTreatedTheSameWay() {
+        for domain in JobSearchLinks.excludedAggregatorDomains {
+            XCTAssertFalse(
+                JobSearchLinks.postingIsOnCompanySite(
+                    company: "Acme", postingURL: "https://www.\(domain)/jobs/senior-pm-acme-123"
+                ),
+                "\(domain) puts the company name in the slug; it is still not the company's site"
+            )
+        }
+    }
+
+    /// The path match is deliberate and must survive — applying through a company's own ATS is direct,
+    /// and that is the case the whole-URL test was written for.
+    func testAnATSPathStillCountsAsTheCompanySite() {
+        XCTAssertTrue(JobSearchLinks.postingIsOnCompanySite(
+            company: "GitLab", postingURL: "https://boards.greenhouse.io/gitlab/jobs/1234"
+        ))
+        XCTAssertTrue(JobSearchLinks.postingIsOnCompanySite(
+            company: "Vanta", postingURL: "https://www.vanta.com/careers/staff-product-manager"
+        ))
+    }
+
+    /// Only the HOST decides. A company careers page that happens to mention an aggregator in its
+    /// path is still the company's own site.
+    func testAnAggregatorNamedInThePathDoesNotDisqualifyTheHost() {
+        XCTAssertTrue(JobSearchLinks.postingIsOnCompanySite(
+            company: "Acme", postingURL: "https://acme.com/careers/apply-via-linkedin.com/123"
+        ))
+    }
+
+    /// Subdomains of an aggregator are aggregators; a lookalike domain is not.
+    func testSubdomainMatchingIsAnchoredToTheDomainBoundary() {
+        XCTAssertFalse(JobSearchLinks.postingIsOnCompanySite(
+            company: "Acme", postingURL: "https://uk.indeed.com/viewjob?jk=acme123"
+        ))
+        XCTAssertTrue(JobSearchLinks.postingIsOnCompanySite(
+            company: "Acme", postingURL: "https://notglassdoor.com/acme/jobs/1"
+        ))
+    }
+}

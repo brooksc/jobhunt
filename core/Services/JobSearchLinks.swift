@@ -64,8 +64,28 @@ public enum JobSearchLinks {
     /// `greenhouse.io/gitlab` both match). When true, the "find on company site" search is redundant
     /// and the button is disabled. Deliberately loose (substring match) — the user accepts occasional
     /// false positives in exchange for one fewer pointless click.
+    ///
+    /// **Except on an aggregator, where the path match is actively wrong.** Aggregators put the
+    /// company name in the URL slug, so a substring test over the whole URL says "already direct"
+    /// about the one kind of link where the company's own posting is most worth finding. Jobs #966
+    /// and #973 both hit this:
+    ///
+    ///     glassdoor.com/job-listing/staff-product-manager-ai-foundations-vanta-JV_KO0,36…
+    ///     glassdoor.com/job-listing/sr-manager-technical-program-syniti-JV_KO0,28…
+    ///
+    /// Both disabled the button and told the user the posting "already looks like it's on Vanta's
+    /// own site", while the host was Glassdoor. So the host is checked against the same
+    /// `excludedAggregatorDomains` the Google query excludes — one list, used for both halves of the
+    /// same judgement, rather than two that can disagree.
     public static func postingIsOnCompanySite(company: String?, postingURL: String?) -> Bool {
-        guard let url = nonEmpty(postingURL)?.lowercased() else { return false }
+        guard let raw = nonEmpty(postingURL) else { return false }
+        let url = raw.lowercased()
+        // Host only, so an aggregator named in a *path* (a careers page linking out, say) still
+        // reads as whatever site actually serves it.
+        if let host = URL(string: raw)?.host?.lowercased(),
+           excludedAggregatorDomains.contains(where: { host == $0 || host.hasSuffix(".\($0)") }) {
+            return false
+        }
         let tokens = companyMatchTokens(company)
         guard !tokens.isEmpty else { return false }
         return tokens.contains { url.contains($0) }

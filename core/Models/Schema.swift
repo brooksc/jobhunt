@@ -12,7 +12,7 @@ import SwiftData
 // allowed in-place and do NOT require a new version.
 //
 // This file owns in-app SwiftData schema migration. The standalone `tools/migrator`
-// tool handles the separate one-time Electron→SwiftData import and is unrelated.
+// CLI is unrelated: it runs one-time data fixups against an already-migrated store.
 //
 // ## When to create a new VersionedSchema
 //
@@ -40,12 +40,11 @@ import SwiftData
 //   6. Write a SchemaEvolutionTests test that: creates a V1 container → inserts data →
 //      opens it again with the migration plan → asserts data is intact and new fields present.
 //
-// ## Standalone legacy migrator role
+// ## Standalone migrator role
 //
-// tools/migrator/ is a one-time developer CLI (not shipped in the app) for importing
-// legacy Electron jobhunt.db (SQLite) into a fresh SwiftData store. Its README documents
-// the supported tables and usage. It is independent of this migration plan and runs only
-// once per developer machine.
+// tools/migrator/ is a developer CLI (not shipped in the app) for one-time data fixups on the
+// live store — recleans, backfills, orphan prunes, duplicate repairs. Its README documents the
+// modes. It is independent of this migration plan: it changes row *data*, never the schema.
 
 // MARK: - How V1 is frozen without snapshot types (TASK-368 / TASK-369)
 

@@ -2,12 +2,9 @@ import Foundation
 
 // MARK: - CLI Modes
 
+/// Every mode operates on the **live SwiftData store**, read-write. The store is single-writer, so
+/// `main.swift` refuses to run any of them while the Jobhunt app is open (TASK-470).
 enum Mode {
-    case migrate(inputPath: String, outputPath: String)
-    case repairFitScores(storePath: String)
-    case verify(inputPath: String, storePath: String)
-    case patch(inputPath: String, storePath: String)
-    case patchFitScores(inputPath: String, storePath: String)
     case reclean(storePath: String)
     case backfillModels(storePath: String)
     case pruneOrphanFitScores(storePath: String)
@@ -22,22 +19,6 @@ enum Mode {
     case recomputeCriteria(storePath: String)
     case repairCanonicalURLs(storePath: String)
     case mergeJob(storePath: String, from: Int, into: Int)
-
-    /// True for modes that open the live store read-WRITE. The store is single-writer, so these
-    /// must not run while the Jobhunt app is running (TASK-470). `migrate` writes a NEW output
-    /// store and `verify` is read-only, so neither needs the guard.
-    var mutatesLiveStore: Bool {
-        switch self {
-        case .migrate, .verify:
-            return false
-        case .repairFitScores, .patch, .patchFitScores, .reclean, .backfillModels,
-             .pruneOrphanFitScores, .pruneOrphanAttempts, .pruneOrphanReferralAttempts,
-             .recomputeFitMirrors, .recheckEvidence, .normalizeSeniority, .detectDuplicates,
-             .repairDuplicateJobNumbers, .unmarkHeuristicDuplicates, .recomputeCriteria,
-             .repairCanonicalURLs, .mergeJob:
-            return true
-        }
-    }
 }
 
 /// Resolve `--merge-job`'s operands. Both are required and must differ: a merge DELETES the `--from`
@@ -55,11 +36,6 @@ private func mergeJobMode(storePath: String, from: Int?, into: Int?) -> Mode? {
 /// Print every supported invocation. Extracted so `parseArgs` stays under the body-length limit.
 private func printUsage() {
     fputs("Usage:\n", stderr)
-    fputs("  JobhuntMigrator [--input <path>] --output <path>\n", stderr)
-    fputs("  JobhuntMigrator --repair-fit-scores [--store <path>]\n", stderr)
-    fputs("  JobhuntMigrator --verify [--input <path>] [--store <path>]\n", stderr)
-    fputs("  JobhuntMigrator --patch  [--input <path>] [--store <path>]\n", stderr)
-    fputs("  JobhuntMigrator --patch-fit-scores [--input <path>] [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --reclean [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --backfill-models [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --prune-orphan-fit-scores [--store <path>]\n", stderr)
@@ -69,6 +45,7 @@ private func printUsage() {
     fputs("  JobhuntMigrator --recheck-evidence [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --normalize-seniority [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --detect-duplicates [--store <path>]\n", stderr)
+    fputs("  JobhuntMigrator --repair-duplicate-job-numbers [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --unmark-heuristic-duplicates [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --recompute-criteria [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --repair-canonical-urls [--store <path>]\n", stderr)
@@ -79,14 +56,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
     let defaultStorePath = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/Jobhunt/jobhunt.store")
         .path
-    let defaultInputPath = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/Jobhunt/jobhunt.db")
-        .path
 
-    var repair = false
-    var verify = false
-    var patch = false
-    var patchFit = false
     var reclean = false
     var backfillModels = false
     var pruneOrphanFitScores = false
@@ -104,20 +74,10 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
     var mergeFrom: Int?
     var mergeInto: Int?
     var storePath = defaultStorePath
-    var inputPath = defaultInputPath
-    var outputPath: String? = nil
 
     var i = 1
     while i < args.count {
         switch args[i] {
-        case "--repair-fit-scores":
-            repair = true
-        case "--verify":
-            verify = true
-        case "--patch":
-            patch = true
-        case "--patch-fit-scores":
-            patchFit = true
         case "--reclean":
             reclean = true
         case "--backfill-models":
@@ -159,18 +119,6 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
                 fputs("Error: --store requires a path argument.\n", stderr); return nil
             }
             storePath = args[i]
-        case "--input":
-            i += 1
-            guard i < args.count, !args[i].hasPrefix("--") else {
-                fputs("Error: --input requires a path argument.\n", stderr); return nil
-            }
-            inputPath = args[i]
-        case "--output":
-            i += 1
-            guard i < args.count, !args[i].hasPrefix("--") else {
-                fputs("Error: --output requires a path argument.\n", stderr); return nil
-            }
-            outputPath = args[i]
         default:
             // TASK-477: reject unrecognized arguments instead of silently ignoring typos.
             fputs("Error: unknown argument '\(args[i])'.\n", stderr); return nil
@@ -181,10 +129,6 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
     // TASK-523: the operation flags are mutually exclusive. Previously several at once silently ran
     // only the first in priority order; reject the ambiguous invocation instead.
     let modeFlags: [(name: String, set: Bool)] = [
-        ("--repair-fit-scores", repair),
-        ("--verify", verify),
-        ("--patch", patch),
-        ("--patch-fit-scores", patchFit),
         ("--reclean", reclean),
         ("--backfill-models", backfillModels),
         ("--prune-orphan-fit-scores", pruneOrphanFitScores),
@@ -201,13 +145,10 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
         ("--merge-job", mergeJob),
     ]
     let setFlags = modeFlags.filter(\.set).map(\.name)
-    // `--output` with no operation flag means migrate; combining it with one is also ambiguous.
-    let migrateRequested = outputPath != nil
-    if setFlags.count > 1 || (!setFlags.isEmpty && migrateRequested) {
-        let names = setFlags + (migrateRequested ? ["--output (migrate)"] : [])
+    if setFlags.count > 1 {
         fputs(
             "Error: choose exactly one operation — these are mutually exclusive: "
-                + "\(names.joined(separator: ", ")).\n",
+                + "\(setFlags.joined(separator: ", ")).\n",
             stderr
         )
         return nil
@@ -217,10 +158,6 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
         fputs("Error: --from/--into are only valid with --merge-job.\n", stderr); return nil
     }
 
-    if repair { return .repairFitScores(storePath: storePath) }
-    if verify { return .verify(inputPath: inputPath, storePath: storePath) }
-    if patch { return .patch(inputPath: inputPath, storePath: storePath) }
-    if patchFit { return .patchFitScores(inputPath: inputPath, storePath: storePath) }
     if reclean { return .reclean(storePath: storePath) }
     if backfillModels { return .backfillModels(storePath: storePath) }
     if pruneOrphanFitScores { return .pruneOrphanFitScores(storePath: storePath) }
@@ -236,10 +173,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
     if repairCanonicalURLs { return .repairCanonicalURLs(storePath: storePath) }
     if mergeJob { return mergeJobMode(storePath: storePath, from: mergeFrom, into: mergeInto) }
 
-    guard let out = outputPath else {
-        fputs("Error: --output <path> is required.\n", stderr)
-        printUsage()
-        return nil
-    }
-    return .migrate(inputPath: inputPath, outputPath: out)
+    fputs("Error: no operation flag given.\n", stderr)
+    printUsage()
+    return nil
 }

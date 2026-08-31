@@ -51,13 +51,16 @@ public struct AtomicIngestInput: Sendable {
     public let createOnly: Bool
     /// See `Capture.discoveredBySourceID`.
     public let discoveredBySourceID: String?
+    /// See `Capture.boardLocation` (TASK-693). Nil for every non-discovery caller.
+    public let boardLocation: String?
 
     public init(
         captureID: String, jobID: String, url: String, canonicalURL: String?, pageTitle: String,
         selectedText: String?, visibleText: String?, cleanedDescription: String?,
         structuredDataJSON: String?, userNote: String?, rawHash: String, cleanedHash: String?,
         createOnly: Bool = false,
-        discoveredBySourceID: String? = nil
+        discoveredBySourceID: String? = nil,
+        boardLocation: String? = nil
     ) {
         self.captureID = captureID
         self.jobID = jobID
@@ -73,6 +76,7 @@ public struct AtomicIngestInput: Sendable {
         self.cleanedHash = cleanedHash
         self.createOnly = createOnly
         self.discoveredBySourceID = discoveredBySourceID
+        self.boardLocation = boardLocation
     }
 }
 
@@ -1415,7 +1419,8 @@ public actor BackgroundStore {
             capturePageTitle: job.capture?.pageTitle ?? "",
             captureCleanedDescription: job.capture?.cleanedDescription,
             captureVisibleText: job.capture?.visibleText,
-            captureSelectedText: job.capture?.selectedText
+            captureSelectedText: job.capture?.selectedText,
+            captureBoardLocation: job.capture?.boardLocation
         )
     }
 
@@ -2420,6 +2425,12 @@ public actor BackgroundStore {
             if let note = input.userNote, !note.isEmpty {
                 existing.userNote = note
             }
+            // Fill-only, like the note above: a browser recapture of a discovery-found posting
+            // carries no board row, and clearing the stored one there would lose the ATS's own
+            // location for good — the ledger's rawJSON that produced it is transient (TASK-693).
+            if let board = input.boardLocation, !board.isEmpty {
+                existing.boardLocation = board
+            }
             existing.rawHash = input.rawHash
             existing.cleanedHash = input.cleanedHash
 
@@ -2504,6 +2515,7 @@ public actor BackgroundStore {
             structuredDataJSON: input.structuredDataJSON,
             userNote: input.userNote,
             discoveredBySourceID: input.discoveredBySourceID,
+            boardLocation: input.boardLocation,
             rawHash: input.rawHash,
             cleanedHash: input.cleanedHash
         )

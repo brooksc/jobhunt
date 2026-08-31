@@ -19,6 +19,13 @@ public final class Capture {
     /// edit and a future release may localise, so counting discoveries by its prefix would lose
     /// real finds silently and miscount any other note that happened to start the same way.
     public var discoveredBySourceID: String?
+    /// The ATS board row's own structured location field, when discovery supplied one (TASK-693).
+    /// Nil for a browser capture, a paste or MCP — those have no board row.
+    ///
+    /// Stored rather than payload-only because `extractionSnapshot(forJobID:)` rebuilds the
+    /// extraction prompt from the *stored* capture: a payload-only value would help at first ingest
+    /// and then silently vanish on every re-extraction, recapture or `resetExtraction`.
+    public var boardLocation: String?
     // Safe to mark unique on fresh installs. For existing stores with duplicate rawHash rows,
     // deduplicate before opening the store with this constraint active.
     @Attribute(.unique) public var rawHash: String
@@ -40,6 +47,7 @@ public final class Capture {
         structuredDataJSON: String? = nil,
         userNote: String? = nil,
         discoveredBySourceID: String? = nil,
+        boardLocation: String? = nil,
         rawHash: String,
         cleanedHash: String? = nil,
         capturedAt: Date = Date(),
@@ -55,6 +63,7 @@ public final class Capture {
         self.structuredDataJSON = structuredDataJSON
         self.userNote = userNote
         self.discoveredBySourceID = discoveredBySourceID
+        self.boardLocation = boardLocation
         self.rawHash = rawHash
         self.cleanedHash = cleanedHash
         self.capturedAt = capturedAt

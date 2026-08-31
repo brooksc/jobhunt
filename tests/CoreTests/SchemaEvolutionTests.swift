@@ -272,6 +272,7 @@ final class SchemaEvolutionTests: XCTestCase {
         _ = cap.structuredDataJSON; _ = cap.userNote; _ = cap.rawHash
         _ = cap.cleanedHash; _ = cap.capturedAt; _ = cap.createdAt; _ = cap.job
         _ = cap.discoveredBySourceID
+        _ = cap.boardLocation
 
         // Job
         let job = Job(jobNumber: 1, title: "T")
@@ -459,6 +460,7 @@ final class SchemaEvolutionTests: XCTestCase {
         let _: String? = cap.userNote
         let _: String = cap.rawHash
         let _: String? = cap.cleanedHash
+        let _: String? = cap.boardLocation
         let _: Date = cap.capturedAt
         let _: Date = cap.createdAt
 

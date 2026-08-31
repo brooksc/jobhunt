@@ -14,6 +14,9 @@ public struct JobExtractionSnapshot: Sendable {
     public let captureCleanedDescription: String?
     public let captureVisibleText: String?
     public let captureSelectedText: String?
+    /// The ATS board row's own location field, when this capture came from discovery (TASK-693).
+    /// Nil for extension / MCP / paste captures, which have no board row.
+    public let captureBoardLocation: String?
 
     public init(
         captureURL: String,
@@ -21,7 +24,8 @@ public struct JobExtractionSnapshot: Sendable {
         capturePageTitle: String,
         captureCleanedDescription: String?,
         captureVisibleText: String?,
-        captureSelectedText: String?
+        captureSelectedText: String?,
+        captureBoardLocation: String? = nil
     ) {
         self.captureURL = captureURL
         self.captureCanonicalURL = captureCanonicalURL
@@ -29,6 +33,7 @@ public struct JobExtractionSnapshot: Sendable {
         self.captureCleanedDescription = captureCleanedDescription
         self.captureVisibleText = captureVisibleText
         self.captureSelectedText = captureSelectedText
+        self.captureBoardLocation = captureBoardLocation
     }
 }
 
@@ -127,7 +132,8 @@ public enum ExtractionEngine {
             description: description,
             url: url,
             pageTitle: pageTitle,
-            locationContext: locationContext
+            locationContext: locationContext,
+            boardLocation: snapshot.captureBoardLocation
         )
 
         let promptText = messages.map(\.content).joined()
@@ -180,6 +186,22 @@ public enum ExtractionEngine {
             url: url,
             preferredLocations: settings.locationFilterEnabled ? settings.preferredLocations : nil
         )
+
+        // TASK-693: the board row's own location field, used ONLY to fill a location the model left
+        // empty. The posting's location is frequently in the ATS page header rather than the body we
+        // capture, so the model never sees it and returns null — job #1524 had a fit of 90 and no
+        // location at all, which `LocationCriteria` reads as on-site and badges as failing criteria.
+        //
+        // Fill only, never overwrite. Across 613 measured jobs the board value wins outright on the
+        // 183 rows where extraction produced nothing, and loses ~63-to-20 on the rows where the two
+        // genuinely disagree (the board says a bare "United States", or names an office for a role the
+        // body states is remote). No mechanical rule separates those, so preferring the board value
+        // wholesale would be net-negative; the contested set is left to the prompt hint instead.
+        if let board = snapshot.captureBoardLocation?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !board.isEmpty,
+           (extracted["location"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
+            extracted["location"] = board
+        }
 
         let confidence = computeConfidence(extracted["confidence"])
 

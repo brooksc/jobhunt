@@ -378,7 +378,11 @@ public struct DiscoverySweeper: Sendable {
             structuredDataJSON: nil,
             // The note is user-facing copy; this is the fact. Counting discoveries by parsing the
             // note would lose finds the user edited and miscount notes that merely start the same.
-            discoveredBySourceID: sourceID
+            discoveredBySourceID: sourceID,
+            // The ATS's own structured location field. Gate A already judges it; carrying it through
+            // means the stored job can agree with the gate instead of relying on the LLM finding a
+            // location in the body, where many boards never put it (TASK-693).
+            boardLocation: posting.locationRaw
         )
         do {
             let result = try await jobService.ingestCapture(payload, createOnly: true)

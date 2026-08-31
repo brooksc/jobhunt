@@ -320,6 +320,37 @@ case let .recomputeCriteria(storePath):
         fputs("Error: recompute failed: \(error)\n", stderr); exit(1)
     }
 
+case let .repairRemoteTypes(storePath):
+    guard FileManager.default.fileExists(atPath: storePath) else {
+        fputs("Error: store not found at '\(storePath)'\n", stderr); exit(1)
+    }
+    print("=== Repair Erased Work Arrangements ===")
+    print("Store: \(storePath)")
+    print("(Run with the Jobhunt app quit — the store is single-writer.)")
+    let storeURL = URL(fileURLWithPath: storePath)
+    let schema = Schema(SchemaV1.models)
+    let config = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
+    let container: ModelContainer
+    do {
+        container = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
+    } catch {
+        fputs("Error: could not open store: \(error)\n", stderr); exit(1)
+    }
+    let store = BackgroundStore(modelContainer: container)
+    do {
+        let result = try await store.repairRemoteTypesFromExtractedJSON()
+        let breakdown = RemoteType.allCases
+            .compactMap { type in result.restored[type].map { "\($0) \(type.rawValue)" } }
+            .joined(separator: ", ")
+        print("Repair complete: \(result.totalRestored) arrangement(s) restored from stored extractions"
+            + (breakdown.isEmpty ? "." : " (\(breakdown))."))
+        print("Re-judged: \(result.criteriaChanged) job(s) changed their meets-criteria verdict.")
+        print("Left alone: \(result.skippedOverridden) with a hand-edited arrangement, "
+            + "\(result.skippedUnrecoverable) with nothing recoverable in their extraction.")
+    } catch {
+        fputs("Error: repair failed: \(error)\n", stderr); exit(1)
+    }
+
 case let .repairCanonicalURLs(storePath):
     guard FileManager.default.fileExists(atPath: storePath) else {
         fputs("Error: store not found at '\(storePath)'\n", stderr); exit(1)

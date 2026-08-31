@@ -377,6 +377,7 @@ JobhuntMigrator --unmark-heuristic-duplicates  # undo duplicate flags set by the
 JobhuntMigrator --recheck-evidence             # re-run the evidence check over stored fit analyses
 JobhuntMigrator --normalize-seniority          # normalize legacy seniority values
 JobhuntMigrator --recompute-criteria           # recompute each job's location/remote criteria verdict
+JobhuntMigrator --repair-remote-types          # restore work arrangements the old clamp erased (re-reads extractedJSON)
 JobhuntMigrator --repair-canonical-urls        # recompute stored canonical URLs
 JobhuntMigrator --repair-duplicate-job-numbers # renumber duplicate jobNumbers (raw SQLite, pre-open)
 JobhuntMigrator --merge-job --from 761 --into 725 # fold a duplicate job into the keeper, delete it

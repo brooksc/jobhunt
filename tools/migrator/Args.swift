@@ -18,6 +18,7 @@ enum Mode {
     case repairDuplicateJobNumbers(storePath: String)
     case unmarkHeuristicDuplicates(storePath: String)
     case recomputeCriteria(storePath: String)
+    case repairRemoteTypes(storePath: String)
     case repairCanonicalURLs(storePath: String)
     case mergeJob(storePath: String, from: Int, into: Int)
 }
@@ -50,6 +51,7 @@ private func printUsage() {
     fputs("  JobhuntMigrator --repair-duplicate-job-numbers [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --unmark-heuristic-duplicates [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --recompute-criteria [--store <path>]\n", stderr)
+    fputs("  JobhuntMigrator --repair-remote-types [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --repair-canonical-urls [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --merge-job --from <job#> --into <job#> [--store <path>]\n", stderr)
 }
@@ -72,6 +74,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
     var repairDuplicateJobNumbers = false
     var unmarkHeuristicDuplicates = false
     var recomputeCriteria = false
+    var repairRemoteTypes = false
     var repairCanonicalURLs = false
     var mergeJob = false
     var mergeFrom: Int?
@@ -107,6 +110,8 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
             unmarkHeuristicDuplicates = true
         case "--recompute-criteria":
             recomputeCriteria = true
+        case "--repair-remote-types":
+            repairRemoteTypes = true
         case "--repair-canonical-urls":
             repairCanonicalURLs = true
         case "--merge-job":
@@ -147,6 +152,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
         ("--repair-duplicate-job-numbers", repairDuplicateJobNumbers),
         ("--unmark-heuristic-duplicates", unmarkHeuristicDuplicates),
         ("--recompute-criteria", recomputeCriteria),
+        ("--repair-remote-types", repairRemoteTypes),
         ("--repair-canonical-urls", repairCanonicalURLs),
         ("--merge-job", mergeJob),
     ]
@@ -177,6 +183,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
     if repairDuplicateJobNumbers { return .repairDuplicateJobNumbers(storePath: storePath) }
     if unmarkHeuristicDuplicates { return .unmarkHeuristicDuplicates(storePath: storePath) }
     if recomputeCriteria { return .recomputeCriteria(storePath: storePath) }
+    if repairRemoteTypes { return .repairRemoteTypes(storePath: storePath) }
     if repairCanonicalURLs { return .repairCanonicalURLs(storePath: storePath) }
     if mergeJob { return mergeJobMode(storePath: storePath, from: mergeFrom, into: mergeInto) }
 

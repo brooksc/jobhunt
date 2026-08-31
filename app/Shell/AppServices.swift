@@ -366,7 +366,7 @@ final class AppServices {
                 // The title interlock and the budget both live in `withBudget`: it reserves up
                 // front and synchronously, so the two loops can't spend the same allowance across
                 // the awaits below, and releases whatever the sweep didn't use.
-                await DiscoverySettings.withBudget(settings) { budget in
+                _ = await DiscoverySettings.withBudget(settings) { budget in
                     let result = await scheduler.runOneDueSweep(
                         criteria: criteria, remainingDailyBudget: budget,
                         alreadyCaptured: (try? sweepStore.capturedDedupKeys()) ?? []

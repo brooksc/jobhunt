@@ -67,7 +67,6 @@ extension BackgroundStore {
     // MARK: Seed execution
 
     private func performSeed() throws {
-        let now = Date()
         func daysAgo(_ numDays: Double) -> Date {
             Date(timeIntervalSinceNow: -numDays * 86400)
         }

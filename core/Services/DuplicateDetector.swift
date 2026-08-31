@@ -306,7 +306,7 @@ public struct DuplicateDetector {
         visibleText: String?,
         structuredData: [[String: Any]]
     ) -> String {
-        var payload: [String: Any] = [
+        let payload: [String: Any] = [
             "url": url,
             "canonical_url": canonicalURL as Any,
             "selected_text": selectedText ?? "",

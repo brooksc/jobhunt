@@ -282,8 +282,7 @@ public struct DiscoveryScheduler: Sendable {
         alreadyCaptured: Set<String>,
         now: Date = Date()
     ) async -> SweepResult? {
-        guard let searchSource = try? await store.searchSources().first(where: { $0.id == sourceID })
-        else { return nil }
+        guard let searchSource = try? await store.searchSource(id: sourceID) else { return nil }
         return await sweep(
             searchSource, criteria: criteria, remainingDailyBudget: remainingDailyBudget,
             alreadyCaptured: alreadyCaptured, now: now

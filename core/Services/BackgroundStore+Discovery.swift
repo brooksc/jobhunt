@@ -315,6 +315,19 @@ public extension BackgroundStore {
         .filter { $0.isDue(now: now) }
     }
 
+    /// One source by id.
+    ///
+    /// The match runs **inside** the actor. The call site used to be
+    /// `searchSources().first(where: { $0.id == sourceID })`, which ran the predicate off-actor
+    /// across every live row of the table — a loop over models the store owns, on rows a bulk fetch
+    /// has not all materialised, so each comparison could fault through the store's `ModelContext`
+    /// from another executor. That is the mechanism behind the heap corruption `df3df01d` fixed.
+    func searchSource(id: String) throws -> SearchSource? {
+        var descriptor = FetchDescriptor<SearchSource>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try modelContext.fetch(descriptor).first
+    }
+
     func searchSources() throws -> [SearchSource] {
         try modelContext.fetch(
             FetchDescriptor<SearchSource>(sortBy: [SortDescriptor(\.label, order: .forward)])

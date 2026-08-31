@@ -578,6 +578,25 @@ final class DiscoveryArrangementAndPayTests: XCTestCase {
         )
     }
 
+    /// Prevention check for TASK-705: job #1424's exact shape — location "Lehi, Utah", no remote
+    /// wording anywhere — must not reach ingest at all under remote-only criteria. #1424 predates
+    /// this rule; a regression here would silently refill the pile the bucketing fix exists to
+    /// surface.
+    func testAJob1424ShapedPostingIsRejectedBeforeIngest() {
+        let noGeographyFilter = DiscoveryCriteria(
+            allowRemote: true, allowHybrid: false, allowOnsite: false
+        )
+        XCTAssertEqual(
+            noGeographyFilter.evaluate(posting(title: "Staff Product Manager", location: "Lehi, Utah")),
+            .reject(.arrangement)
+        )
+        // And with the user's geography allow-list in play it never even gets that far.
+        XCTAssertEqual(
+            remoteOnly.evaluate(posting(title: "Staff Product Manager", location: "Lehi, Utah")),
+            .reject(.location)
+        )
+    }
+
     /// A posting that offers remote *as well as* an office is a remote posting. Rejecting it would
     /// throw away the exact roles the filter exists to find.
     func testARemoteOptionRescuesACityLocation() {

@@ -216,8 +216,9 @@ public enum ExtractionEngine {
         // the criteria verdict, or the job reads as on-site (job #525).
         remoteType = RemoteTypeInference.infer(remoteType: remoteType, location: extracted["location"] as? String)
 
-        // TASK-464: compute meets_criteria from the EXTRACTED remote mode (before the clamp below) +
-        // location against the user's location/remote settings — Electron parity.
+        // TASK-464: compute meets_criteria from the extracted remote mode + location against the
+        // user's location/remote settings — Electron parity. This is the deterministic enforcement
+        // TASK-270 asked for; see below for why it is now the *only* one.
         let meetsCriteria = LocationCriteria.meets(
             remoteType: remoteType,
             location: extracted["location"] as? String,
@@ -229,18 +230,21 @@ public enum ExtractionEngine {
             filterEnabled: settings.locationFilterEnabled
         )
 
-        // TASK-270: Clamp remoteType to nil when the user has disallowed that mode.
-        // The prompt already asks the LLM to prefer allowed modes, but it can still return
-        // a disallowed value. Clear it post-extraction so disallowed modes are never persisted.
-        if settings.locationFilterEnabled, let rt = remoteType {
-            let allowed =
-                (rt == .remote && settings.locationAllowRemote) ||
-                (rt == .hybrid && settings.locationAllowHybrid) ||
-                (rt == .onsite && settings.locationAllowOnsite) ||
-                rt == .unknown
-            if !allowed { remoteType = nil }
-        }
-
+        // TASK-705: the arrangement is recorded as extracted, disallowed or not.
+        //
+        // TASK-270 used to clamp a disallowed mode to nil here, to keep the settings from being mere
+        // prompt guidance. That enforcement is real, but it belongs in `meetsCriteria` above — which
+        // was added later (TASK-464), reads the true value, and is what every filter and badge
+        // actually consults. The clamp was a second, *lossy* filter in the wrong layer, and it
+        // deleted the one fact the UI needed to explain itself: "the user doesn't want this" and
+        // "this must not be recorded" are different statements.
+        //
+        // What it cost, measured on the real store: 223 jobs whose extraction had a perfectly good
+        // answer (171 hybrid, 52 onsite) were stored with a NULL arrangement, so `criteriaBucket`
+        // read them as "arrangement not stated" and hid them from the *Doesn't meet* filter — 49 of
+        // them sitting unreviewed in New, which is the bug the user reported (job #1424, "Lehi,
+        // Utah", extracted `hybrid`). Nothing downstream requires disallowed modes to be absent:
+        // every consumer displays, filters, exports or diffs the value.
         return ExtractionResult(
             extractedJSON: resultJSON,
             title: extracted["title"] as? String,

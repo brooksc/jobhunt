@@ -1736,10 +1736,15 @@ final class ExtractionEngineTests: XCTestCase {
         XCTAssertEqual(fitAttempt.responseFormat, "json_object", "Fit attempt must record responseFormat")
     }
 
-    // MARK: - TASK-270: Disallowed remoteType is cleared post-extraction
+    // MARK: - TASK-705: a disallowed remoteType is recorded, not erased
 
-    func testExtract_remoteDisallowed_clearsRemoteType() async throws {
-        // LLM returns remote, but remote is disallowed → remoteType must be nil
+    /// TASK-270 used to clamp a disallowed arrangement to nil so the setting wasn't merely prompt
+    /// guidance. Enforcement is right; erasing the fact to achieve it was not. `meetsCriteria` —
+    /// computed from the true value — already enforces it, and the clamp additionally destroyed the
+    /// only thing that could tell a rejected posting from a silent one, hiding 223 real jobs behind
+    /// "arrangement not stated".
+    func testExtract_remoteDisallowed_keepsRemoteTypeAndFailsCriteria() async throws {
+        // LLM returns remote, but remote is disallowed → the value is kept and meetsCriteria is false
         let remoteJSON = """
         {"title":"Remote Engineer","company":"Acme","location":"Remote","remote_type":"remote",
          "salary_min":null,"salary_max":null,"salary_currency":null,"salary_note":null,
@@ -1766,13 +1771,16 @@ final class ExtractionEngineTests: XCTestCase {
             captureSelectedText: nil
         )
         let result = try await ExtractionEngine.extract(snapshot: snapshot, provider: provider, settings: settings)
-        XCTAssertNil(result.remoteType, "remoteType must be nil when remote is disallowed")
+        XCTAssertEqual(result.remoteType, .remote, "the extracted arrangement must survive")
+        XCTAssertFalse(result.meetsCriteria, "and the disallowed mode must still be enforced")
     }
 
-    func testExtract_hybridDisallowed_clearsRemoteType() async throws {
-        // LLM returns hybrid, only onsite is allowed → remoteType must be nil
+    /// Job #1424's exact shape: "Lehi, Utah", extracted `hybrid`, hybrid disallowed. It was stored
+    /// with a NULL arrangement and so hid from the Doesn't-meet filter; now it is a plain rejection.
+    func testExtract_hybridDisallowed_keepsRemoteTypeAndBucketsAsDoesNotMeet() async throws {
+        // LLM returns hybrid, only onsite is allowed → the value is kept and the job reads as rejected
         let hybridJSON = """
-        {"title":"Hybrid Engineer","company":"Acme","location":"Seattle, WA","remote_type":"hybrid",
+        {"title":"Staff Product Manager","company":"Acme","location":"Lehi, Utah","remote_type":"hybrid",
          "salary_min":null,"salary_max":null,"salary_currency":null,"salary_note":null,
          "salary_hourly_min":null,"salary_hourly_max":null,
          "employment_type":null,"seniority":null,"skills":[],"summary":"ok",
@@ -1791,13 +1799,22 @@ final class ExtractionEngineTests: XCTestCase {
         let snapshot = JobExtractionSnapshot(
             captureURL: "https://example.com/job",
             captureCanonicalURL: nil,
-            capturePageTitle: "Hybrid Engineer",
+            capturePageTitle: "Staff Product Manager",
             captureCleanedDescription: "3 days per week in office.",
             captureVisibleText: nil,
             captureSelectedText: nil
         )
         let result = try await ExtractionEngine.extract(snapshot: snapshot, provider: provider, settings: settings)
-        XCTAssertNil(result.remoteType, "remoteType must be nil when hybrid is disallowed")
+        XCTAssertEqual(result.remoteType, .hybrid, "the extracted arrangement must survive")
+        XCTAssertFalse(result.meetsCriteria)
+        // The point of keeping it: the job is now reachable under "Doesn't meet" instead of hiding
+        // in "Not stated", with no heuristic needed to guess what the extractor already knew.
+        XCTAssertEqual(
+            JobFilterRules.criteriaBucket(
+                meetsCriteria: result.meetsCriteria, remoteType: result.remoteType
+            ),
+            .doesNotMeet
+        )
     }
 
     func testExtract_remoteAllowed_preservesRemoteType() async throws {

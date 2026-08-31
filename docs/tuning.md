@@ -11,8 +11,9 @@ so it's greppable and changeable in one place.
 
 ## Fit scoring — `core/Services/FitScorer.swift`
 
-The most-iterated heuristics. See [job-detail-pane-spec.md](job-detail-pane-spec.md) and the fit
-section of the code for the full algorithm.
+The most-iterated heuristics. `core/Services/FitScorer.swift` is the algorithm's only description —
+the spec that used to sit beside this line documented gaps against the pre-Swift app and was retired
+once it stopped matching the code.
 
 | Constant | Meaning |
 |---|---|

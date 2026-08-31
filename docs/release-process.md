@@ -75,9 +75,40 @@ Do these **before** tagging:
    **required every release** — the workflow creates the GitHub release with an empty body; you edit
    the notes onto it (before or right after the run).
 
-5. Commit the version bumps to `main` (SSH-signed; 1Password unlocked).
+5. **Documentation check**: run `./scripts/check-docs.sh`. It must exit 0. See
+   [Keeping the docs honest](#keeping-the-docs-honest) below for what it covers and the quarterly
+   read it does *not* replace.
 
-### Release notes / changelog (required every release)
+6. Commit the version bumps to `main` (SSH-signed; 1Password unlocked).
+
+### Keeping the docs honest
+
+Documentation drifts silently, and the drift is worst where it looks most authoritative. An audit on
+2026-08-31 found `CLAUDE.md` — loaded into **every** agent session, so every error propagates —
+carrying four factual errors and three lists presented as exhaustive that were not: six shipped
+migrator flags missing, a whole settings tab missing, `LaunchPlan` cited in the wrong file. Some of
+it had been wrong for months.
+
+The asymmetry that makes this worth automating: **a wrong line gets caught when someone tries it and
+it fails. A list that looks complete never does** — a reader takes it as the whole set and never
+re-derives it. So the enumerable claims are checked by a script, every release:
+
+```bash
+./scripts/check-docs.sh          # exits non-zero on drift
+```
+
+It verifies migrator flags in `CLAUDE.md` and `tools/migrator/README.md` against `Args.swift`,
+UI-test launch arguments against `AppUITests.swift`, CI runner names against the workflow files,
+that every source path cited in `CLAUDE.md` exists, and that no reference to the retired
+Electron/Node stack has crept back in. If a check fires, fix the doc — or if the check is wrong,
+fix the check. Do not silence it; a check nobody trusts is worse than no check.
+
+**It cannot judge prose.** Whether a spec still describes what the code does, whether a doc has
+outlived its purpose, whether an explanation is still true — those need a human, and are the failures
+that actually mislead people. So **once a quarter, or before a release that changed architecture,
+read the docs as a set** and give each a verdict: current, update, or delete. Prefer deleting to
+archiving — git is the archive, and a stale doc kept "for reference" is one someone will trust.
+`TASK-696` is the worked example, including which findings were worth acting on and which weren't.
 
 **Never publish a release with an empty body.** Write the notes to match the established style — see
 past releases (`gh release view v1.0.6 --json body -q .body`) — and keep them tight:

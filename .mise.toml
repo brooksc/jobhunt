@@ -1,4 +1,9 @@
 [tools]
 tuist = "4.196.1"
 swiftlint = "0.63.3"
+# Do NOT float this pin. SwiftFormat's default rules change between releases, so a different
+# version reformats files CI considers clean: Homebrew's 0.62.1 wants to reformat 110 files where
+# the pinned 0.61.1 wants 18. Whoever bumps it owns the resulting whole-tree diff and has to
+# re-baseline CI in the same commit. `scripts/rebuild-and-run.sh` resolves the pinned binary
+# deliberately — a `swiftformat` earlier on PATH will disagree with the gate.
 swiftformat = "0.61.1"

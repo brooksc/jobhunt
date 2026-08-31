@@ -79,8 +79,8 @@ pkill -x "$APP_NAME" 2>/dev/null || true
 # These steps exist to match CI, and CI uses the versions pinned in .mise.toml. A different
 # SwiftFormat on PATH does not merely disagree — Homebrew's build reports ~108 files needing
 # formatting where the pinned one reports none, and under `set -e` that aborts this script before
-# it ever builds. docs/backlog-triage-2026-08.md records the same mismatch keeping main red for a
-# week. "Matches CI" has to mean the same binary, not the same command name.
+# it ever builds. That same mismatch kept main red for a week once. "Matches CI" has to mean the
+# same binary, not the same command name. See the comment on the pin in .mise.toml.
 SWIFTLINT_BIN="$(pinned_tool swiftlint)"
 SWIFTFORMAT_BIN="$(pinned_tool swiftformat)"
 

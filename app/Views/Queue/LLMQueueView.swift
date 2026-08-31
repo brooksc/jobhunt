@@ -169,7 +169,9 @@ struct LLMQueueView: View {
             // Sync isPaused from settings
             isPaused = settings.llmQueuePaused
             // Listen for QueueActor events
-            for await event in queueActor.subscribe() {
+            // `subscribe()` is actor-isolated, so this needs its own `await` — without it the
+            // compiler was reporting that the method could not be called from here at all.
+            for await event in await queueActor.subscribe() {
                 handleQueueEvent(event)
             }
         }

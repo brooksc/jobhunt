@@ -61,13 +61,7 @@ struct SearchSettingsTab: View {
             Button("Use This Board") { applyRepoint(pending) }
             Button("Keep Current", role: .cancel) { pendingRepoint = nil }
         } message: { pending in
-            Text(
-                "Found \(pending.board.displayName) board “\(pending.board.suggestedCompany)” "
-                    + "with \(pending.board.jobCount) open role"
-                    + "\(pending.board.jobCount == 1 ? "" : "s").\n\n\(pending.board.boardURL)\n\n"
-                    + "Jobhunt matched this by name, so check it really is \(pending.company) "
-                    + "before using it."
-            )
+            Text(repointMessage(pending))
         }
         .task(id: criteriaSignature) { await refreshPreview() }
         .task { await refreshHistogram() }
@@ -166,15 +160,17 @@ struct SearchSettingsTab: View {
     /// remote only.
     @ViewBuilder
     private var arrangementRow: some View {
-        let accepted = ["Remote": settings.locationAllowRemote,
-                        "Hybrid": settings.locationAllowHybrid,
-                        "On-site": settings.locationAllowOnsite]
+        let accepted = [
+            "Remote": settings.locationAllowRemote,
+            "Hybrid": settings.locationAllowHybrid,
+            "On-site": settings.locationAllowOnsite
+        ]
         LabeledContent("Work arrangement") {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(
                     settings.locationFilterEnabled
                         ? ["Remote", "Hybrid", "On-site"].filter { accepted[$0] == true }
-                            .joined(separator: ", ")
+                        .joined(separator: ", ")
                         : "Any"
                 )
                 Text("From Jobs settings.").font(.caption2).foregroundStyle(.secondary)
@@ -451,6 +447,18 @@ struct SearchSettingsTab: View {
                 appServices.toastStore.show("\(label): \(detail)", isError: true)
             }
         }
+    }
+
+    /// Built here rather than inline: a multi-part interpolated concatenation inside a ViewBuilder
+    /// closure exceeds the type-checker's time budget, and the resulting error names no cause.
+    private func repointMessage(_ pending: PendingRepoint) -> String {
+        let roles = pending.board.jobCount
+        let plural = roles == 1 ? "" : "s"
+        let found = "Found \(pending.board.displayName) board “\(pending.board.suggestedCompany)”"
+        let count = "with \(roles) open role\(plural)."
+        let caution = "Jobhunt matched this by name, so check it really is \(pending.company) "
+            + "before using it."
+        return "\(found) \(count)\n\n\(pending.board.boardURL)\n\n\(caution)"
     }
 
     private func applyRepoint(_ pending: PendingRepoint) {
@@ -730,93 +738,5 @@ private struct AddSearchSourceSheet: View {
         guard let found else { return }
         onAdd(found.kind, displayLabel, found.slug, intervalHours)
         dismiss()
-    }
-}
-
-// MARK: - Suggested companies
-
-/// Offers the companies already in the library that nothing is watching (TASK-695, M6).
-///
-/// The leverage this exists for: a user who captured one posting at a company can turn that into a
-/// source watching its entire board, forever, without knowing what an ATS is. Measured against real
-/// boards, one captured Databricks posting becomes 821 roles under continuous watch.
-///
-/// Most suggestions cost no network request at all — the job's own URL already names the vendor and
-/// the board. Only companies whose postings came from a careers page jobhunt can't read need
-/// probing, and that is deliberately bounded.
-private struct SuggestedCompaniesSheet: View {
-    let onAdd: (_ kind: String, _ label: String, _ slug: String, _ intervalHours: Int) -> Void
-    @Environment(AppServices.self) private var appServices
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var suggestions: [CompanySuggestion] = []
-    @State private var added: Set<String> = []
-    @State private var isLoading = true
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Companies you're not watching").font(.headline)
-            Text("You have jobs from these companies but nothing is checking their boards.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            if isLoading {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text("Looking through your jobs…").foregroundStyle(.secondary)
-                }
-                .font(.callout)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else if suggestions.isEmpty {
-                Text("Nothing to suggest — every company in your library is already watched, or "
-                    + "their boards couldn't be identified.")
-                    .foregroundStyle(.secondary)
-            } else {
-                List(suggestions) { suggestion in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(suggestion.company).fontWeight(.medium)
-                            Text(detail(for: suggestion))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if added.contains(suggestion.id) {
-                            Label("Added", systemImage: "checkmark").foregroundStyle(.green)
-                        } else {
-                            Button("Watch") {
-                                onAdd(suggestion.board.kind, suggestion.company, suggestion.board.slug, 12)
-                                added.insert(suggestion.id)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-                .frame(minHeight: 220)
-            }
-
-            HStack {
-                Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(20)
-        .frame(width: 520)
-        .task {
-            suggestions = await CompanyDiscovery(store: appServices.backgroundStore).suggestions()
-            isLoading = false
-        }
-    }
-
-    /// The open-role count is only known for a board that was probed; a board read straight off a
-    /// job's URL was never fetched, so it says nothing rather than claiming zero.
-    private func detail(for suggestion: CompanySuggestion) -> String {
-        var parts = [suggestion.board.displayName]
-        if suggestion.board.jobCount > 0 {
-            parts.append("\(suggestion.board.jobCount) open roles")
-        }
-        let saved = suggestion.existingJobCount
-        parts.append("\(saved) job\(saved == 1 ? "" : "s") saved")
-        return parts.joined(separator: " · ")
     }
 }

@@ -463,7 +463,7 @@ final class SourceConfigDecodingTests: XCTestCase {
     }
 
     /// And the same through the property the app actually reads.
-    func testASourceSavedBeforeUseCacheKeepsItsBoard() throws {
+    func testASourceSavedBeforeUseCacheKeepsItsBoard() {
         let source = SearchSource(
             kind: "greenhouse", label: "Acme", config: SourceConfig(slug: "placeholder")
         )

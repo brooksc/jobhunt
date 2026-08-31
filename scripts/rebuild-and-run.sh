@@ -65,30 +65,40 @@ pkill -x "$APP_NAME" 2>/dev/null || true
 # 2. Build (delegates to build.sh)
 "$REPO_ROOT/scripts/build.sh"
 
-# 3. Tests
+# 3. Lint, format, tests
+#
+# Lint and format run even under --skip-tests. They take ~15s, they are what CI fails on most
+# often, and a flag named "skip TESTS" silently skipping the LINTER is how six violations
+# reached main and broke "Swift Build" on every push for a fortnight -- the fast relaunch used
+# during development was the one path that never checked them.
+# SwiftLint first — CI's "Swift Build" fails on lint violations, and this gate previously didn't
+# run the linter, so a lint error could reach main and fail every push. set -o pipefail aborts
+# here on a violation. Skipped only if swiftlint isn't installed.
+# Resolve the MISE-PINNED binaries rather than trusting PATH.
+#
+# These steps exist to match CI, and CI uses the versions pinned in .mise.toml. A different
+# SwiftFormat on PATH does not merely disagree — Homebrew's build reports ~108 files needing
+# formatting where the pinned one reports none, and under `set -e` that aborts this script before
+# it ever builds. docs/backlog-triage-2026-08.md records the same mismatch keeping main red for a
+# week. "Matches CI" has to mean the same binary, not the same command name.
+SWIFTLINT_BIN="$(pinned_tool swiftlint)"
+SWIFTFORMAT_BIN="$(pinned_tool swiftformat)"
+
+if [ -n "$SWIFTLINT_BIN" ]; then
+    # --strict, because that is what CI runs. Without it this gate reported six violations as
+    # warnings and exited 0 while "Swift Build" failed on every push for a fortnight — the
+    # comment above already claimed to match CI, and the flag was the whole difference.
+    echo "→ Running SwiftLint ($("$SWIFTLINT_BIN" version 2>/dev/null || echo "?"), matches CI)..."
+    "$SWIFTLINT_BIN" lint --strict --quiet
+fi
+if [ -n "$SWIFTFORMAT_BIN" ]; then
+    echo "→ Running SwiftFormat --lint ($("$SWIFTFORMAT_BIN" --version 2>/dev/null || echo "?"), matches CI)..."
+    "$SWIFTFORMAT_BIN" app core server/swift mcp/swift tests --lint
+fi
+
+
+# 4. Tests
 if [ "$SKIP_TESTS" = false ]; then
-    # SwiftLint first — CI's "Swift Build" fails on lint violations, and this gate previously didn't
-    # run the linter, so a lint error could reach main and fail every push. set -o pipefail aborts
-    # here on a violation. Skipped only if swiftlint isn't installed.
-    # Resolve the MISE-PINNED binaries rather than trusting PATH.
-    #
-    # These steps exist to match CI, and CI uses the versions pinned in .mise.toml. A different
-    # SwiftFormat on PATH does not merely disagree — Homebrew's build reports ~108 files needing
-    # formatting where the pinned one reports none, and under `set -e` that aborts this script before
-    # it ever builds. docs/backlog-triage-2026-08.md records the same mismatch keeping main red for a
-    # week. "Matches CI" has to mean the same binary, not the same command name.
-    SWIFTLINT_BIN="$(pinned_tool swiftlint)"
-    SWIFTFORMAT_BIN="$(pinned_tool swiftformat)"
-
-    if [ -n "$SWIFTLINT_BIN" ]; then
-        echo "→ Running SwiftLint ($("$SWIFTLINT_BIN" version 2>/dev/null || echo "?"), matches CI)..."
-        "$SWIFTLINT_BIN" lint --quiet
-    fi
-    if [ -n "$SWIFTFORMAT_BIN" ]; then
-        echo "→ Running SwiftFormat --lint ($("$SWIFTFORMAT_BIN" --version 2>/dev/null || echo "?"), matches CI)..."
-        "$SWIFTFORMAT_BIN" app core server/swift mcp/swift tests --lint
-    fi
-
     # Fast gate: CoreTests + ServerTests + MCPTests (~30s). Matches CI.
     # AppUITests and LLMEval are opt-in — run them separately before a release.
     echo "→ Running fast gate (CoreTests + ServerTests + MCPTests)..."
@@ -123,7 +133,7 @@ if [ "$SKIP_TESTS" = false ]; then
     fi
 fi
 
-# 4. Find and launch
+# 5. Find and launch
 APP_PATH="$DERIVED_DATA/Build/Products/$CONFIG/$APP_NAME.app"
 
 if [ ! -d "$APP_PATH" ]; then

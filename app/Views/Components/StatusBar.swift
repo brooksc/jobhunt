@@ -98,7 +98,7 @@ struct StatusBar: View {
                     Text(aiPaused
                         ? "AI paused — \(queuedAIRequests) waiting"
                         : "Reading \(queuedAIRequests) job\(queuedAIRequests == 1 ? "" : "s") with AI")
-                    .foregroundStyle(aiPaused ? .primary : .secondary)
+                        .foregroundStyle(aiPaused ? .primary : .secondary)
                 }
                 .lineLimit(1)
             }

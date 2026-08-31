@@ -71,8 +71,8 @@ public extension BackgroundStore {
     ) throws {
         guard !outcomes.isEmpty else { return }
         let keys = Set(outcomes.map(\.posting.dedupKey))
-        var byKey = Dictionary(
-            try existingLedgerEntries(keys: keys).map { ($0.dedupKey, $0) },
+        var byKey = try Dictionary(
+            existingLedgerEntries(keys: keys).map { ($0.dedupKey, $0) },
             uniquingKeysWith: { first, _ in first }
         )
 
@@ -117,7 +117,7 @@ public extension BackgroundStore {
         var found: [DiscoveryLedgerEntry] = []
         for start in stride(from: 0, to: all.count, by: 500) {
             let chunk = Array(all[start ..< min(start + 500, all.count)])
-            found.append(contentsOf: try modelContext.fetch(
+            try found.append(contentsOf: modelContext.fetch(
                 FetchDescriptor<DiscoveryLedgerEntry>(
                     predicate: #Predicate { chunk.contains($0.dedupKey) }
                 )

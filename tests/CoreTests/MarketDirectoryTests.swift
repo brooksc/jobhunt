@@ -217,7 +217,7 @@ final class MarketDirectoryIsolationTests: XCTestCase {
     }
 
     /// And a write through the override really does land there, not beside the store.
-    func testAWriteThroughTheOverrideStaysInTheOverride() async throws {
+    func testAWriteThroughTheOverrideStaysInTheOverride() async {
         let root = URL(fileURLWithPath: NSTemporaryDirectory())
             .appending(path: "jh-isolation-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }

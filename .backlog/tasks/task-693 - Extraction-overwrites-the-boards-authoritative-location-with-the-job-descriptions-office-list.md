@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-08-31 17:59'
-updated_date: '2026-08-31 18:00'
+updated_date: '2026-08-31 20:05'
 labels: []
 dependencies: []
 priority: high
@@ -36,3 +36,23 @@ Related: [[TASK-694]] — the arrangement half of the same "board row is better 
 - [ ] #3 Extension and MCP captures, which have no board location, are unaffected
 - [ ] #4 Gate A and the stored location agree for discovery-sourced jobs
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: primary
+created: 2026-08-31 20:05
+---
+**Concrete case, 2026-08-31 — job #1524, and it shows the cost is worse than a blank field.**
+
+Sony Interactive Entertainment, "Senior Product Manager - Monetization", `gh:6011556004`. Fit score **90**. Salary **$168,900–$253,300**. Exactly the kind of role this app exists to surface.
+
+- Greenhouse board row carried `locationRaw: "United States, San Mateo, CA"` — confirmed in the ledger AND in the preserved snapshot at `~/Documents/jobhunt-backups/board-locations-20260831.json`.
+- The stored job has **no `location` and no `remoteType` at all**. The user confirms the location is clearly stated on the posting's web page; it is in the Greenhouse header, not the description body, so the LLM never saw it — extraction only gets the captured body text.
+- Consequence: `meetsCriteria: false` and `requirements_verdict: not_stated`. `LocationCriteria` treats an absent remote type as on-site, so with On-site disallowed the job is badged as failing the user's criteria.
+
+So the missing board location does not merely leave a field blank — it **actively mis-badges a 90-fit, well-paid job as not meeting criteria**, and now that the job-list warning line ships, it will be visibly labelled that way. This is the strongest argument yet for bucket A (the 183 rows where extraction produced no location and the board had one): those are not cosmetic gaps, they are wrong verdicts.
+
+Note #1524 came in via discovery today, so this is ongoing, not historical.
+---
+<!-- COMMENTS:END -->

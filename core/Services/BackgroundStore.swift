@@ -1561,6 +1561,9 @@ public actor BackgroundStore {
     /// Sendable inputs for a fit run, built on the store actor.
     public struct FitInputs: Sendable {
         public let job: JobFitSnapshot
+        /// The job's user-facing number, which scopes a `.jobSpecific` scoring correction. Without it
+        /// a "wrong for this job only" rule silently never applies to a newly scored job (TASK-707).
+        public let jobNumber: Int?
         /// Empty when the resume has no usable text.
         public let resumeText: String
         /// False when the resume row no longer exists (vs. exists-but-empty).
@@ -1581,6 +1584,7 @@ public actor BackgroundStore {
                 title: job.title, company: job.company, seniority: job.seniority,
                 extractedJSON: job.extractedJSON, extractionModel: job.extractionModel
             ),
+            jobNumber: job.jobNumber,
             resumeText: resume?.text ?? "",
             resumeExists: resume != nil
         )

@@ -98,7 +98,9 @@ final class AppServices {
             // instead of running and failing with noModelSelected.
             isProviderConfigured: {
                 await MainActor.run { AIReadiness.isConfigured(settingsStore) }
-            }
+            },
+            // TASK-707: read per fit score, so a correction recorded mid-drain reaches the next job.
+            readScoringFeedback: { await MainActor.run { settingsStore.scoringFeedback } }
         )
         let js = JobService(store: store, queue: queue)
         let ss = SiteService(store: store)

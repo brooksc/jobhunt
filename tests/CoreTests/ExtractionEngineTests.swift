@@ -798,7 +798,8 @@ final class ExtractionEngineTests: XCTestCase {
             job: jobSnap,
             resume: resumeSnap,
             model: "gpt-4o",
-            provider: capturing
+            provider: capturing,
+            feedback: []
         )
 
         XCTAssertNotNil(output.fitScoreJSON)
@@ -848,7 +849,8 @@ final class ExtractionEngineTests: XCTestCase {
             job: jobSnap,
             resume: resumeSnap,
             model: "configured-fit-model",
-            provider: capturing
+            provider: capturing,
+            feedback: []
         )
 
         XCTAssertEqual(
@@ -910,7 +912,8 @@ final class ExtractionEngineTests: XCTestCase {
             job: jobSnap,
             resume: resumeSnap,
             model: "test-model",
-            provider: capturing
+            provider: capturing,
+            feedback: []
         )
         XCTAssertNotNil(
             capturing.lastRequest?.responseFormat,
@@ -981,7 +984,8 @@ final class ExtractionEngineTests: XCTestCase {
             job: jobSnap,
             resume: resumeSnap,
             model: "m",
-            provider: provider
+            provider: provider,
+            feedback: []
         )
         XCTAssertEqual(output.responseFormat, .jsonObject)
         XCTAssertEqual(output.responseFormat.wireValue, "json_object")
@@ -1001,7 +1005,8 @@ final class ExtractionEngineTests: XCTestCase {
             job: jobSnap,
             resume: resumeSnap,
             model: "m",
-            provider: provider
+            provider: provider,
+            feedback: []
         )
         XCTAssertEqual(output.responseFormat, .text)
         XCTAssertEqual(output.responseFormat.wireValue, "text")
@@ -1091,7 +1096,8 @@ final class ExtractionEngineTests: XCTestCase {
                 job: jobSnap,
                 resume: resumeSnap,
                 model: "test-model",
-                provider: provider
+                provider: provider,
+                feedback: []
             )
             XCTFail("Expected emptyResumeText error")
         } catch ExtractionEngineError.emptyResumeText {

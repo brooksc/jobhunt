@@ -452,7 +452,9 @@ Feedback is applied in four places that must agree exactly: gap construction, th
 
 **The current rule set does not generalize.** All 9 stored rules are `alwaysCredit`, and every one of them is a full requirement sentence copied verbatim from the job it was flagged on ("Demonstrated experience with generative AI platforms", "Must be eligible to maintain security clearance", "proficiency in Google Sheets"). Each matches exactly the one requirement it came from, out of 22,996. The mechanism works; it is being used as a per-job override rather than as a correction that generalises, which is what the whole-word matching was tightened to permit.
 
-**A concrete gap: user corrections are not applied when a score is first computed.** `ExtractionEngine.scoreFit` takes `feedback:` and `jobNumber:` parameters (`ExtractionEngine.swift:279-280`), and `QueueActor` passes neither (`core/LLM/QueueActor.swift:978-983`). So a freshly scored job's stored `fitScore` and its mirror ignore every correction the user has made, until someone runs `recomputeAllFitScores`. The detail view hides this — `FitAnalysisProjection` recomputes with feedback at read time (`Projections.swift:196-198`) — but the Jobs list ring, the sort, and the `min_fit_score` filter all read the uncorrected mirror. This is the same rows-and-number disagreement the projection's own doc comment describes having already shipped once, reintroduced one layer up.
+**Corrections are applied when a score is first computed (fixed, TASK-707).** They weren't: `scoreFit`'s `feedback:` parameter was defaulted and `QueueActor` — the path every automatically queued score goes through — omitted it, so a freshly scored job's stored `fitScore` and its mirror ignored every correction until someone ran `recomputeAllFitScores`. The detail view hid it, because `FitAnalysisProjection` recomputes with feedback at read time (`Projections.swift:196-198`), while the Jobs list ring, the sort and the `min_fit_score` filter all read the uncorrected mirror. The queue now reads the corrections through an injected closure (`readScoringFeedback`, matching `readExtractionSettings`) and passes them with the job number, and `scoreFit` no longer defaults the parameter — a caller with nothing to apply passes `[]` and says so, so the next omission is a compile error rather than a silent empty list.
+
+**Adding a correction does not require re-scoring what is already scored.** Corrections are applied deterministically over the stored assessments, so `recomputeAllFitScores` (free, offline, no LLM calls) propagates a new rule to every existing score. New jobs get it on the live path; old jobs get it from a recompute. Nothing here needs to spend an LLM call, and no automatic bulk re-score fires when a correction is added.
 
 ---
 
@@ -491,13 +493,9 @@ So the experiment is: move weight from `experience_level` to `domain_fit` (or to
 
 **Expected benefit: medium-high.** Cheap to test, directly addresses the compression in #1, and rests on a clean measurement.
 
-### 3. Pass user corrections on the live scoring path
+### 3. ~~Pass user corrections on the live scoring path~~ — done (TASK-707)
 
-`QueueActor.swift:978-983` doesn't pass `feedback:` or `jobNumber:` to `scoreFit`, so every newly scored job's stored number and mirror ignore all 9 corrections until a manual recompute. Sorting, the `min_fit_score` filter, and the Jobs-list ring therefore run on uncorrected numbers while the detail view shows corrected ones.
-
-This is a two-argument fix — `QueueActor` would need to read the stored feedback, which `BackgroundStore.storedScoringFeedback()` already provides. Its practical effect today is small, because all 9 rules are single-requirement `alwaysCredit` entries. Its effect becomes large the moment the user writes a correction that generalises, which is the whole design intent of the mechanism — and at that point the bug would present as "my correction didn't work on new jobs", which is exactly the kind of failure that erodes trust in the feature.
-
-**Expected benefit: medium.** Small effect now, correctness bug, and it removes a trap that gets worse as the feature is used as intended.
+`QueueActor` didn't pass `feedback:` or `jobNumber:` to `scoreFit`, so every newly scored job's stored number and mirror ignored all 9 corrections until a manual recompute — sorting, the `min_fit_score` filter and the Jobs-list ring running on uncorrected numbers while the detail view showed corrected ones. Fixed as described in §6: the queue reads the corrections through an injected closure and passes them, and the parameter's default is gone so the omission can't recur silently. The effect was small at the time (all 9 rules were single-requirement `alwaysCredit` entries) and grows with any correction that generalises, which is the mechanism's design intent.
 
 ### Also worth doing, but lower
 

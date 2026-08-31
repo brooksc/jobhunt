@@ -171,7 +171,9 @@ It is a *hint* rather than a substitution on measured grounds: across 613 discov
 | `.applicationInstructions` | `extractedJSON["application_instructions"]` | Whole line omitted |
 | model | setting `llm_model` — the *same* model as extraction; there is no separate scoring-model setting | Blank → `noModelSelected` |
 
-Two absences are worth naming: the fit prompt is given **no location, no salary, no employment type, and no job URL**, and it is given **no scoring feedback** — `QueueActor` calls `scoreFit` without the `feedback:` / `jobNumber:` arguments (`core/LLM/QueueActor.swift:978`; the parameters default to empty at `core/LLM/ExtractionEngine.swift:279`). Feedback is applied later, deterministically, when the score is read back for display (`core/Models/Projections.swift:146`). The consequence is that a job's *stored* `overall` and its *displayed* `overall` can legitimately differ.
+One absence is worth naming: the fit prompt is given **no location, no salary, no employment type, and no job URL**.
+
+Scoring feedback never reaches the prompt either, but that is by design — corrections are applied deterministically in code, never as prose appended to the instructions. The queue *does* now supply them to `scoreFit` (`feedback:` and `jobNumber:`, TASK-707), so the deterministic layer runs when a score is first computed and not only when it is read back for display (`core/Models/Projections.swift:146`). Until that fix, a job's *stored* `overall` and its *displayed* `overall` could legitimately differ.
 
 The key names matter and have bitten before: `nice_to_haves` is plural, and an eval fixture written as `nice_to_have` silently dropped the whole preferred list and the resulting miss was filed as a model regression (`core/LLM/ExtractionEngine.swift:416`).
 

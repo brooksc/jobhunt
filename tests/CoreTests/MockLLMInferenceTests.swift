@@ -64,7 +64,7 @@ final class MockLLMInferenceTests: XCTestCase {
         let resume = ResumeSnapshot(text: "Swift / SwiftUI iOS developer with 6 years of experience.")
 
         let output = try await ExtractionEngine.scoreFit(
-            job: job, resume: resume, model: "mock-model", provider: mockProvider()
+            job: job, resume: resume, model: "mock-model", provider: mockProvider(), feedback: []
         )
 
         XCTAssertGreaterThan(output.score.overall, 0, "fit should parse to a real score")

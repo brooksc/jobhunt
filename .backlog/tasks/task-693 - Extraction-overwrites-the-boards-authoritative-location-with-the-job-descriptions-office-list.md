@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-08-31 17:59'
+updated_date: '2026-08-31 18:00'
 labels: []
 dependencies: []
 priority: high
@@ -25,7 +26,7 @@ We already hold the better data at ingest time and throw it away. Consequences b
 
 Fix direction: carry `DiscoveredPosting.locationRaw` through `ingestCapture` and prefer it over the LLM's `location` for discovery-sourced jobs, or feed it to the extraction prompt as a constraint. Browser-extension captures have no equivalent field, so this must not regress them — the board location should win only when it exists.
 
-Related: [[TASK-693]] covers the arrangement half of the same "board row is better evidence" idea.
+Related: [[TASK-694]] — the arrangement half of the same "board row is better evidence" theme, in the opposite direction (there the body beats the board row).
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

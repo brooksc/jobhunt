@@ -368,6 +368,34 @@ case let .normalizeSeniority(storePath):
         fputs("Error: normalize failed: \(error)\n", stderr); exit(1)
     }
 
+case let .repairSalaries(storePath):
+    guard FileManager.default.fileExists(atPath: storePath) else {
+        fputs("Error: store not found at '\(storePath)'\n", stderr); exit(1)
+    }
+    print("=== Repair Invented Salary Bands ===")
+    print("Store: \(storePath)")
+    print("(Run with the Jobhunt app quit — the store is single-writer.)")
+    let storeURL = URL(fileURLWithPath: storePath)
+    let schema = Schema(SchemaV1.models)
+    let config = ModelConfiguration(schema: schema, url: storeURL, cloudKitDatabase: .none)
+    let container: ModelContainer
+    do {
+        container = try ModelContainer(for: schema, migrationPlan: JobhuntMigrationPlan.self, configurations: config)
+    } catch {
+        fputs("Error: could not open store: \(error)\n", stderr); exit(1)
+    }
+    let store = BackgroundStore(modelContainer: container)
+    do {
+        let result = try await store.repairStoredSalariesFromSettings()
+        print("Repair complete: \(result.corrected) job(s) re-parsed to a corrected band, "
+            + "\(result.cleared) cleared (the posting states no pay).")
+        if result.skippedOverridden > 0 {
+            print("Left alone: \(result.skippedOverridden) job(s) whose salary you edited by hand.")
+        }
+    } catch {
+        fputs("Error: repair failed: \(error)\n", stderr); exit(1)
+    }
+
 case let .recomputeCriteria(storePath):
     guard FileManager.default.fileExists(atPath: storePath) else {
         fputs("Error: store not found at '\(storePath)'\n", stderr); exit(1)

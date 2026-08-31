@@ -676,6 +676,126 @@ public actor BackgroundStore {
         return (changed, cleared)
     }
 
+    /// Can a stored salary figure be traced to the job's own pay evidence?
+    ///
+    /// Three ways, and the real store needed all three (a first cut used only the first and would
+    /// have deleted six correct salaries):
+    /// 1. it is a money amount the parser reads — one carrying a currency marker or a k suffix;
+    /// 2. its digits appear in the `salary_note` itself, whatever the currency or grouping. The note
+    ///    is the model's own statement of pay, so a figure written there is stated, not inferred:
+    ///    "₹40,50,000 – ₹56,70,000 INR Annually" (jobs #412/#608) and "SEK 996,819 …" (#1349) use
+    ///    currencies `moneyAmounts` doesn't read at all. Deliberately NOT searched in the page prose,
+    ///    where "(2020-2023)" would make the invented band look stated;
+    /// 3. it is an hourly rate annualized at 2080 h — Providence (#273) posts per-location hourly
+    ///    bands and the stored annual is $39.81 × 2080.
+    func salaryValueIsAccountedFor(_ value: Int, note: String, money: Set<Double>) -> Bool {
+        if money.contains(Double(value)) { return true }
+        let plainNote = note.filter { !", \u{00a0}'’_".contains($0) }
+        if plainNote.contains(String(value)) { return true }
+        // Within a dollar an hour of some rate in the text, i.e. the same annualization.
+        return money.contains { abs($0 * 2080 - Double(value)) < 2080 }
+    }
+
+    public struct SalaryRepairSummary: Sendable {
+        public var corrected = 0
+        public var cleared = 0
+        public var skippedOverridden = 0
+        public init() {}
+    }
+
+    /// Repair salaries the old range parser invented.
+    ///
+    /// Until `SalaryNormalizer.rangeLooksLikePay`, the inline range pattern had every currency marker
+    /// optional and so matched any two dash-separated numbers over 1,000. Job #1502 (SageSure) states
+    /// no pay; "Best Places to Work in Insurance … (2020-2023)" was stored as $2,020–$2,023, and
+    /// several Elastic postings displayed "$2k–2k". Those bands are already persisted, so fixing the
+    /// parser doesn't reach them — this pass does, out-of-band via JobhuntMigrator.
+    ///
+    /// **Deliberately narrow.** It only considers a job whose stored band cannot be traced to the
+    /// job's own pay evidence — its `salaryNote` plus its capture's cleaned description — by any of
+    /// the three routes in `salaryValueIsAccountedFor`. That is exactly the shape the old pattern
+    /// manufactured. A job with no salary is left with none: filling one in would be a bulk
+    /// re-extraction of rows nobody asked us to touch, silently overriding what the pipeline decided.
+    /// A stored band the evidence does support is left alone even if re-parsing would pick a different
+    /// band, because that too is re-extraction rather than repair.
+    ///
+    /// For a job that does qualify, re-running the current normalization decides between replacing the
+    /// bogus band (the posting states pay elsewhere) and clearing it (the posting states none).
+    ///
+    /// Fields in `manualFieldOverridesJSON` are never touched: the user's own edit outranks both
+    /// parsers. Idempotent — the repaired value is either supported by the evidence or absent, so a
+    /// second run has nothing to act on.
+    public func repairStoredSalaries(preferredLocations: String? = nil) throws -> SalaryRepairSummary {
+        var summary = SalaryRepairSummary()
+        for job in try modelContext.fetch(FetchDescriptor<Job>()) {
+            guard job.salaryMin != nil || job.salaryMax != nil else { continue }
+            let overrides = manualFieldOverrideSet(job.manualFieldOverridesJSON)
+            guard !overrides.contains("salaryMin"), !overrides.contains("salaryMax") else {
+                summary.skippedOverridden += 1
+                continue
+            }
+            // Same cap the extraction path applies before running these backtracking regexes over
+            // untrusted capture text (CWE-1333).
+            let source = String((job.capture?.cleanedDescription ?? "").prefix(LLMConstants.maxDescriptionChars))
+            let note = job.salaryNote ?? ""
+
+            // Is the stored band accounted for by the job's own pay evidence?
+            let money = Set(SalaryNormalizer.moneyAmounts(note + "\n" + source))
+            let hourlyDerived = job.salaryHourlyMin != nil || job.salaryHourlyMax != nil
+            func accounted(_ value: Int?) -> Bool {
+                guard let value else { return true }
+                return hourlyDerived || salaryValueIsAccountedFor(value, note: note, money: money)
+            }
+            if accounted(job.salaryMin), accounted(job.salaryMax) { continue }
+
+            let result = SalaryNormalizer.normalize(
+                extracted: ["salary_note": note as Any?, "salary_currency": job.salaryCurrency as Any?],
+                preferredLocations: preferredLocations,
+                sourceText: source.isEmpty ? nil : source
+            )
+
+            if let newMin = result["salary_min"] as? Int, let newMax = result["salary_max"] as? Int {
+                guard job.salaryMin != newMin || job.salaryMax != newMax else { continue }
+                job.salaryMin = newMin
+                job.salaryMax = newMax
+                job.salaryHourlyMin = result["salary_hourly_min"] as? Double
+                job.salaryHourlyMax = result["salary_hourly_max"] as? Double
+                if !overrides.contains("salaryCurrency") {
+                    job.salaryCurrency = result["salary_currency"] as? String ?? job.salaryCurrency
+                }
+                job.updatedAt = Date()
+                summary.corrected += 1
+                continue
+            }
+
+            job.salaryMin = nil
+            job.salaryMax = nil
+            job.salaryHourlyMin = nil
+            job.salaryHourlyMax = nil
+            if !overrides.contains("salaryCurrency") { job.salaryCurrency = nil }
+            job.updatedAt = Date()
+            summary.cleared += 1
+        }
+        if summary.corrected > 0 || summary.cleared > 0 {
+            try modelContext.save()
+        }
+        return summary
+    }
+
+    /// `repairStoredSalaries` using the same preferred-location context extraction uses, read from the
+    /// stored settings (manual locations + expanded metros, and only when the location filter is on).
+    public func repairStoredSalariesFromSettings() throws -> SalaryRepairSummary {
+        let rows = try modelContext.fetch(FetchDescriptor<Setting>())
+        let byKey = Dictionary(rows.map { ($0.key, $0.value) }, uniquingKeysWith: { first, _ in first })
+        let raw = byKey[SettingsKey.locationFilterEnabled]
+        let filterEnabled = raw == nil || raw == "true" || raw == "1"
+        let combined = combinedPreferredLocations(
+            locations: byKey[SettingsKey.preferredLocations],
+            metros: byKey[SettingsKey.preferredMetros]
+        )
+        return try repairStoredSalaries(preferredLocations: filterEnabled ? combined : nil)
+    }
+
     /// Re-run the evidence check over every stored fit analysis, marking verdicts whose quoted
     /// evidence no résumé supports.
     ///

@@ -75,9 +75,12 @@ public enum SalaryNormalizer {
             }
         }
 
-        // Salary note band selection
+        // Salary note band selection. This text is the model's `salary_note` — a field that is by
+        // definition about pay — so a range in it needs no further evidence that it is money. The two
+        // whole-page scans above keep the evidence requirement: that's prose, and prose is where the
+        // invented year ranges came from.
         if let band = resolveSalaryBand(
-            salaryBands(salaryText),
+            salaryBands(salaryText, requirePayEvidence: false),
             preferredLocations: preferredLocations,
             note: salaryText
         ) {
@@ -333,30 +336,58 @@ public enum SalaryNormalizer {
         return nil
     }
 
+    /// Wording that makes a bare numeric range pay rather than years, headcount or percentages.
+    static let payContextPattern =
+        #"\bper\s+year\b|\bper\s+annum\b|\bper\s+hour\b|\bannually\b|\bannuali[sz]ed\b|\bannual\b|\bhourly\b|/\s*(?:hr|yr|hour|year)\b|\bsalary\b|\bsalaries\b|\bbase\s+pay\b|\bcompensation\b|\bpay\s+(?:range|band|scale)\b|\bhiring\s+range\b|\bpay\s+transparency\b"#
+
+    /// Does a matched range carry evidence that it is about MONEY?
+    ///
+    /// The inline range pattern in `salaryBands` had every currency marker optional, so it degenerated
+    /// to `\d+\s*-\s*\d+`: any two dash-separated numbers became a candidate band, filtered only by
+    /// the ">= 1000 on both ends" test in `salaryRangeValue`. A magnitude floor cannot tell a year
+    /// from a wage — job #1502 (SageSure) states no pay yet stored $2,020–$2,023 from "… four years in
+    /// a row (2020-2023)" — and raising it would reject real hourly bands. So require affirmative
+    /// evidence: a currency symbol or code, or a k/K suffix, in the match; failing that, pay wording
+    /// in its sentence.
+    static func rangeLooksLikePay(match: String, sentence: String) -> Bool {
+        let currency = #"[$€£]|\b(?:USD|CAD|EUR|GBP)\b"#
+        let opts: String.CompareOptions = [.regularExpression, .caseInsensitive]
+        if match.range(of: currency, options: opts) != nil { return true }
+        if match.range(of: #"\d\s*[kK]\b"#, options: .regularExpression) != nil { return true }
+        return sentence.range(of: payContextPattern, options: opts) != nil
+    }
+
+    /// Is the character at `idx` a sentence end — a newline, or a period that isn't a decimal point?
+    ///
+    /// A period BETWEEN digits is a decimal point. Treating it as a terminator cut the sentence off
+    /// mid-number — "120,000.00 - 193,725.00 annually" ended at "120,000", losing the `annually` that
+    /// proves it is pay — and four real bands were rejected (#415, #600, #944, #1027).
+    static func isSentenceEnd(_ nsText: NSString, _ idx: Int) -> Bool {
+        func isDigit(_ offset: Int) -> Bool {
+            guard offset >= 0, offset < nsText.length else { return false }
+            return (48 ... 57).contains(nsText.character(at: offset))
+        }
+        let char = nsText.character(at: idx)
+        if char == 10 { return true } // \n
+        guard char == 46 else { return false } // .
+        return !(isDigit(idx - 1) && isDigit(idx + 1))
+    }
+
     static func sentenceForIndex(_ text: String, _ index: Int) -> String {
         let nsText = text as NSString
-        let startNl = nsText.range(of: "\n", options: .backwards, range: NSRange(0 ..< index)).location
-        let startDot = nsText.range(of: ".", options: .backwards, range: NSRange(0 ..< index)).location
-        let start = (startNl == NSNotFound && startDot == NSNotFound) ? 0
-            : (startNl == NSNotFound ? startDot : (startDot == NSNotFound ? startNl : Swift.max(startNl, startDot))) + 1
-        let remaining = NSRange(start ..< nsText.length)
-        let endNl = nsText.range(of: "\n", range: remaining).location
-        let endDot = nsText.range(of: ".", range: remaining).location
-        let end: Int
-        if endNl == NSNotFound && endDot == NSNotFound {
-            end = nsText.length
-        } else if endNl == NSNotFound {
-            end = endDot
-        } else if endDot == NSNotFound {
-            end = endNl
-        } else {
-            end = Swift.min(endNl, endDot)
-        }
+        let from = Swift.max(0, Swift.min(index, nsText.length))
+        let start = (0 ..< from).reversed().first { isSentenceEnd(nsText, $0) }.map { $0 + 1 } ?? 0
+        let end = (from ..< nsText.length).first { isSentenceEnd(nsText, $0) } ?? nsText.length
         return nsText.substring(with: NSRange(start ..< end)).trimmingCharacters(in: .whitespaces)
     }
 
     /// Parse multi-band salary ranges from text (line-by-line + inline regex).
-    public static func salaryBands(_ text: String) -> [SalaryRange] {
+    ///
+    /// `requirePayEvidence` answers "is this text ABOUT pay?". Scanning a whole posting, nothing says
+    /// a dash-separated pair is money, so a match must earn it (`rangeLooksLikePay`). When the text IS
+    /// the model's `salary_note`, the field settles it — "103,500 - 181,000" has no currency, no k and
+    /// no pay wording, and is pay all the same (job #451).
+    public static func salaryBands(_ text: String, requirePayEvidence: Bool = true) -> [SalaryRange] {
         var bands: [SalaryRange] = []
         let lines = text.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
@@ -379,6 +410,10 @@ public enum SalaryNormalizer {
                 guard let range = salaryRangeValue(group1, group2, group3, group4) else { continue }
                 if bands.contains(where: { $0.min == range.min && $0.max == range.max }) { continue }
                 let label = sentenceForIndex(text, match.range.location)
+                // Every currency marker in this pattern is optional, so the match alone proves nothing
+                // about pay — see `rangeLooksLikePay`.
+                if requirePayEvidence,
+                   !rangeLooksLikePay(match: nsText.substring(with: match.range), sentence: label) { continue }
                 bands.append(SalaryRange(min: range.min, max: range.max, label: label))
             }
         }

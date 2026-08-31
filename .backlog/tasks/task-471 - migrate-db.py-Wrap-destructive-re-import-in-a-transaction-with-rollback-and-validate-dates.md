@@ -3,10 +3,10 @@ id: TASK-471
 title: >-
   migrate-db.py: Wrap destructive re-import in a transaction with rollback and
   validate dates
-status: Done
+status: Won't Do
 assignee: []
 created_date: '2026-06-15 03:38'
-updated_date: '2026-06-15 06:51'
+updated_date: '2026-08-31 19:39'
 labels:
   - bug
   - data-safety
@@ -31,6 +31,16 @@ priority: medium
 - [ ] #2 Unparseable dates for required (NOT NULL) columns abort with a clear error rather than inserting NULL
 - [ ] #3 Successful runs are unchanged
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: primary
+created: 2026-08-31 19:39
+---
+Moot as of 2026-08-31. `scripts/migrate-db.py` — the destructive re-import this task was about wrapping in a transaction — was deleted along with the rest of the Electron→SwiftData import path (commit d7ecf273, merged in bb986489). The user was its only customer and the migration is long past. Nothing left to make transactional.
+---
+<!-- COMMENTS:END -->
 
 ## Final Summary
 

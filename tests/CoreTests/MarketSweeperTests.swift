@@ -166,13 +166,13 @@ final class MarketSweeperTests: XCTestCase {
             boards: boards(20), cursor: 0, boardLimit: 4, criteria: criteria,
             remainingDailyBudget: 100
         )
-        let started: MarketSweepState? = try await store.marketSweepState()
+        let started: MarketSweepSnapshot? = try await store.marketSweepState()
         try await store.recordMarketSweepSlice(
             first, nextCursor: next, sweepID: XCTUnwrap(started).sweepID,
             directoryRevision: "rev", boardCount: 20
         )
 
-        let loaded: MarketSweepState? = try await store.marketSweepState()
+        let loaded: MarketSweepSnapshot? = try await store.marketSweepState()
         let state = try XCTUnwrap(loaded)
         XCTAssertEqual(state.cursor, 4)
         XCTAssertEqual(state.boardsSwept, 4)
@@ -183,13 +183,13 @@ final class MarketSweeperTests: XCTestCase {
     func testReachingTheEndFinishesTheSweep() async throws {
         let store = try makeStore()
         try await store.startMarketSweep(boardCount: 5, directoryRevision: "rev", priority: [])
-        let s5: MarketSweepState? = try await store.marketSweepState()
+        let s5: MarketSweepSnapshot? = try await store.marketSweepState()
         try await store.recordMarketSweepSlice(
             MarketSweepSlice(), nextCursor: 5, sweepID: XCTUnwrap(s5).sweepID,
             directoryRevision: "rev", boardCount: 5
         )
 
-        let loaded: MarketSweepState? = try await store.marketSweepState()
+        let loaded: MarketSweepSnapshot? = try await store.marketSweepState()
         let state = try XCTUnwrap(loaded)
         XCTAssertTrue(state.isFinished)
         XCTAssertEqual(state.progress, 1)
@@ -252,7 +252,7 @@ final class MarketSweeperTests: XCTestCase {
     func testStartingASweepReplacesTheFinishedOne() async throws {
         let store = try makeStore()
         try await store.startMarketSweep(boardCount: 10, directoryRevision: "rev", priority: [])
-        let s10: MarketSweepState? = try await store.marketSweepState()
+        let s10: MarketSweepSnapshot? = try await store.marketSweepState()
         try await store.recordMarketSweepSlice(
             MarketSweepSlice(), nextCursor: 10, sweepID: XCTUnwrap(s10).sweepID,
             directoryRevision: "rev", boardCount: 10
@@ -486,14 +486,14 @@ final class MarketCoverageIntegrityTests: XCTestCase {
     /// A directory that grew must not finish at the old count and drop the new boards.
     func testAGrownDirectoryDoesNotFinishEarly() async throws {
         let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
-        let state = try await store.startMarketSweep(
+        let stateSweepID = try await store.startMarketSweep(
             boardCount: 100, directoryRevision: "rev", priority: []
         )
         try await store.recordMarketSweepSlice(
-            MarketSweepSlice(), nextCursor: 100, sweepID: state.sweepID,
+            MarketSweepSlice(), nextCursor: 100, sweepID: stateSweepID,
             directoryRevision: "rev", boardCount: 110
         )
-        let loaded: MarketSweepState? = try await store.marketSweepState()
+        let loaded: MarketSweepSnapshot? = try await store.marketSweepState()
         let after = try XCTUnwrap(loaded)
         XCTAssertFalse(after.isFinished, "ten boards were added and have not been read")
         XCTAssertEqual(after.boardCount, 110)
@@ -502,14 +502,14 @@ final class MarketCoverageIntegrityTests: XCTestCase {
     /// …and one that shrank must not stall forever at a cursor it can never reach.
     func testAShrunkDirectoryStillFinishes() async throws {
         let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
-        let state = try await store.startMarketSweep(
+        let stateSweepID = try await store.startMarketSweep(
             boardCount: 100, directoryRevision: "rev", priority: []
         )
         try await store.recordMarketSweepSlice(
-            MarketSweepSlice(), nextCursor: 90, sweepID: state.sweepID,
+            MarketSweepSlice(), nextCursor: 90, sweepID: stateSweepID,
             directoryRevision: "rev", boardCount: 90
         )
-        let loaded: MarketSweepState? = try await store.marketSweepState()
+        let loaded: MarketSweepSnapshot? = try await store.marketSweepState()
         XCTAssertTrue(try XCTUnwrap(loaded).isFinished)
     }
 
@@ -522,7 +522,7 @@ final class MarketCoverageIntegrityTests: XCTestCase {
         _ = try await store.startMarketSweep(
             boardCount: 100, directoryRevision: "rev", priority: []
         )
-        let replacement = try await store.startMarketSweep(
+        let replacementSweepID = try await store.startMarketSweep(
             boardCount: 100, directoryRevision: "rev", priority: []
         )
 
@@ -530,9 +530,9 @@ final class MarketCoverageIntegrityTests: XCTestCase {
             MarketSweepSlice(boardsSwept: 50), nextCursor: 50,
             sweepID: "a-pass-that-no-longer-exists", directoryRevision: "rev", boardCount: 100
         )
-        let loaded: MarketSweepState? = try await store.marketSweepState()
+        let loaded: MarketSweepSnapshot? = try await store.marketSweepState()
         let after = try XCTUnwrap(loaded)
-        XCTAssertEqual(after.sweepID, replacement.sweepID)
+        XCTAssertEqual(after.sweepID, replacementSweepID)
         XCTAssertEqual(after.cursor, 0, "the stale slice was ignored")
         XCTAssertEqual(after.boardsSwept, 0)
     }
@@ -540,14 +540,14 @@ final class MarketCoverageIntegrityTests: XCTestCase {
     /// The same protection against a directory change mid-slice.
     func testASliceCannotCheckpointAgainstADifferentDirectory() async throws {
         let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
-        let state = try await store.startMarketSweep(
+        let stateSweepID = try await store.startMarketSweep(
             boardCount: 100, directoryRevision: "rev-one", priority: []
         )
         try await store.recordMarketSweepSlice(
-            MarketSweepSlice(boardsSwept: 10), nextCursor: 10, sweepID: state.sweepID,
+            MarketSweepSlice(boardsSwept: 10), nextCursor: 10, sweepID: stateSweepID,
             directoryRevision: "rev-two", boardCount: 100
         )
-        let loaded: MarketSweepState? = try await store.marketSweepState()
+        let loaded: MarketSweepSnapshot? = try await store.marketSweepState()
         XCTAssertEqual(try XCTUnwrap(loaded).cursor, 0)
     }
 }

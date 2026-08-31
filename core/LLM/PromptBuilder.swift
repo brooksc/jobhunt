@@ -14,11 +14,15 @@ public enum PromptBuilder {
     ///   - url: Canonical or page URL.
     ///   - pageTitle: Page title from the capture.
     ///   - locationContext: Optional `LocationContext` for location-preference rules.
+    ///   - boardLocation: The ATS board row's own structured location field, when the capture came
+    ///     from discovery. Nil for extension / MCP captures, which keeps their prompt byte-identical
+    ///     to the pre-TASK-693 one.
     public static func buildExtractionPrompt(
         description: String,
         url: String,
         pageTitle: String,
-        locationContext: LocationContext = .none
+        locationContext: LocationContext = .none,
+        boardLocation: String? = nil
     ) -> [ChatMessage] {
         [
             ChatMessage(role: "system", content: systemPrompt()),
@@ -26,7 +30,8 @@ public enum PromptBuilder {
                 description: description,
                 url: url,
                 pageTitle: pageTitle,
-                locationContext: locationContext
+                locationContext: locationContext,
+                boardLocation: boardLocation
             ))
         ]
     }
@@ -70,7 +75,8 @@ public enum PromptBuilder {
         description: String,
         url: String,
         pageTitle: String,
-        locationContext: LocationContext
+        locationContext: LocationContext,
+        boardLocation: String? = nil
     ) -> String {
         let locationRules = """
 
@@ -84,6 +90,7 @@ public enum PromptBuilder {
         - Examples: "Work site 0 days/week in-office – remote" → remote_type="remote". "Work site 3 days/week in-office" → remote_type="hybrid".
         """
         let locationPrefRules = locationPreferencePrompt(locationContext)
+        let boardLocationRules = boardLocationPrompt(boardLocation)
         let truncated = String(description.prefix(LLMConstants.maxDescriptionChars))
 
         return """
@@ -139,13 +146,39 @@ public enum PromptBuilder {
         - COMPOUND REQUIREMENTS: when one bullet asks for two or more DISTINCT capabilities that a candidate could satisfy independently, record each as its own requirement. "Working and driving strategic programs and building a remote-friendly culture" is two requirements — someone can do the first without the second, and collapsing them hides which one is missing. Do NOT split in these two cases: (a) alternatives, where any one suffices — "Bachelor's in Computer Science, Electrical Engineering, or equivalent practical experience" and "experience in one or more of the following: X, Y, Z" are each a SINGLE requirement, and splitting them would invent gaps the posting never asked for; (b) a list of examples, teams, tools or domains that merely qualifies one capability — "stakeholder management with Engineering, Product, Design and Analytics" is one requirement, not four. The test is whether the parts could be independently met or missed.
         - Use concise noun phrases copied or closely paraphrased from the posting.
         \(locationRules)
-        \(locationPrefRules)
+        \(locationPrefRules)\(boardLocationRules)
         Known metadata:
         URL: \(url)
         Page title: \(pageTitle)
 
         Job description:
         \(truncated)
+        """
+    }
+
+    /// The board row's own location field, offered to the model as authoritative-but-checkable
+    /// evidence (TASK-693).
+    ///
+    /// Emitted ONLY when a board location exists, so an extension or MCP capture — which has none —
+    /// produces byte-for-byte the prompt it produced before this existed.
+    ///
+    /// It is a hint rather than a substitution because a measured comparison of 613 discovery jobs
+    /// found the board value is not uniformly better: it is right where extraction found nothing,
+    /// harmless where it is merely a longer form of the same place, and *worse* on ~63 rows where it
+    /// says only "United States" or names an office for a role the body states is remote. Only the
+    /// body can settle "or remote", "West Coast preferred" and Workday's arrangement breadcrumbs, so
+    /// the reconciliation is left to the model and the deterministic fill is confined to the empty case.
+    static func boardLocationPrompt(_ boardLocation: String?) -> String {
+        guard let board = boardLocation?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !board.isEmpty else { return "" }
+        return """
+
+
+        Board location field (authoritative unless the body contradicts it):
+        - The job board's own structured location field for this posting is: \(board)
+        - This is the employer's own statement of where the role sits, and it often does NOT appear in the description body below (it lives in the page header). Use it for location unless the body says something specific and contradictory about THIS role — e.g. the body says the role is remote, or names a different work location for the role itself.
+        - A "we have offices in …" paragraph, an office list, or a headquarters address is NOT a contradiction. Never replace the board location with a list of company offices scraped from the prose.
+        - Read remote_type from the body's work arrangement as usual. The board field sometimes encodes the arrangement too (e.g. a "Remote" prefix, or Workday's "OffsiteHome"); use that only when the body states no arrangement.
         """
     }
 

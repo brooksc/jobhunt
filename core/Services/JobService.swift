@@ -22,6 +22,12 @@ public struct CapturePayload: Sendable {
     public let structuredDataJSON: String?
     /// Set only by automatic search — see `Capture.discoveredBySourceID`.
     public let discoveredBySourceID: String?
+    /// The ATS board row's own location field — see `Capture.boardLocation` (TASK-693).
+    ///
+    /// An explicit field rather than a branch on `createOnly`: `createOnly` answers "don't touch an
+    /// existing job", a different question, and keying on it would be dead exactly on the recapture
+    /// path. The extension, MCP and add-by-URL callers pass nil structurally, not by remembering to.
+    public let boardLocation: String?
 
     public init(
         url: String,
@@ -31,7 +37,8 @@ public struct CapturePayload: Sendable {
         userNote: String? = nil,
         canonicalURL: String? = nil,
         structuredDataJSON: String? = nil,
-        discoveredBySourceID: String? = nil
+        discoveredBySourceID: String? = nil,
+        boardLocation: String? = nil
     ) {
         self.url = url
         self.pageTitle = pageTitle
@@ -41,6 +48,7 @@ public struct CapturePayload: Sendable {
         self.canonicalURL = canonicalURL
         self.structuredDataJSON = structuredDataJSON
         self.discoveredBySourceID = discoveredBySourceID
+        self.boardLocation = boardLocation
     }
 }
 
@@ -183,7 +191,8 @@ public actor JobService {
             rawHash: rawHashValue,
             cleanedHash: cleanedHashValue,
             createOnly: createOnly,
-            discoveredBySourceID: payload.discoveredBySourceID
+            discoveredBySourceID: payload.discoveredBySourceID,
+            boardLocation: payload.boardLocation?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         )
         let atomic = try await store.insertCaptureAtomically(input)
 

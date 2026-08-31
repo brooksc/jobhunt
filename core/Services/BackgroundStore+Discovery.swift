@@ -300,6 +300,39 @@ public extension BackgroundStore {
 
 // MARK: - Search sources
 
+/// One search source's sweep inputs, detached from SwiftData (TASK-692).
+///
+/// **Why this exists.** `SearchSource` is a `@Model`: not `Sendable`, and bound to the
+/// `ModelContext` that fetched it. `DiscoveryScheduler` is a nonisolated `Sendable` struct, so
+/// handing it a live row meant `sweep(_:)` read `.id`, `.kind` and `.config` off the store actor —
+/// and `.config` decodes `configJSON`, so it is real work through the model accessor, not a field
+/// load. Two unserialised callers reach that code (the 600s loop in `AppServices` and the Run Now
+/// button, which first marks its row due), so the reads genuinely overlap the actor's own writes.
+/// Same rule as `AvailabilityChecker.JobInput` and the note at the top of `BackgroundStore`.
+///
+/// `source` is resolved from `kind` through `JobSources`, a pure table lookup that touches no model,
+/// so it is safe to compute off-actor from the snapshot.
+public struct DueSource: Sendable, Equatable {
+    public let id: String
+    public let kind: String
+    public let label: String
+    public let config: SourceConfig
+
+    /// **Call only on the isolation that owns `source`** — the store actor for a fetched row.
+    /// `config` decodes `configJSON`, so this initialiser is the last point a live row is read.
+    public init(source: SearchSource) {
+        id = source.id
+        kind = source.kind
+        label = source.label
+        config = source.config
+    }
+
+    /// The vendor implementation for `kind`, or nil when this build has no source of that kind.
+    public var source: (any JobSource)? {
+        JobSources.source(id: kind)
+    }
+}
+
 public extension BackgroundStore {
     /// Sources due for a sweep, longest-waiting first.
     ///
@@ -315,17 +348,24 @@ public extension BackgroundStore {
         .filter { $0.isDue(now: now) }
     }
 
-    /// One source by id.
+    /// The longest-waiting due source, as a snapshot. Nil when nothing is due.
+    ///
+    /// Both the "which one" and the field reads happen on the actor; the caller gets no live row.
+    func nextDueSource(now: Date = Date()) throws -> DueSource? {
+        try dueSearchSources(now: now).first.map(DueSource.init(source:))
+    }
+
+    /// One source by id, as a snapshot.
     ///
     /// The match runs **inside** the actor. The call site used to be
     /// `searchSources().first(where: { $0.id == sourceID })`, which ran the predicate off-actor
     /// across every live row of the table — a loop over models the store owns, on rows a bulk fetch
     /// has not all materialised, so each comparison could fault through the store's `ModelContext`
     /// from another executor. That is the mechanism behind the heap corruption `df3df01d` fixed.
-    func searchSource(id: String) throws -> SearchSource? {
+    func searchSource(id: String) throws -> DueSource? {
         var descriptor = FetchDescriptor<SearchSource>(predicate: #Predicate { $0.id == id })
         descriptor.fetchLimit = 1
-        return try modelContext.fetch(descriptor).first
+        return try modelContext.fetch(descriptor).first.map(DueSource.init(source:))
     }
 
     func searchSources() throws -> [SearchSource] {

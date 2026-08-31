@@ -239,8 +239,11 @@ public struct DiscoveryScheduler: Sendable {
     ///
     /// Oldest-first so a source with a short interval can't starve the others: without the sort,
     /// whichever source happened to be inserted first would be swept every cycle.
-    public func nextDueSource(now: Date = Date()) async throws -> SearchSource? {
-        try await store.dueSearchSources(now: now).first
+    ///
+    /// Returns a `DueSource` snapshot, never the `@Model` row: this type is a nonisolated `Sendable`
+    /// struct, so a live row handed out here would be read off the store actor.
+    public func nextDueSource(now: Date = Date()) async throws -> DueSource? {
+        try await store.nextDueSource(now: now)
     }
 
     /// Sweep one due source, if there is one. Returns what it did, or nil if nothing was due.
@@ -290,7 +293,7 @@ public struct DiscoveryScheduler: Sendable {
     }
 
     private func sweep(
-        _ searchSource: SearchSource,
+        _ searchSource: DueSource,
         criteria: DiscoveryCriteria,
         remainingDailyBudget: Int,
         alreadyCaptured: Set<String>,

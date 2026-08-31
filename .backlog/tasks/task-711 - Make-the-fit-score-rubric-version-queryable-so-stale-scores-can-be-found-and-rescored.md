@@ -2,10 +2,11 @@
 id: TASK-711
 title: >-
   Make the fit-score rubric version queryable, so stale scores can be found and
-  rescored
+  rescored in bulk
 status: To Do
 assignee: []
 created_date: '2026-08-31 21:05'
+updated_date: '2026-08-31 21:09'
 labels: []
 dependencies: []
 priority: high
@@ -50,9 +51,23 @@ Sequencing: this is independent of [[TASK-709]] and can land before it. Doing so
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 assessment_prompt_version is a queryable optional stored property, backfilled from existing JSON with no LLM calls
-- [ ] #2 The Jobs UI can filter or surface scores not produced by the current rubric
-- [ ] #3 A score from a superseded rubric is visibly flagged where the score is shown
-- [ ] #4 min_score and the default sort either exclude stale versions or make the mixing visible
-- [ ] #5 A one-click or one-command rescore path exists for stale scores
-- [ ] #6 docs/fit-scoring.md's corpus-wide distribution claim is corrected to note it blends v1 and v3
+- [ ] #2 A command-line path lists how many stored scores are on each rubric version
+- [ ] #3 A command-line path rescores every score not on the current version, resumable and idempotent
+- [ ] #4 docs/fit-scoring.md's corpus-wide distribution claim is corrected to note it blends v1 and v3
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+author: primary
+created: 2026-08-31 21:09
+---
+Scope narrowed 2026-08-31 on the user's call: **no UI filter.** "I don't know we need a filter, that's not useful for anyone but me." Correct — a stale-version chip in the Jobs sidebar is maintenance weight for an audience of one, and it would sit in the UI forever to serve a problem that exists only while old scores do.
+
+What is actually needed is the ability to **find and clear** stale scores, which is a one-off bulk operation, not a permanent affordance. That belongs in `JobhuntMigrator` alongside `--repair-salaries` and `--repair-remote-types`: a mode that reports the version histogram, and a mode that rescores everything not on the current version.
+
+The queryable column is still worth having — without it neither mode can select its work set without parsing every JSON blob — but it exists to serve the migrator, not a screen.
+
+Dropped acceptance criteria: the UI filter, the per-score staleness badge, and excluding stale versions from `min_score`/default sort. If ranking across mixed versions turns out to mislead in practice, that is a separate decision to make with evidence rather than pre-emptively.
+---
+<!-- COMMENTS:END -->

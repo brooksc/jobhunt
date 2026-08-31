@@ -44,6 +44,20 @@ public enum StructuredOutputKind: Sendable {
     case fitScore
 }
 
+// MARK: - ThinkingLevel
+
+/// How much hidden reasoning the model should spend before answering (TASK-713).
+///
+/// Only Gemini 3 models honour this today (`generationConfig.thinkingConfig.thinkingLevel`); other
+/// providers ignore it. The cases are exactly the values `gemini-3.7-flash` accepts — `MINIMAL` is
+/// rejected by that model with an explicit 400, so `low` is the floor, and on a full-size scoring
+/// prompt `low` measurably drives `thoughtsTokenCount` to 0.
+public enum ThinkingLevel: String, Sendable {
+    case low
+    case medium
+    case high
+}
+
 // MARK: - ChatRequest
 
 public struct ChatRequest: Sendable {
@@ -58,26 +72,36 @@ public struct ChatRequest: Sendable {
     public let maxTokens: Int?
     /// Optional guided-generation hint for providers that support typed structured output.
     public let structuredOutput: StructuredOutputKind?
+    /// Sampling temperature. `nil` means "don't send one" — the provider's default applies.
+    /// Honoured by Google today; other providers currently ignore it (TASK-713).
+    public let temperature: Double?
+    /// Hidden-reasoning budget. `nil` means "don't send one" (TASK-713). See `ThinkingLevel`.
+    public let thinkingLevel: ThinkingLevel?
 
     public init(
         messages: [ChatMessage],
         model: String,
         responseFormat: ResponseFormat? = nil,
         maxTokens: Int? = nil,
-        structuredOutput: StructuredOutputKind? = nil
+        structuredOutput: StructuredOutputKind? = nil,
+        temperature: Double? = nil,
+        thinkingLevel: ThinkingLevel? = nil
     ) {
         self.messages = messages
         self.model = model
         self.responseFormat = responseFormat
         self.maxTokens = maxTokens
         self.structuredOutput = structuredOutput
+        self.temperature = temperature
+        self.thinkingLevel = thinkingLevel
     }
 
     /// A copy with a different model — used for OpenRouter free-model rotation (TASK-462).
     public func replacingModel(_ newModel: String) -> ChatRequest {
         ChatRequest(
             messages: messages, model: newModel, responseFormat: responseFormat,
-            maxTokens: maxTokens, structuredOutput: structuredOutput
+            maxTokens: maxTokens, structuredOutput: structuredOutput,
+            temperature: temperature, thinkingLevel: thinkingLevel
         )
     }
 }

@@ -441,6 +441,59 @@ final class GoogleProviderTests: LLMMockProviderTestCase {
         _ = try await provider.complete(req)
     }
 
+    // TASK-713: sampling controls are opt-in. Sending them unasked would silently change every
+    // existing call path, so the default request must carry no temperature and no thinkingConfig.
+    func testSamplingParametersOmittedByDefault() async throws {
+        LLMMockURLProtocol.requestHandler = { req in
+            let body = try JSONSerialization.jsonObject(with: requestBody(req) ?? Data()) as? [String: Any]
+            let gen = body?["generationConfig"] as? [String: Any]
+            // JSON mode still populates generationConfig, so this asserts absence, not an empty dict.
+            XCTAssertNotNil(gen?["responseMimeType"])
+            XCTAssertNil(gen?["temperature"])
+            XCTAssertNil(gen?["thinkingConfig"])
+            return (mockHTTPResponse(url: req.url!), self.googleResponse(text: "x"))
+        }
+        let provider = GoogleProvider(apiKey: "k", session: session)
+        let req = ChatRequest(
+            messages: [ChatMessage(role: "user", content: "q")],
+            model: "gemini-3.7-flash",
+            responseFormat: .jsonObject
+        )
+        _ = try await provider.complete(req)
+    }
+
+    // TASK-713: Gemini validates generationConfig strictly (an unknown field is a 400), so these two
+    // field names are the ones confirmed against the live API.
+    func testSamplingParametersSentWhenRequested() async throws {
+        LLMMockURLProtocol.requestHandler = { req in
+            let body = try JSONSerialization.jsonObject(with: requestBody(req) ?? Data()) as? [String: Any]
+            let gen = body?["generationConfig"] as? [String: Any]
+            XCTAssertEqual(gen?["temperature"] as? Double, 0)
+            XCTAssertEqual((gen?["thinkingConfig"] as? [String: Any])?["thinkingLevel"] as? String, "low")
+            return (mockHTTPResponse(url: req.url!), self.googleResponse(text: "x"))
+        }
+        let provider = GoogleProvider(apiKey: "k", session: session)
+        let req = ChatRequest(
+            messages: [ChatMessage(role: "user", content: "q")],
+            model: "gemini-3.7-flash",
+            temperature: 0,
+            thinkingLevel: .low
+        )
+        _ = try await provider.complete(req)
+    }
+
+    /// Sampling controls must survive OpenRouter-style model rotation (replacingModel drops nothing).
+    func testReplacingModelKeepsSamplingParameters() {
+        let req = ChatRequest(
+            messages: [ChatMessage(role: "user", content: "q")],
+            model: "a", temperature: 0.25, thinkingLevel: .high
+        )
+        let rotated = req.replacingModel("b")
+        XCTAssertEqual(rotated.model, "b")
+        XCTAssertEqual(rotated.temperature, 0.25)
+        XCTAssertEqual(rotated.thinkingLevel, .high)
+    }
+
     // TASK-565: Google reported .text regardless of what it sent. Now it reports the effective format.
     func testStrictSchemaSuccessReportsJSONSchema() async throws {
         LLMMockURLProtocol.requestHandler = { req in

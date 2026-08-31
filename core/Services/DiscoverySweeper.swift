@@ -147,7 +147,13 @@ public struct DiscoverySweeper: Sendable {
         // boards — clearing per board would erase the previous board's rows, and keeping them all
         // would retain the whole market.
         if ledgerRejections {
-            try? await store.clearRetainedRawRows(sourceID: source.id)
+            do {
+                try await store.clearRetainedRawRows(sourceID: source.id)
+            } catch {
+                // Best-effort: the preview keeps the older sweep's rows, which is the documented
+                // failure mode above. Still a store error, so it doesn't vanish.
+                NSLog("DiscoverySweeper: clearRetainedRawRows(\(source.id)) failed: \(error)")
+            }
         }
 
         // 2. Gate A — free, and runs on everything.

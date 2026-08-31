@@ -5,6 +5,7 @@ import SwiftUI
 /// `AIReadiness` rule (TASK-512) so the banner/service-status UI and the queue's provider gate can't
 /// drift: a model is selected, and (for key-requiring providers) an API key is present.
 enum AIConfig {
+    @MainActor
     static func isConfigured(_ settings: SettingsStore) -> Bool {
         AIReadiness.isConfigured(settings)
     }

@@ -4,6 +4,7 @@ import XCTest
 @testable import JobhuntCore
 
 /// Choosing what to sweep, and the settings that decide how (TASK-692, M3).
+@MainActor
 final class DiscoverySchedulerTests: XCTestCase {
     private func makeSettings() throws -> SettingsStore {
         try SettingsStore(modelContext: ModelContext(ModelContainerFactory.inMemory()))
@@ -307,6 +308,7 @@ private struct SchedulerNoOpProvider: LLMProvider {
 /// A key feature hidden behind a settings toggle is a feature most users never find, so both are on
 /// by default. What makes that safe is not a toggle but this check: an empty title list matches
 /// every posting on every board, so nothing sweeps until at least one title exists.
+@MainActor
 final class DiscoveryInterlockTests: XCTestCase {
     private func makeSettings() throws -> SettingsStore {
         try SettingsStore(modelContext: ModelContext(ModelContainerFactory.inMemory()))

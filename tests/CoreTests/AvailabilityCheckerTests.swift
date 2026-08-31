@@ -827,6 +827,7 @@ final class AvailabilityCheckerTitleTests: XCTestCase {
 
 // MARK: - checkJobs with BackgroundStore
 
+@MainActor
 final class AvailabilityCheckerJobsTests: XCTestCase {
     var container: ModelContainer!
     var store: BackgroundStore!
@@ -1653,6 +1654,7 @@ final class AvailabilityRunPlanTests: XCTestCase {
 /// ~60ms for 400 jobs, paid on the main thread every time the body was evaluated, so clicking a
 /// sidebar item stalled before the list redrew. This is the third time a per-body walk over every job
 /// has caused that (TASK-610, TASK-611), hence a test rather than a comment.
+@MainActor
 final class AvailabilityPlanningPerformanceTests: XCTestCase {
     private var container: ModelContainer!
 

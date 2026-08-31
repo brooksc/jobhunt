@@ -1020,7 +1020,7 @@ public enum AvailabilityChecker {
         session: URLSession = .shared,
         onProgress: (@Sendable (_ checked: Int, _ total: Int) async -> Void)? = nil
     ) async -> AvailabilitySweep {
-        let offset = settings.int(forKey: SettingsKey.linkedInRotationOffset)
+        let offset = await settings.int(forKey: SettingsKey.linkedInRotationOffset)
         let results = await findGoneJobs(
             jobs,
             restrictToStatuses: restrictToStatuses,
@@ -1030,7 +1030,11 @@ public enum AvailabilityChecker {
         )
         // Advance by the cap regardless of how many LinkedIn jobs existed this run; the slice applies
         // modulo, so an over-large cursor simply wraps.
-        settings.setInt(offset &+ maxLinkedInPerRun, forKey: SettingsKey.linkedInRotationOffset)
+        //
+        // `await`ed, so the write lands on the main actor. This function is nonisolated and reached
+        // from the hourly background Task, so before TASK-692 it mutated the store's cache dictionary
+        // and wrote through its ModelContext from a background executor while the UI read both.
+        await settings.setInt(offset &+ maxLinkedInPerRun, forKey: SettingsKey.linkedInRotationOffset)
         return results
     }
 
@@ -1543,16 +1547,16 @@ public enum AvailabilityChecker {
         session: URLSession = .shared,
         onChecked: (@Sendable (Date) async -> Void)? = nil
     ) async -> AvailabilitySweep? {
-        guard settings.bool(forKey: SettingsKey.availabilityAutoCheckEnabled) else { return nil }
+        guard await settings.bool(forKey: SettingsKey.availabilityAutoCheckEnabled) else { return nil }
 
-        let intervalDays = max(1, settings.int(forKey: SettingsKey.availabilityAutoCheckIntervalDays))
-        let lastCheckStr = settings.string(forKey: SettingsKey.availabilityLastAutoCheckAt)
+        let intervalDays = await max(1, settings.int(forKey: SettingsKey.availabilityAutoCheckIntervalDays))
+        let lastCheckStr = await settings.string(forKey: SettingsKey.availabilityLastAutoCheckAt)
         if !lastCheckStr.isEmpty, let lastCheck = ISO8601DateFormatter().date(from: lastCheckStr),
            Date().timeIntervalSince(lastCheck) < Double(intervalDays) * 86400 {
             return nil
         }
 
-        let staleDays = max(1, settings.int(forKey: SettingsKey.availabilityStaleDays))
+        let staleDays = await max(1, settings.int(forKey: SettingsKey.availabilityStaleDays))
         let jobs: [JobInput]
         do {
             // TASK-608: uncapped so a large stale backlog drains. TASK-621: always re-check pursued jobs.
@@ -1583,13 +1587,13 @@ public enum AvailabilityChecker {
         onAutoCheckCompleted: (@Sendable (Date) async -> Void)? = nil
     ) async -> (skipped: Bool, reason: String?, checked: Int, unavailable: Int, marked: Int, failed: Int) {
         // Check if auto-check is enabled.
-        guard settings.bool(forKey: SettingsKey.availabilityAutoCheckEnabled) else {
+        guard await settings.bool(forKey: SettingsKey.availabilityAutoCheckEnabled) else {
             return (skipped: true, reason: "disabled", checked: 0, unavailable: 0, marked: 0, failed: 0)
         }
 
         // Check interval gate.
-        let intervalDays = max(1, settings.int(forKey: SettingsKey.availabilityAutoCheckIntervalDays))
-        let lastCheckStr = settings.string(forKey: SettingsKey.availabilityLastAutoCheckAt)
+        let intervalDays = await max(1, settings.int(forKey: SettingsKey.availabilityAutoCheckIntervalDays))
+        let lastCheckStr = await settings.string(forKey: SettingsKey.availabilityLastAutoCheckAt)
         if !lastCheckStr.isEmpty, let lastCheck = ISO8601DateFormatter().date(from: lastCheckStr) {
             let elapsed = Date().timeIntervalSince(lastCheck)
             if elapsed < Double(intervalDays) * 86400 {
@@ -1597,7 +1601,7 @@ public enum AvailabilityChecker {
             }
         }
 
-        let staleDays = max(1, settings.int(forKey: SettingsKey.availabilityStaleDays))
+        let staleDays = await max(1, settings.int(forKey: SettingsKey.availabilityStaleDays))
         let result: (checked: Int, unavailable: Int, marked: Int, failed: Int)
         do {
             // TASK-608: uncapped so a large stale backlog actually drains (was limited to 25/run).

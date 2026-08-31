@@ -1,4 +1,5 @@
 import Charts
+import Combine
 import JobhuntCore
 import SwiftData
 import SwiftUI

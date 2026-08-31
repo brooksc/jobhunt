@@ -415,7 +415,14 @@ public actor QueueActor {
 
             // Reclaim orphans before deciding how many slots are free — a leaked slot would
             // otherwise shrink this pass's concurrency for no reason.
-            try? await reapOrphanedRunning()
+            // Best-effort: a failure costs this pass the leaked slots, not the pass. Logged because
+            // the symptom is "the queue is slow" with nothing to point at — which is what the reaper
+            // exists to prevent.
+            do {
+                try await reapOrphanedRunning()
+            } catch {
+                NSLog("QueueActor: reapOrphanedRunning failed: \(error)")
+            }
 
             let provider = await providerFactory()
             // TASK-463: dispatch at the adaptive runtime concurrency (drops to 1 after a 429, recovers

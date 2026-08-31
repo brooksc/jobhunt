@@ -240,7 +240,7 @@ public struct MarketSweeper: Sendable {
         // A read that FAILS is not a store with no state in it. Conflating them let a transient
         // error delete an unfinished checkpoint and restart the pass from board zero — repeatedly,
         // if the error repeated, so the tail of the directory would never be reached.
-        let existing: MarketSweepState?
+        let existing: MarketSweepSnapshot?
         do {
             existing = try await store.marketSweepState()
         } catch {
@@ -278,24 +278,91 @@ public struct MarketSweeper: Sendable {
     ) async -> ActivePass? {
         let ordered = MarketBoardOrder.ordered(boards, priority: priority)
         let revision = MarketBoardOrder.revision(ordered)
-        guard let state = try? await store.startMarketSweep(
+        guard let sweepID = try? await store.startMarketSweep(
             boardCount: ordered.count, directoryRevision: revision, priority: priority, now: now
         ) else { return nil }
-        return ActivePass(sweepID: state.sweepID, cursor: 0, boards: ordered, revision: revision)
+        return ActivePass(sweepID: sweepID, cursor: 0, boards: ordered, revision: revision)
+    }
+}
+
+/// The market pass's position and totals, detached from SwiftData (TASK-692).
+///
+/// **Why this exists.** `MarketSweepState` is a `@Model` bound to the store actor's `ModelContext`,
+/// and `MarketSweeper` is a nonisolated `Sendable` struct. `passForRun` read `.isFinished`,
+/// `.isDue(…)`, `.priority`, `.sweepID`, `.cursor` and `.directoryRevision` off-actor — `.priority`
+/// decodes `priorityJSON` — every 180 seconds for the life of the app, concurrently with the store
+/// actor's own writes and SwiftUI's `@Query` over the same row. That three-way overlap is what
+/// aborted in `df3df01d`.
+///
+/// Views still bind to the model through `@Query` on the main context, which is correct: that row is
+/// owned by the main actor. This is only for the sweeper.
+public struct MarketSweepSnapshot: Sendable, Equatable {
+    public let sweepID: String
+    public let startedAt: Date
+    public let updatedAt: Date
+    public let finishedAt: Date?
+    public let cursor: Int
+    public let boardCount: Int
+    public let directoryRevision: String?
+    public let priority: Set<String>
+    public let boardsSwept: Int
+    public let boardsUnreachable: Int
+    public let postingsSeen: Int
+    public let postingsPassed: Int
+    public let postingsIngested: Int
+    public let pauseReason: String?
+
+    /// **Call only on the isolation that owns `state`** — the store actor for a fetched row.
+    /// `priority` decodes `priorityJSON`, so this initialiser is the last point a live row is read.
+    public init(state: MarketSweepState) {
+        sweepID = state.sweepID
+        startedAt = state.startedAt
+        updatedAt = state.updatedAt
+        finishedAt = state.finishedAt
+        cursor = state.cursor
+        boardCount = state.boardCount
+        directoryRevision = state.directoryRevision
+        priority = state.priority
+        boardsSwept = state.boardsSwept
+        boardsUnreachable = state.boardsUnreachable
+        postingsSeen = state.postingsSeen
+        postingsPassed = state.postingsPassed
+        postingsIngested = state.postingsIngested
+        pauseReason = state.pauseReason
+    }
+
+    public var isFinished: Bool {
+        finishedAt != nil
+    }
+
+    public var progress: Double {
+        guard boardCount > 0 else { return 0 }
+        return min(1, Double(cursor) / Double(boardCount))
+    }
+
+    /// Same rule as the model's, over the detached `finishedAt`.
+    public func isDue(startHour: Int, now: Date = Date(), calendar: Calendar = .current) -> Bool {
+        MarketSweepState.isDue(
+            finishedAt: finishedAt, startHour: startHour, now: now, calendar: calendar
+        )
     }
 }
 
 public extension BackgroundStore {
-    func marketSweepState() throws -> MarketSweepState? {
+    func marketSweepState() throws -> MarketSweepSnapshot? {
         try modelContext.fetch(FetchDescriptor<MarketSweepState>()).first
+            .map(MarketSweepSnapshot.init(state:))
     }
 
     /// Begin a pass, replacing any previous one. The row is reused rather than accumulated: history
     /// belongs in the ledger, which records findings; this only tracks position.
+    ///
+    /// Returns the new pass's `sweepID` rather than the row: that string is the only thing the
+    /// caller needs, and handing back the `@Model` put a live row in a nonisolated struct's hands.
     @discardableResult
     func startMarketSweep(
         boardCount: Int, directoryRevision: String, priority: Set<String>, now: Date = Date()
-    ) throws -> MarketSweepState {
+    ) throws -> String {
         for old in try modelContext.fetch(FetchDescriptor<MarketSweepState>()) {
             modelContext.delete(old)
         }
@@ -305,7 +372,7 @@ public extension BackgroundStore {
         )
         modelContext.insert(state)
         try modelContext.save()
-        return state
+        return state.sweepID
     }
 
     /// Persist progress, but only onto the pass it belongs to.
@@ -322,7 +389,9 @@ public extension BackgroundStore {
         boardCount: Int,
         now: Date = Date()
     ) throws {
-        guard let state = try marketSweepState(),
+        // The live row, deliberately: this method runs on the actor and writes to it. Everything
+        // that leaves the actor goes through `MarketSweepSnapshot` instead.
+        guard let state = try modelContext.fetch(FetchDescriptor<MarketSweepState>()).first,
               state.sweepID == sweepID,
               state.directoryRevision == directoryRevision
         else { return }

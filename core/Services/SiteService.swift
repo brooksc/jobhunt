@@ -138,8 +138,11 @@ public actor SiteService {
             nextReviewAt: next,
             note: note
         )
+        // Read the id BEFORE the transfer. `insert` moves the model into the store's ModelContext,
+        // and reading it back here would read a row this isolation no longer owns (TASK-692).
+        let reviewID = review.id
         try await store.insert(review)
-        return review.id
+        return reviewID
     }
 
     // MARK: - CRUD
@@ -158,8 +161,10 @@ public actor SiteService {
             return existing.id
         }
         let site = Site(origin: origin, url: url, companyName: name, intervalDays: intervalDays, nextReviewAt: nil)
+        // As above: the id is read before ownership of the model passes to the store.
+        let siteID = site.id
         try await store.insert(site)
-        return site.id
+        return siteID
     }
 
     public func updateSite(

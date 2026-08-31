@@ -843,6 +843,7 @@ final class LLMProviderErrorTests: LLMMockProviderTestCase {
 
 // MARK: - TASK-320/321/322 factory tests
 
+@MainActor
 final class LLMProviderFactoryMakeProviderTests: XCTestCase {
     private func makeSettings(provider: String, model: String = "test-model") throws -> SettingsStore {
         let container = try ModelContainerFactory.inMemory()

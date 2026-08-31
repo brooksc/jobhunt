@@ -112,6 +112,16 @@ public final class MarketSweepState {
     /// through the afternoon instead of overnight. A wall-clock hour holds still, so the work lands
     /// before the user sits down.
     public func isDue(startHour: Int, now: Date = Date(), calendar: Calendar = .current) -> Bool {
+        MarketSweepState.isDue(
+            finishedAt: finishedAt, startHour: startHour, now: now, calendar: calendar
+        )
+    }
+
+    /// The same rule over a detached `finishedAt`, so `MarketSweepSnapshot` can answer it without a
+    /// live row (TASK-692). Static and pure: nothing here reads the model.
+    public static func isDue(
+        finishedAt: Date?, startHour: Int, now: Date = Date(), calendar: Calendar = .current
+    ) -> Bool {
         guard let finishedAt else { return true }
         // Built from date components, NOT by adding elapsed hours to midnight. `byAdding: .hour`
         // adds real time, so on a DST boundary it lands on the wrong wall clock: in

@@ -15,6 +15,7 @@ private struct NoOpProvider: LLMProvider {
 
 // MARK: - Helpers
 
+@MainActor
 private func makeTestServer(
     allowArbitraryExtensionOrigins: Bool = true,
     allowedExtensionOrigins: Set<String> = JobhuntServer.defaultAllowedExtensionOrigins
@@ -27,7 +28,7 @@ private func makeTestServer(
         store: store,
         isPaused: { false },
         onSetPaused: { _ in },
-        readExtractionSettings: { settings.extractionSettings() },
+        readExtractionSettings: { await settings.extractionSettings() },
         providerFactory: { NoOpProvider() }
     )
     let jobService = JobService(store: store, queue: queue)
@@ -110,7 +111,7 @@ final class JobhuntServerTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
         if Self.sharedServer == nil {
-            let s = try makeTestServer()
+            let s = try await makeTestServer()
             try await s.startOnAnyPort()
             Self.sharedServer = s
         }
@@ -134,7 +135,7 @@ final class JobhuntServerTests: XCTestCase {
     /// start() is idempotent: a second start while already listening is a no-op (same port, no
     /// second listener) — so the Settings "Retry" flow can't create conflicting lifecycle state.
     func testStart_idempotent_doesNotRebindOrChangePort() async throws {
-        let s = try makeTestServer()
+        let s = try await makeTestServer()
         try await s.startOnAnyPort()
         let port1 = await s.listeningPort
         XCTAssertGreaterThan(port1, 0)
@@ -151,7 +152,7 @@ final class JobhuntServerTests: XCTestCase {
 
     /// After stop(), start() can run again (clean restart) — the lifecycle seam app shutdown relies on.
     func testStartStopRestart() async throws {
-        let s = try makeTestServer()
+        let s = try await makeTestServer()
         try await s.startOnAnyPort()
         let p1 = await s.listeningPort
         XCTAssertGreaterThan(p1, 0)
@@ -926,7 +927,7 @@ final class JobhuntServerOriginTests: XCTestCase {
     }
 
     func testProductionMode_arbitraryExtensionOrigin_rejectedWithoutCORS() async throws {
-        let server = try makeTestServer(allowArbitraryExtensionOrigins: false)
+        let server = try await makeTestServer(allowArbitraryExtensionOrigins: false)
         try await server.startOnAnyPort()
         let port = await server.listeningPort
 
@@ -944,7 +945,7 @@ final class JobhuntServerOriginTests: XCTestCase {
 
     func testProductionMode_approvedExtensionOrigin_reflectsCORS() async throws {
         let approved = "chrome-extension://approvedcwsid"
-        let server = try makeTestServer(
+        let server = try await makeTestServer(
             allowArbitraryExtensionOrigins: false,
             allowedExtensionOrigins: [approved]
         )

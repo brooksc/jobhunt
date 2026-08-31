@@ -2,6 +2,7 @@ import Foundation
 import JobhuntCore
 import Network
 import SwiftData
+import Synchronization
 
 // MARK: - Request/Response Codable types
 
@@ -201,12 +202,18 @@ public actor JobhuntServer {
         // Wait for the listener to reach .cancelled state so the OS port is released
         // before returning — prevents the next test's server from getting a RST.
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            var didResume = false
+            // NWListener delivers state updates on its own queue, so the guard has to be atomic:
+            // a plain captured `var` can lose the race and resume the continuation twice, which
+            // traps. See the note in `startListener`.
+            let didResume = Mutex(false)
             l.stateUpdateHandler = { state in
-                if case .cancelled = state, !didResume {
-                    didResume = true
-                    continuation.resume()
-                }
+                guard case .cancelled = state else { return }
+                guard didResume.withLock({ resumed in
+                    if resumed { return false }
+                    resumed = true
+                    return true
+                }) else { return }
+                continuation.resume()
             }
             l.cancel()
         }
@@ -243,12 +250,20 @@ public actor JobhuntServer {
         let boundPort: UInt16 = try await withThrowingTaskGroup(of: UInt16.self) { group in
             group.addTask {
                 try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<UInt16, Error>) in
-                    var didResume = false
-                    let resume: (Result<UInt16, Error>) -> Void = { result in
-                        if !didResume {
-                            didResume = true
-                            continuation.resume(with: result)
-                        }
+                    // **This guard has to be atomic.** NWListener runs its state-update handler on
+                    // the queue passed to `start`, and the timeout task below cancels the listener
+                    // from another one, so `.ready`/`.failed` and `.cancelled` genuinely race. As a
+                    // plain captured `var`, losing that race resumes the continuation twice — which
+                    // is a trap, on the server-start path, once per launch and again after every
+                    // restore. A Mutex is the guard; the `var` only looked like one.
+                    let didResume = Mutex(false)
+                    let resume: @Sendable (Result<UInt16, Error>) -> Void = { result in
+                        guard didResume.withLock({ resumed in
+                            if resumed { return false }
+                            resumed = true
+                            return true
+                        }) else { return }
+                        continuation.resume(with: result)
                     }
 
                     listener.stateUpdateHandler = { state in

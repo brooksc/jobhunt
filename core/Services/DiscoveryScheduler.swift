@@ -5,6 +5,12 @@ import Foundation
 /// A thin bridge over `SettingsStore` rather than a stored object: the criteria are eight lists and
 /// three numbers, and a settings row per field means the UI can bind to them the way every other
 /// preference does.
+///
+/// Main-actor isolated by contagion: every member here reads or writes a `SettingsStore`, which is
+/// (TASK-692). `withBudget` was already annotated, and its reason applies to the rest — `reserve`
+/// has to be synchronous on one actor for the reservation to close the double-spend window it
+/// describes.
+@MainActor
 public enum DiscoverySettings {
     /// Split a comma-separated setting the way `preferredLocations` already is, dropping blanks.
     ///
@@ -149,7 +155,6 @@ public enum DiscoverySettings {
     ///
     /// Returns nil when the interlock is closed or the day's allowance is spent — in both cases
     /// nothing ran and nothing was reserved.
-    @MainActor
     public static func withBudget<T>(
         _ settings: SettingsStore,
         now: Date = Date(),
@@ -234,8 +239,11 @@ public struct DiscoveryScheduler: Sendable {
     ///
     /// Oldest-first so a source with a short interval can't starve the others: without the sort,
     /// whichever source happened to be inserted first would be swept every cycle.
-    public func nextDueSource(now: Date = Date()) async throws -> SearchSource? {
-        try await store.dueSearchSources(now: now).first
+    ///
+    /// Returns a `DueSource` snapshot, never the `@Model` row: this type is a nonisolated `Sendable`
+    /// struct, so a live row handed out here would be read off the store actor.
+    public func nextDueSource(now: Date = Date()) async throws -> DueSource? {
+        try await store.nextDueSource(now: now)
     }
 
     /// Sweep one due source, if there is one. Returns what it did, or nil if nothing was due.
@@ -277,8 +285,7 @@ public struct DiscoveryScheduler: Sendable {
         alreadyCaptured: Set<String>,
         now: Date = Date()
     ) async -> SweepResult? {
-        guard let searchSource = try? await store.searchSources().first(where: { $0.id == sourceID })
-        else { return nil }
+        guard let searchSource = try? await store.searchSource(id: sourceID) else { return nil }
         return await sweep(
             searchSource, criteria: criteria, remainingDailyBudget: remainingDailyBudget,
             alreadyCaptured: alreadyCaptured, now: now
@@ -286,7 +293,7 @@ public struct DiscoveryScheduler: Sendable {
     }
 
     private func sweep(
-        _ searchSource: SearchSource,
+        _ searchSource: DueSource,
         criteria: DiscoveryCriteria,
         remainingDailyBudget: Int,
         alreadyCaptured: Set<String>,

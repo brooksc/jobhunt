@@ -3,6 +3,7 @@ import JobhuntCore
 import Observation
 
 @Observable
+@MainActor
 final class OnboardingManager {
     var isPresented: Bool
     var currentStep: Int = 0

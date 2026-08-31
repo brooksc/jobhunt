@@ -42,6 +42,7 @@ public enum AIReadiness {
 
     /// Convenience over a `SettingsStore` — the form both the queue wiring and the UI call. The
     /// key read is deferred (autoclosure) so local providers never touch the Keychain.
+    @MainActor
     public static func isConfigured(_ settings: SettingsStore) -> Bool {
         isConfigured(
             provider: settings.llmProvider,

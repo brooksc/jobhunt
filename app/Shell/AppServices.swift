@@ -208,7 +208,13 @@ final class AppServices {
         didCoverScheduledSweep: Bool
     ) async {
         // What the run concluded about every job it reached, including the ones it couldn't verify.
-        try? await backgroundStore.recordAvailabilityOutcomes(sweep.outcomes)
+        // A failure here loses the whole sweep's verdicts silently — the runs stop being comparable,
+        // which is the entire point of recording them (TASK-674) — so say so rather than swallow it.
+        do {
+            try await backgroundStore.recordAvailabilityOutcomes(sweep.outcomes)
+        } catch {
+            NSLog("AppServices: recordAvailabilityOutcomes failed, \(sweep.outcomes.count) verdicts lost: \(error)")
+        }
         // What it couldn't finish, so the drain can.
         availabilityBacklog.absorb(sweep, covering: covering)
 
@@ -624,7 +630,7 @@ final class AppServices {
             // setting on the main actor.
             let settingsStore = settings
             let store = backgroundStore
-            tasks.append(Task {
+            tasks.append(Task { [weak self] in
                 // Re-check hourly. Two guardrails on the background pass (the manual "Check
                 // Availability" button is unaffected):
                 //   • Only run while Jobhunt is FOREGROUND — no fetching for a backgrounded app.
@@ -656,15 +662,11 @@ final class AppServices {
                             // stamped the interval through its own onChecked callback — stamping here
                             // too would be harmless but duplicated, and the duplicate is what future
                             // readers would have to reason about.
-                            await MainActor.run { [weak self] in
-                                Task { @MainActor in
-                                    await self?.applyAvailabilitySweep(
-                                        candidates,
-                                        covering: candidates.outcomes.map(\.jobID),
-                                        didCoverScheduledSweep: false
-                                    )
-                                }
-                            }
+                            await self?.applyAvailabilitySweep(
+                                candidates,
+                                covering: candidates.outcomes.map(\.jobID),
+                                didCoverScheduledSweep: false
+                            )
                             if !candidates.gone.isEmpty {
                                 await MainActor.run {
                                     Self.notifyJobsMaybeUnavailable(

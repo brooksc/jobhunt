@@ -10,6 +10,10 @@ public enum LLMProviderFactory {
     /// but `ChatRequest.model` is the authoritative model sent to the API. Callers build
     /// `ChatRequest` with `settings.llmModel` (see ExtractionEngine.extract) so providers
     /// always send exactly what is in the request, not the provider's stored model field.
+    /// Main-actor isolated because it reads a `SettingsStore`, which is (TASK-692). The queue never
+    /// calls this directly — it goes through the `providerFactory` closure in `QueueActor`, which
+    /// hops for it.
+    @MainActor
     public static func makeProvider(settings: SettingsStore, session: URLSession = .shared) -> any LLMProvider {
         let provider = settings.llmProvider
         let model = settings.llmModel

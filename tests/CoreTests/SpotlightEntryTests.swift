@@ -78,6 +78,7 @@ final class SpotlightEntryTests: XCTestCase {
 /// The indexing opt-out (TASK-590). Without it, "Clear Spotlight Index" only held until the next
 /// launch republished everything, so a user who didn't want their job search in system-wide search
 /// had no way to say so.
+@MainActor
 final class SpotlightIndexingSettingTests: XCTestCase {
     private func makeStore() throws -> SettingsStore {
         let container = try ModelContainerFactory.inMemory()

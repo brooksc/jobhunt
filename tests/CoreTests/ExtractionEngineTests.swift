@@ -112,6 +112,7 @@ private final class CountingProvider: LLMProvider, @unchecked Sendable {
 
 // MARK: - ExtractionEngineTests
 
+@MainActor
 final class ExtractionEngineTests: XCTestCase {
     // MARK: - Extracted application_url validation (TASK-564)
 

@@ -5,6 +5,7 @@ import XCTest
 
 /// The recommendation is named in three places — onboarding, Settings and a public help page — and the
 /// point of the constant is that the first two can't drift from each other.
+@MainActor
 final class ModelRecommendationTests: XCTestCase {
     /// #4: onboarding and Settings both read these; a test that the model ID is a real OpenRouter-style
     /// slug catches the typo that would otherwise only show up as a failed API call.

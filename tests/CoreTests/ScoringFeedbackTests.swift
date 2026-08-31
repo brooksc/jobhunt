@@ -390,6 +390,7 @@ final class ScoringFeedbackBlastRadiusTests: XCTestCase {
 }
 
 /// Editing a correction rather than deleting and re-creating it (TASK-654).
+@MainActor
 final class ScoringFeedbackEditingTests: XCTestCase {
     /// #1: the point of edit-in-place is the three fields delete-and-recreate destroyed — the note's
     /// original context, the job that motivated the rule, and the age that says whether it predates

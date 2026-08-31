@@ -82,7 +82,16 @@ private let settingsDefaults: [String: String] = [
     SettingsKey.detailLastTab: ""
 ]
 
+/// The user's settings, backed by SwiftData rows and the keychain.
+///
+/// Main-actor isolated, and that is a correctness requirement rather than a UI convenience: every
+/// write mutates the unsynchronised `cache` dictionary AND writes through this store's own
+/// `ModelContext`. A background executor doing that while the main actor reads the same two objects
+/// is the defect `df3df01d` fixed for `@Model` rows, with a write on the racing side. The annotation
+/// is what makes the compiler enforce it — do not reach for `MainActor.assumeIsolated` to skip an
+/// `await` here; that restores the race and hides the diagnostic that would have caught it.
 @Observable
+@MainActor
 public final class SettingsStore {
     private var modelContext: ModelContext
     private var keychain: any KeychainAccess

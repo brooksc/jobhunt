@@ -24,6 +24,7 @@ private struct FakeKeychain: KeychainAccess {
     }
 }
 
+@MainActor
 final class SettingsStoreTests: XCTestCase {
     var container: ModelContainer!
     var context: ModelContext!
@@ -257,7 +258,7 @@ final class SettingsStoreTests: XCTestCase {
             store: BackgroundStore(modelContainer: container),
             isPaused: { paused },
             onSetPaused: { paused = $0 },
-            readExtractionSettings: { self.store.extractionSettings() },
+            readExtractionSettings: { await self.store.extractionSettings() },
             providerFactory: { NoOpLLMProvider() }
         )
 
@@ -338,6 +339,7 @@ final class SettingsStoreTests: XCTestCase {
 
 // TASK-124 / TASK-131 regression: cloud providers blocked without consent; local always allowed.
 
+@MainActor
 final class ConsentHelperSnapshotTests: XCTestCase {
     // Tests the overload used inside QueueActor.processExtractRequest:
     //   ConsentHelper.isConsented(provider:baseURL:consentGranted:)
@@ -410,6 +412,7 @@ private struct RefusingKeychain: KeychainAccess {
 /// A failed keychain write used to be indistinguishable from a successful one: `set` caught the
 /// error, set `keychainWriteError` for the UI, and returned normally — so a restore or key rotation
 /// was told the key had been stored when it hadn't.
+@MainActor
 final class SettingsStoreKeychainFailureTests: XCTestCase {
     private func store() throws -> SettingsStore {
         let container = try ModelContainer(
@@ -460,6 +463,7 @@ final class KeychainErrorTests: XCTestCase {
 
 // MARK: - MCPTokenManager tests
 
+@MainActor
 final class MCPTokenManagerTests: XCTestCase {
     private var testURL: URL!
 

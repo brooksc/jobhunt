@@ -5,6 +5,12 @@ import Foundation
 /// A thin bridge over `SettingsStore` rather than a stored object: the criteria are eight lists and
 /// three numbers, and a settings row per field means the UI can bind to them the way every other
 /// preference does.
+///
+/// Main-actor isolated by contagion: every member here reads or writes a `SettingsStore`, which is
+/// (TASK-692). `withBudget` was already annotated, and its reason applies to the rest — `reserve`
+/// has to be synchronous on one actor for the reservation to close the double-spend window it
+/// describes.
+@MainActor
 public enum DiscoverySettings {
     /// Split a comma-separated setting the way `preferredLocations` already is, dropping blanks.
     ///
@@ -149,7 +155,6 @@ public enum DiscoverySettings {
     ///
     /// Returns nil when the interlock is closed or the day's allowance is spent — in both cases
     /// nothing ran and nothing was reserved.
-    @MainActor
     public static func withBudget<T>(
         _ settings: SettingsStore,
         now: Date = Date(),

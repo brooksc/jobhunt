@@ -11,6 +11,9 @@ public enum ConsentHelper {
     /// - `custom` is local only when the configured base URL resolves to a loopback address.
     ///   A remote custom URL is treated as a cloud provider and requires explicit consent.
     /// - All other providers (openai, anthropic, google, openrouter) require explicit consent.
+    /// Main-actor isolated because it reads a live `SettingsStore` (TASK-692). Background actors take
+    /// the snapshot overload below, which is what they already did.
+    @MainActor
     public static func isConsented(provider: String, settings: SettingsStore) -> Bool {
         if alwaysLocalProviders.contains(provider) { return true }
         if provider == "custom" {
@@ -30,6 +33,7 @@ public enum ConsentHelper {
         return consentGranted
     }
 
+    @MainActor
     public static func setConsent(provider: String, granted: Bool, settings: SettingsStore) {
         let key = "llm_consent_\(provider)"
         // Consent flags are plain settings, never keychain-backed, so this cannot actually throw.

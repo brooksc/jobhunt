@@ -15,6 +15,11 @@ public struct SweepResult: Sendable, Equatable {
     /// Cleared the gate but hit a cap. **Must be surfaced** — a silent cap reads as
     /// "nothing more was found".
     public var truncatedByCap: Int
+    /// Postings whose arrangement the board row didn't state, dropped because the provisional
+    /// hydration cap was reached. Surfaced for the same reason as `truncatedByCap` — the difference
+    /// is that these are picked up on a later sweep rather than holding the board open, because a
+    /// provisional posting is a speculative fetch and must never pin a market pass to one board.
+    public var provisionalTruncatedByCap: Int
     public var rejections: [DiscoveryRejectReason: Int]
     public var error: String?
 
@@ -36,6 +41,7 @@ public struct SweepResult: Sendable, Equatable {
     public init(
         status: SearchSourceStatus, found: Int = 0, passed: Int = 0, ingested: Int = 0,
         hydrationFailures: Int = 0, truncatedByCap: Int = 0,
+        provisionalTruncatedByCap: Int = 0,
         rejections: [DiscoveryRejectReason: Int] = [:], error: String? = nil,
         settled: Int = 0, cancelled: Bool = false
     ) {
@@ -45,6 +51,7 @@ public struct SweepResult: Sendable, Equatable {
         self.ingested = ingested
         self.hydrationFailures = hydrationFailures
         self.truncatedByCap = truncatedByCap
+        self.provisionalTruncatedByCap = provisionalTruncatedByCap
         self.rejections = rejections
         self.error = error
         self.settled = settled
@@ -62,9 +69,24 @@ public struct DiscoveryCaps: Sendable, Equatable {
     public var perSweep: Int
     public var perDay: Int
 
-    public init(perSweep: Int = 50, perDay: Int = 200) {
+    /// How many *provisional* postings — arrangement unstated on the board row, so hydrated on spec
+    /// (TASK-694) — one sweep may fetch. Separate from `perSweep` because these are the speculative
+    /// ones: about half of a real board's rows name a specific city, so without their own ceiling a
+    /// 3,000-posting tenant would become 3,000 GETs the first time it is swept.
+    ///
+    /// 25, for three reasons. It is drawn from what `perSweep` leaves unused, so the total number of
+    /// hydrations in a sweep is *unchanged* and a provisional batch can never crowd out a posting
+    /// that passed outright. Each verdict is ledgered, so a posting is fetched at most once ever and
+    /// the cap only shapes how fast a backlog drains — 25 a sweep clears a 250-row city-named board
+    /// in ten sweeps, against a pipeline whose real yield is around two postings a day. And 25
+    /// sequential GETs is a bounded amount of extra time on one board, which is what stops a market
+    /// pass over thousands of boards turning into an afternoon.
+    public var provisionalPerSweep: Int
+
+    public init(perSweep: Int = 50, perDay: Int = 200, provisionalPerSweep: Int = 25) {
         self.perSweep = perSweep
         self.perDay = perDay
+        self.provisionalPerSweep = provisionalPerSweep
     }
 
     public static let `default` = DiscoveryCaps()
@@ -188,12 +210,25 @@ public struct DiscoverySweeper: Sendable {
         }
 
         // 4. Caps, applied here so they bound hydration requests and not just ingests.
+        //
+        // Postings that passed outright are served first and out of the full allowance; the
+        // provisional ones — hydrated on spec because the board row didn't state an arrangement —
+        // take their own smaller cap out of whatever is left. So the number of requests a sweep
+        // makes is no higher than before, and a board full of city-named rows can't displace a
+        // posting that already matched.
         let allowance = max(0, min(caps.perSweep, remainingDailyBudget))
-        let toIngest = Array(unjudged.prefix(allowance))
-        let truncated = unjudged.count - toIngest.count
+        let definite = unjudged.filter { !gated.provisionalKeys.contains($0.dedupKey) }
+        let provisional = unjudged.filter { gated.provisionalKeys.contains($0.dedupKey) }
+        let toIngest = Array(definite.prefix(allowance))
+        let truncated = definite.count - toIngest.count
+        let provisionalAllowance = max(0, min(caps.provisionalPerSweep, allowance - toIngest.count))
+        let toProbe = Array(provisional.prefix(provisionalAllowance))
+        let provisionalTruncated = provisional.count - toProbe.count
 
         // 5. Hydrate, apply gate B to the body, and ingest what survives.
-        let run = await hydrateAndIngest(toIngest, source: source, criteria: criteria, now: now)
+        let batch = toIngest.map { Pending(posting: $0, provisionalArrangement: false) }
+            + toProbe.map { Pending(posting: $0, provisionalArrangement: true) }
+        let run = await hydrateAndIngest(batch, source: source, criteria: criteria, now: now)
         outcomes.append(contentsOf: run.outcomes)
         let ingested = run.ingested
         let hydrationFailures = run.hydrationFailures
@@ -227,10 +262,18 @@ public struct DiscoverySweeper: Sendable {
             ingested: ingested,
             hydrationFailures: hydrationFailures,
             truncatedByCap: truncated + unprocessed,
+            provisionalTruncatedByCap: provisionalTruncated,
             rejections: rejections,
             settled: settled,
             cancelled: unprocessed > 0
         )
+    }
+
+    /// A posting admitted to the hydration batch, and what the body is being asked.
+    struct Pending {
+        let posting: DiscoveredPosting
+        /// The board row said nothing about the work arrangement, so gate B has to decide it.
+        let provisionalArrangement: Bool
     }
 
     /// Hydrate and ingest a bounded batch, one posting at a time.
@@ -238,7 +281,7 @@ public struct DiscoverySweeper: Sendable {
     /// Sequential on purpose: a burst of parallel requests to one board is what rate limiting is
     /// for, and there are at most `caps.perSweep` of them.
     private func hydrateAndIngest(
-        _ toIngest: [DiscoveredPosting], source: any JobSource, criteria: DiscoveryCriteria, now: Date
+        _ toIngest: [Pending], source: any JobSource, criteria: DiscoveryCriteria, now: Date
     ) async -> (
         outcomes: [(DiscoveredPosting, DiscoveryOutcome, DiscoveryRejectReason?)],
         ingested: Int,
@@ -251,7 +294,8 @@ public struct DiscoverySweeper: Sendable {
         var hydrationFailures = 0
         var rejections: [DiscoveryRejectReason: Int] = [:]
 
-        for (index, posting) in toIngest.enumerated() {
+        for (index, pending) in toIngest.enumerated() {
+            let posting = pending.posting
             if Task.isCancelled {
                 // Postings already admitted to this batch that were never looked at. They are not
                 // truncated by the cap and carry no ledger verdict, so without counting them a
@@ -265,13 +309,18 @@ public struct DiscoverySweeper: Sendable {
                 continue
             }
             // Gate B. The body is the first place a salary band exists — no board list endpoint
-            // publishes one — so the floor is applied here, before the extraction and fit score that
-            // are what a posting actually costs.
+            // publishes one — and, for a provisional posting, the first place the work arrangement
+            // is stated. Both are applied here, before the extraction and fit score that are what a
+            // posting actually costs: nothing between the fetch above and this check reaches the LLM
+            // queue, so an on-site role rejected here has still cost only one GET.
             //
             // Always ledgered, even for a market sweep where gate-A rejections aren't: this verdict
             // cost a network request, and not recording it would pay for the same fetch on every
             // pass, forever.
-            if case let .reject(reason) = criteria.evaluateHydrated(body: body) {
+            let verdict = criteria.evaluateHydrated(
+                body: body, provisionalArrangement: pending.provisionalArrangement
+            )
+            if case let .reject(reason) = verdict {
                 outcomes.append((posting, .rejected, reason))
                 rejections[reason, default: 0] += 1
                 continue
@@ -300,20 +349,26 @@ public struct DiscoverySweeper: Sendable {
 
     /// Gate A over a board's postings. Split out for size, and because it is the one part of a
     /// sweep with no I/O in it at all.
+    /// Survivors are ordered outright passes first, then provisional ones, so that when the cap bites
+    /// it bites the speculative fetches rather than the postings that already matched.
     func applyGate(
         _ postings: [DiscoveredPosting], criteria: DiscoveryCriteria, now: Date
     ) -> (
         survivors: [DiscoveredPosting],
+        provisionalKeys: Set<String>,
         rejections: [DiscoveryRejectReason: Int],
         outcomes: [(DiscoveredPosting, DiscoveryOutcome, DiscoveryRejectReason?)]
     ) {
         var rejections: [DiscoveryRejectReason: Int] = [:]
         var outcomes: [(DiscoveredPosting, DiscoveryOutcome, DiscoveryRejectReason?)] = []
         var survivors: [DiscoveredPosting] = []
+        var provisional: [DiscoveredPosting] = []
         for posting in postings {
             switch criteria.evaluate(posting, now: now) {
             case .pass:
                 survivors.append(posting)
+            case .provisional:
+                provisional.append(posting)
             case let .reject(reason):
                 rejections[reason, default: 0] += 1
                 if ledgerRejections {
@@ -321,7 +376,9 @@ public struct DiscoverySweeper: Sendable {
                 }
             }
         }
-        return (survivors, rejections, outcomes)
+        return (
+            survivors + provisional, Set(provisional.map(\.dedupKey)), rejections, outcomes
+        )
     }
 
     // MARK: - Hydration

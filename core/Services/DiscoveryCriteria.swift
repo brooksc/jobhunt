@@ -14,7 +14,21 @@ public enum DiscoveryRejectReason: String, Sendable, Equatable, CaseIterable {
 
 public enum DiscoveryVerdict: Sendable, Equatable {
     case pass
+    /// Cleared every rule the board row can answer, but the row says nothing about the work
+    /// arrangement — see `passesArrangement`. The posting proceeds to hydration and is judged on its
+    /// body by `evaluateHydrated`, which is where a posting states "remote" when the board row
+    /// didn't. Costs one HTTP GET and no LLM spend.
+    case provisional
     case reject(DiscoveryRejectReason)
+
+    /// Whether the sweep should fetch this posting's body. Both `pass` and `provisional` do — the
+    /// difference is only what the body is then asked.
+    public var proceedsToHydration: Bool {
+        switch self {
+        case .pass, .provisional: true
+        case .reject: false
+        }
+    }
 }
 
 /// Gate A: what a swept posting must clear before jobhunt spends anything on it (TASK-691, M2).
@@ -127,7 +141,8 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
     /// - 1: original.
     /// - 2: one-character keywords anchored, as two- and three-character ones already were.
     /// - 3: work arrangement is a gate rule; the salary floor is re-applied after hydration.
-    static let gateVersion = 3
+    /// - 4: an unstated arrangement no longer rejects on the board row — it defers to the body.
+    static let gateVersion = 4
 
     public var fingerprint: String {
         let encoder = JSONEncoder()
@@ -148,16 +163,16 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
         if !passesLocation(posting) {
             return .reject(.location)
         }
-        if !passesArrangement(posting) {
-            return .reject(.arrangement)
-        }
         if !passesSalary(posting) {
             return .reject(.salary)
         }
         if !passesAge(posting, now: now) {
             return .reject(.stale)
         }
-        return .pass
+        // Last, and never a rejection: an arrangement the row doesn't state is deferred to the body
+        // rather than decided here (TASK-694). The other rules stay in front of it so a posting the
+        // title or location already disqualifies never earns a hydration request.
+        return passesArrangement(posting) ? .pass : .provisional
     }
 
     func passesTitle(_ title: String) -> Bool {
@@ -228,18 +243,22 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
         return Self.titleSignalsRemote(posting.title)
     }
 
-    /// Whether the posting's work arrangement is one the user will take.
+    /// Whether the **board row alone** already shows an arrangement the user will take.
     ///
-    /// **This is the one rule here that rejects on absent data, and it does so deliberately.** Every
-    /// other tier passes what it can't judge, because a false reject is invisible and permanent. That
-    /// reasoning breaks down for arrangement: boards state "Remote" when a role is remote and simply
-    /// name the office when it isn't, so "not stated" is not missing information — it is the on-site
-    /// case, and passing it defeats the filter entirely. Measured on 553 real swept rows: 181 carried
-    /// an explicit remote marker, 99 named only a country, and the remaining 273 named a specific
-    /// city with no remote wording. Passing "unknown" would keep all 273.
+    /// False does not mean rejected. Boards state "Remote" when a role is remote and often just name
+    /// the office when it isn't, so a city-named row is *evidence* of on-site but not proof:
+    /// measured on 553 real swept rows, 181 carried an explicit remote marker, 99 named only a
+    /// country, and 273 named a specific city with no remote wording — and one of the 14 known-remote
+    /// discovered jobs (`Palo Alto, California, United States`, genuinely remote) sat in that last
+    /// group. Rejecting here lost it permanently, because the body was never fetched.
+    ///
+    /// So a false answer here makes the posting `.provisional` instead: it is hydrated, and
+    /// `evaluateHydrated` asks the body, which is where an ATS that puts the office in the location
+    /// field states the arrangement in prose (TASK-694). The on-site rejection still happens — one
+    /// GET later, and still before any extraction or fit score.
     ///
     /// The escape hatch is the user's own: this rule does nothing at all while On-site is ticked, so
-    /// re-ticking it restores the previous behaviour exactly.
+    /// re-ticking it restores the pre-filter behaviour exactly.
     func passesArrangement(_ posting: DiscoveredPosting) -> Bool {
         // Nothing is excluded, so there is nothing to judge. Also the shipped default, which is why
         // an unconfigured install is unaffected by any of this.
@@ -325,11 +344,32 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
     /// Same permissive posture as everywhere else here: text with no parseable band passes, and a
     /// page carrying several bands is judged on the most generous, so a signing bonus quoted beside
     /// the salary can't become the salary.
-    public func evaluateHydrated(body: String) -> DiscoveryVerdict {
+    /// - Parameter provisionalArrangement: the board row said nothing about the arrangement, so the
+    ///   body has to answer it. Checked *first*, because it is the cheaper question and the one this
+    ///   fetch was speculative for.
+    public func evaluateHydrated(
+        body: String, provisionalArrangement: Bool = false
+    ) -> DiscoveryVerdict {
+        if provisionalArrangement, !bodyAllowsArrangement(body) {
+            return .reject(.arrangement)
+        }
         guard minSalaryIfPublished > 0 else { return .pass }
         let ceiling = SalaryNormalizer.salaryBands(body).map(\.max).max()
         guard let ceiling, ceiling >= Self.plausibleAnnualSalary else { return .pass }
         return Int(ceiling) < minSalaryIfPublished ? .reject(.salary) : .pass
+    }
+
+    /// Whether the hydrated body states an arrangement the user will take.
+    ///
+    /// Silence still rejects. A body that says nothing either way, for a posting whose board row
+    /// named a city, is the on-site case — the same reasoning `passesArrangement` documents, applied
+    /// where the evidence actually is. What changed is only that the posting got a second chance to
+    /// speak, and it costs one GET rather than an extraction.
+    func bodyAllowsArrangement(_ body: String) -> Bool {
+        if allowOnsite { return true }
+        if allowRemote, Self.bodySignalsRemote(body) { return true }
+        if allowHybrid, Self.bodySignalsHybrid(body) { return true }
+        return false
     }
 
     /// Below this, a parsed "band" is not an annual salary and must not reject anything.
@@ -489,5 +529,70 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
     /// role the user said they didn't want.
     static func titleSignalsRemote(_ title: String) -> Bool {
         signalsRemote(title)
+    }
+
+    // MARK: - Body markers
+
+    /// Prose, not a field. `remoteMarker` above reads a *title or location string*, where "Remote"
+    /// stands alone as a token and anything following it is a domain compound ("Remote Sensing
+    /// Program Manager"). A description says it in sentences instead — "All roles are remote unless
+    /// otherwise specified", "this is a fully remote position", "Remote Work" as a heading — every
+    /// one of which the strict marker rejects, because the next character is a letter.
+    ///
+    /// Measured over the 1,265 stored jobs that carry both a work arrangement and a body: the strict
+    /// marker alone fires on 48% of the 1,033 remote ones, and misses the exact posting this was
+    /// built for (`Palo Alto, California, United States`, whose body reads "All roles are remote
+    /// unless otherwise specified"). The additions below take that to 69% — while still firing on
+    /// **0 of the 53 on-site bodies**, which is the number that matters: a miss here only leaves a
+    /// posting where the old rule already left it, but a false positive spends an extraction on a
+    /// role the user said they didn't want.
+    ///
+    /// The marker itself is reused rather than restated, so the title/location rule stays the single
+    /// definition of the token form.
+    static let bodyRemoteMarker = remoteMarker
+        + #"|\b(?:fully|100\s*%|entirely|completely|permanently|primarily)[\s-]+remote\b"#
+        + #"|\bremote[\s-]first\b"#
+        + #"|\bremote\s+(?:role|position|job|opportunity|work|working|workforce|employee"#
+        + #"|employees|employment|candidate|candidates|workplace|environment|company|culture"#
+        + #"|team)\b"#
+        + #"|\b(?:is|are|be|been|remain|remains)\s+(?:a\s+|an\s+|fully\s+)?remote\b"#
+        + #"|\bremotely\b"#
+
+    /// The negation has to reach further in prose than it does in a location string.
+    ///
+    /// `remoteNegation` only sees a denial written directly onto the word ("Non-Remote"). Bodies
+    /// deny it at a distance and on both sides — "This role is **not** eligible for **remote** work"
+    /// and "Hybrid and **remote** work options are **not available**" — and those two phrasings alone
+    /// accounted for every one of the 6 on-site false positives the marker additions above otherwise
+    /// produced. Bounded to a clause (`[^.;\n]`) so it can't reach across a sentence and veto an
+    /// unrelated "remote".
+    static let bodyRemoteNegation = remoteNegation
+        + #"|\b(?:not|no|never|cannot)\b[^.;\n]{0,40}?\bremote\b"#
+        + #"|\bremote\b[^.;\n]{0,60}?\#(negatedTail)"#
+
+    /// Same treatment for hybrid, for the user who accepts hybrid but not on-site. Without the
+    /// negation, "Hybrid and remote work options are not available" reads as an offer of hybrid.
+    static let bodyHybridNegation =
+        #"\b(?:not|no|never|cannot)\b[^.;\n]{0,40}?\bhybrid\b"#
+            + #"|\bhybrid\b[^.;\n]{0,60}?\#(negatedTail)"#
+
+    /// The "…and that isn't on offer" half of a trailing denial.
+    static let negatedTail =
+        #"\b(?:not\s+(?:available|offered|an\s+option|eligible|permitted|possible)|unavailable)\b"#
+
+    /// Whether a hydrated description states the role is remote. See `bodyRemoteMarker`.
+    static func bodySignalsRemote(_ body: String) -> Bool {
+        let lower = body.lowercased()
+        guard !lower.isEmpty else { return false }
+        if lower.range(of: bodyRemoteNegation, options: .regularExpression) != nil { return false }
+        return lower.range(of: bodyRemoteMarker, options: .regularExpression) != nil
+    }
+
+    /// Whether a hydrated description states the role is hybrid. See `bodyHybridNegation`.
+    static func bodySignalsHybrid(_ body: String) -> Bool {
+        let lower = body.lowercased()
+        guard !lower.isEmpty else { return false }
+        if lower.range(of: bodyHybridNegation, options: .regularExpression) != nil { return false }
+        return signalsHybrid(lower)
     }
 }

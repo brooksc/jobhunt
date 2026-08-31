@@ -151,6 +151,17 @@ Between the ledger and ingest, each surviving posting gets exactly one body fetc
 The cost is bounded by the ingest cap, not by board size: at most 50 hydration requests per
 sweep. It is also why the cap exists at the ledger boundary rather than after ingest.
 
+**Provisional hydrations** (TASK-694). A posting whose board row names a city but says nothing about
+the work arrangement is not rejected by gate A — it is marked `provisional` and hydrated anyway, then
+judged on its body by `DiscoveryCriteria.evaluateHydrated`, which is where an ATS that puts the
+hiring office in its location field states the arrangement in prose. Measured on the stored corpus
+this recovers the roughly 7% of remote roles the board-row rule alone loses, at the cost of one GET
+each and no LLM spend. They are bounded by `DiscoveryCaps.provisionalPerSweep` (25), drawn from
+whatever the ingest cap leaves unused, so a sweep never makes more requests than it did before and an
+outright match is never displaced by a speculative one. What the cap drops is reported as
+`SweepResult.provisionalTruncatedByCap` — deliberately *not* folded into `truncatedByCap`, which
+holds a board open and would otherwise pin a market pass to the first city-named board it meets.
+
 **Workday needs its own hydration path.** `WorkdayProvider.fetchPosting` returns `nil`
 (`ATSProviders.swift:308`). The CXS list gives `externalPath`; the per-posting body comes from
 `GET /wday/cxs/{tenant}/{site}{externalPath}`.

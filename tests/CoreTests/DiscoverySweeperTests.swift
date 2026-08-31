@@ -731,6 +731,198 @@ final class SweepProgressAccountingTests: XCTestCase {
     }
 }
 
+/// Postings whose board row names a city and says nothing about the arrangement (TASK-694). Gate A
+/// no longer rejects them; they are hydrated on spec, bounded by their own cap, and decided on the
+/// body. The measurements that matter here are *cost*: how many fetches, and that no LLM request
+/// exists before the arrangement verdict.
+final class ProvisionalHydrationTests: XCTestCase {
+    private struct NoOp: LLMProvider {
+        let id: String = "noop"
+        let concurrencyLimit: Int = 1
+        func complete(_: ChatRequest) async throws -> ChatResponse {
+            throw LLMProviderError.httpError(statusCode: 503, body: "no-op")
+        }
+    }
+
+    private struct StubSource: JobSource {
+        let id = "stub"
+        let displayName = "Stub"
+        let configuration = SourceConfiguration.perCompany(slugHint: "x")
+        let postings: [DiscoveredPosting]
+        func fetchRecent(
+            config _: SourceConfig, since _: Date?, session _: URLSession
+        ) async throws -> [DiscoveredPosting] {
+            postings
+        }
+    }
+
+    private func makeSweeper(_ store: BackgroundStore, caps: DiscoveryCaps = .default)
+        -> DiscoverySweeper {
+        let queue = QueueActor(
+            store: store, isPaused: { true }, onSetPaused: { _ in },
+            readExtractionSettings: { ExtractionSettings(
+                llmModel: "", preferredLocations: "", locationFilterEnabled: false,
+                locationAllowRemote: true, locationAllowHybrid: true, locationAllowOnsite: true
+            ) },
+            providerFactory: { NoOp() }
+        )
+        return DiscoverySweeper(
+            store: store, jobService: JobService(store: store, queue: queue),
+            session: MockURLProtocol.makeSession(), caps: caps
+        )
+    }
+
+    /// The board row that started this: a specific city, no remote wording anywhere in it.
+    private func cityRow(_ index: Int, body: String) -> DiscoveredPosting {
+        DiscoveredPosting(
+            dedupKey: "gh:\(index)",
+            url: "https://boards.greenhouse.io/acme/jobs/\(index)",
+            title: "Senior Program Manager", company: "Acme",
+            locationRaw: "Palo Alto, California, United States",
+            descriptionPlain: body, sourceID: "stub"
+        )
+    }
+
+    private let remoteBody = """
+    Remote Work
+
+    All roles are remote unless otherwise specified in the job description.
+    """
+    private let onsiteBody = """
+    This role requires working on site 5 days per week. Hybrid and remote work options are not
+    available.
+    """
+
+    private var remoteOnly: DiscoveryCriteria {
+        DiscoveryCriteria(
+            titleIncludeAny: ["program manager"], locationAllow: ["United States"],
+            allowRemote: true, allowHybrid: false, allowOnsite: false
+        )
+    }
+
+    override func setUp() {
+        super.setUp()
+        MockURLProtocol.reset()
+    }
+
+    /// The recovery this exists for. Before TASK-694 this row was rejected on the board string and
+    /// its body was never fetched, so nothing downstream could get it back.
+    func testACityRowWhoseBodySaysRemoteIsIngested() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let result = await makeSweeper(store).sweep(
+            source: StubSource(postings: [cityRow(1, body: remoteBody)]),
+            config: SourceConfig(slug: "acme"), criteria: remoteOnly
+        )
+        XCTAssertEqual(result.ingested, 1)
+        XCTAssertNil(result.rejections[.arrangement])
+        let jobs: [Job] = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertEqual(jobs.count, 1)
+    }
+
+    /// The guarantee that must not soften. An on-site posting is still refused, and — the part that
+    /// makes the trade worth making — no LLM request exists for it. The fetch is the whole cost.
+    func testAnOnsitePostingIsRejectedWithoutAnyLLMSpend() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let result = await makeSweeper(store).sweep(
+            source: StubSource(postings: [cityRow(1, body: onsiteBody)]),
+            config: SourceConfig(slug: "acme"), criteria: remoteOnly
+        )
+        XCTAssertEqual(result.ingested, 0)
+        XCTAssertEqual(result.rejections[.arrangement], 1)
+        let jobs: [Job] = try await store.fetch(FetchDescriptor<Job>())
+        XCTAssertTrue(jobs.isEmpty)
+        let requests: [LLMRequest] = try await store.fetch(FetchDescriptor<LLMRequest>())
+        XCTAssertTrue(requests.isEmpty, "the arrangement verdict must land before any extraction")
+    }
+
+    /// A board of city-named rows must not become a board's worth of fetches. Everything past the
+    /// provisional cap is left for a later sweep, and reported rather than swallowed.
+    func testProvisionalHydrationsAreCappedAndReported() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let sweeper = makeSweeper(
+            store, caps: DiscoveryCaps(perSweep: 50, perDay: 200, provisionalPerSweep: 3)
+        )
+        let postings = (1 ... 10).map { cityRow($0, body: remoteBody) }
+
+        let result = await sweeper.sweep(
+            source: StubSource(postings: postings), config: SourceConfig(slug: "acme"),
+            criteria: remoteOnly
+        )
+        XCTAssertEqual(result.ingested, 3, "only the cap's worth were fetched")
+        XCTAssertEqual(result.provisionalTruncatedByCap, 7)
+        XCTAssertEqual(
+            result.truncatedByCap, 0,
+            "a speculative fetch must not hold the board open and pin a market pass to it"
+        )
+    }
+
+    /// The provisional cap is drawn from what the ingest cap leaves unused, so a city-named board can
+    /// never displace a posting that matched outright — and a sweep makes no more requests than it
+    /// did before this existed.
+    func testOutrightPassesAreServedBeforeProvisionalOnes() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let sweeper = makeSweeper(
+            store, caps: DiscoveryCaps(perSweep: 2, perDay: 200, provisionalPerSweep: 25)
+        )
+        let remoteRows = (1 ... 2).map { index in
+            DiscoveredPosting(
+                dedupKey: "gh:remote-\(index)",
+                url: "https://boards.greenhouse.io/acme/jobs/r\(index)",
+                title: "Senior Program Manager", company: "Acme",
+                locationRaw: "Remote, United States",
+                descriptionPlain: "A real job description.", sourceID: "stub"
+            )
+        }
+        let result = await sweeper.sweep(
+            source: StubSource(postings: remoteRows + (1 ... 5).map { cityRow($0, body: remoteBody) }),
+            config: SourceConfig(slug: "acme"), criteria: remoteOnly
+        )
+        XCTAssertEqual(result.ingested, 2)
+        XCTAssertEqual(result.provisionalTruncatedByCap, 5, "the allowance was spent on the passes")
+        let captures: [Capture] = try await store.fetch(FetchDescriptor<Capture>())
+        XCTAssertEqual(
+            Set(captures.map(\.url)),
+            Set(remoteRows.map(\.url)),
+            "the two outright matches, not the speculative ones"
+        )
+    }
+
+    /// A rejected provisional posting is written to the ledger, so its fetch is paid for once and
+    /// never again — the same rule the salary floor follows for the same reason.
+    func testARejectedProvisionalPostingIsNotFetchedTwice() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let sweeper = makeSweeper(store)
+        let source = StubSource(postings: [cityRow(1, body: onsiteBody)])
+
+        _ = await sweeper.sweep(
+            source: source, config: SourceConfig(slug: "acme"), criteria: remoteOnly
+        )
+        let second = await sweeper.sweep(
+            source: source, config: SourceConfig(slug: "acme"), criteria: remoteOnly
+        )
+        XCTAssertNil(
+            second.rejections[.arrangement],
+            "the second visit never got as far as the body — the ledger settled it"
+        )
+    }
+
+    /// An install that accepts on-site produces no provisional postings at all, so none of this
+    /// costs it anything.
+    func testAcceptingOnsiteMakesNothingProvisional() async throws {
+        let store = try BackgroundStore(modelContainer: ModelContainerFactory.inMemory())
+        let sweeper = makeSweeper(
+            store, caps: DiscoveryCaps(perSweep: 50, perDay: 200, provisionalPerSweep: 0)
+        )
+        let result = await sweeper.sweep(
+            source: StubSource(postings: [cityRow(1, body: onsiteBody)]),
+            config: SourceConfig(slug: "acme"),
+            criteria: DiscoveryCriteria(titleIncludeAny: ["program manager"])
+        )
+        XCTAssertEqual(result.ingested, 1, "a provisional cap of zero must not touch a normal pass")
+        XCTAssertEqual(result.provisionalTruncatedByCap, 0)
+    }
+}
+
 /// Identical postings under two URLs, flagged at ingest rather than left for the review screen
 /// (TASK-704). Found on live data: Axon listed one role twice on its Greenhouse board — different
 /// posting ids, byte-identical descriptions — and both were filed as New.

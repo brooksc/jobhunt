@@ -324,7 +324,10 @@ struct SearchSettingsTab: View {
         let criteria = DiscoverySettings.criteria(from: settings)
         guard let rows = try? await appServices.backgroundStore.retainedRawPostings() else { return }
         previewTotal = rows.count
-        previewPassed = rows.count { criteria.evaluate($0) == .pass }
+        // Provisional rows count as passed: gate A no longer turns them away, it defers them to
+        // their body. Counting only outright passes would show the user a number the sweep doesn't
+        // use.
+        previewPassed = rows.count { criteria.evaluate($0).proceedsToHydration }
     }
 
     private func refreshHistogram() async {

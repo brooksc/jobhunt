@@ -265,7 +265,21 @@ All figures from the live store, 2026-08-31. "Corpus" means the 1,111 jobs with 
 
 Mean 53.0, median 54, full 0–100 range used.
 
-**This is a genuinely good distribution, and a large improvement on the one the problem statement recorded on 2026-08-02** (14% under 10, 25% at 90+, hollow middle, median 66). The normalised penalty did what it was designed to do: the U-shape is gone and the corpus is close to flat across the deciles. Two of the problem statement's success criteria in §8 are now met — cap occupancy is zero (the legacy 60-cap no longer fires on any row) and the zero pile is down from 14% to 8.2%.
+**Read this histogram as two populations, not one.** It blends every rubric version the store holds, and the versions disagree by a lot (TASK-711, measured the same day):
+
+| version | n | mean | median | p25 | p75 |
+|---|---|---|---|---|---|
+| v1 | 977 | 68.9 | 74.0 | 56 | 89 |
+| v2 | 12 | 94.7 | 96.0 | 94 | 97 |
+| v3 | 823 | 50.0 | 50.0 | 31 | 70 |
+
+(Counted over job mirrors. Recounting instead over all 1,878 succeeded `JobFitScore` rows gives 994 v1 at mean 67.7, 12 v2 at 94.7, 872 v3 at 47.2, and 3 rows with no version at all — a wider gap on a wider base, same conclusion.)
+
+A 19-point mean gap, with v1 still 54% of the corpus. So the corpus-wide flatness is partly an artifact of laying a generous rubric over a harsh one, and the mean of 53 is not a property of the *current* scorer at all — it is the average of two incomparable measurements. **The corpus-wide figures above cannot support a calibration claim.**
+
+**The current rubric does discriminate, though — v3 alone is well spread**: median 50, quartiles 31 and 70, across the full range. Judged on v3 only, this is a large improvement on the distribution the problem statement recorded on 2026-08-02 (14% under 10, 25% at 90+, hollow middle, median 66): the normalised penalty removed the U-shape, cap occupancy is zero (the legacy 60-cap no longer fires on any row), and the zero pile is down from 14% to 8.2%.
+
+Rubric version is now a queryable column (`JobFitScore.assessmentPromptVersion`), so this split can be measured rather than reconstructed: `JobhuntMigrator --fit-version-histogram` reports it, and `--rescore-stale-fit-scores` clears the older populations.
 
 ### Penalty spread
 

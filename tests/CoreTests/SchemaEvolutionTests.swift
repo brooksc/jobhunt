@@ -345,7 +345,8 @@ final class SchemaEvolutionTests: XCTestCase {
         let jfs = JobFitScore()
         ctx.insert(jfs)
         _ = jfs.fitScore; _ = jfs.fitStatus; _ = jfs.fitScoreJSON; _ = jfs.model
-        _ = jfs.scoredAt; _ = jfs.createdAt; _ = jfs.updatedAt; _ = jfs.job; _ = jfs.resume
+        _ = jfs.scoredAt; _ = jfs.assessmentPromptVersion
+        _ = jfs.createdAt; _ = jfs.updatedAt; _ = jfs.job; _ = jfs.resume
 
         // LLMRequest
         let llmReq = LLMRequest()
@@ -538,6 +539,7 @@ final class SchemaEvolutionTests: XCTestCase {
         let _: String? = jfs.fitScoreJSON
         let _: String? = jfs.model
         let _: Date? = jfs.scoredAt
+        let _: Int? = jfs.assessmentPromptVersion
         let _: Date = jfs.createdAt
         let _: Date = jfs.updatedAt
 

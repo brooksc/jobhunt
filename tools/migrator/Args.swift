@@ -20,6 +20,12 @@ enum Mode {
     case recomputeCriteria(storePath: String)
     case repairRemoteTypes(storePath: String)
     case repairCanonicalURLs(storePath: String)
+    case backfillFitVersions(storePath: String)
+    case fitVersionHistogram(storePath: String)
+    /// The only mode that spends money: it re-runs the LLM over every score not on the current
+    /// rubric. `confirmed` is `--yes`; without it the mode prints the work set and the estimated
+    /// cost and stops, because "rescore everything" is a bill, not a cleanup.
+    case rescoreStaleFitScores(storePath: String, confirmed: Bool, limit: Int?)
     case mergeJob(storePath: String, from: Int, into: Int)
 }
 
@@ -53,6 +59,9 @@ private func printUsage() {
     fputs("  JobhuntMigrator --recompute-criteria [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --repair-remote-types [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --repair-canonical-urls [--store <path>]\n", stderr)
+    fputs("  JobhuntMigrator --backfill-fit-versions [--store <path>]\n", stderr)
+    fputs("  JobhuntMigrator --fit-version-histogram [--store <path>]\n", stderr)
+    fputs("  JobhuntMigrator --rescore-stale-fit-scores [--limit <n>] [--yes] [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --merge-job --from <job#> --into <job#> [--store <path>]\n", stderr)
 }
 
@@ -76,6 +85,11 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
     var recomputeCriteria = false
     var repairRemoteTypes = false
     var repairCanonicalURLs = false
+    var backfillFitVersions = false
+    var fitVersionHistogram = false
+    var rescoreStaleFitScores = false
+    var confirmed = false
+    var limit: Int?
     var mergeJob = false
     var mergeFrom: Int?
     var mergeInto: Int?
@@ -114,6 +128,20 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
             repairRemoteTypes = true
         case "--repair-canonical-urls":
             repairCanonicalURLs = true
+        case "--backfill-fit-versions":
+            backfillFitVersions = true
+        case "--fit-version-histogram":
+            fitVersionHistogram = true
+        case "--rescore-stale-fit-scores":
+            rescoreStaleFitScores = true
+        case "--yes":
+            confirmed = true
+        case "--limit":
+            i += 1
+            guard i < args.count, let number = Int(args[i]), number > 0 else {
+                fputs("Error: --limit requires a positive count.\n", stderr); return nil
+            }
+            limit = number
         case "--merge-job":
             mergeJob = true
         case "--from", "--into":
@@ -154,6 +182,9 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
         ("--recompute-criteria", recomputeCriteria),
         ("--repair-remote-types", repairRemoteTypes),
         ("--repair-canonical-urls", repairCanonicalURLs),
+        ("--backfill-fit-versions", backfillFitVersions),
+        ("--fit-version-histogram", fitVersionHistogram),
+        ("--rescore-stale-fit-scores", rescoreStaleFitScores),
         ("--merge-job", mergeJob),
     ]
     let setFlags = modeFlags.filter(\.set).map(\.name)
@@ -168,6 +199,12 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
 
     if !mergeJob, mergeFrom != nil || mergeInto != nil {
         fputs("Error: --from/--into are only valid with --merge-job.\n", stderr); return nil
+    }
+
+    // --yes/--limit only mean anything for the one mode that spends money. Accepting them silently
+    // elsewhere would let `--reclean --yes` read as "confirmed" when nothing asked for confirmation.
+    if !rescoreStaleFitScores, confirmed || limit != nil {
+        fputs("Error: --yes/--limit are only valid with --rescore-stale-fit-scores.\n", stderr); return nil
     }
 
     if reclean { return .reclean(storePath: storePath) }
@@ -185,6 +222,11 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
     if recomputeCriteria { return .recomputeCriteria(storePath: storePath) }
     if repairRemoteTypes { return .repairRemoteTypes(storePath: storePath) }
     if repairCanonicalURLs { return .repairCanonicalURLs(storePath: storePath) }
+    if backfillFitVersions { return .backfillFitVersions(storePath: storePath) }
+    if fitVersionHistogram { return .fitVersionHistogram(storePath: storePath) }
+    if rescoreStaleFitScores {
+        return .rescoreStaleFitScores(storePath: storePath, confirmed: confirmed, limit: limit)
+    }
     if mergeJob { return mergeJobMode(storePath: storePath, from: mergeFrom, into: mergeInto) }
 
     fputs("Error: no operation flag given.\n", stderr)

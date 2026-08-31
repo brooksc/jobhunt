@@ -542,6 +542,19 @@ public enum FitScorer {
         return computeScore(dimensions: dimensionScores, gaps: gaps, counts: counts)
     }
 
+    /// Read the rubric version out of a stored fit analysis.
+    ///
+    /// Returns nil when the JSON is missing, unparseable, or carries no `assessment_prompt_version` —
+    /// all three mean *unknown*, which is what the optional column on `JobFitScore` records. Note the
+    /// deliberate difference from `FitScoreDetailRecord`, which substitutes 1 for a missing key: that
+    /// is a display fallback, whereas the stored column must not invent a version a row never had.
+    public static func promptVersion(inJSON json: String?) -> Int? {
+        guard let json, let data = json.data(using: .utf8),
+              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        return dict["assessment_prompt_version"] as? Int
+    }
+
     /// Encode a `FitScoreResult` to a JSON string for storage in `Job.fitScoreJSON`
     /// or `JobFitScore.fitScoreJSON`.
     public static func encode(_ result: FitScoreResult) -> String? {

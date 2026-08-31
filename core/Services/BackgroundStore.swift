@@ -544,7 +544,9 @@ public actor BackgroundStore {
         try modelContext.save()
     }
 
-    private func applyFitScore(
+    /// Not private: `BackgroundStore+FitVersions` commits a migrator rescore through the same path,
+    /// so a CLI-written score gets the identical résumé-hash, version and mirror bookkeeping.
+    func applyFitScore(
         jobID: String,
         resumeID: String,
         overall: Int,
@@ -578,6 +580,10 @@ public actor BackgroundStore {
         // Record WHICH résumé text produced this score, so a later edit can mark it stale instead of
         // deleting it.
         record.resumeTextHash = resume.map { ResumeFingerprint.hash($0.text) }
+        // Mirror the rubric version out of the blob so it can be selected on. Read from the JSON
+        // rather than stamping the current constant: a recompute preserves the version it was
+        // originally assessed under, and the column must agree with the analysis it labels.
+        record.assessmentPromptVersion = FitScorer.promptVersion(inJSON: fitJSON)
 
         // Job-level mirror reflects the BEST score across all resumes (Electron parity).
         recomputeJobFitSummary(job)
@@ -1107,6 +1113,7 @@ public actor BackgroundStore {
                 record.fitScoreJSON = merged
             }
             record.fitScore = result.overall
+            record.assessmentPromptVersion = FitScorer.promptVersion(inJSON: record.fitScoreJSON)
             record.updatedAt = Date()
             updated += 1
             if let job = record.job {

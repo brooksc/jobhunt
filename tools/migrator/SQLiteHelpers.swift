@@ -1,24 +1,14 @@
 import Foundation
 import SQLite3
 
+// Raw-SQLite helpers for repairs that must run BEFORE the store is opened via SwiftData —
+// today only `RepairJobNumbers.swift` (a store with duplicate `jobNumber`s can't be opened at all).
+
 // MARK: - Types
 
 typealias DBHandle = OpaquePointer
 
 // MARK: - DB Access
-
-func openReadOnly(_ path: String) -> DBHandle? {
-    var db: DBHandle?
-    let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX
-    let rc = sqlite3_open_v2(path, &db, flags, nil)
-    if rc != SQLITE_OK {
-        let msg = db.flatMap { String(cString: sqlite3_errmsg($0)) } ?? "unknown error"
-        fputs("Error: cannot open '\(path)': \(msg)\n", stderr)
-        sqlite3_close(db)
-        return nil
-    }
-    return db
-}
 
 func tableExists(_ db: DBHandle, _ table: String) -> Bool {
     let sql = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?"
@@ -64,62 +54,4 @@ func queryRows(_ db: DBHandle, _ sql: String) -> [[String: String?]] {
         rows.append(row)
     }
     return rows
-}
-
-// MARK: - Date Parsing
-
-// Built per call rather than held as globals. `ISO8601DateFormatter` is a class with mutable
-// `formatOptions`, so a shared instance is not `Sendable` — a strict-concurrency warning today and an
-// error under the Swift 6 language mode. `nonisolated(unsafe)` would silence it by assertion; this
-// removes the shared state instead. The migrator is a one-shot CLI parsing a few thousand rows, so
-// allocating a formatter per parse is not worth measuring.
-private func makeISO(fractionalSeconds: Bool) -> ISO8601DateFormatter {
-    let f = ISO8601DateFormatter()
-    f.formatOptions = fractionalSeconds
-        ? [.withInternetDateTime, .withFractionalSeconds]
-        : [.withInternetDateTime]
-    return f
-}
-
-func parseDate(_ s: String?) -> Date? {
-    guard let s else { return nil }
-    return makeISO(fractionalSeconds: true).date(from: s) ?? makeISO(fractionalSeconds: false).date(from: s)
-}
-
-func parseDateOrNow(_ s: String?) -> Date {
-    parseDate(s) ?? Date()
-}
-
-// MARK: - Row Field Helpers
-
-extension [String: String?] {
-    /// Returns the value, flattening the double-optional from subscripting [Key: Value?]
-    func str(_ key: String) -> String? {
-        guard let outer = self[key] else { return nil }
-        return outer
-    }
-
-    func req(_ key: String, fallback: String = "") -> String {
-        str(key) ?? fallback
-    }
-
-    func int(_ key: String) -> Int? {
-        str(key).flatMap(Int.init)
-    }
-
-    func dbl(_ key: String) -> Double? {
-        str(key).flatMap(Double.init)
-    }
-
-    func bool(_ key: String) -> Bool {
-        str(key).flatMap(Int.init).map { $0 != 0 } ?? false
-    }
-
-    func date(_ key: String) -> Date? {
-        parseDate(str(key))
-    }
-
-    func dateOrNow(_ key: String) -> Date {
-        parseDateOrNow(str(key))
-    }
 }

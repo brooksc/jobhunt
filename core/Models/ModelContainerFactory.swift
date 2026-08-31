@@ -19,10 +19,11 @@ import SwiftData
 //
 // Unique fields today: `Job.jobNumber`, `Capture.rawHash`, `Site.origin`, `Setting.key`,
 // `DuplicateDecision.cleanedHash`, `SavedSearch.id` (TASK-522). Only `jobNumber` has — and needs — a
-// repair: app-created numbers can't collide (atomic ingest under the single-writer store), but the
-// Electron import CAN carry duplicate `job_number`s, which `--repair-duplicate-job-numbers` recovers.
+// repair: app-created numbers can't collide (atomic ingest under the single-writer store), but stores
+// carrying rows imported from the retired app CAN hold duplicate job numbers, which
+// `--repair-duplicate-job-numbers` recovers.
 // The rest are unique at their source or by construction: `rawHash`/`cleanedHash` are the content-dedup
-// keys the source already enforces (so import can't produce collisions — and blind dedup would orphan
+// keys the source already enforces (so ingest can't produce collisions — and blind dedup would orphan
 // jobs referencing a dropped capture); `origin`/`key` are natural identities; `SavedSearch.id` is a
 // UUID. A duplicate on any of those could only come from an externally-modified store and fails
 // *closed* (recovery UI). If that ever happens for a real store, add a targeted RepairJobNumbers-style

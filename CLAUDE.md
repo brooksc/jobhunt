@@ -369,18 +369,17 @@ JobhuntMigrator --reclean                      # recompute every capture's clean
 JobhuntMigrator --backfill-models              # fill LLMRequest.model on old finished rows
 JobhuntMigrator --prune-orphan-fit-scores      # delete resume-less fit scores, recompute job mirrors
 JobhuntMigrator --prune-orphan-attempts        # delete LLMRequestAttempts whose request is gone
+JobhuntMigrator --prune-orphan-referral-attempts # delete referral attempts whose job is gone
 JobhuntMigrator --recompute-fit-mirrors        # recompute every job's denormalized fit mirror
 JobhuntMigrator --repair-salaries              # fix stored bands the old regex invented (never fills in a missing one)
 JobhuntMigrator --detect-duplicates            # flag same-cleaned-hash duplicates across URLs
 JobhuntMigrator --unmark-heuristic-duplicates  # undo duplicate flags set by the old heuristic
-JobhuntMigrator --prune-orphan-referral-attempts # delete ReferralAttempts whose job is gone
 JobhuntMigrator --recheck-evidence             # re-run the evidence check over stored fit analyses
 JobhuntMigrator --normalize-seniority          # normalize legacy seniority values
 JobhuntMigrator --recompute-criteria           # recompute each job's location/remote criteria verdict
 JobhuntMigrator --repair-canonical-urls        # recompute stored canonical URLs
 JobhuntMigrator --repair-duplicate-job-numbers # renumber duplicate jobNumbers (raw SQLite, pre-open)
 JobhuntMigrator --merge-job --from 761 --into 725 # fold a duplicate job into the keeper, delete it
-# --migrate / --patch / --patch-fit-scores / --verify / --repair-fit-scores: original SQLite→SwiftData import
 ```
 
 **Before running any of these against prod data: quit the app, then back up the store *with its

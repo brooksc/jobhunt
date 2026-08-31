@@ -259,7 +259,7 @@ final class AppServices {
                 guard !availabilityBacklog.isDrained else { continue }
 
                 let batch = availabilityBacklog.nextBatch(limit: AvailabilityBacklog.batchSize)
-                guard let jobs = try? await drainStore.jobs(withIDs: batch), !jobs.isEmpty else {
+                guard let jobs = try? await drainStore.availabilityInputs(withIDs: batch), !jobs.isEmpty else {
                     // The rows are gone (deleted, or the store moved under us). Nothing to retry, and
                     // spinning on them forever would keep the drain permanently unfinished.
                     // Nothing to retry for these — drop just them, not the rest of the backlog.

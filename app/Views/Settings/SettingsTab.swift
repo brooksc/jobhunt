@@ -438,7 +438,10 @@ struct JobsSettingsTab: View {
         availabilityCheckMessage = nil
         defer { isRunningAvailabilityCheck = false }
 
-        let eligible = allJobs.filter { $0.status == .pursuing || $0.status == .applied }
+        // Detached on the main actor, which owns these @Query rows — see AvailabilityChecker.JobInput.
+        let eligible = allJobs
+            .filter { $0.status == .pursuing || $0.status == .applied }
+            .map { AvailabilityChecker.JobInput(job: $0) }
         guard !eligible.isEmpty else {
             availabilityCheckMessage = "No Interested or Applied jobs to check"
             return

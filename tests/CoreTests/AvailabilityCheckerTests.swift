@@ -4,6 +4,12 @@ import SwiftData
 import XCTest
 @testable import JobhuntCore
 
+/// Detach jobs for the availability API, which no longer takes live `@Model` rows (TASK-705).
+/// Safe to call anywhere in tests: these contexts are single-threaded and own their models.
+func availabilityInputs(_ jobs: [Job]) -> [AvailabilityChecker.JobInput] {
+    jobs.map(AvailabilityChecker.JobInput.init(job:))
+}
+
 // MARK: - MockURLProtocol
 
 /// URLProtocol subclass for mocking HTTP responses in tests.
@@ -876,7 +882,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
                 )
             })
         ]
-        let gone = await AvailabilityChecker.findGoneJobs([job], session: session).gone
+        let gone = await AvailabilityChecker.findGoneJobs(availabilityInputs([job]), session: session).gone
         XCTAssertTrue(gone.isEmpty, "Greenhouse 200 must override the gone-looking career HTML")
     }
 
@@ -896,7 +902,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
                 makeResponse(url: "https://boards-api.greenhouse.io/x", status: 404, body: "{}")
             })
         ]
-        let gone = await AvailabilityChecker.findGoneJobs([job], session: session).gone
+        let gone = await AvailabilityChecker.findGoneJobs(availabilityInputs([job]), session: session).gone
         XCTAssertEqual(gone.count, 1, "Greenhouse 404 must fall through to the gone HTML result")
     }
 
@@ -918,7 +924,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         MockURLProtocol.handlers = [("jobs-guest/jobs/api/jobPosting/999", { _ in
             makeResponse(url: "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/999", status: 404, body: "")
         })]
-        let gone = await AvailabilityChecker.findGoneJobs([job], session: session).gone
+        let gone = await AvailabilityChecker.findGoneJobs(availabilityInputs([job]), session: session).gone
         XCTAssertEqual(gone.count, 1, "a removed LinkedIn posting (guest API 404) is caught")
         XCTAssertEqual(gone.first?.jobID, job.id)
     }
@@ -945,7 +951,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
                 )
             })
         ]
-        let gone = await AvailabilityChecker.findGoneJobs([closed], session: session).gone
+        let gone = await AvailabilityChecker.findGoneJobs(availabilityInputs([closed]), session: session).gone
         XCTAssertEqual(gone.count, 1, "closed LinkedIn posting is gone")
         XCTAssertEqual(gone.first?.jobID, closed.id)
     }
@@ -959,7 +965,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         MockURLProtocol.handlers = [("jobs-guest/jobs/api/jobPosting/777", { _ in
             makeResponse(url: "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/777", status: 429, body: "")
         })]
-        let gone = await AvailabilityChecker.findGoneJobs([job], session: session).gone
+        let gone = await AvailabilityChecker.findGoneJobs(availabilityInputs([job]), session: session).gone
         XCTAssertTrue(gone.isEmpty, "a throttled LinkedIn check must not false-expire the job")
     }
 
@@ -1041,7 +1047,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
     }
 
     func testCheckJobsReturnsZeroForNoJobs() async {
-        let result = await AvailabilityChecker.checkJobs([], store: store, session: session)
+        let result = await AvailabilityChecker.checkJobs(availabilityInputs([]), store: store, session: session)
         XCTAssertEqual(result.checked, 0)
         XCTAssertEqual(result.unavailable, 0)
         XCTAssertEqual(result.marked, 0)
@@ -1059,7 +1065,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
             status: .closed
         )
 
-        let result = await AvailabilityChecker.checkJobs([archived, notAvail], store: store, session: session)
+        let result = await AvailabilityChecker.checkJobs(availabilityInputs([archived, notAvail]), store: store, session: session)
         XCTAssertEqual(result.checked, 0) // All skipped.
     }
 
@@ -1088,7 +1094,7 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         ) { _ in receivedNotification = true }
         defer { NotificationCenter.default.removeObserver(obs) }
 
-        let result = await AvailabilityChecker.checkJobs([goodJob, goneJob], store: store, session: session)
+        let result = await AvailabilityChecker.checkJobs(availabilityInputs([goodJob, goneJob]), store: store, session: session)
         XCTAssertEqual(result.checked, 2)
         XCTAssertEqual(result.unavailable, 1)
         XCTAssertEqual(result.marked, 1)
@@ -1479,7 +1485,7 @@ final class AvailabilityScopeEndToEndTests: XCTestCase {
         stub404("archived-1")
 
         let sweep = await AvailabilityChecker.findGoneJobs(
-            [archived], restrictToStatuses: nil, session: session
+            availabilityInputs([archived]), restrictToStatuses: nil, session: session
         )
         XCTAssertEqual(sweep.gone.map(\.jobID), [archived.id], "an archived posting must be checkable on demand")
         XCTAssertEqual(sweep.checkedCount, 1)
@@ -1490,13 +1496,13 @@ final class AvailabilityScopeEndToEndTests: XCTestCase {
         let archived = try job(.archived, url: "https://jobs.example.com/live-1")
 
         let unrestricted = await AvailabilityChecker.findGoneJobs(
-            [archived], restrictToStatuses: nil, session: session
+            availabilityInputs([archived]), restrictToStatuses: nil, session: session
         )
         XCTAssertEqual(unrestricted.checkedCount, 1)
 
         // The scheduled sweep's default excludes it — and then checkedCount must be 0, NOT the
         // input size. This is the exact assertion whose absence let the false all-clear ship.
-        let restricted = await AvailabilityChecker.findGoneJobs([archived], session: session)
+        let restricted = await AvailabilityChecker.findGoneJobs(availabilityInputs([archived]), session: session)
         XCTAssertTrue(restricted.gone.isEmpty)
         XCTAssertEqual(restricted.checkedCount, 0, "nothing was checked, so nothing may be claimed")
     }
@@ -1506,7 +1512,7 @@ final class AvailabilityScopeEndToEndTests: XCTestCase {
         for status in [JobStatus.interview, .offer, .rejected, .new] {
             let row = try job(status, url: "https://jobs.example.com/protected-\(status.rawValue)")
             stub404("protected-\(status.rawValue)")
-            let sweep = await AvailabilityChecker.findGoneJobs([row], session: session)
+            let sweep = await AvailabilityChecker.findGoneJobs(availabilityInputs([row]), session: session)
             XCTAssertTrue(sweep.gone.isEmpty, "\(status) must stay out of the scheduled sweep")
             XCTAssertEqual(sweep.checkedCount, 0)
         }
@@ -1516,7 +1522,7 @@ final class AvailabilityScopeEndToEndTests: XCTestCase {
     func testScheduledSweepStillChecksPursuedJobs() async throws {
         let pursuing = try job(.pursuing, url: "https://jobs.example.com/pursued-1")
         stub404("pursued-1")
-        let sweep = await AvailabilityChecker.findGoneJobs([pursuing], session: session)
+        let sweep = await AvailabilityChecker.findGoneJobs(availabilityInputs([pursuing]), session: session)
         XCTAssertEqual(sweep.gone.map(\.jobID), [pursuing.id])
         XCTAssertEqual(sweep.checkedCount, 1)
     }
@@ -1557,7 +1563,7 @@ final class AvailabilityRunPlanTests: XCTestCase {
             try jobs.append(job(.archived, url: "https://boards.greenhouse.io/acme/jobs/\(i)"))
         }
 
-        let plan = AvailabilityChecker.plan(for: jobs, restrictToStatuses: nil, linkedInOffset: 0)
+        let plan = AvailabilityChecker.plan(for: availabilityInputs(jobs), restrictToStatuses: nil, linkedInOffset: 0)
         XCTAssertEqual(plan.checkCount, 5 + AvailabilityChecker.maxLinkedInPerRun)
         XCTAssertEqual(plan.deferredLinkedInCount, 20 - AvailabilityChecker.maxLinkedInPerRun)
         XCTAssertEqual(
@@ -1573,7 +1579,7 @@ final class AvailabilityRunPlanTests: XCTestCase {
             job(.archived, url: "https://www.linkedin.com/jobs/view/1"),
             job(.archived, url: "https://boards.greenhouse.io/acme/jobs/1")
         ]
-        let plan = AvailabilityChecker.plan(for: jobs, restrictToStatuses: nil, linkedInOffset: 0)
+        let plan = AvailabilityChecker.plan(for: availabilityInputs(jobs), restrictToStatuses: nil, linkedInOffset: 0)
         XCTAssertEqual(plan.checkCount, 2)
         XCTAssertEqual(plan.deferredLinkedInCount, 0)
     }
@@ -1585,7 +1591,7 @@ final class AvailabilityRunPlanTests: XCTestCase {
         context.insert(orphan)
         try context.save()
 
-        let plan = AvailabilityChecker.plan(for: [orphan], restrictToStatuses: nil, linkedInOffset: 0)
+        let plan = AvailabilityChecker.plan(for: availabilityInputs([orphan]), restrictToStatuses: nil, linkedInOffset: 0)
         XCTAssertEqual(plan.checkCount, 0)
         XCTAssertEqual(plan.uncheckable.map(\.reason), [.noURL])
     }
@@ -1598,13 +1604,13 @@ final class AvailabilityRunPlanTests: XCTestCase {
         }
         try jobs.append(job(.archived, url: "https://boards.greenhouse.io/acme/jobs/1"))
 
-        let plan = AvailabilityChecker.plan(for: jobs, restrictToStatuses: nil, linkedInOffset: 0)
+        let plan = AvailabilityChecker.plan(for: availabilityInputs(jobs), restrictToStatuses: nil, linkedInOffset: 0)
         MockURLProtocol.reset()
         let session = MockURLProtocol.makeSession()
 
         var reportedTotal = 0
         _ = await AvailabilityChecker.findGoneJobs(
-            jobs, restrictToStatuses: nil, session: session, linkedInOffset: 0
+            availabilityInputs(jobs), restrictToStatuses: nil, session: session, linkedInOffset: 0
         ) { _, total in
             reportedTotal = total
         }
@@ -1620,7 +1626,8 @@ final class AvailabilityRunPlanTests: XCTestCase {
         }
         MockURLProtocol.reset()
         let sweep = await AvailabilityChecker.findGoneJobs(
-            jobs, restrictToStatuses: nil, session: MockURLProtocol.makeSession(), linkedInOffset: 0
+            availabilityInputs(jobs), restrictToStatuses: nil,
+            session: MockURLProtocol.makeSession(), linkedInOffset: 0
         )
         let deferred = sweep.unverified.filter { $0.reason == .notCheckedThisRun }
         XCTAssertEqual(deferred.count, 15 - AvailabilityChecker.maxLinkedInPerRun)
@@ -1698,7 +1705,9 @@ final class AvailabilityPlanningPerformanceTests: XCTestCase {
             let jobs = try makeJobs(count)
             let checkable = AvailabilityChecker.checkableJobs(from: jobs)
             let summary = AvailabilityChecker.plannedRun(for: checkable, settings: settings())
-            let plan = AvailabilityChecker.plan(for: checkable, restrictToStatuses: nil, linkedInOffset: 0)
+            let plan = AvailabilityChecker.plan(
+                for: availabilityInputs(checkable), restrictToStatuses: nil, linkedInOffset: 0
+            )
 
             XCTAssertEqual(summary.checking, plan.checkCount, "checking count diverged at \(count) jobs")
             XCTAssertEqual(

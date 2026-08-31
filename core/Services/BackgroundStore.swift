@@ -1196,6 +1196,69 @@ public actor BackgroundStore {
     // off-actor is a data race). These helpers do all model access ON the store actor and hand back
     // only Sendable snapshots / scalars, or take ids and do the linking internally.
 
+    /// Jobs due an availability check, detached on-actor (TASK-705).
+    ///
+    /// The whole fetch–filter–detach sequence runs here rather than on the returned array, because
+    /// the age test reads `capture?.capturedAt` and the planner downstream reads `capture?.url`.
+    /// Both are lazy relationship faults, and doing either off-actor races this context — it
+    /// corrupted the heap and aborted the app on launch. See `AvailabilityChecker.JobInput`.
+    public func staleAvailabilityInputs(
+        staleDays: Int,
+        limit: Int?,
+        alwaysCheckStatuses: Set<String> = [],
+        now: Date = Date()
+    ) throws -> [AvailabilityChecker.JobInput] {
+        if let fetchFault {
+            throw fetchFault
+        } // TASK-479 test seam, honoured here as in `fetch` — a fetch failure must propagate rather
+        // than read as "nothing is due", which would advance the interval gate over an unchecked
+        // library.
+        let cutoff = now.addingTimeInterval(-Double(max(1, staleDays)) * 86400)
+
+        // Use capturedAtDenormalized (populated on insert since TASK-216) to sort jobs oldest-first
+        // at the DB level, bounding the query with fetchLimit when a cap is set. Status and date are
+        // still filtered in-memory (enum predicates unsupported; optional date comparison in
+        // predicates requires force-unwrap which SwiftData doesn't support). A fetch failure
+        // propagates (do NOT swallow it as an empty result).
+        var descriptor = FetchDescriptor<Job>(
+            predicate: #Predicate { $0.capturedAtDenormalized != nil },
+            sortBy: [SortDescriptor(\Job.capturedAtDenormalized, order: .forward)]
+        )
+        if let limit {
+            descriptor.fetchLimit = limit * 4
+        } // over-fetch to allow for in-memory status filter
+        let newStyleRows = try modelContext.fetch(descriptor)
+
+        // Legacy rows with nil capturedAtDenormalized: fetch separately, filter via relationship.
+        var legacyDescriptor = FetchDescriptor<Job>(
+            predicate: #Predicate { $0.capturedAtDenormalized == nil },
+            sortBy: [SortDescriptor(\Job.createdAt, order: .forward)]
+        )
+        if let limit {
+            legacyDescriptor.fetchLimit = limit * 2
+        }
+        let legacyRows = try modelContext.fetch(legacyDescriptor)
+
+        let eligible = (newStyleRows + legacyRows).lazy
+            .map { AvailabilityChecker.JobInput(job: $0) }
+            .filter { input in
+                // Skip terminal statuses — incl. `.duplicate`: no point expiring a resolved dup
+                // (TASK-626).
+                guard !input.status.isTerminal else { return false }
+                if alwaysCheckStatuses.contains(input.status.rawValue) {
+                    return true
+                } // checked every run
+                return input.ageDate <= cutoff
+            }
+        guard let limit else { return Array(eligible) }
+        return Array(eligible.prefix(limit))
+    }
+
+    /// Named jobs, detached on-actor — the retry-backlog drain's equivalent of the fetch above.
+    public func availabilityInputs(withIDs ids: [String]) throws -> [AvailabilityChecker.JobInput] {
+        try jobs(withIDs: ids).map { AvailabilityChecker.JobInput(job: $0) }
+    }
+
     /// LLM-queue status tallies, counted on the store actor and returned as Sendable scalars (used by
     /// the diagnostics report — the menu/Help path has no SwiftData `@Query` to count from).
     public func llmQueueCounts() throws -> LLMQueueCounts {

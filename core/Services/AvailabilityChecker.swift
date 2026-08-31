@@ -701,6 +701,63 @@ public enum AvailabilityChecker {
     /// One job's availability-check inputs (Sendable so it crosses the task-group boundary).
     /// Internal rather than private so `RunPlan` — which is what decides the numbers every surface
     /// shows — can hold them and be unit-tested.
+    /// A job's availability-relevant fields, detached from SwiftData (TASK-705).
+    ///
+    /// **The crash this exists to prevent.** `Job` is a `@Model`, so it is not `Sendable` and stays
+    /// bound to the `ModelContext` that fetched it. `BackgroundStore.fetch` returns `sending [T]`,
+    /// which satisfies the compiler by transferring *ownership of the array* — but the elements
+    /// still point back at the store actor's context. Reading a lazy relationship such as
+    /// `job.capture` from another thread therefore faults through that context off-actor, and doing
+    /// it while the actor is materialising rows (`reconcileOrphanedExtractions`) and SwiftUI's
+    /// `@Query` is reading the main context corrupts the heap:
+    ///
+    ///     ___BUG_IN_CLIENT_OF_LIBMALLOC_POINTER_BEING_FREED_WAS_NOT_ALLOCATED
+    ///     Job.capture.getter → JobURLPolicy.availabilityCheckURL → AvailabilityChecker.plan
+    ///
+    /// It aborted on launch, intermittently, because all three had to overlap.
+    ///
+    /// Every field the availability pass needs — including the two URLs behind `capture` — is
+    /// resolved once, on the isolation that owns the model, and nothing downstream touches a live
+    /// row. `BackgroundStore.swift` already stated this rule for the LLM queue (TASK-526); the
+    /// availability path predates it and was never brought across.
+    public struct JobInput: Sendable {
+        public let id: String
+        public let jobNumber: Int?
+        public let company: String?
+        public let title: String?
+        public let status: JobStatus
+        public let applicationURL: String?
+        public let captureURL: String?
+        public let captureCanonicalURL: String?
+        /// `capturedAtDenormalized ?? capture.capturedAt ?? createdAt`, resolved on-actor because the
+        /// middle term is a relationship fault.
+        public let ageDate: Date
+
+        /// **Call only on the isolation that owns `job`** — the store actor for a fetched row, the
+        /// main actor for a `@Query` row. This is the one place a live model is read.
+        public init(job: Job) {
+            id = job.id
+            jobNumber = job.jobNumber
+            company = job.company
+            title = job.title
+            status = job.status
+            applicationURL = job.applicationURL
+            let capture = job.capture
+            captureURL = capture?.url
+            captureCanonicalURL = capture?.canonicalURL
+            ageDate = job.capturedAtDenormalized ?? capture?.capturedAt ?? job.createdAt
+        }
+
+        /// Same precedence as `JobURLPolicy.availabilityCheckURL(job:)`, over detached fields.
+        public var availabilityCheckURL: String? {
+            JobURLPolicy.applicationURL(
+                applicationURL: applicationURL,
+                canonicalURL: captureCanonicalURL,
+                captureURL: captureURL
+            )
+        }
+    }
+
     struct JobSpec {
         let id: String
         let jobNumber: Int?
@@ -957,7 +1014,7 @@ public enum AvailabilityChecker {
     /// different postings. Every caller should use this rather than `findGoneJobs` directly — if the
     /// cursor never advances, the same LinkedIn window is re-checked forever.
     public static func findGoneJobsRotating(
-        _ jobs: [Job],
+        _ jobs: [JobInput],
         settings: SettingsStore,
         restrictToStatuses: Set<JobStatus>? = scheduledSweepStatuses,
         session: URLSession = .shared,
@@ -996,7 +1053,7 @@ public enum AvailabilityChecker {
     ///   available" — a false all-clear, which is the worst answer this function can give. Hence a
     ///   parameter: the scope is now stated by the caller, once.
     public static func findGoneJobs(
-        _ jobs: [Job],
+        _ jobs: [JobInput],
         restrictToStatuses: Set<JobStatus>? = scheduledSweepStatuses,
         session: URLSession = .shared,
         linkedInOffset: Int = 0,
@@ -1155,7 +1212,7 @@ public enum AvailabilityChecker {
     /// jobs are protected from automatic status changes.
     /// Jobs found gone are marked `.expired` and a `jobUnavailable` notification is posted.
     public static func checkJobs(
-        _ jobs: [Job],
+        _ jobs: [JobInput],
         store: BackgroundStore,
         session: URLSession = .shared
     ) async -> (checked: Int, unavailable: Int, marked: Int, failed: Int) {
@@ -1170,7 +1227,7 @@ public enum AvailabilityChecker {
             let url: URL
         }
         let specs: [JobSpec] = eligible.compactMap { job in
-            let urlString = JobURLPolicy.availabilityCheckURL(job: job) ?? ""
+            let urlString = job.availabilityCheckURL ?? ""
             guard !urlString.isEmpty, let url = URL(string: urlString) else { return nil }
             return JobSpec(id: job.id, jobNumber: job.jobNumber, title: job.title ?? "", url: url)
         }
@@ -1293,7 +1350,7 @@ public enum AvailabilityChecker {
     }
 
     static func plan(
-        for jobs: [Job],
+        for jobs: [JobInput],
         restrictToStatuses: Set<JobStatus>? = scheduledSweepStatuses,
         linkedInOffset: Int
     ) -> RunPlan {
@@ -1304,7 +1361,7 @@ public enum AvailabilityChecker {
         // Jobs with no usable URL can't be checked at all — previously dropped silently.
         var uncheckable: [UnverifiedJobResult] = []
         let specs: [JobSpec] = eligible.compactMap { job in
-            let urlString = JobURLPolicy.availabilityCheckURL(job: job) ?? ""
+            let urlString = job.availabilityCheckURL ?? ""
             guard !urlString.isEmpty, let url = URL(string: urlString) else {
                 uncheckable.append(UnverifiedJobResult(
                     jobID: job.id, jobNumber: job.jobNumber, company: job.company,
@@ -1316,7 +1373,7 @@ public enum AvailabilityChecker {
             // The ATS id usually lives in the capture URL (a `?gh_jid=` the canonicalized
             // applicationURL may have dropped), so scan all of the job's known URLs.
             let atsID = ATSRegistry.resolve(
-                urls: [job.capture?.url, job.applicationURL, job.capture?.canonicalURL]
+                urls: [job.captureURL, job.applicationURL, job.captureCanonicalURL]
             )?.atsID
             return JobSpec(
                 id: job.id, jobNumber: job.jobNumber, company: job.company,
@@ -1448,45 +1505,13 @@ public enum AvailabilityChecker {
         staleDays: Int,
         limit: Int?,
         alwaysCheckStatuses: Set<String> = []
-    ) async throws -> [Job] {
-        let cutoff = Date().addingTimeInterval(-Double(max(1, staleDays)) * 86400)
-
-        // Use capturedAtDenormalized (populated on insert since TASK-216) to sort jobs
-        // oldest-first at the DB level, bounding the query with fetchLimit when a cap is set.
-        // Status and date are still filtered in-memory (enum predicates unsupported; optional
-        // date comparison in predicates requires force-unwrap which SwiftData doesn't support).
-        // A fetch failure propagates (do NOT swallow it as an empty result).
-        var descriptor = FetchDescriptor<Job>(
-            predicate: #Predicate { $0.capturedAtDenormalized != nil },
-            sortBy: [SortDescriptor(\Job.capturedAtDenormalized, order: .forward)]
+    ) async throws -> [JobInput] {
+        // Fetch, filter and detach all happen INSIDE the actor. The filter reads
+        // `capture?.capturedAt`, a lazy relationship, so running it on the returned array — as this
+        // did — faults through the store's context off-actor. See `JobInput`.
+        try await store.staleAvailabilityInputs(
+            staleDays: staleDays, limit: limit, alwaysCheckStatuses: alwaysCheckStatuses
         )
-        if let limit {
-            descriptor.fetchLimit = limit * 4
-        } // over-fetch to allow for in-memory status filter
-        let newStyleRows = try await store.fetch(descriptor)
-
-        // Legacy rows with nil capturedAtDenormalized: fetch separately, filter via relationship
-        var legacyDescriptor = FetchDescriptor<Job>(
-            predicate: #Predicate { $0.capturedAtDenormalized == nil },
-            sortBy: [SortDescriptor(\Job.createdAt, order: .forward)]
-        )
-        if let limit {
-            legacyDescriptor.fetchLimit = limit * 2
-        }
-        let legacyRows = try await store.fetch(legacyDescriptor)
-
-        let all = newStyleRows + legacyRows
-        let eligible = all.filter { job in
-            // Skip terminal statuses — incl. `.duplicate`: no point expiring a resolved dup (TASK-626).
-            guard !job.status.isTerminal else { return false }
-            if alwaysCheckStatuses.contains(job.status.rawValue) {
-                return true
-            } // checked every run
-            let ageDate = job.capturedAtDenormalized ?? job.capture?.capturedAt ?? job.createdAt
-            return ageDate <= cutoff
-        }
-        guard let limit else { return eligible }
-        return Array(eligible.prefix(limit))
     }
 
     /// Confirm-first background pass (TASK-595 follow-up): mirrors `maybeRunStaleCheck`'s enabled +
@@ -1511,7 +1536,7 @@ public enum AvailabilityChecker {
         }
 
         let staleDays = max(1, settings.int(forKey: SettingsKey.availabilityStaleDays))
-        let jobs: [Job]
+        let jobs: [JobInput]
         do {
             // TASK-608: uncapped so a large stale backlog drains. TASK-621: always re-check pursued jobs.
             jobs = try await fetchStaleEligibleJobs(

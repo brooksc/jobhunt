@@ -1457,7 +1457,11 @@ struct JobsView: View {
     /// before deciding whether any are worth reconsidering. "Check what I'm looking at" gives the
     /// Archived view that, without adding a background pass over jobs most users have finished with.
     private func runAvailabilityCheck() async {
+        // Detached HERE, on the main actor, which owns these @Query rows. The checker runs off the
+        // main actor and reads `capture` — doing that against live models is what corrupted the heap
+        // and aborted the app on launch. See AvailabilityChecker.JobInput.
         let eligible = availabilityCandidates
+        let inputs = eligible.map { AvailabilityChecker.JobInput(job: $0) }
         guard !eligible.isEmpty else {
             appServices.toastStore.show("No jobs in view have a posting URL to check")
             return
@@ -1490,7 +1494,7 @@ struct JobsView: View {
             // nil: the scope is `availabilityCandidates` — what the user is looking at. The default
             // would re-narrow to Interested/Applied and silently drop everything else.
             await AvailabilityChecker.findGoneJobsRotating(
-                eligible, settings: appServices.settings, restrictToStatuses: nil
+                inputs, settings: appServices.settings, restrictToStatuses: nil
             ) { checked, total in
                 await MainActor.run { model.current = checked; model.total = total }
             }

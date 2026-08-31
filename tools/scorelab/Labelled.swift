@@ -91,7 +91,7 @@ enum LabelledEval {
         }
 
         let candidates: [(String, FitScorer.Exclusions)] = [
-            ("no filters", .none),
+            ("no filters", []),
             ("non-discriminating only (shipped before)", .nonDiscriminating),
             ("+ fragment filter (shipped now)", .all)
         ]

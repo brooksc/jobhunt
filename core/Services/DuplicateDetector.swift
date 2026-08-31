@@ -215,10 +215,18 @@ public struct DuplicateDetector {
         let heuristicPairs = detectDomainDuplicates(snapshots: snapshots, resolvedHashes: resolvedHashes)
         pairs.append(contentsOf: heuristicPairs)
 
-        // Collapse to at most one pair per *candidate* job — a star toward its best canonical — so N
-        // mutually-similar jobs yield N-1 review pairs, not every C(N,2) combination (TASK-620). Highest
-        // confidence wins (ATS id / exact hash before the fuzzy heuristic); ties break deterministically
-        // by job number then id. The unordered-pair guard also prevents A→B and B→A both appearing.
+        return collapseToOnePairPerCandidate(pairs)
+    }
+
+    /// Collapse to at most one pair per *candidate* job.
+    ///
+    /// Split from `duplicateGroups` for length: everything above FINDS candidate pairs by four
+    /// different rules, and this decides which of them the user is actually shown.
+    private func collapseToOnePairPerCandidate(_ pairs: [DuplicatePair]) -> [DuplicatePair] {
+        // A star toward its best canonical, so N mutually-similar jobs yield N-1 review pairs rather
+        // than every C(N,2) combination (TASK-620). Highest confidence wins (ATS id / exact hash
+        // before the fuzzy heuristic); ties break deterministically by job number then id. The
+        // unordered-pair guard also prevents A→B and B→A both appearing.
         let ordered = pairs.sorted { lhs, rhs in
             if lhs.confidence != rhs.confidence {
                 return lhs.confidence > rhs.confidence

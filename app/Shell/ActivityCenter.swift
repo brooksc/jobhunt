@@ -30,7 +30,9 @@ final class ActivityCenter {
         /// Where clicking the bar should take the user, when there is somewhere useful.
         var section: SidebarSection?
 
-        var isDeterminate: Bool { total > 0 }
+        var isDeterminate: Bool {
+            total > 0
+        }
 
         var fraction: Double {
             total > 0 ? min(1, max(0, Double(current) / Double(total))) : 0
@@ -40,11 +42,15 @@ final class ActivityCenter {
     /// Active work, in the order it started. The bar shows the first and counts the rest.
     private(set) var activities: [Activity] = []
 
-    var isBusy: Bool { !activities.isEmpty }
+    var isBusy: Bool {
+        !activities.isEmpty
+    }
 
     /// The one shown in the bar. First-started wins rather than most-recent, so a long sweep isn't
     /// repeatedly displaced by short tasks starting and finishing under it.
-    var primary: Activity? { activities.first }
+    var primary: Activity? {
+        activities.first
+    }
 
     func begin(_ activity: Activity) {
         if let index = activities.firstIndex(where: { $0.id == activity.id }) {

@@ -1065,7 +1065,11 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
             status: .closed
         )
 
-        let result = await AvailabilityChecker.checkJobs(availabilityInputs([archived, notAvail]), store: store, session: session)
+        let result = await AvailabilityChecker.checkJobs(
+            availabilityInputs([archived, notAvail]),
+            store: store,
+            session: session
+        )
         XCTAssertEqual(result.checked, 0) // All skipped.
     }
 
@@ -1094,7 +1098,11 @@ final class AvailabilityCheckerJobsTests: XCTestCase {
         ) { _ in receivedNotification = true }
         defer { NotificationCenter.default.removeObserver(obs) }
 
-        let result = await AvailabilityChecker.checkJobs(availabilityInputs([goodJob, goneJob]), store: store, session: session)
+        let result = await AvailabilityChecker.checkJobs(
+            availabilityInputs([goodJob, goneJob]),
+            store: store,
+            session: session
+        )
         XCTAssertEqual(result.checked, 2)
         XCTAssertEqual(result.unavailable, 1)
         XCTAssertEqual(result.marked, 1)
@@ -1591,7 +1599,11 @@ final class AvailabilityRunPlanTests: XCTestCase {
         context.insert(orphan)
         try context.save()
 
-        let plan = AvailabilityChecker.plan(for: availabilityInputs([orphan]), restrictToStatuses: nil, linkedInOffset: 0)
+        let plan = AvailabilityChecker.plan(
+            for: availabilityInputs([orphan]),
+            restrictToStatuses: nil,
+            linkedInOffset: 0
+        )
         XCTAssertEqual(plan.checkCount, 0)
         XCTAssertEqual(plan.uncheckable.map(\.reason), [.noURL])
     }

@@ -1273,6 +1273,24 @@ public enum AvailabilityChecker {
             }; return false
         })
 
+        let (marked, failed) = await markGone(checkedJobs, store: store)
+        markedCount += marked
+        failedCount += failed
+
+        return (
+            checked: checkedJobs.count, unavailable: unavailableCount,
+            marked: markedCount, failed: failedCount
+        )
+    }
+
+    /// Persist the verdicts a check produced: expire each gone job, record an audit event, and
+    /// announce it. Split from `checkJobs` because gathering verdicts over the network and writing
+    /// them to the store are two phases that share nothing but the array between them.
+    private static func markGone(
+        _ checkedJobs: [CheckedJob], store: BackgroundStore
+    ) async -> (marked: Int, failed: Int) {
+        var markedCount = 0
+        var failedCount = 0
         for checked in checkedJobs {
             if case let .gone(reason) = checked.result {
                 do {
@@ -1311,8 +1329,7 @@ public enum AvailabilityChecker {
                 }
             }
         }
-
-        return (checked: checkedJobs.count, unavailable: unavailableCount, marked: markedCount, failed: failedCount)
+        return (markedCount, failedCount)
     }
 
     // MARK: - Run planning

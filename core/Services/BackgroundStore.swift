@@ -1720,7 +1720,7 @@ public actor BackgroundStore {
         var found: [Job] = []
         for start in stride(from: 0, to: ids.count, by: 500) {
             let chunk = Array(ids[start ..< Swift.min(start + 500, ids.count)])
-            found.append(contentsOf: try modelContext.fetch(
+            try found.append(contentsOf: modelContext.fetch(
                 FetchDescriptor<Job>(predicate: #Predicate { chunk.contains($0.id) })
             ))
         }

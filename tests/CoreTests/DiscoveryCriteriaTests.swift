@@ -384,8 +384,10 @@ final class DiscoveryGateEdgeCaseTests: XCTestCase {
     /// filled in.
     func testAOneCharacterIncludeKeywordDoesNotMatchEverything() {
         let criteria = DiscoveryCriteria(titleIncludeAny: ["c"])
-        XCTAssertEqual(criteria.evaluate(posting(title: "Senior Program Manager")),
-                       .reject(.title))
+        XCTAssertEqual(
+            criteria.evaluate(posting(title: "Senior Program Manager")),
+            .reject(.title)
+        )
         XCTAssertEqual(criteria.evaluate(posting(title: "Engineer, C")), .pass)
     }
 
@@ -457,8 +459,10 @@ final class DiscoveryCriteriaParityGapTests: XCTestCase {
     /// a silent false reject, which is the failure direction this gate exists to avoid.
     func testAPlusKeywordMatchesBothTermsInAnyOrder() {
         let criteria = DiscoveryCriteria(titleIncludeAny: ["director + engineering"])
-        XCTAssertEqual(criteria.evaluate(posting(title: "Senior Director, Platform Engineering")),
-                       .pass)
+        XCTAssertEqual(
+            criteria.evaluate(posting(title: "Senior Director, Platform Engineering")),
+            .pass
+        )
         XCTAssertEqual(criteria.evaluate(posting(title: "Engineering Director")), .pass)
     }
 
@@ -473,8 +477,10 @@ final class DiscoveryCriteriaParityGapTests: XCTestCase {
         let criteria = DiscoveryCriteria(
             titleIncludeAny: ["manager"], titleExcludeAny: ["junior + manager"]
         )
-        XCTAssertEqual(criteria.evaluate(posting(title: "Junior Program Manager")),
-                       .reject(.title))
+        XCTAssertEqual(
+            criteria.evaluate(posting(title: "Junior Program Manager")),
+            .reject(.title)
+        )
         XCTAssertEqual(criteria.evaluate(posting(title: "Senior Program Manager")), .pass)
     }
 
@@ -510,8 +516,10 @@ final class DiscoveryCriteriaParityGapTests: XCTestCase {
         let criteria = DiscoveryCriteria(
             titleIncludeAny: ["program manager"], locationAllow: ["united states"]
         )
-        XCTAssertEqual(criteria.evaluate(posting(location: "\n\t ", url: "https://x.test/j")),
-                       .pass)
+        XCTAssertEqual(
+            criteria.evaluate(posting(location: "\n\t ", url: "https://x.test/j")),
+            .pass
+        )
     }
 
     // MARK: - Invalid salary configuration
@@ -537,7 +545,7 @@ final class DiscoveryCriteriaParityGapTests: XCTestCase {
 /// app. "Remote only" lived in the requirement settings and the gate never read it; the salary floor
 /// lived in the gate but no board list endpoint publishes pay, so it never fired once — 493 postings
 /// judged in a real install produced zero salary rejections.
-final class DiscoveryArrangementAndHydratedSalaryTests: XCTestCase {
+final class DiscoveryArrangementAndPayTests: XCTestCase {
     private func posting(
         title: String = "Senior Program Manager", location: String?
     ) -> DiscoveredPosting {

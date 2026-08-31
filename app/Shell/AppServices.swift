@@ -542,7 +542,7 @@ final class AppServices {
             // difference between "wait until tomorrow" and "nothing is wrong".
             sweepDeclined = DiscoverySettings.remainingDailyBudget(settings) > 0
                 ? "Everything is already searched — the next full pass starts at "
-                    + "\(startHour):00."
+                + "\(startHour):00."
                 : "Today's new-job limit is used up. It resets tomorrow."
         }
         return slice

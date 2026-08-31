@@ -339,7 +339,7 @@ public struct DiscoveryCriteria: Sendable, Hashable, Codable {
     /// boards produce bands like `$2,000 - $2,000` from an equity line or a relocation allowance, and
     /// one of those is enough to discard a $250k role permanently. A rejection needs better evidence
     /// than a number over a thousand.
-    static let plausibleAnnualSalary: Double = 10_000
+    static let plausibleAnnualSalary: Double = 10000
 
     /// Range *overlap*, not a floor: reject only when the published band lies entirely outside the
     /// user's range. A posting whose band straddles the floor is a negotiation, not a mismatch.

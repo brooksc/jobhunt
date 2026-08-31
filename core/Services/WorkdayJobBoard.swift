@@ -374,7 +374,9 @@ public enum WorkdayJobBoard {
         }
 
         /// True when this is not the whole board, for whatever reason.
-        public var isPartial: Bool { stop != .complete }
+        public var isPartial: Bool {
+            stop != .complete
+        }
     }
 
     /// Every posting on the board, paginating the CXS API.

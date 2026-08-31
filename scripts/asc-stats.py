@@ -15,7 +15,11 @@ read from ~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8 and never printed.
 
 Config lives in ~/.appstoreconnect/config.json:
 
-    {"issuer_id": "...", "key_id": "68BGNV3CCC", "app_id": "6782679255", "vendor_number": "..."}
+    {"issuer_id": "...", "key_id": "...", "app_id": "6782679255", "vendor_number": "..."}
+
+The key_id here is a placeholder on purpose. It used to name a real key that belongs to a DIFFERENT
+project sharing this Apple team — copying it yields a bare 403 on `sales`, because Apple checks the
+key's ROLE before the vendor number, so the error reads as a bad vendor number when it isn't.
 
 issuer_id and key_id are on the same Integrations page as the key. vendor_number is only needed
 for `sales`, and is in App Store Connect -> Payments and Financial Reports (top-left, under the

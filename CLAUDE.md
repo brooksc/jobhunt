@@ -95,11 +95,16 @@ core/             JobhuntCore framework (models, services, LLM queue)
 server/swift/     JobhuntServer framework (HTTP server, MCP bridge)
 mcp/swift/        JobhuntMCP command-line tool (MCP stdio bridge)
 tools/migrator/   JobhuntMigrator command-line tool (SQLite schema migration)
+tools/scorelab/   ScoreLab command-line tool (fit-scoring experiments)
+extension/        Shipped MV3 Chrome extension — its npm tests gate CI
 tests/            All test targets
   AppUITests/     XCUITest suite (requires graphical session — see below)
   CoreTests/      Unit tests for JobhuntCore
   ServerTests/    Unit tests for JobhuntServer
   MCPTests/       Unit tests for MCP helpers
+  LLMEval/        Eval target (opt-in — needs real API keys)
+  Support/        Shared test helpers (MockLLM, etc.)
+  fixtures/       Test fixtures reused across targets
 scripts/          Shell utilities
 config/           Entitlements, build config
 ```
@@ -139,20 +144,25 @@ xcodebuild test -project Jobhunt.xcodeproj -scheme Jobhunt-DMG \
 
 ### What it does
 The `AppUITests` suite drives the full macOS app via the Accessibility API. It covers:
-- **ScreenshotTests**: visual tour of every view and settings tab (General/Jobs/AI/Data/Debug)
+- **ScreenshotTests**: visual tour of every view and settings tab (General/Jobs/AI/Data/Search/Debug)
 - **BehaviorUITests**: sidebar nav, keyboard shortcuts (⌘K, ⌘,), filter chip state
 - **WorkflowUITests**: seeded data workflows (archive a job, etc.)
 - **JobsScreenUITests**: Jobs filter sidebar, menu bar commands
 - **MockLLMUITests**: end-to-end LLM Test Connection against a localhost mock
+- **AccessibilityAuditTests**, **KeyboardShortcutsUITests**, **ReferralUITests**, **SavedSearchUITests**
 
 ### Launch arguments (set in `AppUITests.swift:launchApp`)
 ```
 -UIAnimationDragCoefficient 0   Disables animations for speed
+-ApplePersistenceIgnoreState YES  Stops macOS restoring the previous window state
 --ui-test-store                 Uses isolated temp DB (never touches production data)
 --seed-demo-data                Calls DemoSeeder on startup to populate test rows
+--llm-mock-port <port>          Points the app at a localhost mock LLM (drives MockLLMUITests)
+--fixture-db <path>             Opens a prebuilt fixture store instead of an empty one
+--seed-fixture-output <path>    Writes the seeded store out, for building new fixtures
 ```
 
-The app responds to these in `app/JobhuntApp.swift` (`LaunchPlan.parse(...)`, ~line 41).
+Parsed by `LaunchPlan.parse` (`core/App/LaunchMode.swift:86`), called from `app/JobhuntApp.swift:114`.
 
 ### Running locally
 ```bash
@@ -187,7 +197,7 @@ tart clone ghcr.io/cirruslabs/macos-sequoia-xcode:latest jobhunt-uitest-env
 **Full VM details:** See `docs/vm-testing.md` — covers architecture, all CLI flags, debugging failures, screenshot retrieval, incremental builds, and comparison with CI.
 
 ### CI (GitHub Actions)
-Defined in `.github/workflows/ui-tests.yml`. Runs weekly (Monday 8am UTC) or on manual dispatch against `macos-latest` runner. Results uploaded as `.xcresult` artifact (7-day retention).
+Defined in `.github/workflows/ui-tests.yml`. Runs weekly (Monday 8am UTC) or on manual dispatch against the `macos-15` runner. Results uploaded as `.xcresult` artifact (7-day retention).
 
 ## Project.swift (Tuist)
 
@@ -362,6 +372,12 @@ JobhuntMigrator --prune-orphan-attempts        # delete LLMRequestAttempts whose
 JobhuntMigrator --recompute-fit-mirrors        # recompute every job's denormalized fit mirror
 JobhuntMigrator --repair-salaries              # fix stored bands the old regex invented (never fills in a missing one)
 JobhuntMigrator --detect-duplicates            # flag same-cleaned-hash duplicates across URLs
+JobhuntMigrator --unmark-heuristic-duplicates  # undo duplicate flags set by the old heuristic
+JobhuntMigrator --prune-orphan-referral-attempts # delete ReferralAttempts whose job is gone
+JobhuntMigrator --recheck-evidence             # re-run the evidence check over stored fit analyses
+JobhuntMigrator --normalize-seniority          # normalize legacy seniority values
+JobhuntMigrator --recompute-criteria           # recompute each job's location/remote criteria verdict
+JobhuntMigrator --repair-canonical-urls        # recompute stored canonical URLs
 JobhuntMigrator --repair-duplicate-job-numbers # renumber duplicate jobNumbers (raw SQLite, pre-open)
 JobhuntMigrator --merge-job --from 761 --into 725 # fold a duplicate job into the keeper, delete it
 # --migrate / --patch / --patch-fit-scores / --verify / --repair-fit-scores: original SQLite→SwiftData import

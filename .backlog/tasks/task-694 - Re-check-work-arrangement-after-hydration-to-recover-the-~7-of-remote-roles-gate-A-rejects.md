@@ -3,11 +3,19 @@ id: TASK-694
 title: >-
   Re-check work arrangement after hydration, to recover the ~7% of remote roles
   gate A rejects
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-31 18:00'
+updated_date: '2026-08-31 23:04'
 labels: []
 dependencies: []
+modified_files:
+  - core/Services/DiscoveryCriteria.swift
+  - core/Services/DiscoverySweeper.swift
+  - app/Views/Settings/SearchSettingsTab.swift
+  - tests/CoreTests/DiscoveryCriteriaTests.swift
+  - tests/CoreTests/DiscoverySweeperTests.swift
+  - docs/auto-search-spec.md
 priority: high
 type: enhancement
 ordinal: 68000
@@ -39,9 +47,21 @@ Related: [[TASK-693]] — the board row being better evidence than the descripti
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A posting whose board location names a city but whose body says 'Remote' is ingested rather than rejected
-- [ ] #2 A posting that is genuinely on-site is still rejected before any LLM spend
-- [ ] #3 Provisional hydrations are capped per sweep, separately from the ingest cap, so a large city-named board cannot cause thousands of fetches
-- [ ] #4 DiscoveryCriteria.gateVersion is bumped so postings rejected under the strict rule are re-judged
-- [ ] #5 The measured false-reject rate on the 14-job remote sample drops to zero
+- [x] #1 A posting whose board location names a city but whose body says 'Remote' is ingested rather than rejected
+- [x] #2 A posting that is genuinely on-site is still rejected before any LLM spend
+- [x] #3 Provisional hydrations are capped per sweep, separately from the ingest cap, so a large city-named board cannot cause thousands of fetches
+- [x] #4 DiscoveryCriteria.gateVersion is bumped so postings rejected under the strict rule are re-judged
+- [x] #5 The measured false-reject rate on the 14-job remote sample drops to zero
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Gate A no longer rejects on an unstated work arrangement. `DiscoveryVerdict` gains a `.provisional` case: a posting whose board row names a city and says nothing about arrangement proceeds to hydration and is judged on its body by `evaluateHydrated(body:provisionalArrangement:)`, before any extraction or fit score. `gateVersion` 3 → 4, so everything already rejected under the strict rule is re-judged.
+
+**The brief's premise was wrong and this is the substantive finding.** Reusing the existing `remoteMarker` on a body does not work: it requires "remote" to be followed by end-of-string or punctuation (right for a title or location token, where the alternative is "Remote Sensing Program Manager"), and description prose says it as an adjective — "all roles are remote unless otherwise specified", "this is a fully remote position", "Remote Work" as a heading. Measured over the 1,265 stored jobs that carry both an arrangement and a body, the strict marker fires on only 48% of the 1,033 remote ones and **misses the exact `Palo Alto, California, United States` posting this task is about** (job #1200, Acryl Data, `gh:5186170007`, whose body reads "All roles are remote unless otherwise specified"). So the fix needed a prose-shaped `bodySignalsRemote` alongside — reusing `remoteMarker`/`remoteNegation` as terms rather than restating them, with the token rule left untouched as the single definition of the location form. It reaches 69% recall while firing on **0 of the 53 on-site bodies**. Six on-site false positives came from denials the board-row negation can't see ("not eligible for remote work", "remote work options are not available"); a clause-bounded body negation removes all six and costs 1 point of recall.
+
+`DiscoveryCaps.provisionalPerSweep` defaults to 25, drawn from whatever `perSweep` leaves unused — so a sweep makes no more requests than before, and an outright match is never displaced by a speculative one. Overflow is reported as `SweepResult.provisionalTruncatedByCap`, deliberately not folded into `truncatedByCap`, which holds a board open and would have pinned a market pass to the first city-named board it met.
+
+Fast gate green (CoreTests/ServerTests/MCPTests), warnings at baseline 33, swiftlint/swiftformat clean, check-docs failure is the pre-existing retired-stack one. No LLM or API call was made; all measurement came from read-only sqlite3 over the live store.
+<!-- SECTION:FINAL_SUMMARY:END -->

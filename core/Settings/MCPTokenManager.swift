@@ -1,8 +1,16 @@
 import Foundation
 
 /// Manages the MCP authentication token written to ~/.jobhunt-mcp-token.
-/// The token is minted once and **reused** across launches; the JobhuntMCP executable reads it to
-/// authenticate requests to the HTTP bridge endpoints.
+///
+/// The token is **persistent**: minted once and reused across launches. It used to be rotated on
+/// every launch and deleted on shutdown (TASK-530), which broke the MCP bridge for every third-party
+/// AI client — clients dial their stdio helper only at startup, so a helper spawned while Jobhunt was
+/// closed found no token, exited, and the connection stayed dead until the *client* was restarted.
+///
+/// Rotation bought nothing security-wise. The loopback binding is the boundary (see CLAUDE.md): a
+/// leaked token is useless from another machine, and a hostile process running as this user could
+/// read the SwiftData store directly. The token's real job is scoping *which* AI client may act on
+/// the user's data, and that is served by the token existing, not by it changing.
 public enum MCPTokenManager {
     public static let tokenURL = URL.homeDirectory.appending(path: ".jobhunt-mcp-token")
 
@@ -30,11 +38,12 @@ public enum MCPTokenManager {
         read(at: tokenURL)
     }
 
-    // periphery:ignore - Shutdown deletes the token through `deleteIfOurs`, which is the safe
-    // variant (TASK-688: a quitting instance must not delete a live instance's token). This
-    // unconditional one is kept for a deliberate reset, and removing it would leave no way to clear
-    // the token at all.
-    /// Remove the token file (on normal shutdown, logout, or uninstall).
+    // periphery:ignore - No automatic caller by design; kept as the only way to clear the token
+    // (a deliberate reset, or uninstall).
+    /// Remove the token file. **Never call this from app shutdown.** Deleting on quit is what broke
+    /// two things in turn: unconditionally, it wiped a *live* second instance's token during a
+    /// rebuild (TASK-688); conditionally (`deleteIfOurs`), it still left a helper spawned after the
+    /// last quit with no token at all. The token is persistent now — deleting it is a user action.
     public static func delete() {
         delete(at: tokenURL)
     }
@@ -78,22 +87,5 @@ public enum MCPTokenManager {
 
     public static func delete(at url: URL) {
         try? FileManager.default.removeItem(at: url)
-    }
-
-    /// Remove the token file only if it still holds `token` — i.e. this launch's own token.
-    ///
-    /// Shutdown deleted unconditionally, which is wrong whenever two instances overlap: a second
-    /// launch overwrites the file with its own token, the first instance then quits and deletes it,
-    /// and the LIVE instance is left serving a token no client can read. Observed exactly that way —
-    /// two Jobhunt processes during a rebuild, then a running app with no token file and an MCP
-    /// bridge that answered nothing. A stale token is harmless; a deleted live one silently breaks
-    /// every third-party AI client (TASK-688).
-    ///
-    /// - Returns: true if the file was ours and was removed.
-    @discardableResult
-    public static func deleteIfOurs(_ token: String, at url: URL = tokenURL) -> Bool {
-        guard !token.isEmpty, read(at: url) == token else { return false }
-        delete(at: url)
-        return true
     }
 }

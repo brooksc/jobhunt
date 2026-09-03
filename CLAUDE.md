@@ -191,12 +191,36 @@ The `AppUITests` suite drives the full macOS app via the Accessibility API. It c
 Parsed by `LaunchPlan.parse` (`core/App/LaunchMode.swift:86`), called from `app/JobhuntApp.swift:114`.
 
 ### Running locally
+
+**Prefer CI or the VM. A local run on this Mac's beta toolchain does not currently work** — see below.
+
 ```bash
+# NOTE: no CODE_SIGNING_ALLOWED=NO. The runner ships Apple's pre-signed XCTRunner template, and
+# suppressing signing leaves a signature that no longer matches its contents once the test bundle
+# is injected. macOS then refuses to launch it — "AppUITests-Runner is damaged and can't be
+# opened" — and the run dies with `Test crashed with signal kill before establishing connection`.
 xcodebuild test -project Jobhunt.xcodeproj -scheme Jobhunt-DMG \
   -destination 'platform=macOS' \
-  -only-testing AppUITests \
-  CODE_SIGNING_ALLOWED=NO
+  -only-testing AppUITests
 ```
+
+**Even correctly signed, a local run fails on this machine** with `The test runner hung before
+establishing connection` after ~5.7 minutes. Ruled out on 2026-09-03: the signature (re-signed
+ad-hoc, `codesign -v` clean), Accessibility permission (granted — `osascript … System Events`
+returns a process count), and any crash (no `.ips` report is produced). The remaining suspect is the
+Xcode-beta / beta-macOS combination this Mac runs, which is the same reason the store-upload escape
+hatch exists further down this file.
+
+**So use one of these instead:**
+
+```bash
+gh workflow run ui-tests.yml --ref main    # macos-15 runner, no local toolchain involved
+./scripts/run-ui-tests-in-vm.sh            # headless Tart VM, no screen takeover
+```
+
+The VM path was broken as of 2026-09-03 — SSH rejects the cirruslabs default `admin`/`admin` with
+`Permission denied (publickey,password,keyboard-interactive)`. Fix the credentials or re-clone
+before relying on it.
 
 **Requirements:**
 - Must run on a machine with a live graphical session (logged-in user, visible desktop)

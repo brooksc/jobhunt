@@ -10,8 +10,19 @@ permissions:
 
 jobs:
   ui-tests:
-    # Pin the runner image (not `macos-latest`) so the OS/Xcode version is reproducible.
-    runs-on: macos-15
+    # This was pinned to `macos-15` for a reproducible OS/Xcode version, which is the better
+    # default — a UI-test result you can't reproduce is worth little. It is unpinned because on
+    # 2026-09-03 the pinned image could no longer COMPILE the project: the run died with
+    # "Testing cancelled because the build failed" while building `core/LLM/Normalization.swift`,
+    # and the previous scheduled run had failed the same way. `swift-build.yml` compiles the same
+    # commit on `macos-latest` without complaint, so the difference is the image's Xcode.
+    #
+    # A workflow that cannot build is worth less than one that is only approximately reproducible,
+    # so this tracks `macos-latest` until the macos-15 compile failure is understood. The exact
+    # compiler diagnostic was not captured — `gh run view --log-failed` reported the failed
+    # SwiftCompile task without an `error:` line — so the cause is still unknown, not fixed.
+    # Re-pin once it is.
+    runs-on: macos-latest
     # mise resolves tool versions via the GitHub API; without auth it hits the 60/hr
     # unauthenticated limit on the shared runner IP and `mise install` fails with 403
     # (Tuist/SwiftLint/SwiftFormat downloads). The auto-provided token raises this to 1000/hr.
@@ -31,7 +42,7 @@ jobs:
         run: |
           mkdir -p build
           {
-            echo "── CI toolchain (.github/workflows/ui-tests.yml, runs-on: macos-15) ──"
+            echo "── CI toolchain (.github/workflows/ui-tests.yml, runs-on: macos-latest) ──"
             sw_vers
             xcodebuild -version
             echo "xcode-select path: $(xcode-select -p)"

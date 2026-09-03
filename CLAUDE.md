@@ -247,7 +247,7 @@ tart clone ghcr.io/cirruslabs/macos-sequoia-xcode:latest jobhunt-uitest-env
 **Full VM details:** See `docs/vm-testing.md` — covers architecture, all CLI flags, debugging failures, screenshot retrieval, incremental builds, and comparison with CI.
 
 ### CI (GitHub Actions)
-Defined in `.github/workflows/ui-tests.yml`. Runs weekly (Monday 8am UTC) or on manual dispatch against the `macos-15` runner. Results uploaded as `.xcresult` artifact (7-day retention).
+Defined in `.github/workflows/ui-tests.yml`. Runs weekly (Monday 8am UTC) or on manual dispatch against the `macos-latest` runner. Results uploaded as `.xcresult` artifact (7-day retention).
 
 ## Project.swift (Tuist)
 

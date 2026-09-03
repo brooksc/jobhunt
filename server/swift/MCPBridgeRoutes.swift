@@ -79,7 +79,8 @@
     private struct MCPSiteAddRequest: Decodable {
         let url: String
         let name: String?
-        // TASK-464: Electron parity — richer add_site fields.
+        // TASK-464: the rest of the site record, so an AI client can add a watched site fully
+        // formed instead of leaving the user to fill the fields in by hand afterwards.
         let state: String?
         let intervalDays: Int?
         let note: String?
@@ -596,7 +597,8 @@
 
     // MARK: - Helpers
 
-    /// Resolve a job by `job_id` (internal id string — Electron back-compat) or `job_number`
+    /// Resolve a job by `job_id` (the internal id string — still accepted because saved AI-client
+    /// prompts and older transcripts pass it) or `job_number`
     /// (preferred), returning both identifiers (TASK-464). Returns nil if neither is given or no
     /// job matches.
     private func resolveJob(jobNumber: Int?, jobId: String?, store: BackgroundStore) async throws

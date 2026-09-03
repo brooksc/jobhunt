@@ -16,7 +16,10 @@ public final class OpenRouterProvider: LLMProvider, @unchecked Sendable {
         await paidTier.isPaid(apiKey: apiKey, session: session) ? 6 : 3
     }
 
-    /// Max distinct free models tried per request when rotating (TASK-462, Electron parity).
+    /// Max distinct free models tried per request when rotating (TASK-462). Bounded so one
+    /// unlucky request can't walk the whole free pool: four distinct models is enough to get past
+    /// a model that is down or over quota, and stops a request that is failing for its own reasons
+    /// (bad prompt, oversized input) from burning the pool's rate budget proving it.
     static let maxRotationModels = 4
 
     private let apiKey: String

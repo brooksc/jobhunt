@@ -150,7 +150,7 @@ final class MCPTests: XCTestCase {
         }
     }
 
-    // MARK: - TASK-464: MCP job tools accept job_id (Electron back-compat) or job_number
+    // MARK: - TASK-464: MCP job tools accept job_number (primary) or the internal job_id
 
     func testResolveToolRoute_jobGet_acceptsJobNumber() {
         guard case let .success((path, body)) = resolveToolRoute(name: "job_get", args: ["job_number": 7]) else {

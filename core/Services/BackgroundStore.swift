@@ -585,12 +585,14 @@ public actor BackgroundStore {
         // originally assessed under, and the column must agree with the analysis it labels.
         record.assessmentPromptVersion = FitScorer.promptVersion(inJSON: fitJSON)
 
-        // Job-level mirror reflects the BEST score across all resumes (Electron parity).
+        // Job-level mirror reflects the BEST score across all resumes.
         recomputeJobFitSummary(job)
     }
 
     /// Recompute a job's denormalized fit mirror from the best-scoring resume across ALL its
-    /// fit-score records (Electron parity: jobs.fit_score = MAX across resumes). Falls back to
+    /// fit-score records — MAX, not the latest or the average: the question the Jobs list answers
+    /// is "is this job worth applying to with *any* résumé I have", and a weak score against a
+    /// poorly-matched résumé must not bury a strong one. Falls back to
     /// running/pending/failed/none when no resume has a numeric score yet.
     private func recomputeJobFitSummary(_ job: Job) {
         let computed = computedFitMirror(for: job)
@@ -1092,7 +1094,8 @@ public actor BackgroundStore {
     }
 
     /// Recompute every stored fit score from its saved JSON using the current weights/penalty
-    /// model — no LLM calls (Electron parity: rescore.js). Returns the count updated.
+    /// model — no LLM calls, so a weights or correction change reaches every stored score for free.
+    /// Returns the count updated.
     public func recomputeAllFitScores() throws -> Int {
         // User corrections are applied when gaps are rebuilt, so a recompute propagates a newly
         // flagged requirement to every stored score without spending an LLM call.
@@ -1317,7 +1320,8 @@ public actor BackgroundStore {
 
     /// Queue fit scoring for a job against every active resume, skipping (job, resume)
     /// pairs that already have a queued or running fit request. Returns the count queued.
-    /// Mirrors the Electron app's queueFitScoresForAllResumes auto-scoring behavior.
+    /// Every active résumé is scored, not just the default one: the job-level mirror is the best
+    /// across résumés, so scoring only one would understate any job that fits another better.
     public func enqueueFitForActiveResumes(jobID: String) throws -> Int {
         let jid = jobID
         let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))
@@ -2240,7 +2244,7 @@ public actor BackgroundStore {
     /// Run domain-duplicate detection across all jobs and persist results: flag each detected
     /// candidate with duplicateOfJobID + confidence + `.duplicate` status, and log a
     /// `duplicate_detected` event. Skips pairs already resolved via DuplicateDecision.
-    /// (Electron parity: detectDomainDuplicateJobs after markExtractionSucceeded.) Returns count flagged.
+    /// Returns count flagged.
     /// TASK-624: no longer called by the app — duplicates are never auto-marked. Retained for tooling.
     public func detectAndPersistDomainDuplicates() throws -> Int {
         let jobs = try modelContext.fetch(FetchDescriptor<Job>())
@@ -2519,7 +2523,8 @@ public actor BackgroundStore {
         // Re-capture: same URL (or canonical URL) but changed content — identical content already
         // returned above. Update the existing capture/job in place, reset extraction, clear any
         // duplicate flag, re-queue extraction, and log a `recapture` event, instead of spawning a
-        // brand-new duplicate job. (Electron parity: insertCapture's same-URL update path.)
+        // brand-new duplicate job. Re-capturing a posting the user already tracks is the common
+        // case — an edited description, a re-opened tab — and it must not fork their history.
         let inURL = input.url
         let inCanon = input.canonicalURL
         var urlDescriptor = FetchDescriptor<Capture>(predicate: #Predicate { $0.url == inURL })

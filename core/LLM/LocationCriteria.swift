@@ -1,7 +1,9 @@
 import Foundation
 
-/// Whether a job meets the user's location/remote criteria — Electron parity with
-/// `applyLocationFilter` (TASK-464). Pure; computed post-extraction from the extracted remote mode +
+/// Whether a job meets the user's location/remote criteria (TASK-464). Deterministic on purpose:
+/// the model is asked to extract the location and arrangement, never to judge them against the
+/// user's settings, so the verdict is reproducible and doesn't drift with the prompt.
+/// Pure; computed post-extraction from the extracted remote mode +
 /// location against the user's preferred locations and allow-remote/hybrid/onsite settings.
 public enum LocationCriteria {
     public static func meets(

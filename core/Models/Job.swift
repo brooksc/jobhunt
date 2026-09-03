@@ -39,8 +39,8 @@ public final class Job {
     public var extractionModel: String?
     public var applicationURL: String?
     public var extractionConfidence: Double?
-    /// Whether the job passed the user's location/remote criteria at extraction time (TASK-464,
-    /// Electron `meets_criteria`). Nil for jobs extracted before this field / when not computed.
+    /// Whether the job passed the user's location/remote criteria at extraction time (TASK-464).
+    /// Nil for jobs extracted before this field / when not computed.
     public var meetsCriteria: Bool?
     public var lastOpenedAt: Date?
     /// When the job's status first became `.applied` (TASK-504). Stamped once by `setJobStatus` and

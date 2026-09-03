@@ -766,7 +766,8 @@ async function openJobInApp(tab) {
 
 async function openApp(jobNumber) {
   try {
-    // Ask the Electron window to focus and navigate — no new browser tab needed.
+    // Ask the desktop app to focus and navigate — no new browser tab needed. This is the only
+    // path that actually works; the fallback below is a leftover, see TASK-697.
     const focusUrl = await serverUrl("/api/app/focus");
     const res = await fetch(focusUrl, {
       method: "POST",
@@ -776,7 +777,10 @@ async function openApp(jobNumber) {
     if (res.ok) return;
   } catch (_error) { /* fall through */ }
 
-  // Fallback: open the web UI in a browser tab (CLI server or Electron not responding).
+  // Fallback when /api/app/focus doesn't answer. BROKEN: it opens `/` on the local server, a web
+  // UI that no longer exists — the Swift server serves no such page, so this tab is a dead end
+  // rather than a recovery. Tracked as TASK-697; left in place until that decides what should
+  // happen when the app isn't reachable.
   try {
     const hash = jobNumber ? `#/jobs/${jobNumber}` : "";
     const url = await serverUrl("/") + hash;

@@ -455,7 +455,8 @@ func resolveToolRoute(name: String, args: [String: Any]) -> Result<(String, [Str
         }
         return .success(("/mcp/jobs/list", b))
     case "job_get":
-        // TASK-464: accept either job_number (primary) or job_id (Electron back-compat).
+        // TASK-464: accept either job_number (primary, what the user sees) or job_id (the internal
+        // id — kept because saved AI-client prompts and older transcripts pass it).
         guard args["job_number"] != nil || args["job_id"] != nil else {
             return .failure(MCPError("job_number or job_id required"))
         }

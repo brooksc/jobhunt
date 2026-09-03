@@ -1,7 +1,9 @@
 import XCTest
 @testable import JobhuntCore
 
-/// TASK-464: meets_criteria computation (Electron applyLocationFilter parity).
+/// TASK-464: the deterministic meets_criteria computation. These cases pin the verdict for each
+/// arrangement/settings combination, so a change to the matching rules can't quietly reclassify
+/// the jobs already in the library.
 final class LocationCriteriaTests: XCTestCase {
     private func meets(
         _ remote: RemoteType?, location: String? = nil, preferred: String? = nil,

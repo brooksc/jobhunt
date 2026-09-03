@@ -191,7 +191,7 @@ The mirror is what the Jobs list ring, sorting, the `min_fit_score` filter (`Job
 
 The mirror is recomputed on every write path that could move it — save, pending, running, failed, orphan reconciliation, recompute. It drifts anyway, from:
 
-- **Migration.** Rows imported from the Electron store, or scores deleted without a recompute.
+- **Migration.** Rows carried over by the one-time import from the pre-rewrite SQLite database (a historical event, not an ongoing path), or scores deleted without a recompute.
 - **Résumé activation changes.** Toggling `Resume.active` changes what the mirror should be, and nothing recomputes the whole corpus at that moment.
 - **Crashes between the score write and the save.**
 

@@ -1,7 +1,10 @@
 import Foundation
 
 /// Per-session runtime concurrency that backs off on rate limits and recovers on sustained success
-/// (TASK-463, Electron parity with `onRateLimit`/`CONCURRENCY_PROMOTE_AFTER`).
+/// (TASK-463). A fixed provider limit is wrong in both directions: high enough to be useful on a
+/// paid key, it rate-limits a free one into a retry storm; low enough to be safe on a free key, it
+/// wastes a paid one. Backing off on the 429 itself and earning the limit back is what neither a
+/// static ceiling nor a user setting can do.
 ///
 /// The provider's static `concurrencyLimit` is the CEILING. On any in-flight HTTP 429 the effective
 /// limit drops to 1; after `promoteAfter` consecutive successes it steps back up one toward the

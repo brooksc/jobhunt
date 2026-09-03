@@ -416,7 +416,7 @@ final class JobServiceTests: XCTestCase {
         XCTAssertTrue(requests.allSatisfy { $0.requestType == .extract && $0.status == .queued })
     }
 
-    // MARK: - Re-capture: same URL + changed content updates in place (Electron parity)
+    // MARK: - Re-capture: same URL + changed content updates in place, never forks a second job
 
     func testReCapture_sameURLChangedContent_updatesInPlace() async throws {
         let container = try ModelContainerFactory.inMemory()
@@ -495,7 +495,7 @@ final class JobServiceTests: XCTestCase {
         XCTAssertEqual(jobs.count, 2)
     }
 
-    // MARK: - Manual field overrides (Electron parity: extraction must not clobber user edits)
+    // MARK: - Manual field overrides: a re-extraction must not clobber a field the user edited
 
     func testUpdateJobFields_recordsManualOverride_andClearResets() async throws {
         let container = try ModelContainerFactory.inMemory()
@@ -2023,8 +2023,8 @@ final class FitScoringStateTests: XCTestCase {
     }
 
     func testRecomputeAllFitScores_recomputesFromStoredJSONWithoutLLM() async throws {
-        // Electron parity (rescore.js): recompute the overall score from stored dimensions using
-        // current weights, no LLM. Dimensions 80/50/80/90/60 → 72 with the TASK-602 weights
+        // A recompute must reach the stored score without an LLM call — that is the whole point of
+        // storing the dimensions rather than only the total. Dimensions 80/50/80/90/60 → 72 with the TASK-602 weights
         // (80*.40 + 50*.20 + 80*.15 + 90*.10 + 60*.15 = 72.0). Chosen off a .5 boundary so the
         // expected value is unambiguous regardless of float rounding.
         let container = try ModelContainerFactory.inMemory()

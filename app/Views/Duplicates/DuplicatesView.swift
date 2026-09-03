@@ -634,7 +634,8 @@ private struct JobCompareColumn: View {
             }
             .padding(.bottom, 8)
 
-            // Summary + skills from the job's extracted data (restored from Electron compare).
+            // Summary + skills from the job's extracted data — the two fields that actually tell
+            // the two postings apart when the titles and companies are identical.
             if let job {
                 let projection = JobDetailProjection(job: job)
                 if let summary = projection.summary, !summary.isEmpty {

@@ -284,7 +284,8 @@ public struct JobListRecord: Sendable {
     public let sourceURL: String?
     public let capturedAt: Date?
     public let createdAt: Date
-    // TASK-464: re-added MCP jobs_list payload fields dropped vs Electron.
+    // TASK-464: MCP jobs_list payload fields that had gone missing — an AI client can't triage on
+    // employment type, seniority or duplicate status if the list never carries them.
     public let employmentType: String?
     public let seniority: String?
     public let duplicateOfJobID: String?
@@ -435,7 +436,7 @@ public struct JobDetailRecord: Sendable {
     public let createdAt: Date
     public let selectedText: String?
     public let visibleText: String?
-    // TASK-464: re-added MCP payload fields dropped vs Electron.
+    // TASK-464: MCP payload fields that had gone missing — see `JobListRecord` above.
     public let employmentType: String?
     public let seniority: String?
     public let duplicateOfJobID: String?

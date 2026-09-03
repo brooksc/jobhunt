@@ -25,7 +25,8 @@ final class MigratorTests: XCTestCase {
         XCTAssertNil(parseArgs(["JobhuntMigrator", "--store", "/tmp/s"]))
     }
 
-    /// The legacy Electron→SwiftData import is gone. Its flags must be rejected as unknown (TASK-477)
+    /// The one-time import from the legacy SQLite database into SwiftData is gone. Its flags must
+    /// be rejected as unknown (TASK-477)
     /// rather than silently ignored, so an old command line fails loudly instead of appearing to work.
     func testParseArgs_retiredImportFlags_rejected() {
         let retired = [

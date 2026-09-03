@@ -1,7 +1,9 @@
 import Foundation
 
-/// Free structured-output model pool for OpenRouter rotation (TASK-462, Electron parity with
-/// `selectFreeStructuredModels`/`refreshRotationPool`). Fetches `/models`, filters to FREE models
+/// Free structured-output model pool for OpenRouter rotation (TASK-462). Which free models exist
+/// and which support structured output both change under us, so the pool is discovered from the
+/// API rather than hard-coded — a pinned list goes stale silently and every extraction fails on a
+/// model that no longer exists. Fetches `/models`, filters to FREE models
 /// that advertise structured-output support, caches the list with a 1h TTL, and hands out models
 /// round-robin for failover. A `.shared` instance persists the cache + rotation index across the
 /// per-drain provider rebuilds; tests construct their own instance with an injected session.

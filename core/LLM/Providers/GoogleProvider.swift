@@ -11,7 +11,11 @@ import Foundation
 public final class GoogleProvider: LLMProvider, @unchecked Sendable {
     public let id = "google"
     public let concurrencyLimit = 8
-    /// Bounded 429 retry budget + per-wait clamp (TASK-463, Electron parity ~4 RL retries).
+    /// Bounded 429 retry budget + per-wait clamp (TASK-463). Four is the value the previous
+    /// implementation shipped with and the one Google's per-minute quota tolerates: a job that is
+    /// still rate-limited after four honored waits is queued behind a quota that won't clear on
+    /// this drain, so retrying further just holds a slot. The budget must stay bounded — an
+    /// unbounded retry on 429 never surfaces the failure to the queue.
     static let maxRateLimitRetries = 4
     /// 180 (was 60): honor a legitimate Retry-After up to a couple of minutes rather than retrying
     /// early into a still-active rate limit.

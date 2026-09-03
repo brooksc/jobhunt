@@ -542,8 +542,10 @@ public final class SettingsStore {
         let provider = llmProvider
         let baseURL = llmBaseURL
         let consentGranted = ConsentHelper.isConsented(provider: provider, settings: self)
-        // Combine manual preferred locations with expanded preferred metros (Electron parity:
-        // makeExtractorFromSettings expanded metros into the location context), deduped.
+        // Combine manual preferred locations with expanded preferred metros, deduped. The metros
+        // have to be expanded into the same list the extractor sees: a metro the user picked but
+        // never typed out is otherwise invisible to the location criteria, and the job reads as
+        // out-of-area.
         let combined = combinedPreferredLocations(locations: preferredLocations, metros: preferredMetros)
         return ExtractionSettings(
             llmModel: llmModel,

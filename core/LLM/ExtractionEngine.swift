@@ -217,7 +217,7 @@ public enum ExtractionEngine {
         remoteType = RemoteTypeInference.infer(remoteType: remoteType, location: extracted["location"] as? String)
 
         // TASK-464: compute meets_criteria from the extracted remote mode + location against the
-        // user's location/remote settings — Electron parity. This is the deterministic enforcement
+        // user's location/remote settings. This is the deterministic enforcement
         // TASK-270 asked for; see below for why it is now the *only* one.
         let meetsCriteria = LocationCriteria.meets(
             remoteType: remoteType,

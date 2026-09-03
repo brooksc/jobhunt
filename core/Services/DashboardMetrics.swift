@@ -151,7 +151,9 @@ public enum DashboardMetrics {
         } else {
             raw
         }
-        // Map legacy Electron-era status words onto the current JobStatus vocabulary.
+        // Map status words from the pre-rewrite vocabulary onto the current JobStatus cases. Old
+        // events keep the word they were written with, so without this a job's history silently
+        // drops out of the metrics at the point the vocabulary changed.
         let legacy = ["saved": "pursuing", "ignored": "passed", "not_available": "expired"]
         return legacy[token] ?? token
     }

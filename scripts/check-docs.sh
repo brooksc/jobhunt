@@ -113,11 +113,17 @@ say "== retired-stack references =="
 # The Electron/Node/React stack was removed in TASK-064. .backlog/ is a historical record and is
 # correctly full of Electron references; tools/migrator and Schema.swift legitimately name the
 # legacy SQLite database they still import from.
+#
+# `\belectron\b` matters: an unanchored match also hits "electronic", and the fit prompt tells the
+# model it "must STILL NOT complete electronic signatures" — a deliberate safety instruction this
+# check was reporting as retired-stack residue. It also matched this script's own documentation in
+# docs/release-process.md, which is why that file is excluded below: a checker that fails on the
+# text describing it is noise, and noise is how a check earns being ignored.
 # Only tracked files: .claude/worktrees holds other agents' checkouts, build/ and dist/ hold
 # generated output and vendored dependencies. Scanning those reported the same file five times.
 hits=$(git ls-files -z '*.swift' '*.js' '*.md' 2>/dev/null |
-       xargs -0 grep -ilE 'electron' 2>/dev/null |
-       grep -vE '^(tools/migrator/|core/Models/Schema\.swift|\.backlog/|doc-audit\.md)' || true)
+       xargs -0 grep -ilE '\belectron\b' 2>/dev/null |
+       grep -vE '^(tools/migrator/|core/Models/Schema\.swift|\.backlog/|doc-audit\.md|docs/release-process\.md)' || true)
 if [[ -n "$hits" ]]; then
   fail "retired-stack references outside the allowed set:"
   echo "$hits" | sed 's/^/         /'

@@ -13,7 +13,7 @@ references:
   - core/Services/AvailabilityChecker.swift
 priority: high
 type: chore
-ordinal: 66000
+ordinal: 33500
 ---
 
 ## Description

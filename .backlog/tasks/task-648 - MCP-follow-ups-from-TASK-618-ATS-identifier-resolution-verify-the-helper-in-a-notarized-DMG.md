@@ -21,6 +21,7 @@ modified_files:
   - core/Services/JobService+MarkApplied.swift
   - tests/CoreTests/MarkJobAppliedTests.swift
 priority: medium
+ordinal: 89000
 ---
 
 ## Description

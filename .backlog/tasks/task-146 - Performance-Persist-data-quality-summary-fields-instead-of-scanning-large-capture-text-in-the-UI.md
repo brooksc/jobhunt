@@ -17,6 +17,7 @@ references:
   - app/Views/Quality/DataQualityView.swift
   - core/Models/QualityIssue.swift
 priority: medium
+ordinal: 88000
 ---
 
 ## Description

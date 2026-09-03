@@ -20,17 +20,57 @@ func readToken(at url: URL = MCPTokenManager.tokenURL) -> String? {
     MCPTokenManager.read(at: url)
 }
 
-/// The token + port the bridge forwards to. Mutable and long-lived: the bridge is spawned once by the
-/// MCP client, while the Jobhunt app it talks to is relaunched during development. Each relaunch
-/// rotates `~/.jobhunt-mcp-token` (401s the cached token) and may change the port (refuses the old
-/// connection). Holding these on a shared instance lets `callTool` refresh them on failure and retry,
-/// instead of every request failing until the bridge itself is restarted (TASK-629).
+/// User-facing text for "the helper is up, the app is not". Returned as a JSON-RPC tool result the
+/// client can display — the helper must never exit for this, because MCP clients dial their stdio
+/// helper only at startup and a process that exits stays disconnected until the *client* restarts.
+let appNotRunningMessage = "Jobhunt isn't running. Start the Jobhunt app and try again."
+let tokenUnavailableMessage = """
+Jobhunt is running but its MCP token at ~/.jobhunt-mcp-token is missing or not owner-only (0600). \
+Restart Jobhunt to re-create it, then try again.
+"""
+
+/// The token + port the bridge forwards to, both resolved lazily and re-resolved on demand.
+///
+/// The bridge is spawned once by the MCP client and long outlives any single run of the Jobhunt app:
+/// it may start before the app has ever run, and the app is relaunched under it. So neither the token
+/// nor the port is required at startup — `connect()` re-attempts both at call time, which is what
+/// lets a tool call succeed once the app comes up with no client restart. `refresh()` additionally
+/// re-resolves mid-call after a 401 or a bodyless 5xx (TASK-629).
 final class MCPSession {
-    var token: String
-    var port: Int
-    init(token: String, port: Int) {
+    private(set) var token: String?
+    private(set) var port: Int?
+    private let loadToken: () -> String?
+    private let findPort: () -> Int?
+
+    init(
+        token: String? = nil,
+        port: Int? = nil,
+        loadToken: @escaping () -> String? = { readToken() },
+        findPort: @escaping () -> Int? = { discoverPort() }
+    ) {
         self.token = token
         self.port = port
+        self.loadToken = loadToken
+        self.findPort = findPort
+    }
+
+    /// The credentials needed to forward a call, re-resolving whatever is missing. Fails with a
+    /// message meant for the user rather than for a log — this is what they see instead of a dead
+    /// connection. The port is probed first, so "app is down" is distinguished from "app is up but
+    /// its token is unusable"; the two need different fixes.
+    func connect() -> Result<(token: String, port: Int), MCPError> {
+        if port == nil { port = findPort() }
+        guard let port else { return .failure(MCPError(appNotRunningMessage)) }
+        if token == nil { token = loadToken() }
+        guard let token, !token.isEmpty else { return .failure(MCPError(tokenUnavailableMessage)) }
+        return .success((token, port))
+    }
+
+    /// Drop and re-resolve the cached values after a failed request. `includePort` is false for a
+    /// 401: that response proves we reached the server, so only the token is suspect.
+    func refresh(includePort: Bool) {
+        token = loadToken()
+        if includePort { port = findPort() }
     }
 }
 
@@ -483,14 +523,27 @@ func callTool(name: String, args: [String: Any], session: MCPSession) -> Result<
     case let .failure(e): return .failure(e)
     }
 
-    var (status, result) = postMCP(path: path, body: body, port: session.port, token: session.token)
+    // Resolve token + port now, not at process start: the app may not have been running when this
+    // helper was spawned, and may not be running yet.
+    let credentials: (token: String, port: Int)
+    switch session.connect() {
+    case let .success(c): credentials = c
+    case let .failure(e): return .failure(e)
+    }
+
+    var (status, result) = postMCP(path: path, body: body, port: credentials.port, token: credentials.token)
 
     // The app may have relaunched since the bridge started: refresh the token (always) and, only on a
     // connection failure, re-probe the port — then retry once before surfacing the error (TASK-629).
     if shouldRefreshMCP(status: status, hasBody: result != nil) {
-        if let freshToken = readToken() { session.token = freshToken }
-        if status != 401, let freshPort = discoverPort() { session.port = freshPort }
-        (status, result) = postMCP(path: path, body: body, port: session.port, token: session.token)
+        session.refresh(includePort: status != 401)
+        switch session.connect() {
+        case let .success(c):
+            (status, result) = postMCP(path: path, body: body, port: c.port, token: c.token)
+        case let .failure(e):
+            // The app went away between the two attempts — say so instead of surfacing an HTTP code.
+            return .failure(e)
+        }
     }
 
     if status >= 400 {
@@ -505,4 +558,57 @@ func callTool(name: String, args: [String: Any], session: MCPSession) -> Result<
         return .success(textResult(result))
     }
     return .success(textResult(["ok": true]))
+}
+
+// MARK: - JSON-RPC request dispatch
+
+/// Handle one JSON-RPC line and return the response to write, or nil when nothing should be written
+/// (a blank line, or a notification).
+///
+/// `initialize` and `tools/list` are answered by the helper itself and never touch the app, so the
+/// handshake succeeds with Jobhunt closed. Only `tools/call` needs the server, and when it isn't
+/// reachable it returns an `isError` tool result the client displays — not a process exit.
+func handleRequest(line: String, session: MCPSession) -> [String: Any]? {
+    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+
+    guard let data = trimmed.data(using: .utf8),
+          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        return errorResponse(id: nil, code: -32700, message: "Parse error")
+    }
+
+    let id = json["id"]
+    let method = json["method"] as? String ?? ""
+    let params = json["params"] as? [String: Any] ?? [:]
+
+    switch method {
+    case "initialize":
+        return successResponse(id: id, result: [
+            "protocolVersion": "2024-11-05",
+            "capabilities": ["tools": [:] as [String: Any]],
+            "serverInfo": ["name": "jobhunt", "version": "1.0.0"]
+        ] as [String: Any])
+
+    case "notifications/initialized":
+        return nil // notifications get no response
+
+    case "tools/list":
+        return successResponse(id: id, result: ["tools": tools])
+
+    case "tools/call":
+        let toolName = params["name"] as? String ?? ""
+        let toolArgs = params["arguments"] as? [String: Any] ?? [:]
+        switch callTool(name: toolName, args: toolArgs, session: session) {
+        case let .success(result):
+            return successResponse(id: id, result: result)
+        case let .failure(err):
+            return successResponse(id: id, result: [
+                "isError": true,
+                "content": [["type": "text", "text": err.message]]
+            ] as [String: Any])
+        }
+
+    default:
+        return errorResponse(id: id, code: -32601, message: "Method not found: \(method)")
+    }
 }

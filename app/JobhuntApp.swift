@@ -34,8 +34,8 @@ struct ReopenMainWindowCommands: Commands {
 /// App-owned termination coordinator (TASK-554). Replaces the fire-and-forget `willTerminate`
 /// observer: `applicationShouldTerminate` defers quit (`.terminateLater`), runs the single shutdown
 /// sequence (stop PlatformIntegration → `await AppServices.shutdown()`), then lets the app quit —
-/// so teardown ordering is owned by the app lifecycle, not raced against process exit. The
-/// `shutdownSequence` closure is also the clear hook where MCP token cleanup (TASK-530) will plug in.
+/// so teardown ordering is owned by the app lifecycle, not raced against process exit.
+/// (The sequence deliberately does *not* clean up the MCP token — see MCPTokenManager.)
 @MainActor
 final class AppTerminationCoordinator: NSObject, NSApplicationDelegate {
     /// Set by `JobhuntApp` once the service graph exists.
@@ -121,7 +121,9 @@ struct JobhuntApp: App {
             if plan.needsMCPToken {
                 #if !MAS_BUILD
                     do {
-                        mcpToken = try MCPTokenManager.generateAndWrite()
+                        // Reuse the persisted token rather than rotating it, so an MCP helper
+                        // spawned by a client while Jobhunt was closed still authenticates.
+                        mcpToken = try MCPTokenManager.ensureToken()
                     } catch {
                         NSLog("JobhuntApp: MCP token setup failed — MCP will be unavailable: \(error)")
                     }
@@ -291,13 +293,11 @@ struct JobhuntApp: App {
                         terminationCoordinator.shutdownSequence = {
                             integration.stop()
                             await services.shutdown()
-                            // Remove the transient MCP token now that the server (which accepts it) is
-                            // stopped — only if this launch generated one (TASK-530) AND the file is
-                            // still ours (TASK-688). A newer instance may have replaced it, and
-                            // deleting that leaves a live app serving a token nothing can read.
-                            if services.mcpTokenWasGenerated {
-                                MCPTokenManager.deleteIfOurs(services.mcpToken)
-                            }
+                            // The MCP token is deliberately NOT deleted here. It is inert with the
+                            // app down — the routes it authenticates don't exist — while deleting it
+                            // left an MCP helper spawned before the next launch with nothing to
+                            // authenticate with, and MCP clients only dial at startup. See
+                            // MCPTokenManager: never reintroduce an unconditional delete() on quit.
                         }
                     }
                     // TASK-464: Settings → Debug "Reopen Onboarding".

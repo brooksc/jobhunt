@@ -519,6 +519,45 @@ final class MCPTokenManagerTests: XCTestCase {
         XCTAssertNil(MCPTokenManager.read(at: testURL))
     }
 
+    // MARK: - ensureToken: the token persists across launches
+
+    /// The regression that broke every MCP client: the token used to be re-minted on each launch and
+    /// deleted on quit, so a helper spawned while the app was closed had nothing to authenticate
+    /// with. Simulated launch → quit → launch must hand back the SAME token.
+    func testEnsureTokenSurvivesALaunchQuitLaunchCycle() throws {
+        let firstLaunch = try MCPTokenManager.ensureToken(at: testURL)
+        XCTAssertFalse(firstLaunch.isEmpty)
+        // Quit: nothing removes the file any more.
+        let secondLaunch = try MCPTokenManager.ensureToken(at: testURL)
+        XCTAssertEqual(secondLaunch, firstLaunch, "the token must not rotate on relaunch")
+        XCTAssertEqual(MCPTokenManager.read(at: testURL), firstLaunch)
+    }
+
+    func testEnsureTokenMintsOneWhenTheFileIsAbsent() throws {
+        XCTAssertNil(MCPTokenManager.read(at: testURL))
+        let token = try MCPTokenManager.ensureToken(at: testURL)
+        XCTAssertFalse(token.isEmpty)
+        let perms = try XCTUnwrap(
+            FileManager.default.attributesOfItem(atPath: testURL.path)[.posixPermissions] as? Int
+        )
+        XCTAssertEqual(perms & 0o077, 0, "a minted token file must be owner-only (0600)")
+    }
+
+    /// An over-permissive file is unreadable by policy, so it is replaced rather than trusted —
+    /// and the replacement is locked back down to 0600.
+    func testEnsureTokenReplacesAnOverPermissiveFile() throws {
+        try "leaked".write(to: testURL, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: testURL.path)
+
+        let token = try MCPTokenManager.ensureToken(at: testURL)
+        XCTAssertNotEqual(token, "leaked", "a world-readable token must never be reused")
+        let perms = try XCTUnwrap(
+            FileManager.default.attributesOfItem(atPath: testURL.path)[.posixPermissions] as? Int
+        )
+        XCTAssertEqual(perms & 0o077, 0)
+        XCTAssertEqual(MCPTokenManager.read(at: testURL), token)
+    }
+
     /// TASK-479/388 AC#4: a settings load failure sets loadError and gates persistence.
     func testLoadFailure_setsLoadErrorAndSkipsPersistence() throws {
         let container = try ModelContainerFactory.inMemory()

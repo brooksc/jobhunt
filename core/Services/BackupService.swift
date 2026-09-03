@@ -15,8 +15,8 @@ import SwiftData
 ///     they are never written to the backup file. After restoring onto a new Mac — or any time the
 ///     Keychain items aren't present — the user must re-enter them in AI Provider settings. (Only the
 ///     `SettingsStore` key/preference rows, e.g. which provider/model is selected, are in the store.)
-///   - **The MCP bridge token** is a transient file at `~/.jobhunt-mcp-token` (`MCPTokenManager`),
-///     regenerated on demand; it is intentionally not backed up or restored.
+///   - **The MCP bridge token** is a separate file at `~/.jobhunt-mcp-token` (`MCPTokenManager`),
+///     re-minted on the next launch if absent; it is intentionally not backed up or restored.
 /// Everything else (jobs, captures, resumes, sites, non-secret settings, LLM history) is in the store
 /// and therefore in the backup.
 ///

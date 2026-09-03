@@ -185,7 +185,10 @@ struct ReferralSection: View {
     }
 
     private func attemptRow(_ attempt: ReferralAttempt) -> some View {
-        HStack(spacing: 8) {
+        // The row's own recipient, so a column of identical pencils and trashes is navigable by name
+        // rather than by position (TASK-700).
+        let recipient = attempt.recipientName.isEmpty ? "(no recipient)" : attempt.recipientName
+        return HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(attempt.recipientName.isEmpty ? "(no recipient)" : attempt.recipientName)
                     .font(.subheadline).lineLimit(1)
@@ -205,11 +208,13 @@ struct ReferralSection: View {
                 Image(systemName: "pencil")
             }
             .buttonStyle(.borderless)
+            .accessibilityLabel("Edit outreach to \(recipient)")
             .help("Edit this outreach")
             Button { delete(attempt) } label: {
                 Image(systemName: "trash")
             }
             .buttonStyle(.borderless)
+            .accessibilityLabel("Remove outreach to \(recipient)")
             .help("Remove this outreach")
         }
         .padding(.vertical, 5)

@@ -226,6 +226,10 @@ struct ApplicationHistoryView: View {
                 Image(systemName: "square.and.pencil")
             }
             .buttonStyle(.borderless)
+            .accessibilityLabel(
+                "Edit application evidence for \(record.jobTitle ?? "Untitled")"
+                    + " at \(record.company ?? "unknown company")"
+            )
             .help("Add or correct application evidence (contact method, date, result, …)")
         }
     }

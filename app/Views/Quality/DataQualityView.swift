@@ -248,6 +248,7 @@ struct DataQualityView: View {
                             Image(systemName: "arrow.up.right.square").font(.caption2)
                         }
                         .buttonStyle(.borderless)
+                        .accessibilityLabel("Open source posting for \(job.displayTitle)")
                         .help("Open source posting")
                     }
                     // Re-extraction is the only fix the screen used to offer, and on a posting whose
@@ -260,6 +261,7 @@ struct DataQualityView: View {
                         Image(systemName: "arrow.clockwise").font(.caption2)
                     }
                     .buttonStyle(.borderless)
+                    .accessibilityLabel("Re-run AI extraction for \(job.displayTitle)")
                     .help("Re-run AI extraction")
                     StatusChip(status: job.status)
                     if job.qualityReview != nil {

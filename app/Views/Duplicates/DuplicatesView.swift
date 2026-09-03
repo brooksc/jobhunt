@@ -190,6 +190,7 @@ struct DuplicatesView: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Clear the duplicate-pair search")
                 .help("Clear search")
             }
         }

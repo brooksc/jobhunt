@@ -63,6 +63,7 @@ struct NotificationCenterView: View {
                 Image(systemName: "xmark").font(.caption2).foregroundStyle(.tertiary)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss notification: \(notification.message)")
             .help("Dismiss this notification")
         }
         .padding(.horizontal, 12)

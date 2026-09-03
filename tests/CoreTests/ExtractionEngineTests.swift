@@ -799,7 +799,8 @@ final class ExtractionEngineTests: XCTestCase {
             resume: resumeSnap,
             model: "gpt-4o",
             provider: capturing,
-            feedback: []
+            feedback: [],
+            otherResumeTexts: []
         )
 
         XCTAssertNotNil(output.fitScoreJSON)
@@ -850,7 +851,8 @@ final class ExtractionEngineTests: XCTestCase {
             resume: resumeSnap,
             model: "configured-fit-model",
             provider: capturing,
-            feedback: []
+            feedback: [],
+            otherResumeTexts: []
         )
 
         XCTAssertEqual(
@@ -913,7 +915,8 @@ final class ExtractionEngineTests: XCTestCase {
             resume: resumeSnap,
             model: "test-model",
             provider: capturing,
-            feedback: []
+            feedback: [],
+            otherResumeTexts: []
         )
         XCTAssertNotNil(
             capturing.lastRequest?.responseFormat,
@@ -985,7 +988,8 @@ final class ExtractionEngineTests: XCTestCase {
             resume: resumeSnap,
             model: "m",
             provider: provider,
-            feedback: []
+            feedback: [],
+            otherResumeTexts: []
         )
         XCTAssertEqual(output.responseFormat, .jsonObject)
         XCTAssertEqual(output.responseFormat.wireValue, "json_object")
@@ -1006,7 +1010,8 @@ final class ExtractionEngineTests: XCTestCase {
             resume: resumeSnap,
             model: "m",
             provider: provider,
-            feedback: []
+            feedback: [],
+            otherResumeTexts: []
         )
         XCTAssertEqual(output.responseFormat, .text)
         XCTAssertEqual(output.responseFormat.wireValue, "text")
@@ -1097,12 +1102,80 @@ final class ExtractionEngineTests: XCTestCase {
                 resume: resumeSnap,
                 model: "test-model",
                 provider: provider,
-                feedback: []
+                feedback: [],
+                otherResumeTexts: []
             )
             XCTFail("Expected emptyResumeText error")
         } catch ExtractionEngineError.emptyResumeText {
             // expected
         }
+    }
+
+    // MARK: - TASK-706: the evidence check sees every résumé, not just the scored one
+
+    private func fitJSONQuoting(_ evidence: String) -> String {
+        """
+        {"overall":80,"dimensions":[{"name":"required_qualifications","score":80},
+         {"name":"preferred_qualifications","score":60},{"name":"skills","score":70},
+         {"name":"experience_level","score":80},{"name":"domain_fit","score":50}],
+         "requirement_assessments":[{"requirement":"Payments experience","kind":"required",
+          "status":"met","evidence":"\(evidence)"}]}
+        """
+    }
+
+    private func supportMark(_ output: FitScoreOutput) throws -> String? {
+        let json = try XCTUnwrap(output.fitScoreJSON)
+        let dict = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: XCTUnwrap(json.data(using: .utf8))) as? [String: Any]
+        )
+        let assessments = try XCTUnwrap(dict["requirement_assessments"] as? [[String: Any]])
+        return assessments.first?[EvidenceCheck.supportKey] as? String
+    }
+
+    /// The quote is verbatim from a résumé the user has — just not the one being scored against.
+    /// Calling that `invented` accuses the model of writing something the user actually wrote, and
+    /// the verdict is user-facing (it drives "I don't have this").
+    func testScoreFit_quoteFromASupersededResumeIsNotCalledInvented() async throws {
+        let quoted = "Rebuilt the settlement pipeline at Northwind"
+        let provider = CapturingProvider(
+            response: fitJSONQuoting("Résumé says '\(quoted)'."), usedFormat: .jsonObject
+        )
+        let output = try await ExtractionEngine.scoreFit(
+            job: JobFitSnapshot(
+                title: "Engineer", company: "Acme", seniority: nil,
+                extractedJSON: nil, extractionModel: nil
+            ),
+            resume: ResumeSnapshot(text: "Swift developer with 5 years experience"),
+            model: "m",
+            provider: provider,
+            feedback: [],
+            otherResumeTexts: ["\(quoted). Cut release lead time from 40 to 3 days."]
+        )
+        XCTAssertNil(
+            try supportMark(output),
+            "A span quoted verbatim from another of the user's résumés must not be flagged"
+        )
+    }
+
+    /// The same span with nothing else to check against — proves the test above isn't passing
+    /// because the check never ran.
+    func testScoreFit_theSameQuoteIsFlaggedWhenNoOtherResumeContainsIt() async throws {
+        let quoted = "Rebuilt the settlement pipeline at Northwind"
+        let provider = CapturingProvider(
+            response: fitJSONQuoting("Résumé says '\(quoted)'."), usedFormat: .jsonObject
+        )
+        let output = try await ExtractionEngine.scoreFit(
+            job: JobFitSnapshot(
+                title: "Engineer", company: "Acme", seniority: nil,
+                extractedJSON: nil, extractionModel: nil
+            ),
+            resume: ResumeSnapshot(text: "Swift developer with 5 years experience"),
+            model: "m",
+            provider: provider,
+            feedback: [],
+            otherResumeTexts: []
+        )
+        XCTAssertEqual(try supportMark(output), EvidenceCheck.Support.invented.rawValue)
     }
 
     // MARK: - Fit consent check

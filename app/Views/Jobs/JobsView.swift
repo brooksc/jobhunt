@@ -328,6 +328,7 @@ struct JobsView: View {
             } label: {
                 Image(systemName: "plus")
             }
+            .accessibilityLabel("Add job by URL")
             .help("Add job by URL")
 
             if hasActiveFilters {
@@ -336,6 +337,7 @@ struct JobsView: View {
                 } label: {
                     Image(systemName: "bookmark")
                 }
+                .accessibilityLabel("Save current search")
                 .help("Save current search")
             }
 
@@ -1077,6 +1079,7 @@ struct JobsView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
+            .accessibilityLabel("Remove filter \(label)")
             .help("Remove this filter")
         }
         .padding(.horizontal, 8)

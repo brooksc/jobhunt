@@ -219,7 +219,8 @@ final class FitScoringEval: XCTestCase {
         do {
             output = try await ExtractionEngine.scoreFit(
                 job: job, resume: ResumeSnapshot(text: resume), model: model, provider: provider,
-                feedback: []
+                feedback: [],
+                otherResumeTexts: []
             )
         } catch {
             result.failures.append("\(testCase.name): scoring threw — \(error)")

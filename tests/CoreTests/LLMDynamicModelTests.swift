@@ -213,7 +213,8 @@ final class ModelSelectionGuardTests: XCTestCase {
         do {
             _ = try await ExtractionEngine.scoreFit(
                 job: job, resume: ResumeSnapshot(text: "my resume"), model: "", provider: provider,
-                feedback: []
+                feedback: [],
+                otherResumeTexts: []
             )
             XCTFail("expected noModelSelected")
         } catch ExtractionEngineError.noModelSelected {

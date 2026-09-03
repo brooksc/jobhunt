@@ -213,6 +213,9 @@ private struct ResumeRow: View {
                     .font(.title3)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(resume.active
+                ? "Deactivate résumé \(resume.name)"
+                : "Activate résumé \(resume.name)")
             .help(resume.active
                 ? "Active — auto-scored against new jobs. Click to deactivate."
                 : "Inactive. Click to activate (auto-scored against new jobs).")

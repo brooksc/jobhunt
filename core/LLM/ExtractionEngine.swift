@@ -285,6 +285,12 @@ public enum ExtractionEngine {
         // ignored by everything scored afterwards, with no error and no warning. A caller with no
         // corrections to apply passes `[]` and says so.
         feedback: [ScoringFeedback],
+        // The user's *other* résumés, for the evidence check only — they are never sent to the model,
+        // which scores against `resume` alone. Also deliberately NOT defaulted (TASK-706): a quote
+        // that is verbatim from another of the user's résumés is a stale quote, not an invented one,
+        // and every caller that quietly omitted this had `EvidenceCheck` accuse the model of
+        // inventing text the user really wrote. A caller with nothing else to offer passes `[]`.
+        otherResumeTexts: [String],
         jobNumber: Int? = nil
     ) async throws -> FitScoreOutput {
         guard !resume.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -333,14 +339,15 @@ public enum ExtractionEngine {
         // assessments — this drives the severity-weighted penalty (no more hardware-keyword heuristic).
         // Fall back to the legacy free-form `requirements_not_met` (as missing *required* gaps) for
         // responses that don't send assessments.
-        // The model is asked to quote its evidence, and often quotes something the résumé doesn't
-        // say — 32% of quoted spans corpus-wide, three-quarters of them lifted verbatim from the
-        // posting it was just shown. Checked here, at the one point where both documents are in
+        // The model is asked to quote its evidence, and often quotes something no résumé says — 36%
+        // of quoted spans corpus-wide, a third of them lifted verbatim from the posting it was just
+        // shown. Checked here, at the one point where both documents are in
         // hand, and the outcome is stamped into the stored JSON so the UI and any later recompute
         // see the same judgement without redoing it.
         let checked = EvidenceCheck.apply(
             to: (raw["requirement_assessments"] as? [[String: Any]]) ?? [],
-            resumes: [resume.text],
+            // Every résumé the user has, not just the one being scored — see `EvidenceCheck.classify`.
+            resumes: ([resume.text] + otherResumeTexts).filter { !isBlank($0) },
             // What the model was actually shown of the posting. Using the raw capture instead would
             // credit it with copying text it never saw.
             posting: extractedContext.quotableText

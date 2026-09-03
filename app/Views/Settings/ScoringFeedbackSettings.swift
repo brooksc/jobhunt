@@ -63,6 +63,7 @@ extension JobsSettingsTab {
                 Image(systemName: "pencil")
             }
             .buttonStyle(.borderless)
+            .accessibilityLabel("Edit correction \(entry.phrase)")
             .help("Edit this correction and rescore")
 
             Button {
@@ -71,6 +72,7 @@ extension JobsSettingsTab {
                 Image(systemName: "trash")
             }
             .buttonStyle(.borderless)
+            .accessibilityLabel("Remove correction \(entry.phrase)")
             .help("Remove this correction and rescore")
         }
     }

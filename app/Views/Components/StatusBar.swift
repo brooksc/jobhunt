@@ -86,6 +86,11 @@ struct StatusBar: View {
                 row
             }
         } else if queuedAIRequests > 0 {
+            // Spelled out rather than left to the composed children: the spinner has no name of its
+            // own, so VoiceOver would otherwise announce the count without saying what it counts.
+            let queueLabel = aiPaused
+                ? "AI paused, \(queuedAIRequests) waiting"
+                : "Reading \(queuedAIRequests) job\(queuedAIRequests == 1 ? "" : "s") with AI"
             Button { onOpen(.llmQueue) } label: {
                 HStack(spacing: 6) {
                     if aiPaused {
@@ -103,6 +108,7 @@ struct StatusBar: View {
                 .lineLimit(1)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(queueLabel)
             .help("Show the AI queue")
         } else {
             // The resting state still says something true. A bar that is blank when idle reads as

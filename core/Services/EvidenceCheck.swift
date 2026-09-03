@@ -3,16 +3,29 @@ import Foundation
 /// Whether the résumé actually says what a requirement assessment claims it says.
 ///
 /// The scorer asks the model to quote its evidence, and the quotes are often not in the résumé:
-/// **32% of quoted spans corpus-wide appear in no résumé the user has ever had**, across 44 of 415
-/// jobs. That is not free hallucination — **74% of them are lifted verbatim from that job's own
-/// posting**. The mechanism is visible in the prompt: the scoring rules demand a literal named
-/// technology, the résumé doesn't contain one, and the nearest literal string is sitting right there
-/// in the job description, so the model copies it and presents it as résumé text. Job #569 quotes
-/// `LLMs, LRMs`, `A/B Testing` and `sound business judgment` — all straight from the JD.
+/// **36% of quoted spans corpus-wide appear in no résumé the user has ever had** — 845 of 2,353
+/// spans, in 184 of the 1,259 scored jobs. A third of those, **35%, are lifted verbatim from the
+/// posting text the model was shown**. The mechanism is visible in the prompt: the scoring rules
+/// demand a literal named technology, the résumé doesn't contain one, and the nearest literal string
+/// is sitting right there in the job description, so the model copies it and presents it as résumé
+/// text. Job #569 quotes `LLMs, LRMs`, `A/B Testing` and `sound business judgment` — all straight
+/// from the JD.
 ///
-/// The remaining quarter is free invention, and it is the more serious kind: #200 quoted
+/// The remaining two-thirds is unattributable, and that is the more serious kind: #200 quoted
 /// `Certification: Project Management Professional (PMP).` as résumé content. A credential the user
-/// may not hold, driving a `met`.
+/// may not hold, driving a `met`. It is an upper bound on invention even so — this check is a
+/// substring test, so a truthful paraphrase lands in the same bucket (see `apply`).
+///
+/// **Provenance of those numbers.** Re-measured 2026-09-03 (TASK-706), read-only over the live
+/// store, with **all five résumés** in the haystack and `quotableText` as the posting. The figure
+/// previously quoted here — 32%, across 44 of 415 jobs — was taken while both callers passed only
+/// the *one* résumé linked to each score, so it overcounted. On today's corpus that same
+/// single-résumé method reports **41% (963 spans, 202 jobs)** against this 36%: roughly an eighth of
+/// what it called unsupported was an accurate quote from another of the user's own résumés. The
+/// older 415-job corpus is gone, so 32% and 36% are not directly comparable; 41% vs 36% is the
+/// like-for-like measurement of the bug's effect. Note the fix cannot recover *superseded versions*
+/// of a résumé — `Resume.text` is overwritten in place and keeps no history — so a quote from an
+/// earlier revision of a still-existing résumé is still counted here as unsupported.
 ///
 /// Detection is deterministic and costs nothing per job — the two texts are already in hand at the
 /// moment the analysis is written. This type only *classifies*; what a bad quote should do to the

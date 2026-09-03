@@ -824,6 +824,10 @@ public actor BackgroundStore {
     /// can't tell "unsupported" from "the text isn't here to search".
     public func recheckStoredEvidence() throws -> (checked: Int, flagged: Int, skipped: Int) {
         var checked = 0, flagged = 0, skipped = 0
+        // Fetched once for the whole run, not per record: the check needs *every* résumé the user has
+        // (TASK-706), and there are a handful of them against a few thousand scores.
+        let allResumeTexts = try modelContext.fetch(FetchDescriptor<Resume>())
+            .map(\.text).filter { !$0.isEmpty }
         for record in try modelContext.fetch(FetchDescriptor<JobFitScore>()) {
             guard record.fitStatus == .succeeded,
                   let json = record.fitScoreJSON,
@@ -836,7 +840,8 @@ public actor BackgroundStore {
             let posting = record.job?.capture?.cleanedDescription ?? ""
             guard !resumeText.isEmpty, !posting.isEmpty else { skipped += 1; continue }
 
-            let result = EvidenceCheck.apply(to: assessments, resumes: [resumeText], posting: posting)
+            let resumes = allResumeTexts.contains(resumeText) ? allResumeTexts : [resumeText] + allResumeTexts
+            let result = EvidenceCheck.apply(to: assessments, resumes: resumes, posting: posting)
             checked += 1
             guard result.flagged > 0 else { continue }
             dict["requirement_assessments"] = result.assessments
@@ -1568,6 +1573,10 @@ public actor BackgroundStore {
         public let resumeText: String
         /// False when the resume row no longer exists (vs. exists-but-empty).
         public let resumeExists: Bool
+        /// The user's *other* résumés, active or not. Not sent to the model — only `EvidenceCheck`
+        /// reads them, so that a quote taken verbatim from a different résumé isn't called invented
+        /// (TASK-706).
+        public let otherResumeTexts: [String]
     }
 
     /// Build fit inputs on the store actor. Returns nil if the job no longer exists.
@@ -1576,9 +1585,8 @@ public actor BackgroundStore {
         let rid = resumeID
         let jobs = try modelContext.fetch(FetchDescriptor<Job>(predicate: #Predicate { $0.id == jid }))
         guard let job = jobs.first else { return nil }
-        let resume = try modelContext.fetch(
-            FetchDescriptor<Resume>(predicate: #Predicate { $0.id == rid })
-        ).first
+        let allResumes = try modelContext.fetch(FetchDescriptor<Resume>())
+        let resume = allResumes.first { $0.id == rid }
         return FitInputs(
             job: JobFitSnapshot(
                 title: job.title, company: job.company, seniority: job.seniority,
@@ -1586,7 +1594,8 @@ public actor BackgroundStore {
             ),
             jobNumber: job.jobNumber,
             resumeText: resume?.text ?? "",
-            resumeExists: resume != nil
+            resumeExists: resume != nil,
+            otherResumeTexts: allResumes.filter { $0.id != rid && !$0.text.isEmpty }.map(\.text)
         )
     }
 

@@ -996,6 +996,9 @@ public actor QueueActor {
                 model: fitModel,
                 provider: provider,
                 feedback: readScoringFeedback(),
+                // TASK-706: the evidence check needs every résumé the user has, or a quote copied
+                // accurately out of a different one is reported to the user as invented.
+                otherResumeTexts: fitInputs.otherResumeTexts,
                 jobNumber: fitInputs.jobNumber
             )
             let fitResult = fitOutput.score

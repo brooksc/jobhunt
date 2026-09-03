@@ -2,9 +2,10 @@ import Foundation
 import XCTest
 @testable import JobhuntCore
 
-/// 32% of quoted evidence spans across 415 real jobs appear in no résumé the user has ever had, and
-/// 74% of those are lifted verbatim from the job's own posting. The cases below are taken from that
-/// corpus rather than invented.
+/// 36% of quoted evidence spans across 1,259 real scored jobs appear in no résumé the user has ever
+/// had, and 35% of those are lifted verbatim from the job's own posting (re-measured 2026-09-03 with
+/// every résumé in the haystack — see `EvidenceCheck`). The cases below are taken from that corpus
+/// rather than invented.
 final class EvidenceCheckTests: XCTestCase {
     // Fabricated. This repo is public and the real résumé never enters it — the corpus figures
     // these cases come from were measured out-of-band.
@@ -17,6 +18,25 @@ final class EvidenceCheckTests: XCTestCase {
             resumes: [resume], posting: posting
         )
         XCTAssertEqual(spans.map(\.support), [.supported])
+    }
+
+    /// TASK-706: the contract is *every* résumé the user has had, not the one being scored. A span
+    /// quoted verbatim from a superseded version is stale, not invented.
+    func testAQuoteFromASupersededResumeIsSupported() {
+        let superseded = "Rebuilt the settlement pipeline at Northwind."
+        let spans = EvidenceCheck.classify(
+            evidence: "The résumé says 'Rebuilt the settlement pipeline at Northwind'.",
+            resumes: [resume, superseded], posting: posting
+        )
+        XCTAssertEqual(spans.map(\.support), [.supported])
+        XCTAssertEqual(
+            EvidenceCheck.classify(
+                evidence: "The résumé says 'Rebuilt the settlement pipeline at Northwind'.",
+                resumes: [resume], posting: posting
+            ).map(\.support),
+            [.invented],
+            "and it is exactly what the one-résumé call site got wrong"
+        )
     }
 
     /// #569, the clean demonstration: every span is JD vocabulary presented as résumé content.

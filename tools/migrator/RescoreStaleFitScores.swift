@@ -84,6 +84,7 @@ func runRescore(
                 model: plan.config.model,
                 provider: provider,
                 feedback: feedback,
+                otherResumeTexts: inputs.otherResumeTexts,
                 jobNumber: target.jobNumber
             )
             try await store.commitRescoredFitScore(

@@ -271,6 +271,7 @@ struct ContentView: View {
                     .foregroundStyle(appServices.toastStore.notifications.contains { $0.kind == .error }
                         ? Color.orange : Color.secondary)
             }
+            .accessibilityLabel("Notifications")
             .help("Notifications")
             .popover(isPresented: $showNotifications, arrowEdge: .bottom) {
                 NotificationCenterView(store: appServices.toastStore)

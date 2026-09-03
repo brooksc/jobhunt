@@ -73,6 +73,7 @@ extension JobsSettingsTab {
             }
             .buttonStyle(.borderless)
             .disabled(isFirst)
+            .accessibilityLabel("Move \(template.name) up in the menu")
             .help("Move up in the menu")
 
             Button { settings.movePromptTemplate(id: template.id, up: false) } label: {
@@ -80,10 +81,12 @@ extension JobsSettingsTab {
             }
             .buttonStyle(.borderless)
             .disabled(isLast)
+            .accessibilityLabel("Move \(template.name) down in the menu")
             .help("Move down in the menu")
 
             Button { editingPrompt = template } label: { Image(systemName: "pencil") }
                 .buttonStyle(.borderless)
+                .accessibilityLabel("Edit prompt \(template.name)")
                 .help("Edit this prompt")
 
             Button {
@@ -92,12 +95,14 @@ extension JobsSettingsTab {
                 settings.upsertPromptTemplate(copy)
             } label: { Image(systemName: "doc.on.doc") }
                 .buttonStyle(.borderless)
+                .accessibilityLabel("Duplicate prompt \(template.name)")
                 .help("Duplicate this prompt")
 
             Button { settings.removePromptTemplate(id: template.id) } label: {
                 Image(systemName: "trash")
             }
             .buttonStyle(.borderless)
+            .accessibilityLabel("Delete prompt \(template.name)")
             .help("Delete this prompt")
         }
     }

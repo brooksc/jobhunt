@@ -192,12 +192,14 @@ private struct DetailHeader: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
+                    .accessibilityLabel("Previous job")
                     .help("Previous job")
                     Button { onNavigateNext() } label: {
                         Image(systemName: "chevron.down").font(.caption)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
+                    .accessibilityLabel("Next job")
                     .help("Next job")
                     Button { onClose() } label: {
                         Image(systemName: "xmark").font(.caption)
@@ -672,6 +674,7 @@ private struct DetailFooter: View {
                         completeWithUndo(actionID: action.id)
                     } label: { Image(systemName: "checkmark").font(.caption2) }
                         .buttonStyle(.bordered).controlSize(.mini)
+                        .accessibilityLabel("Mark follow-up done: \(action.note)")
                         .help("Mark this follow-up done")
                 }
             }
@@ -1114,6 +1117,7 @@ struct OverviewTabView: View {
                             }
                             .buttonStyle(.plain)
                             .foregroundStyle(.secondary)
+                            .accessibilityLabel("Remove skill \(skill)")
                             .help("Remove this skill")
                         }
                         .padding(.leading, 8)
@@ -1134,12 +1138,13 @@ struct OverviewTabView: View {
                             Button { commitNewSkill() } label: {
                                 Image(systemName: "checkmark").font(.caption2)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.plain).accessibilityLabel("Add this skill")
                             .help("Add this skill")
                             Button { showAddSkill = false; newSkillText = "" } label: {
                                 Image(systemName: "xmark").font(.caption2)
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Cancel adding a skill")
                             .help("Cancel")
                         }
                     } else {

@@ -251,6 +251,7 @@ struct NeedsActionView: View {
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Clear the follow-up search")
                     .help("Clear search")
                 }
             }
@@ -550,6 +551,7 @@ private struct NeedsActionRow: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    .accessibilityLabel("Add a note to \(job?.displayTitle ?? "this job")")
                     .help("Add a note to this job")
                     .popover(isPresented: $showNotePopover) {
                         VStack(alignment: .leading, spacing: 8) {

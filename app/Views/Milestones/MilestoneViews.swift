@@ -95,7 +95,11 @@ struct MilestoneSection: View {
     }
 
     private func interviewRow(_ interview: InterviewRecord) -> some View {
-        HStack(spacing: 8) {
+        // Names the row's own interview: a column of identical pencils and trashes is unnavigable by
+        // VoiceOver when every one of them is called "Edit" (TASK-700).
+        let name = (InterviewKind(rawValue: interview.kind) ?? .other).label
+            + " on " + interview.scheduledAt.formatted(date: .abbreviated, time: .shortened)
+        return HStack(spacing: 8) {
             Image(systemName: "person.2").foregroundStyle(.secondary).font(.caption)
             VStack(alignment: .leading, spacing: 1) {
                 Text((InterviewKind(rawValue: interview.kind) ?? .other).label)
@@ -116,9 +120,13 @@ struct MilestoneSection: View {
             Button { editingInterview = InterviewTarget(id: interview.id, existing: interview) } label: {
                 Image(systemName: "pencil")
             }
-            .buttonStyle(.borderless).help("Edit this interview")
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Edit interview: \(name)")
+            .help("Edit this interview")
             Button { delete(interview) } label: { Image(systemName: "trash") }
-                .buttonStyle(.borderless).help("Remove this interview")
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Remove interview: \(name)")
+                .help("Remove this interview")
         }
         .padding(.vertical, 5)
     }
@@ -146,9 +154,13 @@ struct MilestoneSection: View {
             Button { editingOffer = OfferTarget(id: offer.id, existing: offer) } label: {
                 Image(systemName: "pencil")
             }
-            .buttonStyle(.borderless).help("Edit the offer")
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Edit offer: \(offer.title ?? "Offer")")
+            .help("Edit the offer")
             Button { delete(offer) } label: { Image(systemName: "trash") }
-                .buttonStyle(.borderless).help("Remove the offer")
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Remove offer: \(offer.title ?? "Offer")")
+                .help("Remove the offer")
         }
         .padding(.vertical, 5)
     }

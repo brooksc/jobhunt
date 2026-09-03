@@ -52,6 +52,7 @@ struct SetupChecklistCard: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
+                    .accessibilityLabel("Dismiss setup checklist")
                     .help("Dismiss for now — returns next launch until you're set up")
                 }
 

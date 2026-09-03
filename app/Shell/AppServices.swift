@@ -112,7 +112,7 @@ final class AppServices {
         settings = settingsStore
         server = localServer
         backgroundStore = store
-        // A non-empty token means generateAndWrite() succeeded this launch and a file exists on disk.
+        // A non-empty token means ensureToken() succeeded this launch and a file exists on disk.
         self.mcpToken = mcpToken
         mcpTokenWasGenerated = !mcpToken.isEmpty
     }

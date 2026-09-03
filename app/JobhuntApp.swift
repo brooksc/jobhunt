@@ -121,7 +121,9 @@ struct JobhuntApp: App {
             if plan.needsMCPToken {
                 #if !MAS_BUILD
                     do {
-                        mcpToken = try MCPTokenManager.generateAndWrite()
+                        // Reuse the persisted token rather than rotating it, so an MCP helper
+                        // spawned by a client while Jobhunt was closed still authenticates.
+                        mcpToken = try MCPTokenManager.ensureToken()
                     } catch {
                         NSLog("JobhuntApp: MCP token setup failed — MCP will be unavailable: \(error)")
                     }

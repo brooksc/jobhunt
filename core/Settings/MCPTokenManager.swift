@@ -1,13 +1,20 @@
 import Foundation
 
 /// Manages the MCP authentication token written to ~/.jobhunt-mcp-token.
-/// The app generates a fresh token on each launch and deletes it on normal shutdown
-/// (TASK-530), so the credential is transient and doesn't outlive the running server;
-/// the JobhuntMCP executable reads it to authenticate requests to the HTTP bridge endpoints.
+/// The token is minted once and **reused** across launches; the JobhuntMCP executable reads it to
+/// authenticate requests to the HTTP bridge endpoints.
 public enum MCPTokenManager {
     public static let tokenURL = URL.homeDirectory.appending(path: ".jobhunt-mcp-token")
 
     // MARK: - Public API (operates on the real ~/.jobhunt-mcp-token)
+
+    /// Return the existing token, or mint and persist one if the file is absent or unreadable
+    /// (missing, or with permissions broader than 0600). This is the launch-path entry point —
+    /// reusing the token is what lets an MCP helper spawned while the app was closed keep working.
+    @discardableResult
+    public static func ensureToken() throws -> String {
+        try ensureToken(at: tokenURL)
+    }
 
     /// Generate a fresh UUID token, write it with 0600 permissions, and return it. Throws if the
     /// file cannot be written or permissions cannot be set — callers must not start MCP routes if
@@ -37,6 +44,11 @@ public enum MCPTokenManager {
     // Operate on an explicit URL so the lifecycle can be unit-tested without touching the user's real
     // home directory (TASK-530), and so the MCP command-line helper can share the exact same path +
     // permission policy instead of duplicating it (TASK-531). Public for the separate JobhuntMCP target.
+
+    public static func ensureToken(at url: URL) throws -> String {
+        if let existing = read(at: url), !existing.isEmpty { return existing }
+        return try generateAndWrite(at: url)
+    }
 
     @discardableResult
     public static func generateAndWrite(at url: URL) throws -> String {

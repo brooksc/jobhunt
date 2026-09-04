@@ -22,6 +22,8 @@ enum Mode {
     case repairCanonicalURLs(storePath: String)
     case backfillFitVersions(storePath: String)
     case fitVersionHistogram(storePath: String)
+    /// TASK-693: refill empty `Job.location` from the board-location snapshot named by `--input`.
+    case backfillBoardLocations(storePath: String, inputPath: String)
     /// The only mode that spends money: it re-runs the LLM over every score not on the current
     /// rubric. `confirmed` is `--yes`; without it the mode prints the work set and the estimated
     /// cost and stops, because "rescore everything" is a bill, not a cleanup.
@@ -61,6 +63,7 @@ private func printUsage() {
     fputs("  JobhuntMigrator --repair-canonical-urls [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --backfill-fit-versions [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --fit-version-histogram [--store <path>]\n", stderr)
+    fputs("  JobhuntMigrator --backfill-board-locations --input <path> [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --rescore-stale-fit-scores [--limit <n>] [--yes] [--store <path>]\n", stderr)
     fputs("  JobhuntMigrator --merge-job --from <job#> --into <job#> [--store <path>]\n", stderr)
 }
@@ -87,6 +90,8 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
     var repairCanonicalURLs = false
     var backfillFitVersions = false
     var fitVersionHistogram = false
+    var backfillBoardLocations = false
+    var inputPath: String?
     var rescoreStaleFitScores = false
     var confirmed = false
     var limit: Int?
@@ -132,6 +137,14 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
             backfillFitVersions = true
         case "--fit-version-histogram":
             fitVersionHistogram = true
+        case "--backfill-board-locations":
+            backfillBoardLocations = true
+        case "--input":
+            i += 1
+            guard i < args.count, !args[i].hasPrefix("--") else {
+                fputs("Error: --input requires a path argument.\n", stderr); return nil
+            }
+            inputPath = args[i]
         case "--rescore-stale-fit-scores":
             rescoreStaleFitScores = true
         case "--yes":
@@ -184,6 +197,7 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
         ("--repair-canonical-urls", repairCanonicalURLs),
         ("--backfill-fit-versions", backfillFitVersions),
         ("--fit-version-histogram", fitVersionHistogram),
+        ("--backfill-board-locations", backfillBoardLocations),
         ("--rescore-stale-fit-scores", rescoreStaleFitScores),
         ("--merge-job", mergeJob),
     ]
@@ -207,6 +221,12 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
         fputs("Error: --yes/--limit are only valid with --rescore-stale-fit-scores.\n", stderr); return nil
     }
 
+    // The snapshot is the whole input to this mode, and there is exactly one surviving copy of it —
+    // so it must be named explicitly rather than defaulted to a path that may not be the right file.
+    if !backfillBoardLocations, inputPath != nil {
+        fputs("Error: --input is only valid with --backfill-board-locations.\n", stderr); return nil
+    }
+
     if reclean { return .reclean(storePath: storePath) }
     if backfillModels { return .backfillModels(storePath: storePath) }
     if pruneOrphanFitScores { return .pruneOrphanFitScores(storePath: storePath) }
@@ -224,6 +244,13 @@ func parseArgs(_ args: [String] = CommandLine.arguments) -> Mode? {
     if repairCanonicalURLs { return .repairCanonicalURLs(storePath: storePath) }
     if backfillFitVersions { return .backfillFitVersions(storePath: storePath) }
     if fitVersionHistogram { return .fitVersionHistogram(storePath: storePath) }
+    if backfillBoardLocations {
+        guard let inputPath else {
+            fputs("Error: --backfill-board-locations requires --input <path to board-locations JSON>.\n", stderr)
+            return nil
+        }
+        return .backfillBoardLocations(storePath: storePath, inputPath: inputPath)
+    }
     if rescoreStaleFitScores {
         return .rescoreStaleFitScores(storePath: storePath, confirmed: confirmed, limit: limit)
     }

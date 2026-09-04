@@ -481,6 +481,35 @@ case let .rescoreStaleFitScores(storePath, confirmed, limit):
         fputs("Error: rescore failed: \(error)\n", stderr); exit(1)
     }
 
+case let .backfillBoardLocations(storePath, inputPath):
+    guard let data = FileManager.default.contents(atPath: inputPath) else {
+        fputs("Error: could not read board-location snapshot at '\(inputPath)'\n", stderr); exit(1)
+    }
+    let records: [BackgroundStore.BoardLocationRecord]
+    do {
+        records = try BackgroundStore.BoardLocationRecord.decode(data)
+    } catch {
+        fputs("Error: could not parse '\(inputPath)': \(error)\n", stderr); exit(1)
+    }
+    let store = openLiveStore(storePath, title: "Backfill Board Locations")
+    print("Input: \(inputPath)")
+    do {
+        let summary = try await store.backfillBoardLocations(from: records)
+        print("Read \(summary.recordsRead) snapshot record(s).")
+        print("Matched: \(summary.matchedByDedupKey) by dedup key, \(summary.matchedByURL) by URL; "
+            + "\(summary.unmatched) had no job in this store.")
+        print("Filled: \(summary.filled) job(s) that had no location.")
+        print("Left alone: \(summary.skippedAlreadyPopulated) job(s) that already state a location"
+            + (summary.skippedBlankSource > 0
+                ? ", \(summary.skippedBlankSource) record(s) with no location text." : "."))
+        print("Work arrangements were NOT touched — a location string is not a verdict on remote work.")
+        if summary.filled > 0 {
+            print("Next: run --recompute-criteria to re-judge the filled jobs against your location settings.")
+        }
+    } catch {
+        fputs("Error: backfill failed: \(error)\n", stderr); exit(1)
+    }
+
 case let .detectDuplicates(storePath):
     guard FileManager.default.fileExists(atPath: storePath) else {
         fputs("Error: store not found at '\(storePath)'\n", stderr); exit(1)

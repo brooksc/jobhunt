@@ -66,6 +66,8 @@ public extension BackgroundStore {
         public var skippedBlankSource = 0
         /// Rows with no job in this store.
         public var unmatched = 0
+        /// Captures given a `boardLocation`, so the fill survives a later re-extraction.
+        public var boardLocationsRecorded = 0
 
         public init() {}
     }
@@ -102,6 +104,22 @@ public extension BackgroundStore {
             job.location = location
             job.updatedAt = Date()
             summary.filled += 1
+
+            // Make the fill durable. Without this the restore lasts only until the job is
+            // re-extracted: the model reads a posting body that never states a location, writes
+            // nothing, and the value is lost again — leaving the JSON snapshot as a file someone
+            // has to keep forever. `Capture.boardLocation` is the field TASK-693 added for exactly
+            // this, and it feeds the extraction prompt as the board's authoritative answer.
+            //
+            // Only filled when empty, and only for jobs whose location this pass actually restored.
+            // The 432 matched jobs that already state a location are deliberately left alone: their
+            // location came from somewhere else, and rewriting their prompt input is a broader
+            // change than restoring lost data.
+            if let capture = job.capture,
+               (capture.boardLocation ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                capture.boardLocation = location
+                summary.boardLocationsRecorded += 1
+            }
         }
 
         if summary.filled > 0 {

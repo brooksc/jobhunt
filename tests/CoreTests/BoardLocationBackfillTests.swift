@@ -199,4 +199,60 @@ final class BoardLocationBackfillTests: XCTestCase {
         let untouched = try await job(store, 1)
         XCTAssertNil(untouched.location)
     }
+
+    // MARK: - Durability
+
+    /// Without recording `boardLocation`, the restore survives only until the job is re-extracted:
+    /// the model reads a body that never states a location and the value is lost again. Recording it
+    /// is what lets the snapshot file finally be retired.
+    func testRecordsBoardLocationSoTheFillSurvivesReExtraction() async throws {
+        let url = "https://boards.greenhouse.io/acme/jobs/20"
+        let store = try await store([makeJob(number: 1, url: url, location: nil)])
+
+        let summary = try await store.backfillBoardLocations(
+            from: [Record(dedupKey: try dedupKey(url), url: url, locationRaw: "United States")]
+        )
+
+        XCTAssertEqual(summary.filled, 1)
+        XCTAssertEqual(summary.boardLocationsRecorded, 1)
+        let filled = try await job(store, 1)
+        XCTAssertEqual(filled.capture?.boardLocation, "United States")
+    }
+
+    /// A capture that already carries the board's answer keeps it — this pass restores lost data, it
+    /// does not re-litigate a value the ingest path already recorded.
+    func testDoesNotOverwriteAnExistingBoardLocation() async throws {
+        let url = "https://boards.greenhouse.io/acme/jobs/21"
+        let rows = [makeJob(number: 1, url: url, location: nil)]
+        rows[0].1.boardLocation = "Berlin, Germany"
+        let store = try await store(rows)
+
+        let summary = try await store.backfillBoardLocations(
+            from: [Record(dedupKey: try dedupKey(url), url: url, locationRaw: "United States")]
+        )
+
+        XCTAssertEqual(summary.filled, 1)
+        XCTAssertEqual(summary.boardLocationsRecorded, 0)
+        let filled = try await job(store, 1)
+        XCTAssertEqual(filled.location, "United States")
+        XCTAssertEqual(filled.capture?.boardLocation, "Berlin, Germany")
+    }
+
+    /// Scope pin: jobs that already state a location are skipped entirely, so their capture's prompt
+    /// input is not rewritten either. Only data this pass restored is made durable.
+    func testDoesNotRecordBoardLocationForAnAlreadyPopulatedJob() async throws {
+        let url = "https://boards.greenhouse.io/acme/jobs/22"
+        let store = try await store([makeJob(number: 1, url: url, location: "Austin, TX")])
+
+        let summary = try await store.backfillBoardLocations(
+            from: [Record(dedupKey: try dedupKey(url), url: url, locationRaw: "United States")]
+        )
+
+        XCTAssertEqual(summary.skippedAlreadyPopulated, 1)
+        XCTAssertEqual(summary.filled, 0)
+        XCTAssertEqual(summary.boardLocationsRecorded, 0)
+        let untouched = try await job(store, 1)
+        XCTAssertEqual(untouched.location, "Austin, TX")
+        XCTAssertNil(untouched.capture?.boardLocation)
+    }
 }

@@ -502,6 +502,8 @@ case let .backfillBoardLocations(storePath, inputPath):
         print("Left alone: \(summary.skippedAlreadyPopulated) job(s) that already state a location"
             + (summary.skippedBlankSource > 0
                 ? ", \(summary.skippedBlankSource) record(s) with no location text." : "."))
+        print("Recorded boardLocation on \(summary.boardLocationsRecorded) capture(s), so a later "
+            + "re-extraction keeps the value instead of losing it again.")
         print("Work arrangements were NOT touched — a location string is not a verdict on remote work.")
         if summary.filled > 0 {
             print("Next: run --recompute-criteria to re-judge the filled jobs against your location settings.")

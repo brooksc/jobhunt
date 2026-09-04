@@ -3,10 +3,10 @@ id: TASK-700
 title: >-
   Icon-only buttons announce as unnamed — .help() sets the hint, not the
   accessibility label
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-31 19:27'
-updated_date: '2026-08-31 19:39'
+updated_date: '2026-09-04 19:52'
 labels: []
 dependencies: []
 priority: high
@@ -63,3 +63,11 @@ The audit's other 7 findings (2 high / 3 medium / 3 low) and 5 items needing a r
 - [ ] #5 .help() is retained as the hint where it adds detail beyond the label
 - [ ] #6 The corrected check passes in CI and would fail on a newly added unlabeled icon control
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed in 3f61cbc7 (merged via a6d519e4). `scripts/check-tooltips.sh` previously accepted `.help(` OR `.accessibilityLabel(` and told developers to add `.help("…")` — but `.help()` sets the accessibility *hint*, not the *name*, so CI had been teaching the wrong remedy since TASK-494. The script now requires `.accessibilityLabel(` on icon-only controls and treats `.help(` as supplementary. It then found 32 unlabelled icon-only sites across 15 files, all now labelled.
+
+Status corrected 2026-09-04 — the work landed 2026-09-03. Verified in the code (61 `.accessibilityLabel(` call sites in `app/`), not from the commit message.
+<!-- SECTION:FINAL_SUMMARY:END -->

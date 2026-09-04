@@ -61,7 +61,13 @@ PROJECT="Jobhunt.xcodeproj"
 SSH_USER="admin"
 SSH_PASS="admin"
 # sshpass options: no host-key checking (new VM every clone), short connect timeout
-SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o PreferredAuthentications=password"
+# `PubkeyAuthentication=no` is load-bearing, not belt-and-braces. `PreferredAuthentications=password`
+# only sets the ORDER; ssh still offers every key in the agent/~/.ssh first. The VM rejects each one,
+# and after those failures the server refuses the connection before the password is ever tried —
+# surfacing as `Permission denied (publickey,password,keyboard-interactive)`, which reads like wrong
+# credentials. It isn't: admin/admin is correct and works the moment keys are suppressed. This cost a
+# day of believing the VM image had changed its defaults (2026-09-04).
+SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o PreferredAuthentications=password -o PubkeyAuthentication=no -o IdentitiesOnly=yes"
 
 MOUNT_NAME="project"
 # Host-built test products land here (inside project dir so virtiofs shares them).

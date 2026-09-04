@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bump the shared version across Project.swift (Tuist) and extension/manifest.json.
+# Bump the shared version across Project.swift (Tuist) and BOTH extension manifests.
 # Current version is read from Project.swift marketingVersion — no package.json needed.
 #
 # Usage (semver increment):
@@ -12,8 +12,8 @@
 #
 # Prints the new version to stdout. Does not auto-commit.
 #
-# This updates ONLY: Project.swift (.marketingVersion + .currentProjectVersion) and
-# extension/manifest.json (.version). version-parity.yml checks these two agree.
+# This updates ONLY: Project.swift (.marketingVersion + .currentProjectVersion),
+# extension/manifest.json (.version) and extension/manifest.firefox.json (.version).
 # MUST be refreshed MANUALLY at release time (this script does NOT touch them):
 #   - chromestore/store-listing.md   — the "Version" row and the "Extension zip" filename
 #   - the built chromestore/jobhunt-capture-<version>.zip artifact
@@ -21,6 +21,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MANIFEST="$REPO_ROOT/extension/manifest.json"
+FIREFOX_MANIFEST="$REPO_ROOT/extension/manifest.firefox.json"
 PROJECT_SWIFT="$REPO_ROOT/Project.swift"
 
 ARG="${1:-patch}"
@@ -59,9 +60,18 @@ BUILD=$(date +%Y%m%d%H%M)
 sed -i '' "s/\.marketingVersion(\"[0-9.]*\")/.marketingVersion(\"$NEW\")/g" "$PROJECT_SWIFT"
 sed -i '' "s/\.currentProjectVersion(\"[0-9]*\")/.currentProjectVersion(\"$BUILD\")/g" "$PROJECT_SWIFT"
 
-# Update extension manifest if present.
-if [ -f "$MANIFEST" ]; then
-  sed -i '' "s/\"version\": \"[0-9.]*\"/\"version\": \"$NEW\"/g" "$MANIFEST"
-fi
+# Update the extension manifests if present.
+#
+# BOTH of them. The Firefox port (TASK-619) added a second manifest, and this script kept bumping
+# only the Chrome one — so `bump-version.sh minor` left Firefox a version behind and the release was
+# already broken by the time anything said so. version-parity.yml did NOT catch it: that gate
+# compares Project.swift against manifest.json only, so it reported success on a tree whose versions
+# genuinely disagreed. The failure surfaced from extension/tests/test_firefox_manifest.js, which is
+# the real guard here.
+for manifest in "$MANIFEST" "$FIREFOX_MANIFEST"; do
+  if [ -f "$manifest" ]; then
+    sed -i '' "s/\"version\": \"[0-9.]*\"/\"version\": \"$NEW\"/g" "$manifest"
+  fi
+done
 
 echo "$NEW"

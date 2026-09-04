@@ -20,21 +20,32 @@ jobs:
       # actions/checkout@v4.2.2
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
+      # This gate checked Project.swift against manifest.json only, and so reported SUCCESS on the
+      # 1.5.0 bump while extension/manifest.firefox.json was still on 1.4.0 — a green check on a tree
+      # whose versions genuinely disagreed. The Firefox port (TASK-619) added that third file and
+      # this gate was never widened to cover it. A guard that passes when the invariant it is named
+      # after is broken is worse than no guard: it is the reason nobody looked.
+      #
+      # Every version file is now compared, so adding a fourth and forgetting it fails here rather
+      # than in a release.
       - name: Check version parity
         run: |
           APP_VERSION=$(grep -o '\.marketingVersion("[0-9.]*")' Project.swift | grep -o '"[0-9.]*"' | tr -d '"')
           EXT_VERSION=$(jq -r '.version' extension/manifest.json)
+          FF_VERSION=$(jq -r '.version' extension/manifest.firefox.json)
 
-          echo "App version (Project.swift):          $APP_VERSION"
-          echo "Extension version (manifest.json):    $EXT_VERSION"
+          echo "App version (Project.swift):              $APP_VERSION"
+          echo "Extension version (manifest.json):        $EXT_VERSION"
+          echo "Extension version (manifest.firefox.json): $FF_VERSION"
 
-          if [ "$APP_VERSION" != "$EXT_VERSION" ]; then
+          if [ "$APP_VERSION" != "$EXT_VERSION" ] || [ "$APP_VERSION" != "$FF_VERSION" ]; then
             echo ""
             echo "ERROR: Version mismatch!"
-            echo "  Project.swift marketingVersion = $APP_VERSION"
-            echo "  extension/manifest.json version = $EXT_VERSION"
+            echo "  Project.swift marketingVersion          = $APP_VERSION"
+            echo "  extension/manifest.json version         = $EXT_VERSION"
+            echo "  extension/manifest.firefox.json version = $FF_VERSION"
             echo ""
-            echo "Run ./scripts/bump-version.sh to update both files together."
+            echo "Run ./scripts/bump-version.sh to update all three files together."
             exit 1
           fi
 

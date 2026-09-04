@@ -25,6 +25,13 @@ let screenshotDir: URL = {
     return dir
 }()
 
+/// Identifier AppKit gives the SwiftUI `Settings` scene's window.
+let settingsWindowIdentifier = "com_apple_SwiftUI_Settings_window"
+
+/// The Settings tabs in the order `SettingsTabView` declares them. Used only as a positional
+/// fallback when a macOS release stops exposing the toolbar buttons' `title`.
+let settingsTabOrder = ["General", "Jobs", "AI", "Data", "Search", "Debug"]
+
 extension XCTestCase {
     // MARK: - State-based wait
 
@@ -285,7 +292,87 @@ extension XCTestCase {
         }
     }
 
+    // MARK: - Settings window
+
+    /// Open the standard macOS Settings window (⌘,) and return it.
+    ///
+    /// Returns the existing window untouched if Settings is already open, so callers that reached
+    /// it some other way (e.g. the sidebar row) can still use `selectSettingsTab`.
+    @discardableResult
+    func openSettingsWindow(
+        _ app: XCUIApplication,
+        file: StaticString = #filePath, line: UInt = #line
+    ) -> XCUIElement {
+        app.activate()
+        let window = app.windows[settingsWindowIdentifier]
+        // Retry the chord — UI tests occasionally drop the first ⌘, before the app is key.
+        for _ in 0 ..< 3 where !window.exists {
+            app.typeKey(",", modifierFlags: .command)
+            _ = window.waitForExistence(timeout: 5)
+        }
+        XCTAssertTrue(
+            window.waitForExistence(timeout: 5),
+            "the Settings window (\(settingsWindowIdentifier)) should be open",
+            file: file, line: line
+        )
+        return window
+    }
+
+    /// Select a Settings tab by its visible name and verify the pane actually changed.
+    ///
+    /// TASK-716: the Settings `TabView` renders as an NSToolbar of buttons, and those buttons carry
+    /// the tab name **only** in the accessibility `title` attribute — `label` and `identifier` are
+    /// both empty. Every `label`-based query therefore matched nothing, the click never happened,
+    /// and the screenshot tour captured the General pane five times while still passing. Query by
+    /// `title`, and prove the switch by the Settings window title, which tracks the selected pane.
+    ///
+    /// Returns the Settings window. On failure the returned window's `title` will not equal `name`,
+    /// so callers running with `continueAfterFailure = true` can bail without capturing a lie.
+    @discardableResult
+    func selectSettingsTab(
+        _ app: XCUIApplication, _ name: String,
+        file: StaticString = #filePath, line: UInt = #line
+    ) -> XCUIElement {
+        let window = openSettingsWindow(app, file: file, line: line)
+        guard window.exists else { return window }
+
+        let tab = settingsTabButton(in: window, named: name)
+        guard tab.waitForExistence(timeout: 5) else {
+            XCTFail("the '\(name)' Settings tab must exist in the toolbar", file: file, line: line)
+            return window
+        }
+
+        // Coordinate clicks bypass the isHittable check — on a headless VM the Settings window is
+        // frequently not the macOS key window even though its controls are on screen and enabled.
+        tab.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+
+        XCTAssertTrue(
+            waitUntil(timeout: 6) { window.title == name },
+            "clicking '\(name)' should switch the Settings pane; the window title is '\(window.title)'",
+            file: file, line: line
+        )
+        return window
+    }
+
+    /// The toolbar button for a Settings tab. Matches on `title` (what macOS 15 exposes); falls back
+    /// to the declared tab order if a future release stops publishing it.
+    private func settingsTabButton(in window: XCUIElement, named name: String) -> XCUIElement {
+        let toolbarButtons = window.toolbars.buttons
+        let byTitle = toolbarButtons.matching(NSPredicate(format: "title == %@", name)).firstMatch
+        if byTitle.exists { return byTitle }
+        if let index = settingsTabOrder.firstIndex(of: name) {
+            let byPosition = toolbarButtons.element(boundBy: index)
+            if byPosition.exists { return byPosition }
+        }
+        return byTitle
+    }
+
     // MARK: - Screenshots
+
+    /// Capture a specific window (not just the frontmost one), save to disk, and attach.
+    func snapWindow(_ window: XCUIElement, _ name: String) {
+        writeToDisk(window.screenshot(), name: name)
+    }
 
     /// Capture the app window, save to disk, and attach to test results.
     func snap(_ app: XCUIApplication, _ name: String) {

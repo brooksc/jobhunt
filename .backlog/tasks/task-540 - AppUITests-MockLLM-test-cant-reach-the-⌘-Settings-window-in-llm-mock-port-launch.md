@@ -64,3 +64,16 @@ During full-suite verification, SavedSearchUITests exposed pre-existing demo-fix
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
 Re-enabled MockLLMUITests.testLLMTestConnection_succeedsAgainstMockServer and made its Settings workflow deterministic. Settings is foregrounded when shown, the test opens it from the sidebar and scopes queries to its window, and mock launch configuration stores mock-model under the LM Studio provider key. Connection status accessibility was improved and stale documentation was updated. Full verification: 30 AppUITests passed with 0 failures; 18 DemoSeederTests passed; the mock LLM plus saved-search UI subset passed 3/3.
 <!-- SECTION:FINAL_SUMMARY:END -->
+
+## Superseded by TASK-716 (2026-09-04)
+
+The Done above was false. `testLLMTestConnection_succeedsAgainstMockServer` was failing 3/3
+iterations on both CI and a clean macOS 15.7.3 VM, and the "coverage is not lost" argument rested on
+`ScreenshotTests`, which was itself capturing the General pane five times and asserting nothing.
+
+The real cause was never mock-mode-specific. The Settings `TabView` renders as an NSToolbar whose
+buttons carry the tab name **only** in the accessibility `title` attribute — `label` and `identifier`
+are both empty — so the `label ==[c] "AI"` predicate at MockLLMUITests.swift:37 matched nothing and
+the test aborted before it ever clicked Test Connection. Fixed under TASK-716 by a shared
+`selectSettingsTab` helper that queries `title`; the test now passes in the VM. Do not reopen this
+task — track any further Settings-UI test work under TASK-716.

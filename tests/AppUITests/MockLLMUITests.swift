@@ -23,24 +23,19 @@ final class MockLLMUITests: XCTestCase {
     }
 
     func testLLMTestConnection_succeedsAgainstMockServer() {
-        // Use the app-owned Settings row so this test does not depend on global keyboard focus while
-        // the mock-backed queue starts processing in the background.
+        // Nudge Settings open with the app-owned sidebar row first, so this doesn't depend on global
+        // keyboard focus while the mock-backed queue starts processing in the background. If the row
+        // doesn't get there, selectSettingsTab's ⌘, retry loop does.
         let settingsRow = app.descendants(matching: .any).matching(identifier: "sidebar.settings").firstMatch
-        XCTAssertTrue(settingsRow.waitForExistence(timeout: 5), "the Settings sidebar row must exist")
-        settingsRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
-
-        XCTAssertTrue(waitUntil(timeout: 5) { self.app.windows.count > 1 }, "the Settings window should open")
-        guard let settingsWindow = app.windows.allElementsBoundByIndex.first(where: { $0.identifier != "main" }) else {
-            return XCTFail("the Settings window should be present in the accessibility hierarchy")
+        if settingsRow.waitForExistence(timeout: 5) {
+            settingsRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+            _ = waitUntil(timeout: 5) { self.app.windows[settingsWindowIdentifier].exists }
         }
-        XCTAssertTrue(settingsWindow.waitForExistence(timeout: 5), "the Settings window should remain available")
 
-        // TabView's accessibility role varies by macOS release, so identify the tab by its label.
-        let aiTab = settingsWindow.descendants(matching: .any)
-            .matching(NSPredicate(format: "label ==[c] %@", "AI"))
-            .firstMatch
-        XCTAssertTrue(aiTab.waitForExistence(timeout: 5), "the AI settings tab must exist")
-        aiTab.click()
+        // TASK-716: the tab is a toolbar button whose name lives in `title`, not `label`. The old
+        // label predicate here matched nothing, which is why this test failed one step before the
+        // Test Connection click. selectSettingsTab owns that query for every AppUITests class.
+        let settingsWindow = selectSettingsTab(app, "AI")
 
         let testButton = settingsWindow.buttons["Test Connection"].firstMatch
         XCTAssertTrue(testButton.waitForExistence(timeout: 5), "Test Connection button must exist")

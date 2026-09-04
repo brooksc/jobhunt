@@ -3,7 +3,7 @@ id: TASK-716
 title: >-
   ScreenshotTests captures the same Settings pane five times and passes — the
   settings tour proves nothing
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-04 17:39'
 labels: []
@@ -47,9 +47,50 @@ Related: [[TASK-540]] should be reopened — it was marked Done claiming "30 App
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Each settings screenshot step asserts it is on the intended tab before capturing
-- [ ] #2 Clicking a Settings tab in XCUITest switches the pane, verified by that assertion
-- [ ] #3 The five settings screenshots show five different panes
-- [ ] #4 MockLLMUITests either passes or is skipped with an honest, current reason
-- [ ] #5 TASK-540 is reopened or superseded rather than left Done
+- [x] #1 Each settings screenshot step asserts it is on the intended tab before capturing
+- [x] #2 Clicking a Settings tab in XCUITest switches the pane, verified by that assertion
+- [x] #3 The five settings screenshots show five different panes
+- [x] #4 MockLLMUITests either passes or is skipped with an honest, current reason
+- [x] #5 TASK-540 is reopened or superseded rather than left Done
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+**Root cause, from a real VM accessibility dump** (macOS 15.7.3 / Xcode 26.4.1). The Settings
+`TabView` renders as an `NSToolbar` of six buttons, and each button carries its tab name **only in
+the `title` attribute** — `label` and `identifier` are both empty strings:
+
+```
+Toolbar, {{62.0, 99.0}, {900.0, 52.0}}
+  Button, {{344.5, 99.0}, {55.0, 52.0}}, title: 'General'
+  Button, {{400.5, 99.0}, {55.0, 52.0}}, title: 'Jobs'
+  Button, {{456.5, 99.0}, {55.0, 52.0}}, title: 'AI'
+  ...
+```
+
+Every query in the suite matched on `label`, so `clickSettingsTab` found nothing, silently no-op'd
+(`if btn.waitForExistence(...)` with no else), and each shot captured whichever pane was already up.
+`openSettingsWindow`'s `app.radioButtons["General"]` guard never matched either, so it typed ⌘, three
+times every run — the only radio buttons in the window are the General pane's Light/Dark/System
+picker. `MockLLMUITests` hit the identical dead query one step earlier and aborted at
+`XCTAssertTrue(aiTab.waitForExistence...)`.
+
+**Fix (test-only — no product change).** One shared `selectSettingsTab(_:_:)` in
+`tests/AppUITests/AppUITests.swift`, alongside `launchApp`, so ScreenshotTests and MockLLMUITests
+cannot drift: it queries `window.toolbars.buttons` by `title` (positional fallback on
+`settingsTabOrder`), clicks by coordinate to bypass `isHittable` on a headless VM, and asserts the
+Settings window's title — which tracks the selected pane — actually changed. `openSettingsWindow`
+keys off the real window identifier `com_apple_SwiftUI_Settings_window`. `ScreenshotTests` gates
+every capture on both that title and a control unique to the pane, and a new `snapWindow` captures
+the Settings window explicitly rather than `windows.firstMatch`. A `Search` shot was added so the
+tour matches what CLAUDE.md claims it covers.
+
+No launch argument was needed: addressing the toolbar button by `title` selects the tab reliably, so
+the tour still exercises the real control instead of bypassing it.
+
+**Verified in the Tart VM**, not by exit code: the six settings PNGs were inspected by eye and show
+six different panes (General/Jobs/AI/Data/Search/Debug), each with the matching tab highlighted and
+window title. `MockLLMUITests` passes — it is fixed, not skipped; the sidebar row alone does not open
+Settings in mock mode, but the helper's ⌘, retry does. Full suite: 38 AppUITests, 0 failures.
+<!-- SECTION:NOTES:END -->

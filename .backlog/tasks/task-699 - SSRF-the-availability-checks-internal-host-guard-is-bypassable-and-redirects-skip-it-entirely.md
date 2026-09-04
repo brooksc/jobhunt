@@ -3,9 +3,10 @@ id: TASK-699
 title: >-
   SSRF: the availability check's internal-host guard is bypassable, and
   redirects skip it entirely
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-31 19:24'
+updated_date: '2026-09-04 19:52'
 labels: []
 dependencies: []
 priority: high
@@ -63,3 +64,11 @@ Related: `git show 6ad9f4ed` fixed an earlier "SSRF-shaped host bypass" in disco
 - [ ] #4 A redirect from an allowed host to 127.0.0.1 is refused, covered by a test
 - [ ] #5 The discovery-side guard from 6ad9f4ed is checked for the same weakness and unified if it diverges
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed in 7a9b0d6c (merged via 4edfbe6b). The guard parses IP literals with `inet_aton` — deliberately not `inet_pton(AF_INET,…)`, which rejects `127.1` and `2130706433` and would have let them fall through — and is re-applied on every redirect hop via the `willPerformHTTPRedirection` delegate rather than only on the original URL.
+
+Status corrected 2026-09-04: the work landed on 2026-08-31 but the status was never flipped. Verified against the code in `core/Services/AvailabilityChecker.swift:376-382,451`, not against the commit message.
+<!-- SECTION:FINAL_SUMMARY:END -->

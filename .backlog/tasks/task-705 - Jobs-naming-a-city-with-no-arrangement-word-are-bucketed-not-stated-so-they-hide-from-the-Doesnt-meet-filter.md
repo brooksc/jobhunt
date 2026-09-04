@@ -6,9 +6,10 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-08-31 20:27'
+updated_date: '2026-09-04 19:56'
 labels: []
 dependencies: []
-priority: high
+priority: medium
 type: bug
 ordinal: 79000
 ---
@@ -64,3 +65,29 @@ Related: [[TASK-694]] (arrangement re-check after hydration) and [[TASK-693]] (b
 - [ ] #5 Nothing is auto-archived by this change
 - [ ] #6 It is confirmed (and stated) whether the existing filter plus bulk archive is enough to clear the 49, or a new affordance is needed
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-09-04 19:56
+---
+Re-measured against the live store 2026-09-04, after TASK-708's `--repair-remote-types` run restored 223 erased work arrangements. **The scope shrank and the headline example is gone.**
+
+**Job #1424 — the reported case — is fixed.** It now reads `remoteType = hybrid` with location `Lehi, Utah`, so `criteriaBucket` returns `.doesNotMeet` and it appears under the filter. It was only ever bucketed `.notStated` because the TASK-708 clamp had erased its arrangement; the bucketing rule never saw it.
+
+Current counts:
+
+| | jobs |
+|---|---|
+| `meetsCriteria=0` and no arrangement, all statuses | 333 |
+| …of those, in New | 42 |
+| …of those, **with a non-empty location** (this bug) | **22** |
+| …of those, empty location (correctly `.notStated`) | 20 |
+
+So the modeling flaw is real and still hides **22 jobs in New** — several Airbnb roles at "San Francisco, CA" among them — but it is no longer the 49-job problem the description describes, and it is not release-blocking.
+
+The 20 with a genuinely empty location behave correctly and must keep doing so: the user explicitly still wants to review those.
+
+Acceptance criterion #4 ("Job #1424 appears under the Doesn't-meet filter") is already satisfied by other means — do not use it as the test for this fix. Pick a current case from the 22 instead. Priority lowered High → Medium on that basis.
+---
+<!-- COMMENTS:END -->

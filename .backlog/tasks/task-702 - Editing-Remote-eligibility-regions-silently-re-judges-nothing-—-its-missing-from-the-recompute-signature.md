@@ -3,9 +3,10 @@ id: TASK-702
 title: >-
   Editing Remote eligibility regions silently re-judges nothing — it's missing
   from the recompute signature
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-31 19:28'
+updated_date: '2026-09-04 19:52'
 labels: []
 dependencies: []
 priority: high
@@ -42,3 +43,11 @@ Existing rows are repairable with `JobhuntMigrator --recompute-criteria`, which 
 - [ ] #3 A test or derivation prevents a future LocationCriteria input from being omitted from the signature
 - [ ] #4 Existing stored verdicts are corrected via --recompute-criteria
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed in 0b58d9cb (merged via 4edfbe6b). The `.task(id:)` key was a hand-written string listing "every input LocationCriteria reads"; it listed six and omitted `remoteEligibilityRegions` — the dominant term for remote roles, and editable in that very view, so editing it left every stored verdict stale. The inputs are now derived from a struct rather than hand-listed, so the next added field can't be silently forgotten (`app/Views/Settings/SettingsTab.swift:176-223`).
+
+Status corrected 2026-09-04 — landed 2026-08-31, never flipped.
+<!-- SECTION:FINAL_SUMMARY:END -->

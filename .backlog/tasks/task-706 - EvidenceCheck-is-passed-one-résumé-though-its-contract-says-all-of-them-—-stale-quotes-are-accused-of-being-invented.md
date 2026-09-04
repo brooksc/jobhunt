@@ -3,9 +3,10 @@ id: TASK-706
 title: >-
   EvidenceCheck is passed one résumé though its contract says all of them —
   stale quotes are accused of being invented
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-31 20:36'
+updated_date: '2026-09-04 19:52'
 labels: []
 dependencies: []
 priority: high
@@ -50,3 +51,11 @@ Consider whether the check should also distinguish `.stale` (found in a supersed
 - [ ] #4 The 32% figure in EvidenceCheck's doc comment is re-measured after the fix and corrected
 - [ ] #5 A decision is recorded on whether a distinct .stale support state is worth adding
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed in ffb59816 (merged via a6d519e4). EvidenceCheck's contract says it is given every résumé, but it was passed only the one being scored, so a quote drawn from another stored résumé was accused of being invented. `otherResumeTexts` is now threaded from `QueueActor` through `ExtractionEngine` and the check sees `[resume.text] + otherResumeTexts` (`core/LLM/ExtractionEngine.swift:293,350`; `core/LLM/QueueActor.swift:1001`). Stored analyses were re-checked with `JobhuntMigrator --recheck-evidence` against the production store.
+
+Status corrected 2026-09-04 — landed 2026-09-03.
+<!-- SECTION:FINAL_SUMMARY:END -->

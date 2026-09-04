@@ -3,10 +3,10 @@ id: TASK-711
 title: >-
   Make the fit-score rubric version queryable, so stale scores can be found and
   rescored in bulk
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-31 21:05'
-updated_date: '2026-08-31 21:09'
+updated_date: '2026-09-04 19:52'
 labels: []
 dependencies: []
 priority: high
@@ -71,3 +71,13 @@ The queryable column is still worth having — without it neither mode can selec
 Dropped acceptance criteria: the UI filter, the per-score staleness badge, and excluding stale versions from `min_score`/default sort. If ranking across mixed versions turns out to mislead in practice, that is a separate decision to make with evidence rather than pre-emptively.
 ---
 <!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed in 6d974f5c (merged via 1b5be335). The rubric version is now mirrored into its own column and queryable, with two migrator modes: `--backfill-fit-versions` to populate it on existing rows and `--fit-version-histogram` to count stored scores per version. That makes stale scores findable, and stops two rubric generations being silently averaged as one population.
+
+Scope note: the UI filter originally sketched in this task was deliberately dropped — the user's call ("I don't know we need a filter, that's not useful for anyone but me"). Bulk rescoring stays a manual, selective, CLI-driven action because it costs money (~$16.70 for all 1,006 stale rows).
+
+Status corrected 2026-09-04 — landed 2026-08-31.
+<!-- SECTION:FINAL_SUMMARY:END -->

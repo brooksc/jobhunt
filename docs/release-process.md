@@ -35,6 +35,29 @@ The Sparkle **public** key lives in `Project.swift` (`sparklePublicEDKey`) and s
 Info.plist as `SUPublicEDKey`. `GITHUB_TOKEN` is provided automatically by Actions (the workflows
 set it as job env so `mise` authenticates GitHub API calls).
 
+> ### ⏳ Check certificate expiry before planning a release
+>
+> ```bash
+> security find-certificate -c "Developer ID Application" -p | openssl x509 -noout -enddate
+> security find-certificate -c "Apple Distribution"       -p | openssl x509 -noout -enddate
+> ```
+>
+> **As of 2026-09-04: Developer ID expires `2027-02-01`, Apple Distribution `2027-06-21`.**
+>
+> Past that date you cannot sign a new DMG until you renew the certificate **and** refresh
+> `DEVELOPER_ID_CERT_BASE64` / `DEVELOPER_ID_CERT_PASSWORD`. Nothing already shipped breaks — a
+> notarized build keeps launching after its certificate expires, because the signature carries a
+> secure timestamp. The cost is entirely to *future* releases, which is exactly why it's easy to
+> forget and expensive to discover mid-hotfix.
+>
+> **The secrets are not recoverable from GitHub.** Actions secrets are write-only; `gh secret list`
+> shows only names and dates. Keep the authoritative copy of every irreplaceable secret in a password
+> manager — above all `SPARKLE_EDDSA_PRIVATE_KEY`, since losing it permanently cuts every installed
+> copy off from auto-update (the documented remedy, shipping a new public key, can only reach users
+> through the update channel you just lost). See the credentials section in
+> [`CONTRIBUTING.md`](../CONTRIBUTING.md#credentials--what-you-need-for-what) for the full
+> lose-it-and-what-happens breakdown.
+
 Creating the Developer ID cert: Xcode → Settings → Accounts → Manage Certificates → **+** →
 **Developer ID Application** (requires being the team **Account Holder** with a paid membership).
 

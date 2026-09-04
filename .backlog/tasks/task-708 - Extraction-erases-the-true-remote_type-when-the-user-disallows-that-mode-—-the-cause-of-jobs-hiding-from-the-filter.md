@@ -3,9 +3,10 @@ id: TASK-708
 title: >-
   Extraction erases the true remote_type when the user disallows that mode — the
   cause of jobs hiding from the filter
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-31 20:39'
+updated_date: '2026-09-04 19:52'
 labels: []
 dependencies: []
 priority: high
@@ -65,3 +66,13 @@ Also worth recording, because it closes off wasted investigation: the audit exam
 - [ ] #4 QualityIssue no longer reports a missing remote type it caused
 - [ ] #5 A migrator mode restores remoteType for affected rows from extractedJSON, with no LLM calls, and recomputes meetsCriteria for rows it changes
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed in 5a2ff474 (merged via c15895c8). The TASK-270 clamp did `if !allowed { remoteType = nil }` — erasing a correctly-extracted work arrangement whenever the user disallowed that mode, which is what made those jobs hide from the Doesn't-meet filter. The clamp is gone from `core/LLM/ExtractionEngine.swift`; extraction now records what the posting says and the criteria layer decides whether it passes.
+
+223 already-erased arrangements were restored from `extractedJSON` with `JobhuntMigrator --repair-remote-types` against the production store (backup taken first).
+
+Status corrected 2026-09-04 — landed 2026-08-31. Note this is NOT the same as TASK-705, which remains open: 705 is about `JobFilterRules.criteriaBucket` bucketing a nil arrangement as "not stated", and that code is unchanged.
+<!-- SECTION:FINAL_SUMMARY:END -->

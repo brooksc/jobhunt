@@ -126,33 +126,27 @@ final class ScreenshotTests: XCTestCase {
     // MARK: - 16-18 Settings (now the standard macOS ⌘, preferences window)
 
     func test16_SettingsGeneral() {
-        openSettingsWindow()
-        clickSettingsTab(label: "General")
-        snap(app, "16-settings-general")
+        captureSettingsTab("General", showing: "Appearance", as: "16-settings-general")
     }
 
     func test16b_SettingsJobs() {
-        openSettingsWindow()
-        clickSettingsTab(label: "Jobs")
-        snap(app, "16b-settings-jobs")
+        captureSettingsTab("Jobs", showing: "Location Filter", as: "16b-settings-jobs")
     }
 
     func test17_SettingsAI() {
-        openSettingsWindow()
-        clickSettingsTab(label: "AI")
-        snap(app, "17-settings-ai")
+        captureSettingsTab("AI", showing: "Provider", as: "17-settings-ai")
     }
 
     func test17b_SettingsData() {
-        openSettingsWindow()
-        clickSettingsTab(label: "Data")
-        snap(app, "17b-settings-data")
+        captureSettingsTab("Data", showing: "Back Up Data…", as: "17b-settings-data")
+    }
+
+    func test17c_SettingsSearch() {
+        captureSettingsTab("Search", showing: "What I'm looking for", as: "17c-settings-search")
     }
 
     func test18_SettingsDebug() {
-        openSettingsWindow()
-        clickSettingsTab(label: "Debug")
-        snap(app, "18-settings-debug")
+        captureSettingsTab("Debug", showing: "Environment", as: "18-settings-debug")
     }
 
     // MARK: - 19 Resumes (promoted to a top-level sidebar section)
@@ -164,25 +158,22 @@ final class ScreenshotTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Open the standard macOS Settings window via ⌘,. The window's a11y title isn't reliably
-    /// "Settings", so key off a tab radio button (only present once Settings is open) and retry the
-    /// chord — UI tests occasionally drop the first ⌘, before the app is key.
-    private func openSettingsWindow() {
-        app.activate()
-        let firstTab = app.radioButtons.matching(NSPredicate(format: "label CONTAINS[c] %@", "General")).firstMatch
-        for _ in 0 ..< 3 where !firstTab.exists {
-            app.typeKey(",", modifierFlags: .command)
-            _ = firstTab.waitForExistence(timeout: 5)
-        }
-    }
+    /// Switch to a Settings tab, prove the pane really changed, and only then capture it.
+    ///
+    /// TASK-716: this tour used to click a query that matched nothing and captured whatever pane was
+    /// showing — five identical General screenshots that the suite reported as a pass. Two checks now
+    /// gate the capture: the Settings window title (asserted inside `selectSettingsTab`) and a control
+    /// that exists only in the target pane. A shot is never written when either fails.
+    private func captureSettingsTab(_ tab: String, showing marker: String, as name: String) {
+        let window = selectSettingsTab(app, tab)
+        // selectSettingsTab already reported the failure; don't capture a mislabelled screenshot.
+        guard window.exists, window.title == tab else { return }
 
-    /// Click a settings tab by label. The TabView tabs are radio buttons in the Settings window.
-    private func clickSettingsTab(label: String) {
-        let pred = NSPredicate(format: "label CONTAINS[c] %@", label)
-        let btn = app.radioButtons.matching(pred).firstMatch
-        if btn.waitForExistence(timeout: 4) {
-            btn.click()
-            waitUntil(timeout: 3) { btn.isSelected }
+        let paneMarker = window.descendants(matching: .any)
+            .matching(NSPredicate(format: "label == %@", marker)).firstMatch
+        guard paneMarker.waitForExistence(timeout: 5) else {
+            return XCTFail("the \(tab) pane should contain '\(marker)' — not capturing \(name)")
         }
+        snapWindow(window, name)
     }
 }

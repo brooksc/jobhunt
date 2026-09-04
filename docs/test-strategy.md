@@ -78,7 +78,7 @@ All tests share one `JobhuntServer` instance (class-level `static sharedServer`)
 
 | Suite | Tests | Description |
 |---|---|---|
-| `ScreenshotTests` | 18 | Visual tour: Dashboard → every Jobs filter → NeedsAction → Sites → Duplicates → LLM Queue → Data Quality → Settings tabs (General/Jobs/AI/Data/Debug) → Resumes |
+| `ScreenshotTests` | 19 | Visual tour: Dashboard → every Jobs filter → NeedsAction → Sites → Duplicates → LLM Queue → Data Quality → Settings tabs (General/Jobs/AI/Data/Search/Debug) → Resumes. Each settings step asserts the pane it claims before capturing (TASK-716) |
 | `BehaviorUITests` | 6 | Sidebar nav, ⌘K, ⌘, (Settings), Remote filter chip, Data Quality filter chip |
 | `WorkflowUITests` | 2 | Archive a job, seeded data health check |
 | `MockLLMUITests` | 1 | LLM Test Connection vs a localhost mock |

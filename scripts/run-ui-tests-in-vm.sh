@@ -139,6 +139,20 @@ if [ "$BUILD_ON_HOST" = true ]; then
     # -jobs 6: this is a fanless 8-core MacBook Air. An uncapped build saturates every core,
     # thermally throttles within minutes, and finishes SLOWER than a capped one while making the
     # GUI unusable — and this script exists precisely so a test run doesn't disrupt the machine.
+    # TASK-717: the build's exit status is load-bearing. This used to end in
+    # `| grep -E … || true`, which discarded it — so a FAILED build was followed by
+    # `test-without-building` against whatever bundle was last built, and the run reported
+    # green while executing stale code. Observed: 18/18 passing with
+    # `error: Build input file cannot be found` sitting in the build log, the only clue
+    # being that a newly added test never appeared in the output. That is the same
+    # silent-pass class as TASK-716, one layer up, and worse — it fakes the whole suite.
+    #
+    # `|| true` was there because grep exits 1 when it matches nothing. Keep the filtered
+    # console output, but read xcodebuild's own status out of PIPESTATUS and stop on it.
+    # The full log is retained so the diagnostic survives the filter.
+    _build_log="${HOST_PRODUCTS%/}-build.log"
+    mkdir -p "$(dirname "$_build_log")"
+    set +e
     nice xcodebuild build-for-testing \
         -project "$PROJECT" \
         -scheme "$SCHEME" \
@@ -149,7 +163,20 @@ if [ "$BUILD_ON_HOST" = true ]; then
         CODE_SIGNING_ALLOWED=NO \
         CODE_SIGNING_IDENTITY="" \
         CODE_SIGN_ENTITLEMENTS="" \
-        2>&1 | grep -E "(error:|warning:.*error|BUILD SUCCEEDED|BUILD FAILED|Test Build Succeeded|Test Build Failed)" || true
+        2>&1 | tee "$_build_log" \
+        | grep -E "(error:|warning:.*error|BUILD SUCCEEDED|BUILD FAILED|Test Build Succeeded|Test Build Failed)"
+    _build_status=${PIPESTATUS[0]}
+    set -e
+
+    if [ "$_build_status" -ne 0 ]; then
+        echo >&2
+        echo "ERROR: the host build failed (xcodebuild exit $_build_status). NOT running any tests —" >&2
+        echo "       doing so would test the previously built bundle and report a meaningless pass." >&2
+        echo >&2
+        echo "Last errors from $_build_log:" >&2
+        grep -E "error:" "$_build_log" | tail -20 >&2 || echo "  (no 'error:' lines — see the full log)" >&2
+        exit "$_build_status"
+    fi
 
     # Ad-hoc sign the runner and the app, or they will not launch.
     #

@@ -3,9 +3,10 @@ id: TASK-707
 title: >-
   Newly-scored jobs ignore your scoring feedback — the queue never passes it to
   scoreFit
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-31 20:37'
+updated_date: '2026-09-04 19:52'
 labels: []
 dependencies: []
 priority: high
@@ -56,3 +57,11 @@ Also worth checking: does a newly scored job need re-scoring once feedback exist
 - [ ] #4 The default on scoreFit's feedback: parameter is removed, or a reason for keeping it is recorded
 - [ ] #5 A decision is recorded on whether previously scored jobs should be re-scored when feedback is added
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed in b86c1d9d (merged via 1b5be335). The user's scoring corrections reached recomputes but not the queue's own scoring path, so newly-scored jobs ignored them. `QueueActor` now passes `readScoringFeedback()` at the scoring call site (`core/LLM/QueueActor.swift:998`), and the signature no longer defaults the parameter — a scoring path that forgets feedback is now a compile error rather than a silent omission.
+
+Status corrected 2026-09-04 — landed 2026-08-31.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -48,7 +48,7 @@ final class BoardLocationBackfillTests: XCTestCase {
     func testFillsAnEmptyLocationMatchedByDedupKey() async throws {
         let url = "https://boards.greenhouse.io/acme/jobs/4242"
         let store = try await store([makeJob(number: 1, url: url, location: nil)])
-        let record = Record(dedupKey: try dedupKey(url), url: url, locationRaw: "United States")
+        let record = try Record(dedupKey: dedupKey(url), url: url, locationRaw: "United States")
 
         let summary = try await store.backfillBoardLocations(from: [record])
 
@@ -67,7 +67,7 @@ final class BoardLocationBackfillTests: XCTestCase {
         let store = try await store([makeJob(number: 1, url: url, location: "   ")])
 
         let summary = try await store.backfillBoardLocations(
-            from: [Record(dedupKey: try dedupKey(url), url: url, locationRaw: "Remote - US")]
+            from: [Record(dedupKey: dedupKey(url), url: url, locationRaw: "Remote - US")]
         )
 
         XCTAssertEqual(summary.filled, 1)
@@ -82,7 +82,7 @@ final class BoardLocationBackfillTests: XCTestCase {
         let store = try await store([makeJob(number: 1, url: url, location: "San Jose, CA")])
 
         let summary = try await store.backfillBoardLocations(
-            from: [Record(dedupKey: try dedupKey(url), url: url, locationRaw: "United States")]
+            from: [Record(dedupKey: dedupKey(url), url: url, locationRaw: "United States")]
         )
 
         XCTAssertEqual(summary.matchedByDedupKey, 1)
@@ -118,8 +118,11 @@ final class BoardLocationBackfillTests: XCTestCase {
         let store = try await store([makeJob(number: 1, url: "https://boards.greenhouse.io/acme/jobs/1")])
 
         let summary = try await store.backfillBoardLocations(from: [
-            Record(dedupKey: "greenhouse:other:5", url: "https://boards.greenhouse.io/other/jobs/5",
-                   locationRaw: "Berlin"),
+            Record(
+                dedupKey: "greenhouse:other:5",
+                url: "https://boards.greenhouse.io/other/jobs/5",
+                locationRaw: "Berlin"
+            )
         ])
 
         XCTAssertEqual(summary.unmatched, 1)
@@ -131,7 +134,7 @@ final class BoardLocationBackfillTests: XCTestCase {
     func testASecondRunChangesNothing() async throws {
         let url = "https://boards.greenhouse.io/acme/jobs/9"
         let store = try await store([makeJob(number: 1, url: url)])
-        let records = [Record(dedupKey: try dedupKey(url), url: url, locationRaw: "United States")]
+        let records = try [Record(dedupKey: dedupKey(url), url: url, locationRaw: "United States")]
 
         let first = try await store.backfillBoardLocations(from: records)
         let second = try await store.backfillBoardLocations(from: records)
@@ -152,12 +155,12 @@ final class BoardLocationBackfillTests: XCTestCase {
         let onsiteURL = "https://boards.greenhouse.io/acme/jobs/11"
         let store = try await store([
             makeJob(number: 1, url: remoteURL, remoteType: nil),
-            makeJob(number: 2, url: onsiteURL, remoteType: .onsite),
+            makeJob(number: 2, url: onsiteURL, remoteType: .onsite)
         ])
 
         let summary = try await store.backfillBoardLocations(from: [
-            Record(dedupKey: try dedupKey(remoteURL), url: remoteURL, locationRaw: "Remote - United States"),
-            Record(dedupKey: try dedupKey(onsiteURL), url: onsiteURL, locationRaw: "Remote"),
+            Record(dedupKey: dedupKey(remoteURL), url: remoteURL, locationRaw: "Remote - United States"),
+            Record(dedupKey: dedupKey(onsiteURL), url: onsiteURL, locationRaw: "Remote")
         ])
 
         XCTAssertEqual(summary.filled, 2)
@@ -191,7 +194,7 @@ final class BoardLocationBackfillTests: XCTestCase {
         let store = try await store([makeJob(number: 1, url: url)])
 
         let summary = try await store.backfillBoardLocations(
-            from: [Record(dedupKey: try dedupKey(url), url: url, locationRaw: "  ")]
+            from: [Record(dedupKey: dedupKey(url), url: url, locationRaw: "  ")]
         )
 
         XCTAssertEqual(summary.skippedBlankSource, 1)
@@ -210,7 +213,7 @@ final class BoardLocationBackfillTests: XCTestCase {
         let store = try await store([makeJob(number: 1, url: url, location: nil)])
 
         let summary = try await store.backfillBoardLocations(
-            from: [Record(dedupKey: try dedupKey(url), url: url, locationRaw: "United States")]
+            from: [Record(dedupKey: dedupKey(url), url: url, locationRaw: "United States")]
         )
 
         XCTAssertEqual(summary.filled, 1)
@@ -228,7 +231,7 @@ final class BoardLocationBackfillTests: XCTestCase {
         let store = try await store(rows)
 
         let summary = try await store.backfillBoardLocations(
-            from: [Record(dedupKey: try dedupKey(url), url: url, locationRaw: "United States")]
+            from: [Record(dedupKey: dedupKey(url), url: url, locationRaw: "United States")]
         )
 
         XCTAssertEqual(summary.filled, 1)
@@ -245,7 +248,7 @@ final class BoardLocationBackfillTests: XCTestCase {
         let store = try await store([makeJob(number: 1, url: url, location: "Austin, TX")])
 
         let summary = try await store.backfillBoardLocations(
-            from: [Record(dedupKey: try dedupKey(url), url: url, locationRaw: "United States")]
+            from: [Record(dedupKey: dedupKey(url), url: url, locationRaw: "United States")]
         )
 
         XCTAssertEqual(summary.skippedAlreadyPopulated, 1)

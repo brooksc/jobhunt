@@ -28,8 +28,13 @@ public extension BackgroundStore {
         public var title: String?
         public var locationRaw: String?
 
-        public init(dedupKey: String? = nil, sourceID: String? = nil, url: String? = nil,
-                    title: String? = nil, locationRaw: String? = nil) {
+        public init(
+            dedupKey: String? = nil,
+            sourceID: String? = nil,
+            url: String? = nil,
+            title: String? = nil,
+            locationRaw: String? = nil
+        ) {
             self.dedupKey = dedupKey
             self.sourceID = sourceID
             self.url = url
@@ -134,7 +139,7 @@ public extension BackgroundStore {
         var byURL: [String: Job] = [:]
         for job in try modelContext.fetch(FetchDescriptor<Job>()) {
             guard let capture = job.capture else { continue }
-            for urlString in [capture.url, capture.canonicalURL].compactMap({ $0 }) where !urlString.isEmpty {
+            for urlString in [capture.url, capture.canonicalURL].compactMap(\.self) where !urlString.isEmpty {
                 if let key = DiscoveredPosting.dedupKey(for: urlString) {
                     byDedupKey[key] = byDedupKey[key] ?? job
                 }

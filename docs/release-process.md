@@ -76,11 +76,18 @@ The **App Store Connect app record** (bundle id `com.jobhunt-app.jobhunt`) exist
 
 Do these **before** tagging:
 
-1. **Pick the version** `X.Y.Z` (semver). Update all three to the *same* value — a mismatch fails
+1. **Pick the version** `X.Y.Z` (semver). Run `./scripts/bump-version.sh minor` (or `patch`/`major`/
+   an explicit `X.Y.Z`) rather than editing by hand — it updates every file at once. A mismatch fails
    the `version-parity` gate and the release workflows:
    - `Project.swift` → `.marketingVersion("X.Y.Z")`
    - `extension/manifest.json` → `"version": "X.Y.Z"`
+   - `extension/manifest.firefox.json` → `"version": "X.Y.Z"`
    - (The git tag will be `vX.Y.Z`.)
+
+   *This list said "all three" and named only two files until 2026-09-04, when the 1.5.0 bump left the
+   Firefox manifest on 1.4.0. `version-parity` reported **success** — it compared Project.swift against
+   manifest.json only — and the failure surfaced from `extension/tests/test_firefox_manifest.js`
+   instead. Both the script and the gate now cover all three.*
 
 2. **`CFBundleVersion` (build number) is automatic** for the DMG — no manual step (TASK-571).
    `release-dmg.yml` overrides `CURRENT_PROJECT_VERSION` with a UTC `YYYYMMDDHHMM` timestamp at archive
@@ -102,7 +109,40 @@ Do these **before** tagging:
    [Keeping the docs honest](#keeping-the-docs-honest) below for what it covers and the quarterly
    read it does *not* replace.
 
-6. Commit the version bumps to `main` (SSH-signed; 1Password unlocked).
+6. **User-facing docs — does anything shipped this cycle change what a new user is told?**
+   `check-docs.sh` cannot answer this; it verifies lists and paths, not whether the product
+   description is still true. Read these against the merge log since the last tag:
+   - **`README.md`** — the overview, the feature tour, and the Features list.
+   - **`docs/workflow.md`** — README links to it as the end-to-end workflow.
+   - **`marketing/`** — the public site at **jobhunt-app.com**. See
+     [`docs/site-deploy.md`](site-deploy.md); **the deploy is manual**, so a shipped feature is
+     invisible to the public until someone runs `wrangler pages deploy`.
+   - **`chromestore/store-listing.md`** if the extension changed.
+
+   *Added 2026-09-04. At 1.5.0 the README had not been touched in two weeks and described the app as
+   a filing cabinet you capture into — automatic search, the release's headline feature, appeared in
+   none of these four places. Nothing in this checklist would have caught it, because the previous
+   step only checks the docs that can be checked mechanically.*
+
+7. **Ratchets and legacy sweep** — each must be clean, and none of these is part of `Swift Build`:
+   ```bash
+   ./scripts/check-warnings.sh        # compiler warnings vs baseline
+   ./scripts/check-tooltips.sh        # icon-only controls carry an accessibility label
+   ./scripts/check-periphery.sh       # unused declarations vs baseline (currently 0)
+   ./scripts/check-stale-artifacts.sh # stale DMGs lying around
+   git status --ignored --short | head   # untracked cruft; `dist/` hid 584 MB of Electron
+                                         # artifacts for three months because every audit
+                                         # only looked at tracked files
+   ```
+
+8. **Know what the test gate did *not* cover.** The fast gate is CoreTests + ServerTests + MCPTests.
+   **AppUITests do not run on a push or on the release tag** — only weekly, or on manual dispatch
+   (`gh workflow run ui-tests.yml`). The coverage gate likewise doesn't run on a tag ([[TASK-704]]).
+   If this release touched the UI, dispatch the UI tests deliberately and **look at the screenshots**,
+   not just the exit code: parts of the tour still assert nothing ([[TASK-718]]), so green does not
+   mean verified.
+
+9. Commit the version bumps to `main` (SSH-signed; 1Password unlocked).
 
 ### Keeping the docs honest
 

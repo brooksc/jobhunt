@@ -3,10 +3,10 @@ id: TASK-693
 title: >-
   Extraction overwrites the board's authoritative location with the job
   description's office list
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-31 17:59'
-updated_date: '2026-08-31 20:05'
+updated_date: '2026-09-05 00:03'
 labels: []
 dependencies: []
 priority: high
@@ -56,3 +56,25 @@ So the missing board location does not merely leave a field blank — it **activ
 Note #1524 came in via discovery today, so this is ongoing, not historical.
 ---
 <!-- COMMENTS:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Done in two halves.
+
+**Forward fix** (2b544600, merged b200ba68): the board's own location field is carried through to the stored job instead of being overwritten by an office list lifted from the posting's prose. `Capture.boardLocation` feeds the extraction prompt as the board's authoritative answer.
+
+**Backfill of data already lost** (15f109b9 + e75e9985): `JobhuntMigrator --backfill-board-locations --input <snapshot>` restores locations from the pre-loss snapshot. It fills `Job.location` only — never inferring `remoteType`, which is the bug class that erased 223 arrangements in TASK-708 — and never overwrites a location that already says something, which makes it idempotent. 12 unit tests pin that scope, including one that feeds `locationRaw: "Remote"` to a job marked `.onsite` and asserts the arrangement doesn't move.
+
+The fill is also durable: the pass records the value on `Capture.boardLocation`, so a later re-extraction keeps it rather than reading a posting body that never states a location and losing it again. Narrow by design — only captures whose `boardLocation` was empty, and only for jobs this pass restored.
+
+**Applied to the production store** 2026-09-04, app quit, backup taken first:
+- Read 661 snapshot records; matched 615 by dedup key, 0 by URL; 46 had no job in this store.
+- Empty locations 260 → 77 (183 filled). 216 captures now carry a `boardLocation`.
+- `--recompute-criteria` re-judged 31 jobs; among the 183 filled, passing went 38 → 64.
+- Verified independently: 1,624 jobs intact, work arrangements unchanged, `pragma integrity_check` ok.
+
+Note the run had to be done twice. Because the pass is idempotent it would have skipped the already-filled rows and never recorded `boardLocation`, so the pre-backfill snapshot was restored and the run redone with the durability change. Final state matches the first run exactly.
+
+**Keep `~/Documents/jobhunt-backups/keep-permanently/board-locations-20260831.json` until 1.5.0 has shipped** and nothing has re-extracted those jobs badly. It is still the only copy. Retire it after, not before.
+<!-- SECTION:FINAL_SUMMARY:END -->

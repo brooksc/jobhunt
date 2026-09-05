@@ -4,7 +4,7 @@ title: 'Cutover & cleanup: remove Electron/Node/React, update docs'
 status: Done
 assignee: []
 created_date: '2026-06-07 22:51'
-updated_date: '2026-06-08 03:55'
+updated_date: '2026-09-05 00:02'
 labels:
   - swift-rewrite
   - cleanup
@@ -57,6 +57,26 @@ Do LAST. Depends on feature-complete app + working distribution: task-047 (serve
 - [ ] #3 README/CONTRIBUTING updated to Swift/Tuist build+run, MAS+DMG dist, jobhunt-mcp; no Node references
 - [ ] #4 Both schemes build + full test suite passes with no dangling references to deleted code
 <!-- AC:END -->
+
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-09-05 00:02
+---
+Superseded rather than reopened, 2026-09-04, closing TASK-696 AC#6.
+
+This task is marked Done with **all four acceptance criteria unchecked**, and its final summary claims "README and docs updated". The code half genuinely happened — `electron/`, `static/`, `native/` and `package.json` were removed in a6f41a2a. The documentation half did not, and that gap went unnoticed for three months precisely because the task *looked* finished.
+
+The remaining work was picked up by [[TASK-696]] and is now complete:
+
+- Every "Electron parity" comment in source has been rewritten to state its reason directly or removed — verified: zero matches for `\belectron\b` in tracked Swift/JS outside `tools/migrator/` and `Schema.swift`, both of which legitimately name the legacy SQLite database they import from.
+- `swift-plan.md` is gone (it opened with "currently Electron + Node", which was actively false).
+- `scripts/check-docs.sh` now fails CI on a stray Electron reference, so this cannot silently regress.
+- The `.gitignore` comment calling `dist/` "Electron build output" has been corrected.
+
+Leaving this task Done is correct — the cutover shipped — but the record should not imply the docs came with it. **The lesson is the transferable part: a ticked Done with unchecked criteria is not evidence.** Three tasks were found in this state (this one, TASK-146, TASK-540), and separately seven tasks were found fixed-but-still-To-Do. The status field drifted in both directions.
+---
+<!-- COMMENTS:END -->
 
 ## Final Summary
 

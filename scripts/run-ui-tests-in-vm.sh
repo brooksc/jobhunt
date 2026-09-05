@@ -478,7 +478,20 @@ grep -E "(Test Suite|Test Case 'test|error:|FAILED|PASS|Executed [0-9])" \
 
 echo
 if [ "\$XC_EXIT" -eq 0 ]; then
-    echo "✓ All tests passed"
+    # `-retry-tests-on-failure -test-iterations 3` means xcodebuild exits 0 when a test fails and
+    # a later attempt passes. That is the point of retries, but printing a bare "all tests passed"
+    # hides genuine flakiness: a run where a test failed 2 of 3 attempts looked identical to a
+    # clean one. Observed 2026-09-05 with ReferralUITests, which failed twice and passed third.
+    # Surface it — a flaky UI test is often a real race the retry is papering over.
+    _flaky=\$(grep -oE '\\-\\[[A-Za-z]+\\.[A-Za-z]+ [A-Za-z0-9_]+\\]' /tmp/xcodebuild-test.log \\
+             | sort -u | head -10)
+    if [ -n "\$_flaky" ]; then
+        echo "✓ Tests passed, but NOT on the first attempt — retries masked these failures:"
+        echo "\$_flaky" | sed 's/^/    /'
+        echo "  Treat as a real signal, not noise: see the full log for the assertions."
+    else
+        echo "✓ All tests passed"
+    fi
 elif [ "\$XC_EXIT" -eq 124 ]; then
     # TASK-405: timeout exit code. Surface clearly; the host trap stops the VM.
     echo "✗ TIMEOUT: xcodebuild exceeded ${XCODEBUILD_TIMEOUT}s and was killed (exit 124)." >&2

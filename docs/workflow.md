@@ -1,9 +1,20 @@
 # Jobhunt — the normal workflow
 
 Jobhunt tracks one person's job search on one Mac — on the order of a few hundred jobs. The day-to-day
-loop is the same for every job posting you come across:
+loop is the same for every job posting, however it arrives:
 
-> **capture → dedup & create → auto AI processing → review → resolve**, repeated per posting.
+> **arrive → dedup & create → auto AI processing → review → resolve**, repeated per posting.
+
+**Postings arrive two ways.** You capture one yourself with the Chrome extension, or *automatic
+search* finds it: Jobhunt sweeps public job boards on a schedule and files anything matching the
+requirements set in Settings → Search. The two paths converge at `ingestCapture` and everything after
+that is identical, so the rest of this document describes both.
+
+The important asymmetry is **where filtering happens**. A posting you capture is one you already chose,
+so it goes straight into the pipeline. A swept posting is one of thousands, so it must clear every
+configured requirement — title, location, work arrangement, salary, age — using pure string and number
+comparison *before* any AI call. That gate is what stops a board sweep turning into thousands of
+extractions. See `DiscoveryCriteria` and `DiscoverySweeper`.
 
 This doc is the end-to-end narrative of that loop and which part of the app owns each step. Where
 today's behavior differs from the intended UX, it's called out inline with the backlog task that

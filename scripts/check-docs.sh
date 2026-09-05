@@ -123,7 +123,7 @@ say "== retired-stack references =="
 # generated output and vendored dependencies. Scanning those reported the same file five times.
 hits=$(git ls-files -z '*.swift' '*.js' '*.md' 2>/dev/null |
        xargs -0 grep -ilE '\belectron\b' 2>/dev/null |
-       grep -vE '^(tools/migrator/|core/Models/Schema\.swift|\.backlog/|doc-audit\.md|docs/release-process\.md)' || true)
+       grep -vE '^(tools/migrator/|core/Models/Schema\.swift|\.backlog/|docs/release-process\.md)' || true)
 if [[ -n "$hits" ]]; then
   fail "retired-stack references outside the allowed set:"
   echo "$hits" | sed 's/^/         /'

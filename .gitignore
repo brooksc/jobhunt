@@ -11,7 +11,9 @@ node_modules/
 # yarn.lock, etc.) which should be committed to pin dependency trees.
 # Tuist/.build/ and Tuist/Dependencies/ (below) cover Tuist-generated lock artefacts.
 
-# Electron build output
+# Build output. Named for the retired Electron/Node stack (TASK-064) — kept ignored because a local
+# tree may still hold its leftovers (0.2.x DMG blockmaps, the electron-updater latest-mac.yml).
+# Nothing in the Swift build writes here; the DMG lands in build/ via release-dmg.yml.
 dist/
 
 # macOS metadata

@@ -8,9 +8,19 @@ Local-first job tracking. A Chrome extension captures job postings from any site
 
 ## Overview
 
-JobHunt is a native macOS app for job hunters. Capture postings from any job board via the Chrome extension, let the AI extract structured fields and score your resume fit, and track your pipeline from application to offer — entirely offline.
+JobHunt is a native macOS app for job hunters. It searches public job boards for you on a schedule, captures anything you find yourself via the Chrome extension, lets the AI extract structured fields and score your resume fit, and tracks your pipeline from application to offer — entirely offline.
 
 See **[docs/workflow.md](docs/workflow.md)** for the end-to-end workflow (capture → dedup → automatic AI processing → review → resolve).
+
+### It goes looking, so you don't have to
+
+Tell JobHunt what you're after — titles to match, titles to avoid, locations allowed and blocked,
+work arrangement, minimum salary, how old a posting may be — and it sweeps public job boards on a
+schedule, filing anything that fits. It never contacts an employer. Companies already in your library
+become watched boards automatically, and **Search Now** runs a sweep on demand.
+
+Nothing reaches the AI until it has cleared every requirement you set, so a sweep of thousands of
+postings doesn't turn into thousands of extractions.
 
 ### One click, and the job tracks itself
 
@@ -145,6 +155,8 @@ a job already at Interview/Offer is reported back rather than regressed.
 
 ## Features
 
+- **Automatic search** — sweeps public job boards on a schedule against your stated requirements and files what fits; **Search Now** runs it on demand. Filtering happens before any AI call, so a large sweep stays cheap.
+- **Criteria badges** — a job that doesn't meet your requirements says which one it misses, so you can skip it without reading it
 - **Capture from anywhere** — works on LinkedIn, Greenhouse, Lever, Ashby, iCIMS, Workday, and most job boards
 - **AI extraction** — pulls salary, requirements, work mode, and more from unstructured job descriptions
 - **Resume fit scoring** — ranks each job against your resume with dimension-level explanations

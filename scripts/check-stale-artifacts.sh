@@ -42,9 +42,9 @@ done
 say ""
 
 # ── DMGs ──────────────────────────────────────────────────────────────────────
-say "DMGs (dist/, build/, repo root):"
+say "DMGs (build/, repo root):"
 found_dmg=0
-for dmg in dist/*.dmg build/*.dmg ./*.dmg; do
+for dmg in build/*.dmg ./*.dmg; do
     [ -e "$dmg" ] || continue
     found_dmg=1
     warn "$dmg ($(date -r "$dmg" '+%Y-%m-%d %H:%M' 2>/dev/null || echo '?')) — verify it was built from the current commit"

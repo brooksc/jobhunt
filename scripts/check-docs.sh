@@ -119,7 +119,7 @@ say "== retired-stack references =="
 # check was reporting as retired-stack residue. It also matched this script's own documentation in
 # docs/release-process.md, which is why that file is excluded below: a checker that fails on the
 # text describing it is noise, and noise is how a check earns being ignored.
-# Only tracked files: .claude/worktrees holds other agents' checkouts, build/ and dist/ hold
+# Only tracked files: .claude/worktrees holds other agents' checkouts and build/ holds
 # generated output and vendored dependencies. Scanning those reported the same file five times.
 hits=$(git ls-files -z '*.swift' '*.js' '*.md' 2>/dev/null |
        xargs -0 grep -ilE '\belectron\b' 2>/dev/null |

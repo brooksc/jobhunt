@@ -43,7 +43,27 @@ store. "0 corrected" and "already correct" look identical from the outside.
 
 These modes repair an existing SwiftData store in place. They are one-time data fixups that used to
 run automatically on app launch; they now live here so the launch path stays clean. **Quit the
-Jobhunt app first** — the store is single-writer (SQLite), and a second process touching it while the
+Jobhunt app first**
+
+> ### Why the spent repair modes are still here
+>
+> CLAUDE.md says a mode may be deleted "once every install has passed a given fixup", and by that
+> reading roughly half of these are spent: the bug each one repairs is fixed, and the only install
+> that ever existed has been through them. **Keep them anyway, because of the backups.**
+>
+> `scripts/backup-store.sh` retains 30 snapshots, going back months. Restoring one means restoring a
+> store from *before* the corresponding fix, and the repair mode is the only thing that can bring it
+> forward. Restoring a 2026-08 snapshot needs `--repair-remote-types` to undo the work-arrangement
+> clamp; restoring anything before 2026-09-04 needs `--backfill-board-locations`. Delete the repairs
+> and every older backup becomes restorable only to a broken state — with nobody left to rewrite the
+> code.
+>
+> The maintenance argument for deleting them is weak in the other direction: the modes are inert
+> unless invoked, they carry unit tests, and the CLI is not shipped in the app.
+>
+> Two of them additionally depend on data outside the repo. `--backfill-board-locations` needs
+> `~/Documents/jobhunt-backups/keep-permanently/board-locations-20260831.json`, which is the only
+> surviving copy of those 661 board rows. — the store is single-writer (SQLite), and a second process touching it while the
 app runs risks `SQLITE_BUSY` or corruption. The tool enforces this with a `pgrep` check and refuses
 to run if the app is up.
 

@@ -65,9 +65,19 @@ jobs:
       # No `continue-on-error`: UI test failures must fail this job so the scheduled run
       # surfaces regressions. The result bundle still uploads via `if: always()` below.
       # `set -o pipefail` keeps xcodebuild's exit status; flaky assertions get up to 3 tries.
+      # `| tail -80` used to be the whole story here, and it threw away the one thing worth keeping.
+      # The 2026-09-07 scheduled run reported "Executed 42 tests, with 6 failures" and then
+      # "Failing tests:" — and the names that follow were exactly the lines tail dropped. A run that
+      # fails without saying which test failed costs a full re-run to learn anything, and the
+      # .xcresult is 155 MB, which is slow enough to discourage looking.
+      #
+      # So: keep the full log, print the failure lines specifically, and upload the log alongside the
+      # result bundle. `set -o pipefail` + PIPESTATUS keeps xcodebuild's own status authoritative.
       - name: Run AppUITests
         run: |
           set -o pipefail
+          mkdir -p build
+          set +e
           nice xcodebuild test \
             -project Jobhunt.xcodeproj \
             -scheme Jobhunt-DMG \
@@ -80,7 +90,18 @@ jobs:
             -default-test-execution-time-allowance 600 \
             -maximum-test-execution-time-allowance 600 \
             CODE_SIGNING_ALLOWED=NO \
-            2>&1 | tail -80
+            2>&1 | tee build/uitests.log | tail -80
+          status=${PIPESTATUS[0]}
+          set -e
+
+          echo
+          echo "── Failures (from the full log) ─────────────────────────────────────"
+          grep -E "error:|Test Case .* failed|^\s+-\[" build/uitests.log | sort -u | head -40 \
+            || echo "  none recorded"
+          echo "── Summary ─────────────────────────────────────────────────────────"
+          grep -E "Executed [0-9]+ test" build/uitests.log | tail -3 || true
+
+          exit "$status"
 
       - name: Upload test results
         if: always()
@@ -91,4 +112,5 @@ jobs:
           path: |
             build/UITestResults.xcresult
             build/toolchain.txt
+            build/uitests.log
           retention-days: 7

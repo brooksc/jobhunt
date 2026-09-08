@@ -116,7 +116,9 @@ Do these **before** tagging:
    - **`docs/workflow.md`** — README links to it as the end-to-end workflow.
    - **`marketing/`** — the public site at **jobhunt-app.com**. See
      [`docs/site-deploy.md`](site-deploy.md); **the deploy is manual**, so a shipped feature is
-     invisible to the public until someone runs `wrangler pages deploy`.
+     invisible to the public until someone runs `wrangler pages deploy`. Write the copy now, but
+     **deploy it *after* the DMG is live on GitHub** — the site's download link and its "what's new"
+     claims should never describe a build nobody can download yet. This is a post-tag step; see §2.
    - **`chromestore/store-listing.md`** if the extension changed.
 
    *Added 2026-09-04. At 1.5.0 the README had not been touched in two weeks and described the app as
@@ -248,6 +250,17 @@ curl -fsSL "https://github.com/brooksc/jobhunt/releases/latest/download/appcast.
 ```
 
 Then **edit the GitHub release notes** with the changelog and publish.
+
+**Then, and only then, deploy the marketing site** (`docs/site-deploy.md`):
+
+```bash
+wrangler pages deploy marketing --project-name jobhunt-app --branch main --commit-dirty=true
+```
+
+Deliberately after the DMG is live, not before: the site links to the latest release and describes
+what's new, so deploying first advertises a build nobody can download. Nothing publishes the site on
+push, so this step is easy to forget — and forgetting it is why jobhunt-app.com described the app as
+capture-only for the whole of the 1.5.0 cycle, with no mention of automatic search.
 
 ### Confirm auto-update actually works
 On a Mac running the **previous** version: **Check for Updates…** (app menu) should find the new

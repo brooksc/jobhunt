@@ -2,6 +2,22 @@
 
 This document describes how Jobhunt runs its XCUITest suite (`AppUITests`) inside a headless macOS virtual machine, why that approach was chosen, how it works step by step, and how to debug failures.
 
+## Why macOS 26, not 15
+
+The VM ran macOS Sequoia 15 until 2026-09-08. That tested the wrong thing: **macOS 26 is ~85% of the
+installed base against ~11% on 15**, and CI's `macos-latest` is 26 too, so the one environment we
+could iterate in quickly was the one almost nobody runs.
+
+It was not academic. Two tests failed on CI and passed in the 15 VM ([[TASK-720]]), and because the
+VM was the faster, more trusted signal, the instinct was to doubt CI rather than the VM. Moving the
+VM to 26 also immediately exposed a harness bug that 15 structurally could not show: `ditto` copies
+framework symlinks fine on 15 and fails on 26 with "Too many levels of symbolic links" for every
+framework, aborting the copy so no tests run at all (now `tar`).
+
+The app still supports macOS 15, so a 15 VM is worth cloning when a failure looks OS-dependent —
+`VM_NAME` and `VM_IMAGE` are both overridable, and the Sequoia digest is kept in a comment in
+`scripts/run-ui-tests-in-vm.sh`. It is simply no longer the default.
+
 ## Why a VM
 
 XCUITest drives the app through the macOS Accessibility API. That requires a live graphical session — the same thing a logged-in user sees. Running the tests directly on a developer's Mac steals keyboard and mouse focus for the duration of the run (5–10 minutes). That makes the machine unusable and is easily broken by incidental mouse movement.
@@ -18,8 +34,8 @@ A Tart VM solves this cleanly:
 ```
 Host Mac (Apple Silicon)
 ├── xcodebuild build-for-testing → build/Jobhunt-testing/   ← HOST BUILD (native speed)
-├── tart run jobhunt-uitest-env --no-graphics --dir=project:<repo>:ro
-│     └─ VM (macOS Sequoia + Xcode)
+├── tart run jobhunt-uitest-26 --no-graphics --dir=project:<repo>:ro
+│     └─ VM (macOS 26 Tahoe + Xcode)
 │           ├── /Volumes/My Shared Files/project  ← virtiofs, read-only
 │           │     └── build/Jobhunt-testing/      ← pre-built artifacts visible here
 │           ├── /tmp/jobhunt-testing/             ← local copy for test execution
@@ -41,8 +57,8 @@ brew install cirruslabs/cli/tart
 # Install sshpass (non-interactive SSH password auth)
 brew install hudochenkov/sshpass/sshpass
 
-# Clone the VM image — includes macOS Sequoia + Xcode (~20 GB, one-time download)
-tart clone ghcr.io/cirruslabs/macos-sequoia-xcode:latest jobhunt-uitest-env
+# Clone the VM image — includes macOS 26 Tahoe + Xcode (~64 GB compressed, 140 GB on disk, one-time)
+tart clone ghcr.io/cirruslabs/macos-tahoe-xcode:latest jobhunt-uitest-26
 ```
 
 The image is from [Cirrus Labs](https://github.com/cirruslabs/macos-image-templates) and ships with Xcode pre-installed. Default credentials: `admin / admin`.
@@ -71,17 +87,17 @@ The script runs six phases, each printed as `▶ Phase name`:
 Checks that `tart` and `sshpass` are on `PATH`. Prints the resolved scheme and project path.
 
 ### 2. VM Provisioning
-Checks if the `jobhunt-uitest-env` VM exists locally. If not, clones it from `ghcr.io/cirruslabs/macos-sequoia-xcode:latest`. If it's already running (stale from a prior crash), stops it first.
+Checks if the `jobhunt-uitest-26` VM exists locally. If not, clones it from `ghcr.io/cirruslabs/macos-tahoe-xcode:latest`. If it's already running (stale from a prior crash), stops it first.
 
 ### 3. Starting VM
 Launches the VM headlessly:
 ```bash
-tart run jobhunt-uitest-env --no-graphics --dir=project:<repo>:ro
+tart run jobhunt-uitest-26 --no-graphics --dir=project:<repo>:ro
 ```
 `--no-graphics` suppresses the VM window entirely. `--dir` mounts the repo as a virtiofs share named `project`.
 
 ### 4. Waiting for VM Network
-Polls `tart ip jobhunt-uitest-env --wait 120` until the VM gets a DHCP address, then waits for SSH to respond (up to 120 × 2 s retries, requiring 3 consecutive successful password auths — fresh clones restart `sshd` several times during first boot).
+Polls `tart ip jobhunt-uitest-26 --wait 120` until the VM gets a DHCP address, then waits for SSH to respond (up to 120 × 2 s retries, requiring 3 consecutive successful password auths — fresh clones restart `sshd` several times during first boot).
 
 ### 5. Configuring Guest Environment
 Sends a setup script over SSH that:
@@ -143,7 +159,7 @@ Tuist generates an xcodeproj with explicit file references. New files added afte
 The VM stays up after the test run. You can SSH in to inspect logs:
 
 ```bash
-VM_IP=$(tart ip jobhunt-uitest-env)
+VM_IP=$(tart ip jobhunt-uitest-26)
 sshpass -p admin ssh -o StrictHostKeyChecking=no admin@$VM_IP
 
 # Full xcodebuild log (very verbose)
@@ -168,7 +184,7 @@ The output appears in `/tmp/xcodebuild-test.log` in the VM.
 `ScreenshotTests` writes `.png` files to `/tmp/jobhunt-screenshots/<timestamp>/` inside the VM and also attaches them to the `.xcresult` bundle. To retrieve them while the VM is running:
 
 ```bash
-VM_IP=$(tart ip jobhunt-uitest-env)
+VM_IP=$(tart ip jobhunt-uitest-26)
 sshpass -p admin scp -o StrictHostKeyChecking=no -r \
   "admin@$VM_IP:/tmp/jobhunt-screenshots/" ./local-screenshots/
 ```
@@ -197,7 +213,7 @@ with a clear `TIMEOUT` message and the VM is stopped cleanly by the host trap.
 If the script's SSH wrapping is obscuring an issue, SSH directly and run xcodebuild interactively:
 
 ```bash
-VM_IP=$(tart ip jobhunt-uitest-env)
+VM_IP=$(tart ip jobhunt-uitest-26)
 sshpass -p admin ssh -o StrictHostKeyChecking=no admin@$VM_IP
 
 cd "$(cat /tmp/jobhunt_proj_root)"
@@ -226,10 +242,10 @@ rm -rf build/Jobhunt-testing
 
 ## Comparison with CI
 
-| | Tart VM (local) | GitHub Actions (`macos-15`) |
+| | Tart VM (local) | GitHub Actions (`macos-latest`) |
 |---|---|---|
 | Trigger | Manual (`./scripts/run-ui-tests-in-vm.sh`) | Weekly (Mon 8am UTC) or manual dispatch |
-| Environment | `ghcr.io/cirruslabs/macos-sequoia-xcode` (digest-pinned) | `macos-15` runner (default Xcode) |
+| Environment | `ghcr.io/cirruslabs/macos-tahoe-xcode` (digest-pinned) | `macos-latest` runner (macOS 26, default Xcode) |
 | Build cache | Persists across runs on reused VM | Cold cache every run |
 | Artifacts | Retrieved to host on exit (see Results Retrieval) | `.xcresult` + `toolchain.txt` uploaded for 7 days |
 | Focus-steal | None (headless VM) | None (CI runner) |
@@ -241,7 +257,7 @@ CI is defined in `.github/workflows/ui-tests.yml`. A UI-test failure fails the j
 ### Toolchain parity (TASK-406)
 
 The two environments pin their toolchains **independently**: the VM via the immutable `VM_IMAGE`
-digest (below), CI via the `macos-15` runner's default Xcode. Both can move without a code change, so
+digest (below), CI via the `macos-latest` runner's default Xcode. Both can move without a code change, so
 each prints its exact `sw_vers` + `xcodebuild -version` at run time, making any divergence explicit
 and diffable:
 
@@ -254,10 +270,10 @@ and diffable:
 | Environment | macOS | Xcode | Observed |
 |---|---|---|---|
 | Tart VM (digest `sha256:31413f…`) | 15.7.3 (24G419) | 26.4.1 | 2026-06-17 |
-| `macos-15` CI runner | (see `build/toolchain.txt` in the latest run's artifact) | | |
+| `macos-latest` CI runner | (see `build/toolchain.txt` in the latest run's artifact) | | |
 
 **Drift check:** compare the two `Xcode <version>` lines. They should report the same **major** Xcode.
-If they don't, reconcile — bump `VM_IMAGE` to a digest whose bundled Xcode matches the `macos-15`
+If they don't, reconcile — bump `VM_IMAGE` to a digest whose bundled Xcode matches the `macos-latest`
 runner (or pin the runner's Xcode with `xcode-select` to match the VM) — then note the new versions
 here. We deliberately don't hard-fail on a mismatch: GitHub rolls the runner's default Xcode forward
 on its own schedule, and a forced `xcode-select -s /Applications/Xcode_X.Y.app` to a path that isn't
@@ -280,7 +296,7 @@ This happens whether the run passed or failed, so a failure is debuggable withou
 `run-ui-tests-in-vm.sh` pins `VM_IMAGE` to an **immutable digest** (TASK-403) so `:latest` can't
 silently drift to a new Xcode/macOS patch and break tests with no code change:
 
-- Image: `ghcr.io/cirruslabs/macos-sequoia-xcode` — macOS Sequoia 15.x, bundled latest Xcode
+- Image: `ghcr.io/cirruslabs/macos-tahoe-xcode` — macOS 26 Tahoe, bundled latest Xcode
 - Digest: `sha256:31413f28df83c37b94e76f8feea8046fb1950b3ed42195523408477189a3f76d` (resolved from
   `:latest` on 2026-06-17)
 
@@ -289,15 +305,15 @@ the bundled Xcode/macOS:
 
 ```bash
 # Resolve the current :latest digest (no Tart needed):
-TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:cirruslabs/macos-sequoia-xcode:pull" | jq -r .token)
+TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:cirruslabs/macos-tahoe-xcode:pull" | jq -r .token)
 curl -sI -H "Authorization: Bearer $TOKEN" \
   -H "Accept: application/vnd.oci.image.index.v1+json" \
-  https://ghcr.io/v2/cirruslabs/macos-sequoia-xcode/manifests/latest | grep -i docker-content-digest
+  https://ghcr.io/v2/cirruslabs/macos-tahoe-xcode/manifests/latest | grep -i docker-content-digest
 # then set the new VM_IMAGE digest in scripts/run-ui-tests-in-vm.sh (and here), or per-run:
 VM_IMAGE=ghcr.io/cirruslabs/macos-sequoia-xcode@sha256:<digest> ./scripts/run-ui-tests-in-vm.sh
 ```
 
 ## Known Limitations
 
-- **CI and local VM use different base images.** `macos-15` on GitHub Actions may have a different Xcode patch version than the Tart image, so a test that passes locally could behave differently in CI. Pin both for parity.
+- **CI and local VM use different base images.** `macos-latest` on GitHub Actions may have a different Xcode patch version than the Tart image, so a test that passes locally could behave differently in CI. Pin both for parity.
 - **Retry masks flakiness.** Both lanes pass `-retry-tests-on-failure -test-iterations 3`, so a test that fails then passes is reported green. Genuinely flaky tests still need fixing — check the result bundle for retried tests.

@@ -214,7 +214,7 @@ hatch exists further down this file.
 **So use one of these instead:**
 
 ```bash
-gh workflow run ui-tests.yml --ref main    # macos-15 runner, no local toolchain involved
+gh workflow run ui-tests.yml --ref main    # macos-latest runner, no local toolchain involved
 ./scripts/run-ui-tests-in-vm.sh            # headless Tart VM, no screen takeover
 ```
 
@@ -235,7 +235,7 @@ Preferred for local development when you don't want the test runner to hijack yo
 # One-time setup
 brew install cirruslabs/cli/tart
 brew install hudochenkov/sshpass/sshpass
-tart clone ghcr.io/cirruslabs/macos-sequoia-xcode:latest jobhunt-uitest-env
+tart clone ghcr.io/cirruslabs/macos-tahoe-xcode:latest jobhunt-uitest-26   # macOS 26
 
 # Run tests in VM
 ./scripts/run-ui-tests-in-vm.sh

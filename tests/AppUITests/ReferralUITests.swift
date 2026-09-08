@@ -68,9 +68,20 @@ final class ReferralUITests: XCTestCase {
             requestedDate.click() // collapse
 
             // 4. Save and confirm the editor dismissed.
+            //
+            // The timeout is 20s, not 5s, and the reason is structural rather than "the VM is slow":
+            // the sheet dismisses only *after* `recordReferralAttempt` returns (ReferralViews.save,
+            // review #7 — never dismiss before the write succeeds). That write goes through the
+            // single-writer store actor, which during this suite is also serving demo seeding and the
+            // job-detail queries, so the dismissal latency is queueing delay on a shared actor.
+            //
+            // At 5s this failed 2 of 3 attempts on 2026-09-05, both times on the iteration right after
+            // launch when the actor is busiest (TASK-719). The assertion still has teeth: a sheet that
+            // never dismisses — a failed write showing a toast, or the duplicate-confirm path — stays
+            // up indefinitely and fails at any timeout.
             save.click()
             XCTAssertTrue(
-                waitForDisappearance(recipient, timeout: 5),
+                waitForDisappearance(recipient, timeout: 20),
                 "iter \(iteration): editor didn't dismiss after Save"
             )
 

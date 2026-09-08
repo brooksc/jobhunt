@@ -483,8 +483,11 @@ if [ "\$XC_EXIT" -eq 0 ]; then
     # hides genuine flakiness: a run where a test failed 2 of 3 attempts looked identical to a
     # clean one. Observed 2026-09-05 with ReferralUITests, which failed twice and passed third.
     # Surface it — a flaky UI test is often a real race the retry is papering over.
-    _flaky=\$(grep -oE '\\-\\[[A-Za-z]+\\.[A-Za-z]+ [A-Za-z0-9_]+\\]' /tmp/xcodebuild-test.log \\
-             | sort -u | head -10)
+    # Only lines that actually record a failure. Matching the bare '-[Class method]' shape is wrong:
+    # it also appears in every "Test Case '-[…]' passed" line, so the detector fired on a clean run
+    # the first time it was used. Take the names from 'error:' lines only.
+    _flaky=\$(grep -E '^.*error:.*-\\[' /tmp/xcodebuild-test.log 2>/dev/null \\
+             | grep -oE '\\-\\[[A-Za-z0-9_]+\\.[A-Za-z0-9_]+ [A-Za-z0-9_]+\\]' | sort -u | head -10)
     if [ -n "\$_flaky" ]; then
         echo "✓ Tests passed, but NOT on the first attempt — retries masked these failures:"
         echo "\$_flaky" | sed 's/^/    /'

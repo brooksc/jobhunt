@@ -43,11 +43,29 @@ final class SavedSearchUITests: XCTestCase {
         // presents more slowly under CI load — rather than anything about the app. Retrying the open
         // covers both without pretending to know which; a popover that genuinely never presents still
         // fails, because the assertion below is unchanged.
+        // TEMPORARY diagnostic (TASK-720): this passes in the macOS 26 VM and fails 3/3 on the
+        // runner even with a retry and 10s waits, so it is not slow presentation. Dump what actually
+        // differs — window geometry is the leading suspect, since a narrow window collapses toolbar
+        // items into an overflow menu, leaving the button present in the tree but not where a
+        // coordinate click lands.
+        let win = app.windows.firstMatch
+        print("DIAG window=\(win.frame) exists=\(win.exists)")
+        print("DIAG filterButton frame=\(filterButton.frame) hittable=\(filterButton.isHittable)")
+        print("DIAG toolbar buttons: " + app.toolbars.buttons.allElementsBoundByIndex
+            .map { "\($0.identifier)|\($0.label)" }.joined(separator: " , "))
+
         let remote = element("filter.remote.remote")
         for attempt in 1 ... 2 where !remote.exists {
             if attempt > 1 { app.typeKey(.escape, modifierFlags: []) } // close a half-open popover
             filterButton.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
             _ = remote.waitForExistence(timeout: 10)
+        }
+        if !remote.exists {
+            print("DIAG after click: popovers=\(app.popovers.count) sheets=\(app.sheets.count)")
+            print("DIAG filter.* ids: " + app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier BEGINSWITH %@", "filter."))
+                .allElementsBoundByIndex.map(\.identifier).joined(separator: " , "))
+            print("DIAG any-descendant count=\(app.descendants(matching: .any).count)")
         }
         XCTAssertTrue(remote.exists, "Remote filter toggle should appear in the popover.")
         remote.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()

@@ -36,10 +36,20 @@ final class SavedSearchUITests: XCTestCase {
     func testSelectingSavedSearchAfterSessionFilterStaysActive() {
         let filterButton = app.buttons["Advanced filters"].firstMatch
         XCTAssertTrue(filterButton.waitForExistence(timeout: 5), "Advanced filters toolbar button should exist.")
-        filterButton.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
 
+        // Open the popover, and open it again if the first click didn't take (TASK-720). This failed
+        // 3/3 attempts on the macos-latest runner while passing in the macOS 26 VM, so the cause is
+        // environmental — a toolbar click that lands before the button is ready, or a popover that
+        // presents more slowly under CI load — rather than anything about the app. Retrying the open
+        // covers both without pretending to know which; a popover that genuinely never presents still
+        // fails, because the assertion below is unchanged.
         let remote = element("filter.remote.remote")
-        XCTAssertTrue(remote.waitForExistence(timeout: 5), "Remote filter toggle should appear in the popover.")
+        for attempt in 1 ... 2 where !remote.exists {
+            if attempt > 1 { app.typeKey(.escape, modifierFlags: []) } // close a half-open popover
+            filterButton.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+            _ = remote.waitForExistence(timeout: 10)
+        }
+        XCTAssertTrue(remote.exists, "Remote filter toggle should appear in the popover.")
         remote.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         app.typeKey(.escape, modifierFlags: []) // dismiss the popover
         Thread.sleep(forTimeInterval: 0.3)

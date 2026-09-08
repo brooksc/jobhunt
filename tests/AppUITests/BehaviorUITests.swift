@@ -217,7 +217,17 @@ final class BehaviorUITests: XCTestCase {
 
         XCTAssertEqual(chip.value as? String, "off", "an issue chip should start unselected")
 
-        chip.click()
+        // Coordinate click, not `chip.click()` (TASK-720). On macOS 26 a plain `.click()` on a
+        // SwiftUI `.buttonStyle(.plain)` control does not land: the chip stayed `value=off
+        // isSelected=false` on all three attempts, and a screenshot taken immediately after showed
+        // "All" still selected — so nothing was activated, rather than the state being misreported.
+        //
+        // It is the harness, not the app. The identical click delivered by coordinate flips the chip
+        // to `value=on isSelected=true`, which is what proves the control itself is fine on macOS 26;
+        // without that check this change would just be silencing a red test. The suite already does
+        // this elsewhere for the same reason — see SavedSearchUITests and the Settings tour's
+        // `selectSettingsTab` (TASK-716).
+        chip.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         XCTAssertTrue(
             waitUntil(timeout: 2) { chip.value as? String == "on" },
             "Extraction pending chip should report 'on' after activation"

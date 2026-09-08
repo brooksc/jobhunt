@@ -31,16 +31,28 @@ set -euo pipefail
 
 # ── Configuration ────────────────────────────────────────────────────────────
 
-VM_NAME="jobhunt-uitest-env"
+# Overridable so a second OS can be run without editing the script:
+#   VM_NAME=jobhunt-uitest-15 VM_IMAGE=…sequoia… ./scripts/run-ui-tests-in-vm.sh
+VM_NAME="${VM_NAME:-jobhunt-uitest-26}"
 # Pinned to an immutable digest for reproducibility (TASK-403) — :latest silently drifts to new
 # Xcode/macOS patches on each `tart clone`, breaking tests with no code change.
-#   Image:  ghcr.io/cirruslabs/macos-sequoia-xcode  (macOS Sequoia 15.x, bundled latest Xcode)
-#   Digest: sha256:31413f28df83c37b94e76f8feea8046fb1950b3ed42195523408477189a3f76d
-#           (resolved from :latest on 2026-06-17)
-# To upgrade: re-resolve `docker manifest inspect ghcr.io/cirruslabs/macos-sequoia-xcode:latest`
-# (or `crane digest …`), update this digest + the date, and confirm the bundled Xcode/macOS in
-# docs/vm-testing.md. Override per-run with `VM_IMAGE=…:26 ./scripts/run-ui-tests-in-vm.sh`.
-VM_IMAGE="${VM_IMAGE:-ghcr.io/cirruslabs/macos-sequoia-xcode@sha256:31413f28df83c37b94e76f8feea8046fb1950b3ed42195523408477189a3f76d}"
+#   Image:  ghcr.io/cirruslabs/macos-tahoe-xcode  (macOS Tahoe 26.x, bundled latest Xcode)
+#   Digest: sha256:e0721ddeae3c7c037b764c1aebd0b2d245495c16622413f5a567d7110d18d863
+#           (resolved from :latest on 2026-09-08)
+#
+# **macOS 26, not 15 (TASK-720).** This ran macOS Sequoia 15 until 2026-09-08, which tested the
+# wrong thing: macOS 26 is ~85% of the installed base against ~11% on 15, and CI's `macos-latest`
+# is 26 too. The split was not academic — `testDataQualityFilterChipAccessibleState` and
+# `testSelectingSavedSearchAfterSessionFilterStaysActive` fail deterministically on 26 and pass on
+# 15, so the local VM was reporting green for a configuration almost nobody runs.
+#
+# The app still supports macOS 15, so a 15 VM remains worth cloning when a failure looks
+# OS-dependent; it is simply no longer the default. Sequoia digest, if you need it back:
+#   ghcr.io/cirruslabs/macos-sequoia-xcode@sha256:31413f28df83c37b94e76f8feea8046fb1950b3ed42195523408477189a3f76d
+#
+# To upgrade: re-resolve the digest for :latest, update it and the date here, and confirm the
+# bundled Xcode/macOS in docs/vm-testing.md.
+VM_IMAGE="${VM_IMAGE:-ghcr.io/cirruslabs/macos-tahoe-xcode@sha256:e0721ddeae3c7c037b764c1aebd0b2d245495c16622413f5a567d7110d18d863}"
 
 # Results (xcresult + screenshots) are copied back here before the VM is torn down.
 # TASK-402: host destinations for artifacts retrieved from the VM.
@@ -378,10 +390,19 @@ fi
 GUEST_PRODUCTS="/tmp/jobhunt-testing"
 echo "  Removing old guest copy..."
 rm -rf "$GUEST_PRODUCTS"
-echo "  Copying $(du -sh "$SRC" | cut -f1) of build artifacts (using ditto for framework symlink compatibility)..."
-# ditto is macOS-native and handles framework bundle symlinks correctly;
-# plain cp -R fails on virtiofs with "Too many levels of symbolic links" for xattrs.
-ditto "$SRC" "$GUEST_PRODUCTS"
+echo "  Copying $(du -sh "$SRC" | cut -f1) of build artifacts (tar, to preserve framework symlinks)..."
+# `tar` rather than `ditto` or `cp -R`, and the reason is the OS on the other side:
+#
+#   cp -R    fails on virtiofs with "Too many levels of symbolic links" (xattrs).
+#   ditto    worked on macOS 15 and FAILS on macOS 26 the same way — every framework symlink
+#            (Versions/Current, Sparkle, Headers, XPCServices …) errors out, so the copy aborts
+#            and no tests run at all. Found when the VM moved to macOS 26 (TASK-720).
+#   tar      archives a symlink AS a symlink and never traverses it, so the loop virtiofs presents
+#            cannot arise. It is also in the base OS, so there's no new dependency.
+#
+# `set -o pipefail` is already in force, so a failure in either half of the pipe aborts the copy.
+mkdir -p "$GUEST_PRODUCTS"
+tar -C "$SRC" -cf - . | tar -C "$GUEST_PRODUCTS" -xpf -
 echo "  Copy complete: $(du -sh "$GUEST_PRODUCTS" | cut -f1)"
 
 # Re-sign all .xctest bundles with a fresh ad-hoc signature.

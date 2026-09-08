@@ -31,7 +31,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       # actions/checkout@v4.2.2
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       # TASK-406: record the runner's exact macOS + Xcode so it can be compared against the local
       # Tart VM (scripts/run-ui-tests-in-vm.sh prints the same two lines from inside the VM). The

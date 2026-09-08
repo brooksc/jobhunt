@@ -1,7 +1,8 @@
 // Behaviour test for openApp()'s fallback when the Mac app doesn't answer (TASK-697).
 //
-// The fallback used to open `serverUrl("/") + "#/jobs/N"` — a route on the React web UI the Electron
-// app served, deleted in the cutover (TASK-064). JobhuntServer has no `/` route, so the branch that
+// The fallback used to open `serverUrl("/") + "#/jobs/N"` — a route on the React web UI the app
+// served before the Swift rewrite, deleted in the cutover (TASK-064). JobhuntServer has no `/`
+// route, so the branch that
 // fires precisely when the user needs a clear signal opened a dead tab instead.
 //
 // Asserted as behaviour rather than by grepping the source: a string match would pass whether or not

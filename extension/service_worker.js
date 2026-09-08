@@ -779,10 +779,10 @@ async function openApp(jobNumber) {
 
   // Reaching here means the app didn't answer, which almost always means it isn't running.
   //
-  // This used to open `serverUrl("/") + "#/jobs/N"` — a route on the React web UI the Electron app
-  // served, deleted in the cutover (TASK-064). JobhuntServer has no `/` route and no HTML handler at
-  // all, so the fallback that fires precisely when the user needs a clear signal handed them a dead
-  // tab instead (TASK-697).
+  // This used to open `serverUrl("/") + "#/jobs/N"` — a route on the React web UI the app served
+  // before the Swift rewrite, deleted in the cutover (TASK-064). JobhuntServer has no `/` route and
+  // no HTML handler at all, so the fallback that fires precisely when the user needs a clear signal
+  // handed them a dead tab instead (TASK-697).
   //
   // The status page is the extension's own, so it always loads, and it already exists to explain
   // this exact state — what still works without the Mac app, and the opt-in auto-launch setting.

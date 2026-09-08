@@ -3,9 +3,10 @@ id: TASK-719
 title: >-
   Referral editor sometimes doesn't dismiss after Save — flaky UI test masked by
   retries
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-05 17:23'
+updated_date: '2026-09-08 16:41'
 labels: []
 dependencies: []
 priority: medium
@@ -55,8 +56,33 @@ Same family as [[TASK-716]], [[TASK-717]] and [[TASK-718]]: a green result that 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 It is established whether the dismissal failure is an app race or test timing, with the evidence stated
+- [x] #1 It is established whether the dismissal failure is an app race or test timing, with the evidence stated
 - [ ] #2 If it is an app race, the save-then-dismiss ordering is fixed and the test passes on the first attempt
-- [ ] #3 If it is timing, the timeout is raised with a comment saying why, and the test still fails if dismissal genuinely breaks
-- [ ] #4 The test passes 3 consecutive VM runs without needing a retry
+- [x] #3 If it is timing, the timeout is raised with a comment saying why, and the test still fails if dismissal genuinely breaks
+- [x] #4 The test passes 3 consecutive VM runs without needing a retry
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed in ca50db7b. **Cause: latency, not a race.**
+
+The sheet dismisses only after the write returns — `ReferralViews.save` awaits `recordReferralAttempt` and then clears `editorAttempt` (review #7: never dismiss before the write succeeds). That write goes through the single-writer store actor, which during this suite is also serving demo seeding and job-detail queries. So the dismissal delay is queueing on a shared actor, which is why both failures landed on the iteration right after launch, when that actor is busiest — not view code being slow, and not the VM being slow in general.
+
+**Evidence, from the experiment this task prescribed (raise only the timeout):**
+
+| timeout | result |
+|---|---|
+| 5s | failed **2 of 3** attempts (2026-09-05) |
+| 20s | passed 1 of 1, first attempt (2026-09-08) |
+
+AC#2 does not apply — there is no ordering bug to fix. AC#3: the timeout is now 20s with a comment naming *what it waits on* rather than "the VM is slow", and the assertion keeps its teeth. The two ways this can genuinely break — a failed write showing a toast, or the duplicate-confirm path (`attemptSave` raises `showDuplicateConfirm` instead of saving) — both leave the sheet up indefinitely and fail at any timeout.
+
+AC#4: three consecutive VM runs, one attempt each, zero failures (93s / 102s / 92s).
+
+**Checked while investigating, worth recording:** a double Save cannot duplicate a referral. The write is keyed on the editor's stable `attemptID` and milestone events carry deterministic ids, so a second click upserts the same row.
+
+**Found but deliberately not fixed — worth its own task if it matters.** Because the write can take seconds, clicking Save leaves the sheet up with no feedback and the button still enabled; a user can reasonably think the click missed. Harmless in data terms (see above), but it is the real user-facing consequence of the same latency this task measured. A "saving" state that disables Save and shows progress would fix it, and needs plumbing between `ReferralAttemptEditor` and `ReferralViews` — a product change, out of scope here and not something to add unannounced before a release.
+
+**Also fixed here:** the flaky-run detector added the previous day was wrong on its first outing. It matched the bare `-[Class method]` shape, which appears in every "Test Case '-[…]' passed" line, so it reported retry-masked failures on a clean run. It now takes names from `error:` lines only, verified against both real logs — fires on the 09-05 failing run, silent on the 09-08 clean one.
+<!-- SECTION:FINAL_SUMMARY:END -->

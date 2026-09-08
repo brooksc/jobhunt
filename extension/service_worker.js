@@ -777,15 +777,19 @@ async function openApp(jobNumber) {
     if (res.ok) return;
   } catch (_error) { /* fall through */ }
 
-  // Fallback when /api/app/focus doesn't answer. BROKEN: it opens `/` on the local server, a web
-  // UI that no longer exists — the Swift server serves no such page, so this tab is a dead end
-  // rather than a recovery. Tracked as TASK-697; left in place until that decides what should
-  // happen when the app isn't reachable.
-  try {
-    const hash = jobNumber ? `#/jobs/${jobNumber}` : "";
-    const url = await serverUrl("/") + hash;
-    await chrome.tabs.create({ url, active: true });
-  } catch (_error) {
-    await showBadge("ERR", "#b00020");
-  }
+  // Reaching here means the app didn't answer, which almost always means it isn't running.
+  //
+  // This used to open `serverUrl("/") + "#/jobs/N"` — a route on the React web UI the Electron app
+  // served, deleted in the cutover (TASK-064). JobhuntServer has no `/` route and no HTML handler at
+  // all, so the fallback that fires precisely when the user needs a clear signal handed them a dead
+  // tab instead (TASK-697).
+  //
+  // The status page is the extension's own, so it always loads, and it already exists to explain
+  // this exact state — what still works without the Mac app, and the opt-in auto-launch setting.
+  // It is the same surface the offline-capture path uses, so "the app isn't running" looks the same
+  // however the user runs into it. `background: false` skips the anti-spam throttle and focuses an
+  // already-open tab, which is what an explicit user action deserves.
+  await showBadge("ERR", "#b00020");
+  await chrome.action.setTitle({ title: "JobHunt isn't running — open the Mac app to continue." });
+  await openQueueStatus({ background: false });
 }

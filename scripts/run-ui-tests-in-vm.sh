@@ -478,8 +478,9 @@ grep -E "(Test Suite|Test Case 'test|error:|FAILED|PASS|Executed [0-9])" \
 
 echo
 if [ "\$XC_EXIT" -eq 0 ]; then
-    # `-retry-tests-on-failure -test-iterations 3` means xcodebuild exits 0 when a test fails and
-    # a later attempt passes. That is the point of retries, but printing a bare "all tests passed"
+    # Retrying (see the xcodebuild flags above: retry-tests-on-failure with test-iterations 3) means
+    # it exits 0 when a test fails and a later attempt passes. That is the point of retries, but
+    # printing a bare "all tests passed"
     # hides genuine flakiness: a run where a test failed 2 of 3 attempts looked identical to a
     # clean one. Observed 2026-09-05 with ReferralUITests, which failed twice and passed third.
     # Surface it — a flaky UI test is often a real race the retry is papering over.

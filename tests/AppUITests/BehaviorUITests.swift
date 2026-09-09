@@ -144,7 +144,7 @@ final class BehaviorUITests: XCTestCase {
 
     // MARK: - Filter chip accessible selected state
 
-    func testRemoteFilterChipAccessibleState() {
+    func testRemoteFilterChipAccessibleState() throws {
         // ⌘K is the reliable shortcut to All Jobs from any view; navigate() can misfocus
         // the sidebar NSOutlineView when a content-area list previously held keyboard focus.
         app.typeKey("k", modifierFlags: .command)
@@ -162,15 +162,18 @@ final class BehaviorUITests: XCTestCase {
         )
         filterBtn.click()
 
+        // Skip, not return (TASK-721). This used to `return` when the popover didn't appear, so on
+        // the GitHub runner — where it never appears (TASK-720) — the test reported PASS having
+        // asserted nothing about the chip it is named for. A skip says so.
         let remoteChip = app.descendants(matching: .any).matching(identifier: "filter.remote.remote").firstMatch
-        guard remoteChip.waitForExistence(timeout: 6) else {
-            // NSPopover content not accessible on this headless VM — skip remaining assertions.
-            return
-        }
+        try XCTSkipUnless(
+            remoteChip.waitForExistence(timeout: 6),
+            "Advanced-filters popover does not present in this environment (TASK-720)"
+        )
         // Confirm the element is stable (not a transient 110ms accessibility registration
         // that the headless VM accessibility service sometimes produces for NSPopover content).
         Thread.sleep(forTimeInterval: 0.3)
-        guard remoteChip.exists else { return }
+        try XCTSkipUnless(remoteChip.exists, "popover closed before assertions could run")
 
         // Initially not selected
         XCTAssertEqual(remoteChip.value as? String, "off", "Remote chip should start as 'off'")
@@ -182,13 +185,13 @@ final class BehaviorUITests: XCTestCase {
         // accessibility event processing that produces "Failed to get matching snapshot" when
         // the popover window disappears mid-poll.
         Thread.sleep(forTimeInterval: 0.5)
-        guard remoteChip.exists else { return } // Popover closed — skip remaining assertions
+        try XCTSkipUnless(remoteChip.exists, "popover closed after the chip click")
         XCTAssertEqual(remoteChip.value as? String, "on", "Remote chip should report 'on' after activation")
 
         // Deactivate
         remoteChip.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         Thread.sleep(forTimeInterval: 0.5)
-        guard remoteChip.exists else { return }
+        try XCTSkipUnless(remoteChip.exists, "popover closed after the chip click")
         XCTAssertEqual(remoteChip.value as? String, "off", "Remote chip should report 'off' after deactivation")
 
         // Close the popover

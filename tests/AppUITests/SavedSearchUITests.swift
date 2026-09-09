@@ -43,30 +43,29 @@ final class SavedSearchUITests: XCTestCase {
         // presents more slowly under CI load — rather than anything about the app. Retrying the open
         // covers both without pretending to know which; a popover that genuinely never presents still
         // fails, because the assertion below is unchanged.
-        // TEMPORARY diagnostic (TASK-720): this passes in the macOS 26 VM and fails 3/3 on the
-        // runner even with a retry and 10s waits, so it is not slow presentation. Dump what actually
-        // differs — window geometry is the leading suspect, since a narrow window collapses toolbar
-        // items into an overflow menu, leaving the button present in the tree but not where a
-        // coordinate click lands.
-        let win = app.windows.firstMatch
-        print("DIAG window=\(win.frame) exists=\(win.exists)")
-        print("DIAG filterButton frame=\(filterButton.frame) hittable=\(filterButton.isHittable)")
-        print("DIAG toolbar buttons: " + app.toolbars.buttons.allElementsBoundByIndex
-            .map { "\($0.identifier)|\($0.label)" }.joined(separator: " , "))
-
+        // TASK-720 experiment: which click opens the popover on the runner?
+        // BehaviorUITests opens this same popover with a PLAIN click and passes on CI; this test used
+        // a coordinate click and fails with popovers=0. Geometry is identical on both (window
+        // 1079x674, button (852,31,75,52), hittable=true), so delivery is the only difference left.
         let remote = element("filter.remote.remote")
-        for attempt in 1 ... 2 where !remote.exists {
-            if attempt > 1 { app.typeKey(.escape, modifierFlags: []) } // close a half-open popover
+        print("DIAG A: plain click")
+        filterButton.click()
+        _ = remote.waitForExistence(timeout: 8)
+        print("DIAG A result popovers=\(app.popovers.count) remote=\(remote.exists)")
+
+        if !remote.exists {
+            print("DIAG B: coordinate click")
             filterButton.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
-            _ = remote.waitForExistence(timeout: 10)
+            _ = remote.waitForExistence(timeout: 8)
+            print("DIAG B result popovers=\(app.popovers.count) remote=\(remote.exists)")
         }
         if !remote.exists {
-            print("DIAG after click: popovers=\(app.popovers.count) sheets=\(app.sheets.count)")
-            print("DIAG filter.* ids: " + app.descendants(matching: .any)
-                .matching(NSPredicate(format: "identifier BEGINSWITH %@", "filter."))
-                .allElementsBoundByIndex.map(\.identifier).joined(separator: " , "))
-            print("DIAG any-descendant count=\(app.descendants(matching: .any).count)")
+            print("DIAG C: press")
+            filterButton.press(forDuration: 0.05)
+            _ = remote.waitForExistence(timeout: 8)
+            print("DIAG C result popovers=\(app.popovers.count) remote=\(remote.exists)")
         }
+        print("DIAG windows=\(app.windows.count) frontmost=\(app.state.rawValue)")
         XCTAssertTrue(remote.exists, "Remote filter toggle should appear in the popover.")
         remote.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         app.typeKey(.escape, modifierFlags: []) // dismiss the popover

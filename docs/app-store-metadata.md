@@ -90,7 +90,7 @@ Free and open source: https://github.com/brooksc/jobhunt
 ```
 
 ## Version / build
-- **Version:** `1.0.1` (matches `Project.swift` `marketingVersion`)
+- **Version:** `1.5.0` (matches `Project.swift` `marketingVersion`)
 - **Build:** taken from the tagged release (`CFBundleVersion` = `yymmddHHMM`, uint32-safe — see
   `release-mas.yml` "Compute build number"). For a real submission, build from a `v*` tag, not `main`.
 
@@ -133,6 +133,51 @@ print('non-ascii:', sorted({c for c in s if ord(c) > 127}))
 print('angle brackets:', s.count('<') + s.count('>'))
 print('chars:', len(s), '(limit 4000)')
 EOF
+```
+
+### 1.5.0 — covers 1.4.0 + 1.5.0 (last delivered was `mas-v1.3.0`)
+
+Verified before pasting: 0 non-ASCII, 0 angle brackets, 2855 chars. Omits the MCP integration and
+the Sparkle auto-update line, neither of which exists in the App Store build.
+
+```
+AUTOMATIC JOB SEARCH
+
+JobHunt now looks for jobs instead of only filing the ones you find. Tell it what you're after in Settings / Search - job titles to match, titles to avoid, locations allowed and blocked, work arrangement, minimum salary, how old a posting may be - and it checks public job boards on a schedule and files anything that fits. It never contacts an employer. Companies already in your library become watched boards automatically, and Search Now runs a sweep on demand. Nothing is sent to the AI until a posting has cleared every requirement you set, so a large sweep stays cheap.
+
+FEWER IRRELEVANT JOBS, AND IT TELLS YOU WHY
+
+Postings below your salary floor, or in a work arrangement you've ruled out, are filtered before they're scanned rather than filed and scored first. When a job is filed anyway for a good reason - an unstated salary, say - the list shows which requirement it misses, so you can skip it without reading it.
+
+SALARIES AND WORK ARRANGEMENTS ARE RECORDED ACCURATELY
+
+A year range in prose is no longer mistaken for a pay band. A job's work arrangement is no longer erased just because you'd ruled that arrangement out, which had been quietly hiding those jobs from the "doesn't meet criteria" filter. Existing data is repaired in place.
+
+THE JOB BOARD'S OWN LOCATION IS KEPT
+
+The location from the board used to be overwritten by an office list lifted from the posting's prose. The board's answer now wins, and locations lost to the old behaviour have been restored.
+
+FIT SCORING
+
+- Corrections you record ("I don't have this") now reach newly scored jobs, not only recomputed ones.
+- A quote drawn from an older version of your resume is no longer reported as invented.
+- Every requirement shows the evidence behind its verdict, and says so when the AI quotes something your resume doesn't say.
+- Scores stopped bottoming out: scoring measures the share of requirements missed rather than the raw count, so a detailed posting isn't punished for being detailed. Jobs scoring 0 fell from about 11 percent to 1.5 percent.
+- Sorting by fit works properly. Unscored jobs used to sort above your best match; they now sort to the bottom in both directions.
+
+ACCESSIBILITY
+
+Icon-only buttons throughout the app now announce themselves properly to VoiceOver instead of reading as unnamed.
+
+OTHER FIXES YOU'D NOTICE
+
+- A newly captured job's row no longer renders half-drawn while it finishes extracting.
+- The processing queue can no longer wedge indefinitely; a stuck request is bounded and retried, and a paused queue is recoverable from the UI.
+- Remote and location are read from a posting's structured data rather than only its prose.
+- The Chrome extension reads the right location on postings whose title contains a comma.
+- "Find on company site" stays available on aggregator listings.
+
+Requires macOS 15 or later.
 ```
 
 ### 1.3.0 — accepted by App Store Connect (covers 1.2.0 + 1.3.0; last delivered was `mas-v1.1.3`)

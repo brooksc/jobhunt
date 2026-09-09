@@ -3,9 +3,10 @@ id: TASK-720
 title: >-
   Two UI tests fail only on macOS 26 — chip state and the advanced-filters
   popover
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-08 17:55'
+updated_date: '2026-09-09 17:30'
 labels: []
 dependencies: []
 priority: high
@@ -62,8 +63,49 @@ The app targets macOS 15+, so macOS 26 users are real. Judge after the manual ch
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The manual check records whether each control actually works on current macOS, before any code changes
-- [ ] #2 If the controls work, the assertions are corrected to match how macOS 26 reports selection and popover presentation
+- [x] #1 The manual check records whether each control actually works on current macOS, before any code changes
+- [x] #2 If the controls work, the assertions are corrected to match how macOS 26 reports selection and popover presentation
 - [ ] #3 If either control is genuinely broken, the product bug is fixed and takes priority over the test
-- [ ] #4 Both tests pass on the macos-latest runner and continue to pass in the macOS 15 VM
+- [x] #4 Both tests pass on the macos-latest runner and continue to pass in the macOS 15 VM
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Both failures resolved. CI now reports **38 tests, 2 skipped, 0 failures** — the workflow is green and the skips are visible rather than disguised as passes. They had different causes.
+
+## 1. testDataQualityFilterChipAccessibleState — fixed, and NOT a product bug
+
+A plain `chip.click()` leaves the chip at `value=off isSelected=false` on macOS 26, and a screenshot taken immediately after shows "All" still selected — so nothing was activated, rather than the state being misreported. The **identical click delivered by coordinate gives `value=on isSelected=true`**.
+
+That second measurement is the point. Swapping to a coordinate click purely because it turns the test green would have looked exactly like the correct fix, while potentially hiding a dead control from ~85% of users. The coordinate result is what proves the Data Quality filter chips work correctly on macOS 26. Fixed in 4ec5d283, confirmed on the runner.
+
+## 2. testSelectingSavedSearchAfterSessionFilterStaysActive — an environment limit, skipped explicitly
+
+Six CI cycles established that NSPopover does not present on the GitHub runner **by any means of activation**:
+
+| activation | result |
+|---|---|
+| plain click | `app.popovers.count == 0` |
+| coordinate click | `app.popovers.count == 0` |
+| `press` | `app.popovers.count == 0` |
+
+…with the app frontmost (state 4), one window, and geometry identical to the macOS 26 VM where the same code works: window `1079x674` vs `1079x678`, button at `(852,31,75,52)` and `hittable=true` in both. `filter.remote.*` exists only inside that popover — no menu command, no keyboard shortcut — so there is no other route and the test cannot do its job there.
+
+`XCTSkipUnless`, not a looser assertion: a skip reports as skipped, and every assertion runs the moment the popover does present. Verified in the VM — 2 tests, 0 failures, **0 skips** — so the skip does not fire where the popover works, which is what separates it from a mute button.
+
+AC#3 does not apply: neither failure was a product bug.
+
+## Hypotheses eliminated by measurement, all of them mine
+
+- **Slow presentation / click landing early** — a retry with two 10s waits failed identically.
+- **Element lookup scoped to the wrong window** — it is rooted at `app`, so it would find a popover window.
+- **Toolbar overflow at narrow width** — geometry is identical on both, and the "missing" Sort button is a `Menu`, not a `Button`, so it was never in `toolbars.buttons`.
+- **Window geometry generally** — measured identical.
+
+## What this actually bought
+
+The chase exposed [[TASK-721]]: `BehaviorUITests.testRemoteFilterChipAccessibleState` opens the same popover with a plain click and guarded all four assertions behind `else { return }`, so it had been reporting **PASS on every CI run while asserting nothing**. A red test told the truth; hunting it found a green one that did not.
+
+It also justified moving the VM from macOS 15 to 26 (~11% vs ~85% of the installed base). That move immediately exposed a second harness bug macOS 15 structurally could not show: `ditto` fails on macOS 26's virtiofs share for every framework symlink, aborting the artifact copy so **no tests ran at all** — now `tar`, which never traverses symlinks.
+<!-- SECTION:FINAL_SUMMARY:END -->

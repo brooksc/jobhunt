@@ -330,9 +330,15 @@ The key in use is `AuthKey_Y4673VW6CJ.p8`; JobHunt's `app_id` is `6782679255`. `
 is in **Payments and Financial Reports**. Auth is a 20-minute ES256 JWT — Apple rejects longer
 expiries.
 
-**The key's role decides what works.** A key with only app access reads `builds`, `versions` and
-`reviews` but gets a bare 403 on `sales` — Apple checks the role *before* the vendor number, so the
-error reads as a bad vendor number when it isn't. Sales and Trends needs **Admin** or **Finance**,
+**The key's role decides what works.** With `Y4673VW6CJ` as of 2026-09-09, `versions` and `reviews`
+work; **`builds` returns 403** (`"The API key in use does not allow this request"`), and so does
+`sales`. Apple checks the role *before* the vendor number, so the `sales` error reads as a bad vendor
+number when it isn't.
+
+This matters at delivery time: after `release-mas.yml` uploads a build there is **no API path from
+here to "has Apple finished processing it"** — check App Store Connect in the browser instead. (This
+paragraph previously claimed `builds` worked; it was corrected after the 1.5.0 delivery, when it
+didn't.) Sales and Trends needs **Admin** or **Finance**,
 and a key's role is fixed at creation: generate a new key and update `key_id`.
 
 **Do not revoke `68BGNV3CCC`.** It is *not* an obsolete JobHunt key — it's a Developer-role key

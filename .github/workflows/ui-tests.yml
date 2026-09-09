@@ -98,6 +98,13 @@ jobs:
           echo "── Failures (from the full log) ─────────────────────────────────────"
           grep -E "error:|Test Case .* failed|^\s+-\[" build/uitests.log | sort -u | head -40 \
             || echo "  none recorded"
+          # DIAG lines are deliberate diagnostics printed from a test. They land mid-run, so the
+          # tail above drops them — the same truncation that hid the failing test names, one level
+          # up. Surfaced here so a diagnostic run is actually readable without the 155 MB artifact.
+          if grep -q "^DIAG" build/uitests.log; then
+            echo "── Diagnostics ─────────────────────────────────────────────────────"
+            grep "^DIAG" build/uitests.log | sort -u | head -30
+          fi
           echo "── Summary ─────────────────────────────────────────────────────────"
           grep -E "Executed [0-9]+ test" build/uitests.log | tail -3 || true
 

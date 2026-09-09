@@ -235,7 +235,11 @@ gh run watch "$(gh run list --workflow=release-dmg.yml --limit 1 --json database
    copied-out app relying on an online Gatekeeper check, so a first launch while offline can hang.
 10. **EdDSA-sign + publish `appcast.xml`** (Sparkle `generate_appcast`).
 11. **Package the Chrome extension** zip.
-12. **Upload** DMG + `.sha256` + `appcast.xml` + provenance + extension zip to the GitHub release.
+12. **Upload** the DMG + `appcast.xml` to the GitHub release — and only those two. The checksum,
+    provenance and extension zip were deliberately dropped to keep the release uncluttered (see the
+    comment above the upload step in `release-dmg.yml`); the extension is published separately to the
+    Chrome Web Store by `release-extension.yml`. *This list said five assets until 2026-09-09, when
+    the 1.5.0 release was verified against it and only two were present.*
 
 ### Verify the published DMG (do this every release)
 ```bash

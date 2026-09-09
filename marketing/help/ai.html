@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>How JobHunt uses AI — JobHunt</title>
+  <meta name="description" content="What JobHunt uses AI for, what it deliberately doesn't, and how to point it at a local model or a cloud provider." />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --bg: #0f1117; --bg-card: #1a1d27; --border: rgba(255,255,255,.1); --fg: #f0f2f8; --fg-mute: #9ca3af; --accent: #3b82f6; --good: #34d399; }
+    body { background: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.7; -webkit-font-smoothing: antialiased; }
+    nav { display: flex; align-items: center; justify-content: space-between; padding: 18px 40px; border-bottom: 1px solid var(--border); }
+    .nav-logo { font-size: 17px; font-weight: 700; color: var(--fg); text-decoration: none; }
+    .main { max-width: 720px; margin: 0 auto; padding: 56px 24px; }
+    h1 { font-size: 32px; font-weight: 800; letter-spacing: -.02em; margin-bottom: 8px; }
+    .lede { color: var(--fg-mute); font-size: 16px; margin-bottom: 32px; }
+    h2 { font-size: 20px; font-weight: 700; margin: 44px 0 12px; scroll-margin-top: 24px; }
+    h3 { font-size: 15px; font-weight: 700; margin: 20px 0 4px; }
+    p { color: var(--fg-mute); margin-bottom: 14px; }
+    ol, ul { color: var(--fg-mute); margin: 0 0 16px 22px; }
+    ol li, ul li { margin-bottom: 6px; }
+    strong { color: var(--fg); font-weight: 600; }
+    code { background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 13px; color: var(--fg); }
+    a { color: var(--accent); }
+    .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 18px 22px; margin: 14px 0; }
+    .card h3 { margin-top: 0; }
+    .card p:last-child, .card ul:last-child { margin-bottom: 0; }
+    .rec { background: var(--bg-card); border: 1px solid var(--border); border-left: 3px solid var(--good); border-radius: 10px; padding: 20px 24px; margin: 8px 0 32px; }
+    .rec .label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--good); margin-bottom: 6px; }
+    .rec p:last-child { margin-bottom: 0; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0 8px; font-size: 14px; }
+    th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-mute); font-weight: 700; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--border); }
+    td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--border); color: var(--fg-mute); vertical-align: top; }
+    td:first-child { color: var(--fg); font-weight: 600; }
+    .note { font-size: 13px; color: var(--fg-mute); font-style: italic; }
+    .stamp { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--border); font-size: 13px; color: var(--fg-mute); }
+    footer { border-top: 1px solid var(--border); padding: 28px 40px; font-size: 13px; color: var(--fg-mute); }
+    footer a { color: var(--fg-mute); }
+  </style>
+</head>
+<body>
+  <nav>
+    <a class="nav-logo" href="/">JobHunt</a>
+  </nav>
+
+  <div class="main">
+    <h1>How JobHunt uses AI</h1>
+    <p class="lede">Two jobs, both of them reading. Everything else in the app is ordinary code — and that
+      is deliberate.</p>
+
+    <h2 id="why">Why use AI at all</h2>
+
+    <p>A job posting is prose written to be read by a person. The salary might be in the third paragraph,
+      or in a table, or absent. "Remote" might mean remote, or remote-within-one-state, or hybrid three
+      days a week described as remote. No two job boards agree on structure, and the same company posts
+      differently on its own site than on LinkedIn.</p>
+
+    <p>That leaves two chores that don't automate with rules. <strong>Pulling the facts out</strong> —
+      salary band, seniority, work arrangement, the actual requirements — and <strong>judging whether
+      you're a fit</strong>, which means reading fourteen bullet points against your résumé and deciding
+      which are met, which are partly met, and which are genuine gaps.</p>
+
+    <p>People do this by hand at maybe five postings an hour, and get worse at it as the evening goes on.
+      That is the entire case for AI here: it is applied to the reading, and to nothing else.</p>
+
+    <h2 id="extraction">What the AI does, 1: extraction</h2>
+
+    <div class="card">
+      <h3>One call per captured job</h3>
+      <p>The posting text goes to your chosen model, which returns structured fields: company, title,
+        location, work arrangement, salary band, seniority, and the list of required and preferred
+        qualifications. Those fields are what the Jobs list sorts and filters on.</p>
+      <p>The posting text is truncated before sending — long postings are capped rather than sent whole.</p>
+    </div>
+
+    <h2 id="fit">What the AI does, 2: fit scoring</h2>
+
+    <div class="card">
+      <h3>One call per job, per résumé</h3>
+      <p>The extracted requirements and your résumé text go to the model, which judges each requirement
+        separately — met, partly met, or missing — and must <strong>quote the evidence</strong> it used
+        from your résumé. The score is computed from those verdicts, not asked for directly.</p>
+      <p>Requirement-by-requirement is the point. A single number tells you nothing you can act on; a list
+        of what's missing tells you whether to apply, and what to address if you do.</p>
+    </div>
+
+    <h2 id="not-ai">What is deliberately <em>not</em> AI</h2>
+
+    <p>This is worth as much as the previous two sections, because it is where the app avoids both cost
+      and nonsense.</p>
+
+    <table>
+      <tr>
+        <td>Automatic search filtering</td>
+        <td>A board sweep returns thousands of postings. Every requirement you set — title words,
+          locations, work arrangement, minimum salary, posting age — is checked with plain string and
+          number comparison <strong>before any AI call</strong>. Only survivors are ever extracted, so a
+          large sweep stays cheap.</td>
+      </tr>
+      <tr>
+        <td>The evidence check</td>
+        <td>When the scorer quotes your résumé, JobHunt verifies the quote actually appears in it, by
+          plain text matching. <strong>The check on the AI is not itself AI</strong> — that's the point.
+          A quote that appears nowhere is flagged rather than trusted, including when the model has
+          quoted the job posting back at you.</td>
+      </tr>
+      <tr>
+        <td>Duplicate detection</td>
+        <td>Content hashing across sources. The same role posted on three boards collapses without a
+          model being asked.</td>
+      </tr>
+      <tr>
+        <td>Salary and location parsing</td>
+        <td>Deterministic normalisation of what extraction returned, with its own rules about what counts
+          as evidence of pay.</td>
+      </tr>
+    </table>
+
+    <h2 id="prompts">Prompts you take elsewhere</h2>
+
+    <p>Separately from the two calls above, any job's <strong>Prompt AI</strong> menu builds a ready-made
+      prompt from that job and your résumé — a tailored résumé, a cover letter, interview prep, an
+      outreach message, a referral request — for you to paste into ChatGPT, Claude, or whatever you
+      already use.</p>
+
+    <p>These are <strong>built entirely on your Mac and copied to your clipboard</strong>. No API call, no
+      cost, and nothing is sent anywhere by JobHunt. They work identically whether or not you have a
+      provider configured.</p>
+
+    <h2 id="options">Your options: local or hosted</h2>
+
+    <p>JobHunt has no AI of its own and no server. You point it at a model, and that decision is entirely
+      yours to make.</p>
+
+    <div class="card">
+      <h3>Local — nothing leaves your Mac</h3>
+      <p>Run <strong>LM Studio</strong>, Ollama, or anything else that speaks the OpenAI-compatible API on
+        <code>localhost</code>. Free, private, works offline. Slower than a hosted model, and the quality
+        depends on the model and your hardware — a small local model will miss requirements a hosted one
+        catches.</p>
+      <p>Localhost providers <strong>never prompt for consent</strong>, because no data leaves the
+        device.</p>
+    </div>
+
+    <div class="card">
+      <h3>Hosted — faster and more accurate, for cents</h3>
+      <p><strong>OpenRouter</strong>, <strong>Google</strong>, <strong>OpenAI</strong>,
+        <strong>Anthropic</strong>, or any OpenAI-compatible endpoint via the <strong>Custom</strong>
+        option. Scoring a few hundred postings costs on the order of a couple of dollars — see
+        <a href="which-model.html">which model to use</a> for measured per-model numbers.</p>
+      <p>The first time you choose a cloud provider, JobHunt <strong>asks for explicit consent and sends
+        nothing until you agree</strong>. A Custom provider pointed at a remote URL counts as cloud and is
+        treated the same way.</p>
+    </div>
+
+    <h2 id="configure">Configuring it</h2>
+
+    <p>Everything lives in <strong>Settings → AI</strong>:</p>
+
+    <ol>
+      <li><strong>Provider</strong> — LM Studio, OpenRouter, Google, OpenAI, Anthropic, or Custom.</li>
+      <li><strong>Base URL</strong> — prefilled per provider; the field you change for a local server on a
+        different port, or a custom endpoint.</li>
+      <li><strong>Model</strong> — a free-text field, not a fixed list. <strong>Fetch Models</strong> fills
+        it from providers that expose a catalogue, and <strong>Use recommended</strong> picks a known-good
+        default. Because it's free text, a model retired years from now is replaced by typing the new
+        name.</li>
+      <li><strong>API key</strong> — stored in the <strong>macOS Keychain</strong>, never in JobHunt's own
+        database. Not needed for a local model.</li>
+      <li><strong>Test Connection</strong> — a real round trip, so a wrong key or an unreachable server
+        fails here rather than silently on your first job.</li>
+      <li><strong>Timeout</strong> and <strong>cost pricing</strong> — the pricing fields feed a running
+        cost estimate for the jobs you have queued, so the bill isn't a surprise.</li>
+    </ol>
+
+    <div class="rec">
+      <div class="label">If you just want it working</div>
+      <p>Pick OpenRouter, hit <strong>Use recommended</strong>, paste a key, and press Test Connection.
+        <a href="which-model.html">Which AI model should I use?</a> explains that recommendation and what
+        else was measured against it.</p>
+    </div>
+
+    <h2 id="sent">What actually gets sent</h2>
+
+    <p>With a hosted provider: the <strong>job description text</strong> for extraction, and the
+      description plus <strong>your résumé text</strong> for fit scoring. That is your employment history
+      going to a third party, which is exactly why the consent prompt exists.</p>
+
+    <p>Nothing else is transmitted. There is no JobHunt server, no analytics on your job data, and no
+      telemetry — your database stays a file on your Mac. With a local model, none of it leaves the
+      machine at all. See the <a href="/privacy.html">Privacy Policy</a>.</p>
+
+    <p class="stamp">Extraction and fit scoring are the only two places JobHunt calls a model. If you find
+      something that looks like a third, it's either the Test Connection button or a
+      <a href="#prompts">copy-out prompt</a>, which never leaves your Mac.</p>
+  </div>
+
+  <footer>
+    <a href="/help/">← Back to Help</a>
+  </footer>
+</body>
+</html>

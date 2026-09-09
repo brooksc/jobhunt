@@ -181,11 +181,20 @@
       background: var(--bg-card);
       line-height: 0;
     }
-    .demo-frame video { width: 100%; display: block; }
+    /* `height: auto` is load-bearing. The <video> carries width="1920" height="1080", and those
+       attributes are presentational hints that set `height: 1080px`. Overriding only `width` in CSS
+       leaves the height at 1080px, so the box renders 100% wide by 1080px tall — far taller than
+       16:9 — and the letterboxed video sits inside it with the card background showing through as a
+       white band above the picture. Keeping the attributes is correct (they give the browser the
+       aspect ratio up front, so the space is reserved before the poster decodes); the CSS just has
+       to hand the height back to the ratio. */
+    .demo-frame video { width: 100%; height: auto; display: block; }
     .demo-caption {
       margin-top: 14px;
       font-size: 14px;
-      color: var(--muted);
+      /* --fg-mute, not --muted: the latter is defined nowhere, so this declaration was invalid and
+         the caption inherited full-strength --fg instead of reading as secondary text. */
+      color: var(--fg-mute);
     }
     .carousel-wrap {
       max-width: 1100px;

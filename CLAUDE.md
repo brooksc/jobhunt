@@ -330,16 +330,21 @@ The key in use is `AuthKey_Y4673VW6CJ.p8`; JobHunt's `app_id` is `6782679255`. `
 is in **Payments and Financial Reports**. Auth is a 20-minute ES256 JWT — Apple rejects longer
 expiries.
 
-**The key's role decides what works.** With `Y4673VW6CJ` as of 2026-09-09, `versions` and `reviews`
-work; **`builds` returns 403** (`"The API key in use does not allow this request"`), and so does
-`sales`. Apple checks the role *before* the vendor number, so the `sales` error reads as a bad vendor
-number when it isn't.
+**What `Y4673VW6CJ` can actually do, measured 2026-09-15:** `versions`, `reviews` and `sales` all
+work. **`builds` returns 403** (`"The API key in use does not allow this request"`).
 
-This matters at delivery time: after `release-mas.yml` uploads a build there is **no API path from
-here to "has Apple finished processing it"** — check App Store Connect in the browser instead. (This
-paragraph previously claimed `builds` worked; it was corrected after the 1.5.0 delivery, when it
-didn't.) Sales and Trends needs **Admin** or **Finance**,
-and a key's role is fixed at creation: generate a new key and update `key_id`.
+So at delivery time there is **no API path from here to "has Apple finished processing the upload"** —
+check App Store Connect in the browser instead. Everything else this project needs is available.
+
+*Both corrections to this paragraph were mine, and the second was self-inflicted: on 2026-09-09 I
+changed it to say `sales` 403s while only having tested `builds`, `versions` and `reviews`. The
+`sales` claim was carried over from the previous text and asserted as measured. It isn't — `sales`
+returns daily units fine. Test the endpoint before writing down what it does.*
+
+If `sales` ever does start returning 403, that is the key's role, not the vendor number — Apple checks
+access first, so the error reads as a bad vendor number when it isn't. Sales and Trends needs
+**Admin**, **Finance** or **Sales** access, and a key's role is fixed at creation: generate a new key
+and update `key_id`.
 
 **Do not revoke `68BGNV3CCC`.** It is *not* an obsolete JobHunt key — it's a Developer-role key
 belonging to the **nevermore** project's build-upload pipeline, which shares this Apple team, and
@@ -349,6 +354,33 @@ Keys tab).
 
 Sales reports lag ~24h and a zero-sales day simply 404s, which `sales` treats as zero rather than an
 error. There is no "installs" endpoint: units from Sales and Trends is the closest thing.
+
+### Daily downloads/reviews watch
+
+`scripts/asc-watch.py` reports **only when there is news** — new downloads or new reviews — and exits
+silently otherwise, so a notification means something actually happened. Installed as a launchd agent
+from `scripts/com.brooksc.jobhunt.asc-watch.plist`, running daily at 10:00; log at
+`~/Library/Logs/jobhunt-asc-watch.log`.
+
+```bash
+scripts/asc-watch.py --dry-run   # print what it would report; no state, no notification
+scripts/asc-watch.py --force     # report current numbers even when unchanged (smoke test)
+scripts/asc-watch.py --reset     # forget history, re-baseline silently on the next run
+launchctl kickstart -p gui/$(id -u)/com.brooksc.jobhunt.asc-watch   # run now
+```
+
+Two things that look like bugs and aren't:
+
+- **State exists because Apple publishes a day's sales report ~24h late, and a zero-sales day 404s
+  rather than returning zero.** "New since yesterday" therefore cannot be answered from yesterday
+  alone — a day can appear two days after the fact. The script records which report *dates* it has
+  reported and looks back 7 days, so a late day is reported once, when it appears.
+- **The first run is silent by design.** With no state nothing is "new", and announcing the whole
+  lookback window as news on day one teaches you to ignore the notification.
+
+**An empty log and exit 0 is the success case**, which makes it indistinguishable from a silent
+failure at a glance. To tell them apart, check `last_checked` in
+`~/.appstoreconnect/jobhunt-watch-state.json` — it is rewritten on every successful run.
 
 ## Data store location & backup
 

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Daily App Store check for JobHunt: reports new downloads or reviews, silent otherwise.
+
+  Install:
+      cp scripts/com.brooksc.jobhunt.asc-watch.plist ~/Library/LaunchAgents/
+      launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.brooksc.jobhunt.asc-watch.plist
+
+  Run it now without waiting for the schedule:
+      launchctl kickstart -p gui/$(id -u)/com.brooksc.jobhunt.asc-watch
+
+  Remove:
+      launchctl bootout gui/$(id -u)/com.brooksc.jobhunt.asc-watch
+      rm ~/Library/LaunchAgents/com.brooksc.jobhunt.asc-watch.plist
+
+  Two things about launchd worth knowing before editing this:
+
+  - It runs with a MINIMAL environment, not your login shell. `uv` is a shell alias here (pmg uv),
+    which launchd cannot see, so the real binary is named absolutely in ProgramArguments rather
+    than relying on the script's `#!/usr/bin/env -S uv run --script` shebang.
+  - StartCalendarInterval does NOT fire while the Mac is asleep; it runs at the next wake. That is
+    the right behaviour for this — a day's sales report is published ~24h late anyway, and the
+    script's own state means a missed day is reported when it is next seen rather than lost.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.brooksc.jobhunt.asc-watch</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/uv</string>
+        <string>run</string>
+        <string>--script</string>
+        <string>/Users/brooksc/code/jobhunt/scripts/asc-watch.py</string>
+    </array>
+
+    <!-- 10:00 local. Apple publishes a day's sales report roughly 24h late, so any morning slot
+         sees yesterday's data; this one is late enough that a notification lands while you're at
+         the machine rather than overnight. -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>10</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/brooksc/code/jobhunt</string>
+
+    <!-- Both streams are kept. stdout is the report itself on a day there is news, so the log
+         doubles as the history of what was reported and when. -->
+    <key>StandardOutPath</key>
+    <string>/Users/brooksc/Library/Logs/jobhunt-asc-watch.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/brooksc/Library/Logs/jobhunt-asc-watch.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <!-- Explicitly false: this is a scheduled check, not a daemon. Without it a crash loop would
+         restart every 10 seconds and hammer Apple's API. -->
+    <key>KeepAlive</key>
+    <false/>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

@@ -325,26 +325,30 @@ Credentials, all **outside the repo**:
 | Private key | `~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8` (mode `600`) | **Yes** — never print, copy or commit it |
 | `issuer_id`, `key_id`, `app_id`, `vendor_number` | `~/.appstoreconnect/config.json` | No, but keep them out of git too |
 
-The key in use is `AuthKey_Y4673VW6CJ.p8`; JobHunt's `app_id` is `6782679255`. `issuer_id` and
+The key in use is `AuthKey_4WK4L4T3BV.p8` (Admin, created 2026-09-16); JobHunt's `app_id` is `6782679255`. `issuer_id` and
 `key_id` come from **Users and Access → Integrations → App Store Connect API**; `vendor_number`
 is in **Payments and Financial Reports**. Auth is a 20-minute ES256 JWT — Apple rejects longer
 expiries.
 
-**What `Y4673VW6CJ` can actually do, measured 2026-09-15:** `versions`, `reviews` and `sales` all
-work. **`builds` returns 403** (`"The API key in use does not allow this request"`).
+**Three keys exist. Only one is JobHunt's.**
 
-So at delivery time there is **no API path from here to "has Apple finished processing the upload"** —
-check App Store Connect in the browser instead. Everything else this project needs is available.
+| Key | Role | Use |
+|---|---|---|
+| `4WK4L4T3BV` | Admin | **JobHunt's key.** `builds`, `versions`, `reviews`, `sales` and the Analytics Reports API all work |
+| `Y4673VW6CJ` | Individual | JobHunt's previous key. `versions`, `reviews`, `sales` work; `builds` and creating analytics report requests return 403. Kept on disk — Apple issues a `.p8` once, so deleting it is irreversible |
+| `68BGNV3CCC` | Developer | **nevermore's**, not JobHunt's. Do not revoke: same Apple team, different project's upload pipeline |
 
-*Both corrections to this paragraph were mine, and the second was self-inflicted: on 2026-09-09 I
-changed it to say `sales` 403s while only having tested `builds`, `versions` and `reviews`. The
-`sales` claim was carried over from the previous text and asserted as measured. It isn't — `sales`
-returns daily units fine. Test the endpoint before writing down what it does.*
+A key's role is **fixed at creation**, which is why the upgrade meant a new key rather than a
+permission edit. `Y4673VW6CJ` was replaced on 2026-09-16 because creating an analytics report request
+needs Admin.
 
-If `sales` ever does start returning 403, that is the key's role, not the vendor number — Apple checks
-access first, so the error reads as a bad vendor number when it isn't. Sales and Trends needs
-**Admin**, **Finance** or **Sales** access, and a key's role is fixed at creation: generate a new key
-and update `key_id`.
+*A caution from how that paragraph got here: it has been wrong twice, both times mine. On 2026-09-09
+I wrote that `sales` returns 403 having tested only `builds`, `versions` and `reviews` — the claim was
+carried over from older text and restated as measured. It wasn't. Run the endpoint before writing
+down what it does.*
+
+If `sales` ever returns 403, that is the key's role and not the vendor number — Apple checks access
+first, so the error reads as a bad vendor number when it isn't.
 
 **Do not revoke `68BGNV3CCC`.** It is *not* an obsolete JobHunt key — it's a Developer-role key
 belonging to the **nevermore** project's build-upload pipeline, which shares this Apple team, and
@@ -381,6 +385,32 @@ Two things that look like bugs and aren't:
 **An empty log and exit 0 is the success case**, which makes it indistinguishable from a silent
 failure at a glance. To tell them apart, check `last_checked` in
 `~/.appstoreconnect/jobhunt-watch-state.json` — it is rewritten on every successful run.
+
+### Acquisition sources (App Analytics)
+
+Two analytics report requests were created on 2026-09-16 against `app_id` 6782679255 — a
+`ONE_TIME_SNAPSHOT` (back-fills up to 365 days) and an `ONGOING` (daily from here). Both report 50
+report types; the ones that answer "where did this install come from" are:
+
+- **`APP_STORE_ENGAGEMENT` → App Store Discovery and Engagement** — source type (App Store Search,
+  Browse, App Referrer, Web Referrer) and, for web referrers, the referring domain.
+- **`COMMERCE` → App Downloads** — downloads broken out by source.
+
+This is a different API from the Sales and Trends reports `asc-stats.py sales` reads. Sales gives
+units; App Analytics gives impressions, product-page views, conversion rate, and where the traffic
+came from.
+
+**It needs an Admin key** — creating a report request returns 403 on a lesser role, which is why
+`4WK4L4T3BV` exists.
+
+The shape is `analyticsReportRequests` → `reports` → `instances` (per granularity and processing
+date) → `segments` (the actual downloadable files). **Apple does not generate anything immediately**:
+both requests showed 0 daily instances right after creation. Expect 24-48h before the first data, and
+note `stoppedDueToInactivity` on the request — an ONGOING request that nobody reads is eventually
+switched off by Apple, so it has to be polled to stay alive.
+
+`asc-watch.py` does **not** yet report sources. Deliberately: the segment CSV schema should be read
+off real data rather than guessed, and there was no real data at the time of writing.
 
 ## Data store location & backup
 

@@ -21,7 +21,7 @@
     footer a { color: var(--fg-mute); }
   </style>
 
-  <!-- Analytics: cookieless PostHog (marketing site only) -->
+  <!-- Analytics: consent-gated PostHog, cookieless until accepted (marketing site only) -->
   <script defer src="https://us-assets.i.posthog.com/static/array.js"></script>
   <script defer src="/analytics.js"></script>
 </head>
@@ -48,7 +48,10 @@
     <p>JobHunt sends job description text to an AI model for extraction and fit scoring. By default this is a local model via LM Studio or Ollama — no data leaves your machine. If you configure a cloud provider (OpenAI, Anthropic, Google, OpenRouter), job description text is sent to that provider under their own privacy policy. Your resume is included in fit-scoring prompts.</p>
 
     <h2>This website</h2>
-    <p>This website (<code>jobhunt-app.com</code>) uses <a href="https://posthog.com" target="_blank" rel="noopener">PostHog</a> to count page views, so we know which pages are worth improving. It runs in cookieless mode: no cookies are set, nothing is stored in your browser, and no consent banner is needed. PostHog derives a visitor identifier server-side from a daily-rotating salt combined with your IP address and browser user agent; the salt is discarded each day, so visits cannot be linked across days or back to you. Session recording and surveys are disabled.</p>
+    <p>This website (<code>jobhunt-app.com</code>) uses <a href="https://posthog.com" target="_blank" rel="noopener">PostHog</a> to count page views, so we know which pages are worth improving. <strong>You choose whether we remember you.</strong></p>
+    <p><strong>Before you choose, and if you decline:</strong> PostHog runs in cookieless mode. No cookies are set and nothing is stored in your browser for analytics. A visitor identifier is derived server-side from a daily-rotating salt combined with your IP address and browser user agent; the salt is discarded each day, so visits cannot be linked across days or back to you. You are still counted — just not remembered.</p>
+    <p><strong>If you accept:</strong> PostHog stores an identifier in a cookie and in your browser's local storage, so a return visit can be recognised as the same browser rather than counted as a new person. That is the only thing consent changes. We still collect no name, no email and no account.</p>
+    <p>Your choice is remembered in local storage under <code>jh_analytics_consent</code> so we do not ask again. To change it, clear this site's data in your browser and the banner will reappear. Session recording and surveys are disabled in every case.</p>
     <p>This applies to the website only. <strong>The Mac app and the Chrome extension contain no analytics of any kind</strong> and do not contact PostHog.</p>
 
     <h2>Data sharing</h2>
